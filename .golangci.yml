@@ -1,0 +1,14 @@
+linters-settings:
+  errcheck:
+    check-type-assertions: true
+    check-blank: true
+
+issues:
+  exclude-files:
+    - "_test\\.go$"
+  exclude-dirs:
+    - "internal/testing"
+    - "internal/testutils"
+
+run:
+  timeout: 10m
