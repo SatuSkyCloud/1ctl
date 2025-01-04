@@ -1,5 +1,23 @@
 # Release Notes
 
+## Version 0.1.1 (04-01-2025)
+
+### 🔒 Security Improvements
+
+- Added safe integer conversion handling to prevent overflows in port and replica configurations
+- Enhanced path validation for file operations to prevent directory traversal attacks
+- Improved Docker build input validation with tag format checking
+- Implemented secure file permission handling (0750 for directories, 0600 for files)
+- Added protection against command injection in Docker build operations
+- Better error handling in cleanup operations for test utilities
+
+### 🔧 Technical Improvements
+
+- Introduced `SafeInt32` utility function for safe integer conversions
+- Added path validation functions in Docker and context operations
+- Enhanced error handling in file operations
+- Improved input validation for Docker build options
+
 ## Version 0.1.0 (31-12-2024)
 
 ### 🎉 Genesis Release

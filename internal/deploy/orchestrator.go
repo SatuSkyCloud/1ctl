@@ -178,6 +178,16 @@ func buildAndUploadImage(dockerfilePath, projectName string) (string, error) {
 }
 
 func createMainDeployment(opts DeploymentOptions, image, name, userID, organization string, hostnames []string) (string, error) {
+	port, err := api.SafeInt32(opts.Port)
+	if err != nil {
+		return "", fmt.Errorf("invalid port: %w", err)
+	}
+
+	replicas, err := api.SafeInt32(len(hostnames))
+	if err != nil {
+		return "", fmt.Errorf("invalid replicas count: %w", err)
+	}
+
 	deployment := api.Deployment{
 		UserID:        api.ToUUID(userID),
 		Type:          "production", // Default to production (cluster env)
@@ -187,14 +197,14 @@ func createMainDeployment(opts DeploymentOptions, image, name, userID, organizat
 		MemoryRequest: opts.Memory,
 		MemoryLimit:   opts.Memory,
 		Namespace:     organization,
-		Port:          int32(opts.Port),
+		Port:          port,
 		Image:         image,
 		Region:        "SG",       // Default to Singapore region
 		Zone:          "sg-sgp-1", // Default to Singapore zone
 		SSD:           "true",
 		GPU:           "false",
 		AppLabel:      name,
-		Replicas:      int32(len(hostnames)),
+		Replicas:      replicas,
 		EnvEnabled:    opts.EnvEnabled,
 		VolumeEnabled: opts.VolumeEnabled,
 	}
@@ -208,11 +218,16 @@ func createMainDeployment(opts DeploymentOptions, image, name, userID, organizat
 }
 
 func createService(deploymentID string, opts DeploymentOptions, projectName, organization string) (string, error) {
+	port, err := api.SafeInt32(opts.Port)
+	if err != nil {
+		return "", fmt.Errorf("invalid port: %w", err)
+	}
+
 	service := api.Service{
 		DeploymentID: api.ToUUID(deploymentID),
 		Namespace:    organization,
 		ServiceName:  projectName,
-		Port:         int32(opts.Port),
+		Port:         port,
 	}
 
 	var serviceID string
@@ -234,6 +249,11 @@ func createIngress(deploymentID string, serviceID string, opts DeploymentOptions
 		}
 	}
 
+	port, err := api.SafeInt32(opts.Port)
+	if err != nil {
+		return "", fmt.Errorf("invalid port: %w", err)
+	}
+
 	ingress := api.Ingress{
 		DeploymentID: api.ToUUID(deploymentID),
 		ServiceID:    api.ToUUID(serviceID),
@@ -241,10 +261,10 @@ func createIngress(deploymentID string, serviceID string, opts DeploymentOptions
 		AppLabel:     projectName,
 		DomainName:   domainName,
 		DnsConfig:    api.DnsConfigDefault,
-		Port:         int32(opts.Port),
+		Port:         port,
 	}
 
-	_, err := api.CreateIngress(ingress)
+	_, err = api.CreateIngress(ingress)
 	if err != nil {
 		return "", fmt.Errorf("failed to create ingress: %w", err)
 	}
@@ -252,7 +272,7 @@ func createIngress(deploymentID string, serviceID string, opts DeploymentOptions
 	return domainName, nil
 }
 
-func handleDependencies(deps []api.Dependency, project, userID, organization string, hostnames []string) error {
+func handleDependencies(deps []api.Dependency, userID, organization string, hostnames []string) error {
 	for _, dep := range deps {
 		opts := DeploymentOptions{
 			CPU:          "100m",  // TODO: change this when --cpu is specified for each dependency
@@ -350,7 +370,7 @@ func handleIngressAndDependencies(opts DeploymentOptions, deploymentID, serviceI
 	// Handle dependencies
 	go func() {
 		if len(opts.Dependencies) > 0 {
-			if err := handleDependencies(opts.Dependencies, opts.Organization, userID, organization, hostnames); err != nil {
+			if err := handleDependencies(opts.Dependencies, userID, organization, hostnames); err != nil {
 				errChan <- fmt.Errorf("failed to handle dependencies: %w", err)
 				return
 			}

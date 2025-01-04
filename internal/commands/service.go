@@ -62,10 +62,14 @@ func ServiceCommand() *cli.Command {
 }
 
 func handleCreateService(c *cli.Context) error {
+	port, err := api.SafeInt32(c.Int("port"))
+	if err != nil {
+		return fmt.Errorf("invalid port: %w", err)
+	}
 	service := api.Service{
 		DeploymentID: uuid.MustParse(c.String("deployment-id")),
 		ServiceName:  c.String("name"),
-		Port:         int32(c.Int("port")),
+		Port:         port,
 		Namespace:    c.String("namespace"),
 	}
 

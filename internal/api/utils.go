@@ -2,6 +2,7 @@ package api
 
 import (
 	"fmt"
+	"math"
 	"time"
 
 	"github.com/google/uuid"
@@ -61,4 +62,12 @@ func ToUUID(s string) uuid.UUID {
 		panic(fmt.Sprintf("invalid UUID: %s", s))
 	}
 	return id
+}
+
+// SafeInt32 safely converts an int to int32, checking for overflow
+func SafeInt32(n int) (int32, error) {
+	if n > math.MaxInt32 || n < math.MinInt32 {
+		return 0, fmt.Errorf("integer overflow: value %d out of int32 range", n)
+	}
+	return int32(n), nil
 }
