@@ -11,9 +11,31 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
+	"strings"
 )
 
+func validateImagePath(path string) error {
+	// Clean and validate the path
+	cleanPath := filepath.Clean(path)
+
+	// Check for directory traversal
+	if strings.Contains(cleanPath, "..") {
+		return fmt.Errorf("invalid path: must not contain parent directory references")
+	}
+
+	// Verify the file exists
+	if _, err := os.Stat(cleanPath); err != nil {
+		return fmt.Errorf("image file not found: %w", err)
+	}
+
+	return nil
+}
+
 func UploadDockerImage(imagePath, projectName string) (string, error) {
+	if err := validateImagePath(imagePath); err != nil {
+		return "", fmt.Errorf("invalid image path: %w", err)
+	}
+
 	file, err := os.Open(imagePath)
 	if err != nil {
 		return "", fmt.Errorf("failed to open image file: %w", err)

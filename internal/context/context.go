@@ -2,9 +2,11 @@ package context
 
 import (
 	"encoding/json"
+	"fmt"
 	"log"
 	"os"
 	"path/filepath"
+	"strings"
 )
 
 type CLIContext struct {
@@ -16,13 +18,39 @@ type CLIContext struct {
 
 var configDir string
 
+// validatePath checks if the path is safe to use
+func validatePath(path string) error {
+	// Clean the path
+	cleanPath := filepath.Clean(path)
+
+	// Check for directory traversal attempts
+	if strings.Contains(cleanPath, "..") {
+		return fmt.Errorf("invalid path: must not contain parent directory references")
+	}
+
+	// Check if path is absolute
+	if filepath.IsAbs(cleanPath) {
+		// Verify it's within the user's home directory
+		homeDir, err := os.UserHomeDir()
+		if err != nil {
+			return fmt.Errorf("failed to get home directory: %w", err)
+		}
+		if !strings.HasPrefix(cleanPath, homeDir) {
+			return fmt.Errorf("invalid path: must be within user's home directory")
+		}
+	}
+
+	return nil
+}
+
 func init() {
 	homeDir, err := os.UserHomeDir()
 	if err != nil {
-		log.Fatal("Could not get user home directory:", err)
+		log.Fatal("Could not get home directory:", err)
 	}
+
 	configDir = filepath.Join(homeDir, ".satusky")
-	if err := os.MkdirAll(configDir, 0755); err != nil {
+	if err := os.MkdirAll(configDir, 0750); err != nil {
 		log.Fatal("Could not create config directory:", err)
 	}
 }
@@ -30,6 +58,10 @@ func init() {
 // GetToken returns the token from context.json
 func GetToken() string {
 	contextFile := filepath.Join(configDir, "context.json")
+	if err := validatePath(contextFile); err != nil {
+		return ""
+	}
+
 	data, err := os.ReadFile(contextFile)
 	if err != nil {
 		return ""

@@ -7,6 +7,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"regexp"
 	"strings"
 )
 
@@ -22,8 +23,34 @@ const (
 	RegistryURL = "registry.digitalocean.com/satusky-container-registry"
 )
 
+// Add input validation
+func validateBuildInput(opts BuildOptions) error {
+	if !filepath.IsAbs(opts.DockerfilePath) {
+		opts.DockerfilePath = filepath.Clean(opts.DockerfilePath)
+	}
+	if !filepath.IsAbs(opts.Context) {
+		opts.Context = filepath.Clean(opts.Context)
+	}
+
+	// Validate Dockerfile path
+	if strings.Contains(opts.DockerfilePath, "..") {
+		return fmt.Errorf("invalid dockerfile path: must not contain parent directory references")
+	}
+
+	// Validate tag format
+	if !regexp.MustCompile(`^[a-zA-Z0-9][-a-zA-Z0-9_./:]*$`).MatchString(opts.Tag) {
+		return fmt.Errorf("invalid tag format")
+	}
+
+	return nil
+}
+
 // Build builds a Docker image locally
 func Build(opts BuildOptions) error {
+	if err := validateBuildInput(opts); err != nil {
+		return fmt.Errorf("invalid build options: %w", err)
+	}
+
 	if opts.Context == "" {
 		var err error
 		opts.Context, err = os.Getwd()

@@ -11,7 +11,6 @@ import (
 
 const (
 	defaultAPIURL = "https://api.satusky.com/v1/cli"
-	devModeEnv    = "SATUSKY_DEV_MODE"
 )
 
 type Config struct {

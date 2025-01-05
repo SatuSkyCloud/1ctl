@@ -13,7 +13,11 @@ func CreateTempDir(t *testing.T) string {
 	if err != nil {
 		t.Fatalf("failed to create temp dir: %v", err)
 	}
-	t.Cleanup(func() { os.RemoveAll(dir) })
+	t.Cleanup(func() {
+		if err := os.RemoveAll(dir); err != nil {
+			t.Errorf("failed to cleanup temp dir: %v", err)
+		}
+	})
 	return dir
 }
 
@@ -21,7 +25,7 @@ func CreateTempDir(t *testing.T) string {
 func CreateTestFile(t *testing.T, dir, name, content string) string {
 	t.Helper()
 	path := filepath.Join(dir, name)
-	err := os.WriteFile(path, []byte(content), 0644)
+	err := os.WriteFile(path, []byte(content), 0600)
 	if err != nil {
 		t.Fatalf("failed to create test file: %v", err)
 	}
