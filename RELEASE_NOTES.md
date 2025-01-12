@@ -1,5 +1,10 @@
 # Release Notes
 
+## Version 0.1.2 (13-01-2025)
+
+### 🔧 Technical Improvements
+- Updated registry URL to use the new registry
+
 ## Version 0.1.1 (04-01-2025)
 
 ### 🔒 Security Improvements

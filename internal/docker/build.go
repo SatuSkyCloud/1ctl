@@ -18,9 +18,7 @@ type BuildOptions struct {
 }
 
 const (
-	// TODO: change to registry.satusky.com once it's set up
-	// RegistryURL = "registry.satusky.com"
-	RegistryURL = "registry.digitalocean.com/satusky-container-registry"
+	RegistryURL = "registry.satusky.com/satusky-container-registry"
 )
 
 // Add input validation
