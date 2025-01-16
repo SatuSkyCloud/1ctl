@@ -1,6 +1,7 @@
 package api
 
 import (
+	"1ctl/internal/utils"
 	"fmt"
 	"math"
 	"time"
@@ -67,7 +68,7 @@ func ToUUID(s string) uuid.UUID {
 // SafeInt32 safely converts an int to int32, checking for overflow
 func SafeInt32(n int) (int32, error) {
 	if n > math.MaxInt32 || n < math.MinInt32 {
-		return 0, fmt.Errorf("integer overflow: value %d out of int32 range", n)
+		return 0, utils.NewError(fmt.Sprintf("integer overflow: value %d out of int32 range", n), nil)
 	}
 	return int32(n), nil
 }

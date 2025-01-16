@@ -1,8 +1,8 @@
 package docker
 
 import (
+	"1ctl/internal/utils"
 	"1ctl/internal/validator"
-	"fmt"
 	"path/filepath"
 )
 
@@ -40,7 +40,7 @@ func (d *defaultDockerClient) Build(opts BuildOptions) error {
 func (b *Builder) Build() (string, error) {
 	// Validate Dockerfile
 	if err := validator.ValidateDockerfile(b.dockerfilePath); err != nil {
-		return "", fmt.Errorf("invalid Dockerfile: %w", err)
+		return "", utils.NewError("invalid Dockerfile: %w", err)
 	}
 
 	// Build the image
@@ -51,7 +51,7 @@ func (b *Builder) Build() (string, error) {
 	}
 
 	if err := b.client.Build(opts); err != nil {
-		return "", fmt.Errorf("failed to build image: %w", err)
+		return "", utils.NewError("failed to build image: %w", err)
 	}
 
 	return b.projectName, nil

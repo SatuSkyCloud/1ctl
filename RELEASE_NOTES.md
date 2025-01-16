@@ -1,5 +1,14 @@
 # Release Notes
 
+## Version 0.1.3 (14-03-2024)
+
+### 🔧 Technical Improvements
+- Introduced centralized error handling with `utils.NewError`
+- Standardized error formatting across the codebase
+- Improved error messages with better context and readability
+- Added consistent error wrapping pattern
+- Enhanced error handling in cleanup operations
+
 ## Version 0.1.2 (13-01-2025)
 
 ### 🔧 Technical Improvements

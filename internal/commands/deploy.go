@@ -137,19 +137,19 @@ func DeployCommand() *cli.Command {
 func handleDeploy(c *cli.Context) error {
 	// Validate inputs first
 	if err := validateInputs(c); err != nil {
-		return fmt.Errorf("validation failed: %w", err)
+		return utils.NewError("validation failed: %w", err)
 	}
 
 	// Prepare deployment options
 	opts, err := prepareDeploymentOptions(c)
 	if err != nil {
-		return fmt.Errorf("deployment preparation failed: %w", err)
+		return utils.NewError("deployment preparation failed: %w", err)
 	}
 
 	// Execute deployment
 	resp, err := deploy.Deploy(opts)
 	if err != nil {
-		return fmt.Errorf("deployment failed: %w", err)
+		return utils.NewError("deployment failed: %w", err)
 	}
 
 	utils.PrintSuccess("🚀 Deployment for %s is successful! Your app is live at: https://%s", resp.AppLabel, resp.Domain)
@@ -164,35 +164,35 @@ func validateInputs(c *cli.Context) error {
 		var err error
 		dockerfilePath, err = validator.FindDockerfile(".")
 		if err != nil {
-			return fmt.Errorf("no valid Dockerfile found: please ensure a Dockerfile exists in your project")
+			return utils.NewError("no valid Dockerfile found: please ensure a Dockerfile exists in your project", err)
 		}
 		// Update the context with the found Dockerfile path
 		if err := c.Set("dockerfile", dockerfilePath); err != nil {
-			return fmt.Errorf("failed to set dockerfile path: %w", err)
+			return utils.NewError("failed to set dockerfile path: %w", err)
 		}
 	}
 
 	// Validate CPU and Memory
 	if err := validator.ValidateCPU(c.String("cpu")); err != nil {
-		return fmt.Errorf("invalid CPU value: %v", err)
+		return utils.NewError("invalid CPU value: %v", err)
 	}
 	if err := validator.ValidateMemory(c.String("memory")); err != nil {
-		return fmt.Errorf("invalid memory value: %v", err)
+		return utils.NewError("invalid memory value: %v", err)
 	}
 	if err := validator.ValidateDomain(c.String("domain")); err != nil {
-		return fmt.Errorf("invalid domain: %v", err)
+		return utils.NewError("invalid domain: %v", err)
 	}
 
 	// Validate volume options
 	if c.IsSet("volume-size") || c.IsSet("volume-mount") {
 		if c.String("volume-size") == "" {
-			return fmt.Errorf("volume-size is required when volume is enabled")
+			return utils.NewError("volume-size is required when volume is enabled", nil)
 		}
 		if c.String("volume-mount") == "" {
-			return fmt.Errorf("volume-mount is required when volume is enabled")
+			return utils.NewError("volume-mount is required when volume is enabled", nil)
 		}
 		if err := validator.ValidateMemory(c.String("volume-size")); err != nil {
-			return fmt.Errorf("invalid volume size: %v", err)
+			return utils.NewError("invalid volume size: %v", err)
 		}
 	}
 
@@ -231,12 +231,12 @@ func prepareDeploymentOptions(c *cli.Context) (deploy.DeploymentOptions, error) 
 		for _, machineName := range machineNames {
 			machine, err := api.GetMachineByName(machineName)
 			if err != nil {
-				return deploy.DeploymentOptions{}, fmt.Errorf("failed to get machine by name: %w", err)
+				return deploy.DeploymentOptions{}, utils.NewError("failed to get machine by name: %w", err)
 			}
 
 			// check if machine is owned by the current user
 			if machine.OwnerID.String() != context.GetUserID() {
-				return deploy.DeploymentOptions{}, fmt.Errorf("machine %s is not owned by you", machineName)
+				return deploy.DeploymentOptions{}, utils.NewError(fmt.Sprintf("machine %s is not owned by you", machineName), nil)
 			}
 
 			opts.Hostnames = append(opts.Hostnames, machine.MachineName)
@@ -277,7 +277,7 @@ func handleDeploymentStatus(c *cli.Context) error {
 	if watch {
 		status, err := api.WaitForDeployment(deploymentID, 5*time.Minute)
 		if err != nil {
-			return fmt.Errorf("failed to watch deployment: %w", err)
+			return utils.NewError("failed to watch deployment: %w", err)
 		}
 		utils.PrintStatusLine("Final status", status.Status)
 		if status.Message != "" {
@@ -288,7 +288,7 @@ func handleDeploymentStatus(c *cli.Context) error {
 
 	status, err := api.GetDeploymentStatus(deploymentID)
 	if err != nil {
-		return fmt.Errorf("failed to get deployment status: %w", err)
+		return utils.NewError("failed to get deployment status: %w", err)
 	}
 
 	utils.PrintStatusLine("Status", status.Status)
@@ -334,7 +334,7 @@ func handleListDeployments(c *cli.Context) error {
 	}
 
 	if err != nil {
-		return fmt.Errorf("failed to list deployments: %w", err)
+		return utils.NewError("failed to list deployments: %w", err)
 	}
 
 	if len(deployments) == 0 {
@@ -358,7 +358,7 @@ func handleGetDeployment(c *cli.Context) error {
 	deploymentID := c.String("deployment-id")
 	deployment, err := api.GetDeployment(deploymentID)
 	if err != nil {
-		return fmt.Errorf("failed to get deployment: %w", err)
+		return utils.NewError("failed to get deployment: %w", err)
 	}
 
 	// Print detailed deployment information

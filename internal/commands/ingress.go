@@ -65,7 +65,7 @@ func handleCreateIngress(c *cli.Context) error {
 
 	ingressResp, err := api.CreateIngress(ingress)
 	if err != nil {
-		return fmt.Errorf("failed to create ingress: %w", err)
+		return utils.NewError("failed to create ingress: %w", err)
 	}
 
 	utils.PrintSuccess("Ingress for domain %s created successfully\n", ingressResp.DomainName)
@@ -75,7 +75,7 @@ func handleCreateIngress(c *cli.Context) error {
 func handleListIngresses(c *cli.Context) error {
 	ingresses, err := api.ListIngresses()
 	if err != nil {
-		return fmt.Errorf("failed to list ingresses: %w", err)
+		return utils.NewError("failed to list ingresses: %w", err)
 	}
 
 	if len(ingresses) == 0 {
@@ -103,7 +103,7 @@ func handleListIngresses(c *cli.Context) error {
 func handleDeleteIngress(c *cli.Context) error {
 	ingressID := c.String("ingress-id")
 	if err := api.DeleteIngress(nil, ingressID); err != nil {
-		return fmt.Errorf("failed to delete ingress: %w", err)
+		return utils.NewError("failed to delete ingress: %w", err)
 	}
 
 	utils.PrintSuccess("Ingress %s deleted successfully\n", ingressID)

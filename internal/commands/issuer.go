@@ -4,7 +4,6 @@ import (
 	"1ctl/internal/api"
 	"1ctl/internal/context"
 	"1ctl/internal/utils"
-	"fmt"
 
 	"github.com/google/uuid"
 	"github.com/urfave/cli/v2"
@@ -56,7 +55,7 @@ func handleCreateIssuer(c *cli.Context) error {
 
 	resp, err := api.CreateIssuer(issuer)
 	if err != nil {
-		return fmt.Errorf("failed to create issuer: %w", err)
+		return utils.NewError("failed to create issuer: %w", err)
 	}
 
 	utils.PrintSuccess("Certificate issuer created successfully (ID: %s)\n", resp.IssuerID)
@@ -66,7 +65,7 @@ func handleCreateIssuer(c *cli.Context) error {
 func handleListIssuers(c *cli.Context) error {
 	issuers, err := api.ListIssuers()
 	if err != nil {
-		return fmt.Errorf("failed to list issuers: %w", err)
+		return utils.NewError("failed to list issuers: %w", err)
 	}
 
 	if len(issuers) == 0 {

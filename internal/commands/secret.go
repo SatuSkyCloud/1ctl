@@ -4,7 +4,6 @@ import (
 	"1ctl/internal/api"
 	"1ctl/internal/context"
 	"1ctl/internal/utils"
-	"fmt"
 	"strings"
 
 	"github.com/google/uuid"
@@ -53,7 +52,7 @@ func handleCreateSecret(c *cli.Context) error {
 	for _, env := range envVars {
 		parts := strings.SplitN(env, "=", 2)
 		if len(parts) != 2 {
-			return fmt.Errorf("invalid environment variable format: %s", env)
+			return utils.NewError("invalid environment variable format: %s", nil)
 		}
 		keyValues = append(keyValues, api.KeyValuePair{
 			Key:   parts[0],
@@ -70,7 +69,7 @@ func handleCreateSecret(c *cli.Context) error {
 
 	secretResp, err := api.CreateSecret(secret)
 	if err != nil {
-		return fmt.Errorf("failed to create secret: %w", err)
+		return utils.NewError("failed to create secret: %w", err)
 	}
 
 	utils.PrintSuccess("Secret %s created successfully\n", secretResp.AppLabel)
@@ -80,7 +79,7 @@ func handleCreateSecret(c *cli.Context) error {
 func handleListSecrets(c *cli.Context) error {
 	secrets, err := api.ListSecrets()
 	if err != nil {
-		return fmt.Errorf("failed to list secrets: %w", err)
+		return utils.NewError("failed to list secrets: %w", err)
 	}
 
 	if len(secrets) == 0 {

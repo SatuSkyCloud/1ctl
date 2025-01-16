@@ -1,6 +1,7 @@
 package validator
 
 import (
+	"1ctl/internal/utils"
 	"bufio"
 	"fmt"
 	"os"
@@ -35,7 +36,7 @@ var validInstructions = map[string]bool{
 func ValidateDockerInstallation() error {
 	cmd := exec.Command("docker", "--version")
 	if err := cmd.Run(); err != nil {
-		return fmt.Errorf("docker is not installed or not running. Please install docker and try again")
+		return utils.NewError("docker is not installed or not running. Please install docker and try again", err)
 	}
 	return nil
 }
@@ -44,28 +45,28 @@ func ValidateDockerInstallation() error {
 func ValidateDockerfile(path string) error {
 	// Check if the Dockerfile exists
 	if _, err := os.Stat(path); os.IsNotExist(err) {
-		return fmt.Errorf("dockerfile not found at %s", path)
+		return utils.NewError("dockerfile not found at %s", err)
 	}
 
 	// Open the Dockerfile
 	file, err := os.Open(path)
 	if err != nil {
-		return fmt.Errorf("failed to open Dockerfile: %w", err)
+		return utils.NewError("failed to open Dockerfile: %w", err)
 	}
 	defer file.Close()
 
 	// Validate file properties
 	info, err := file.Stat()
 	if err != nil {
-		return fmt.Errorf("failed to get Dockerfile info: %w", err)
+		return utils.NewError("failed to get Dockerfile info: %w", err)
 	}
 
 	if info.IsDir() {
-		return fmt.Errorf("%s is a directory, not a Dockerfile", path)
+		return utils.NewError("%s is a directory, not a Dockerfile", nil)
 	}
 
 	if info.Size() == 0 {
-		return fmt.Errorf("dockerfile is empty")
+		return utils.NewError("dockerfile is empty", nil)
 	}
 
 	// Validate file content
@@ -117,7 +118,7 @@ func ValidateDockerfile(path string) error {
 
 	// Check for scanning errors
 	if err := scanner.Err(); err != nil {
-		return fmt.Errorf("error reading Dockerfile: %w", err)
+		return utils.NewError("error reading Dockerfile: %w", err)
 	}
 
 	// Ensure a FROM instruction exists
@@ -127,7 +128,7 @@ func ValidateDockerfile(path string) error {
 
 	// Return validation errors if any
 	if len(errors) > 0 {
-		return fmt.Errorf("dockerfile validation failed:\n- %s", strings.Join(errors, "\n- "))
+		return utils.NewError("dockerfile validation failed", nil)
 	}
 
 	return nil
@@ -162,10 +163,10 @@ func FindDockerfile(dir string) (string, error) {
 	}
 
 	if len(invalidFiles) > 0 {
-		return "", fmt.Errorf("found Dockerfile(s) at %v but they failed validation. Please check the file content", invalidFiles)
+		return "", utils.NewError("found Dockerfile(s) at %v but they failed validation. Please check the file content", nil)
 	}
 
-	return "", fmt.Errorf("no valid Dockerfile found in the current directory or common locations")
+	return "", utils.NewError("no valid Dockerfile found in the current directory or common locations", nil)
 }
 
 // isValidBaseImage checks if the base image name is valid

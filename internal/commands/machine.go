@@ -31,12 +31,12 @@ func machineListCommand() *cli.Command {
 func handleListMachines(c *cli.Context) error {
 	userID := context.GetUserID()
 	if userID == "" {
-		return fmt.Errorf("user ID not found in context")
+		return utils.NewError("user ID not found in context", nil)
 	}
 
 	machines, err := api.GetMachinesByOwnerID(api.ToUUID(userID))
 	if err != nil {
-		return fmt.Errorf("failed to list machines: %w", err)
+		return utils.NewError("failed to list machines: %w", err)
 	}
 
 	if len(machines) == 0 {

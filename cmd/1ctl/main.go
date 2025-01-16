@@ -1,11 +1,11 @@
 package main
 
 import (
-	"fmt"
 	"os"
 
 	"1ctl/internal/commands"
 	"1ctl/internal/config"
+	"1ctl/internal/utils"
 	"1ctl/internal/version"
 
 	"github.com/urfave/cli/v2"
@@ -63,19 +63,16 @@ func createApp() *cli.App {
 			// If command doesn't exist, show help and return error
 			if !commandExists {
 				if err := cli.ShowAppHelp(c); err != nil {
-					return fmt.Errorf("failed to show help: %w", err)
+					return utils.NewError("failed to show help", err)
 				}
-				return fmt.Errorf("command %q not found\nRun '1ctl --help' for usage", cmdName)
+				return utils.NewError("command %q not found\nRun '1ctl --help' for usage", nil)
 			}
 
 			// Only validate environment for existing commands
 			return config.ValidateEnvironment()
 		},
 		Action: func(c *cli.Context) error {
-			if err := cli.ShowAppHelp(c); err != nil {
-				return fmt.Errorf("failed to show help: %w", err)
-			}
-			return nil
+			return utils.NewError("No command specified, use --help for usage", nil)
 		},
 	}
 	return app
@@ -83,7 +80,7 @@ func createApp() *cli.App {
 
 func main() {
 	if err := run(); err != nil {
-		fmt.Fprintf(os.Stderr, "error: %v\n", err)
+		utils.HandleError(err)
 		os.Exit(1)
 	}
 }

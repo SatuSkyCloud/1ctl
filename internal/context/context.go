@@ -1,8 +1,8 @@
 package context
 
 import (
+	"1ctl/internal/utils"
 	"encoding/json"
-	"fmt"
 	"log"
 	"os"
 	"path/filepath"
@@ -25,7 +25,7 @@ func validatePath(path string) error {
 
 	// Check for directory traversal attempts
 	if strings.Contains(cleanPath, "..") {
-		return fmt.Errorf("invalid path: must not contain parent directory references")
+		return utils.NewError("invalid path: must not contain parent directory references", nil)
 	}
 
 	// Check if path is absolute
@@ -33,10 +33,10 @@ func validatePath(path string) error {
 		// Verify it's within the user's home directory
 		homeDir, err := os.UserHomeDir()
 		if err != nil {
-			return fmt.Errorf("failed to get home directory: %w", err)
+			return utils.NewError("failed to get home directory: %w", err)
 		}
 		if !strings.HasPrefix(cleanPath, homeDir) {
-			return fmt.Errorf("invalid path: must be within user's home directory")
+			return utils.NewError("invalid path: must be within user's home directory", nil)
 		}
 	}
 
