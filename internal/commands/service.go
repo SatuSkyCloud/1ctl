@@ -64,7 +64,7 @@ func ServiceCommand() *cli.Command {
 func handleCreateService(c *cli.Context) error {
 	port, err := api.SafeInt32(c.Int("port"))
 	if err != nil {
-		return fmt.Errorf("invalid port: %w", err)
+		return utils.NewError("Invalid port number", err)
 	}
 	service := api.Service{
 		DeploymentID: uuid.MustParse(c.String("deployment-id")),
@@ -75,7 +75,7 @@ func handleCreateService(c *cli.Context) error {
 
 	var serviceID string
 	if err := api.CreateService(service, &serviceID); err != nil {
-		return fmt.Errorf("failed to create service: %w", err)
+		return utils.NewError(fmt.Sprintf("failed to create service: %s", err.Error()), nil)
 	}
 
 	utils.PrintSuccess("Service %s created successfully (ID: %s)\n", service.ServiceName, serviceID)
@@ -85,7 +85,7 @@ func handleCreateService(c *cli.Context) error {
 func handleListServices(c *cli.Context) error {
 	services, err := api.ListServices()
 	if err != nil {
-		return fmt.Errorf("failed to list services: %w", err)
+		return utils.NewError(fmt.Sprintf("failed to list services: %s", err.Error()), nil)
 	}
 
 	if len(services) == 0 {
@@ -111,7 +111,7 @@ func handleListServices(c *cli.Context) error {
 func handleDeleteService(c *cli.Context) error {
 	serviceID := c.String("service-id")
 	if err := api.DeleteService(nil, serviceID); err != nil {
-		return fmt.Errorf("failed to delete service: %w", err)
+		return utils.NewError(fmt.Sprintf("failed to delete service: %s", err.Error()), nil)
 	}
 
 	utils.PrintSuccess("Service %s deleted successfully\n", serviceID)

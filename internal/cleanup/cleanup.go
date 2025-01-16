@@ -50,7 +50,7 @@ func (cm *CleanupManager) Cleanup(payload interface{}) []error {
 	for i := len(cm.resources) - 1; i >= 0; i-- {
 		resource := cm.resources[i]
 		if err := cm.cleanupResource(payload, resource); err != nil {
-			errors = append(errors, fmt.Errorf("failed to cleanup %s %s: %w", resource.Type, resource.Name, err))
+			errors = append(errors, utils.NewError(fmt.Sprintf("failed to cleanup %s %s: %s", resource.Type, resource.Name, err.Error()), nil))
 		}
 	}
 
@@ -76,7 +76,7 @@ func (cm *CleanupManager) cleanupResource(payload interface{}, resource Resource
 	case ResourceEnv:
 		return api.DeleteEnvironment(payload, resource.ID)
 	default:
-		return fmt.Errorf("unknown resource type: %s", resource.Type)
+		return utils.NewError(fmt.Sprintf("unknown resource type: %s", resource.Type), nil)
 	}
 }
 

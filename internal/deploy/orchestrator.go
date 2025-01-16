@@ -30,42 +30,23 @@ func (dp *deploymentProgress) complete() {
 
 // Deploy handles the sequential deployment process
 func Deploy(opts DeploymentOptions) (*api.CreateDeploymentResponse, error) {
-	// cleanupMgr := cleanup.NewCleanupManager()
 	progress := &deploymentProgress{total: 5}
-
-	// Step 1: Build and push image
-	progress.step = 1
-	progress.message = "Building and pushing Docker image"
-	progress.print()
-
-	projectName, err := docker.GetProjectName()
-	if err != nil {
-		return nil, fmt.Errorf("failed to determine project name: %w", err)
-	}
-
-	image, err := buildAndUploadImage(opts.DockerfilePath, projectName)
-	if err != nil {
-		return nil, fmt.Errorf("failed to build and push image: %w", err)
-	}
-	progress.complete()
-
-	// Step 2: Create deployment
-	progress.step = 2
-	progress.message = "Creating deployment"
-	progress.resource = projectName
-	progress.done = false
-	progress.print()
 
 	userID := context.GetUserID()
 	if userID == "" {
-		return nil, fmt.Errorf("failed to get user ID: %w", err)
+		return nil, utils.NewError("Failed to get user ID", nil)
 	}
 
 	//  choose hostnames from user's record if not provided
 	if len(opts.Hostnames) == 0 {
 		machines, err := api.GetMachinesByOwnerID(api.ToUUID(userID))
 		if err != nil {
-			return nil, fmt.Errorf("failed to get machines by owner ID: %w", err)
+			return nil, utils.NewError(fmt.Sprintf("Failed to get machines by owner ID: %s", err.Error()), nil)
+		}
+
+		if len(machines) == 0 {
+			// utils.PrintError("You need to have at least one machine to deploy the application")
+			return nil, utils.NewError("You need to have at least one machine to deploy the application", nil)
 		}
 
 		hostnames := []string{}
@@ -76,11 +57,33 @@ func Deploy(opts DeploymentOptions) (*api.CreateDeploymentResponse, error) {
 		opts.Hostnames = hostnames
 	}
 
+	// Step 1: Build and push image
+	progress.step = 1
+	progress.message = "Building and pushing Docker image"
+	progress.print()
+
+	projectName, err := docker.GetProjectName()
+	if err != nil {
+		return nil, utils.NewError("Failed to determine project name", err)
+	}
+
+	image, err := buildAndUploadImage(opts.DockerfilePath, projectName)
+	if err != nil {
+		return nil, utils.NewError("Failed to build and push image", err)
+	}
+	progress.complete()
+
+	// Step 2: Create deployment
+	progress.step = 2
+	progress.message = "Creating deployment"
+	progress.resource = projectName
+	progress.done = false
+	progress.print()
+
 	deploymentID, err := createMainDeployment(opts, image, projectName, userID, opts.Organization, opts.Hostnames)
 	if err != nil {
 		return nil, err
 	}
-	// cleanupMgr.AddResource(cleanup.ResourceDeployment, deploymentID, projectName)
 	progress.complete()
 
 	// Step 3: Configure services
@@ -92,13 +95,8 @@ func Deploy(opts DeploymentOptions) (*api.CreateDeploymentResponse, error) {
 
 	serviceID, err := createService(deploymentID, opts, projectName, opts.Organization)
 	if err != nil {
-		// 	cleanupErrors := cleanupMgr.Cleanup(opts)
-		// 	if len(cleanupErrors) > 0 {
-		// 		return nil, fmt.Errorf("%w\n%s", err, cleanup.FormatCleanupErrors(cleanupErrors))
-		// 	}
-		return nil, fmt.Errorf("failed to create service: %w", err)
+		return nil, utils.NewError(fmt.Sprintf("failed to create service: %s", err.Error()), nil)
 	}
-	// cleanupMgr.AddResource(cleanup.ResourceService, deploymentID, projectName)
 	progress.complete()
 
 	// Step 4: Handle environment and volumes
@@ -109,11 +107,7 @@ func Deploy(opts DeploymentOptions) (*api.CreateDeploymentResponse, error) {
 	progress.print()
 
 	if err := handleEnvironmentAndVolumes(opts, deploymentID, projectName, opts.Organization); err != nil {
-		// cleanupErrors := cleanupMgr.Cleanup(opts)
-		// if len(cleanupErrors) > 0 {
-		// 	return nil, fmt.Errorf("%w\n%s", err, cleanup.FormatCleanupErrors(cleanupErrors))
-		// }
-		return nil, fmt.Errorf("failed to setup environment and volumes: %w", err)
+		return nil, utils.NewError(fmt.Sprintf("failed to setup environment and volumes: %s", err.Error()), nil)
 	}
 	progress.complete()
 
@@ -126,20 +120,9 @@ func Deploy(opts DeploymentOptions) (*api.CreateDeploymentResponse, error) {
 
 	domainName, err := handleIngressAndDependencies(opts, deploymentID, serviceID, userID, opts.Organization, projectName, opts.Hostnames)
 	if err != nil {
-		// cleanupErrors := cleanupMgr.Cleanup(opts)
-		// if len(cleanupErrors) > 0 {
-		// 	return nil, fmt.Errorf("%w\n%s", err, cleanup.FormatCleanupErrors(cleanupErrors))
-		// }
-		return nil, fmt.Errorf("failed to configure ingress and dependencies: %w", err)
+		return nil, utils.NewError(fmt.Sprintf("failed to configure ingress and dependencies: %s", err.Error()), nil)
 	}
 	progress.complete()
-
-	// // Start log streaming in background
-	// go func() {
-	// 	if err := api.StreamDeploymentLogs(deploymentID, true); err != nil {
-	// 		fmt.Fprintf(os.Stderr, "Error streaming logs: %v\n", err)
-	// 	}
-	// }()
 
 	return &api.CreateDeploymentResponse{
 		DeploymentID: api.ToUUID(deploymentID),
@@ -154,7 +137,7 @@ func buildAndUploadImage(dockerfilePath, projectName string) (string, error) {
 		DockerfilePath: dockerfilePath,
 		Tag:            projectName,
 	}); err != nil {
-		return "", fmt.Errorf("failed to build Docker image: %w", err)
+		return "", utils.NewError(fmt.Sprintf("failed to build Docker image: %s", err.Error()), nil)
 	}
 
 	// Save image to temporary file
@@ -162,13 +145,13 @@ func buildAndUploadImage(dockerfilePath, projectName string) (string, error) {
 	defer os.Remove(tmpFile) // Clean up temp file
 
 	if err := docker.SaveImage(projectName, tmpFile); err != nil {
-		return "", fmt.Errorf("failed to save Docker image: %w", err)
+		return "", utils.NewError(fmt.Sprintf("failed to save Docker image: %s", err.Error()), nil)
 	}
 
 	// Upload image to backend
 	version, err := api.UploadDockerImage(tmpFile, projectName)
 	if err != nil {
-		return "", fmt.Errorf("failed to deploy Docker image: %w", err)
+		return "", utils.NewError(fmt.Sprintf("failed to deploy Docker image: %s", err.Error()), nil)
 	}
 
 	// generate full image tag
@@ -180,12 +163,13 @@ func buildAndUploadImage(dockerfilePath, projectName string) (string, error) {
 func createMainDeployment(opts DeploymentOptions, image, name, userID, organization string, hostnames []string) (string, error) {
 	port, err := api.SafeInt32(opts.Port)
 	if err != nil {
-		return "", fmt.Errorf("invalid port: %w", err)
+		return "", utils.NewError(fmt.Sprintf("invalid port: %s", err.Error()), nil)
 	}
 
+	// number of replicas will be based on the number of hostnames
 	replicas, err := api.SafeInt32(len(hostnames))
 	if err != nil {
-		return "", fmt.Errorf("invalid replicas count: %w", err)
+		return "", utils.NewError(fmt.Sprintf("invalid replicas count: %s", err.Error()), nil)
 	}
 
 	deployment := api.Deployment{
@@ -211,7 +195,7 @@ func createMainDeployment(opts DeploymentOptions, image, name, userID, organizat
 
 	var deploymentID string
 	if err := api.CreateDeployment(deployment, &deploymentID); err != nil {
-		return "", fmt.Errorf("failed to create deployment: %w", err)
+		return "", utils.NewError(fmt.Sprintf("failed to create deployment: %s", err.Error()), nil)
 	}
 
 	return deploymentID, nil
@@ -220,7 +204,7 @@ func createMainDeployment(opts DeploymentOptions, image, name, userID, organizat
 func createService(deploymentID string, opts DeploymentOptions, projectName, organization string) (string, error) {
 	port, err := api.SafeInt32(opts.Port)
 	if err != nil {
-		return "", fmt.Errorf("invalid port: %w", err)
+		return "", utils.NewError(fmt.Sprintf("invalid port: %s", err.Error()), nil)
 	}
 
 	service := api.Service{
@@ -232,7 +216,7 @@ func createService(deploymentID string, opts DeploymentOptions, projectName, org
 
 	var serviceID string
 	if err := api.CreateService(service, &serviceID); err != nil {
-		return "", fmt.Errorf("failed to create service: %w", err)
+		return "", utils.NewError(fmt.Sprintf("failed to create service: %s", err.Error()), nil)
 	}
 
 	return serviceID, nil
@@ -245,13 +229,13 @@ func createIngress(deploymentID string, serviceID string, opts DeploymentOptions
 		var err error
 		domainName, err = api.GenerateDomainName(projectName)
 		if err != nil {
-			return "", fmt.Errorf("failed to generate domain name: %w", err)
+			return "", utils.NewError(fmt.Sprintf("failed to generate domain name: %s", err.Error()), nil)
 		}
 	}
 
 	port, err := api.SafeInt32(opts.Port)
 	if err != nil {
-		return "", fmt.Errorf("invalid port: %w", err)
+		return "", utils.NewError(fmt.Sprintf("invalid port: %s", err.Error()), nil)
 	}
 
 	ingress := api.Ingress{
@@ -266,7 +250,7 @@ func createIngress(deploymentID string, serviceID string, opts DeploymentOptions
 
 	_, err = api.CreateIngress(ingress)
 	if err != nil {
-		return "", fmt.Errorf("failed to create ingress: %w", err)
+		return "", utils.NewError(fmt.Sprintf("failed to create ingress: %s", err.Error()), nil)
 	}
 
 	return domainName, nil
@@ -284,14 +268,14 @@ func handleDependencies(deps []api.Dependency, userID, organization string, host
 		// Create deployment for dependency
 		deploymentID, err := createMainDeployment(opts, dep.Image, dep.Name, userID, organization, hostnames)
 		if err != nil {
-			return fmt.Errorf("failed to create dependency deployment %s: %w", dep.Name, err)
+			return utils.NewError(fmt.Sprintf("failed to create dependency deployment: %s", err.Error()), nil)
 		}
 
 		// Create service for dependency
 		if dep.Service != nil {
 			dep.Service.DeploymentID = api.ToUUID(deploymentID)
 			if err := api.CreateService(*dep.Service, nil); err != nil {
-				return fmt.Errorf("failed to create dependency service %s: %w", dep.Name, err)
+				return utils.NewError(fmt.Sprintf("failed to create dependency service: %s", err.Error()), nil)
 			}
 		}
 
@@ -299,7 +283,7 @@ func handleDependencies(deps []api.Dependency, userID, organization string, host
 		if dep.Volume != nil {
 			dep.Volume.DeploymentID = api.ToUUID(deploymentID)
 			if err := api.CreateVolume(*dep.Volume); err != nil {
-				return fmt.Errorf("failed to create dependency volume %s: %w", dep.Name, err)
+				return utils.NewError(fmt.Sprintf("failed to create dependency volume: %s", err.Error()), nil)
 			}
 		}
 	}
@@ -318,10 +302,9 @@ func handleEnvironmentAndVolumes(opts DeploymentOptions, deploymentID, projectNa
 			opts.Environment.Namespace = organization
 			_, err := api.CreateEnvironment(*opts.Environment)
 			if err != nil {
-				errChan <- fmt.Errorf("failed to create environment: %w", err)
+				errChan <- utils.NewError(fmt.Sprintf("failed to create environment: %s", err.Error()), nil)
 				return
 			}
-			// cleanupMgr.AddResource(cleanup.ResourceEnv, deploymentID, envResp.AppLabel)
 		}
 		errChan <- nil
 	}()
@@ -333,10 +316,9 @@ func handleEnvironmentAndVolumes(opts DeploymentOptions, deploymentID, projectNa
 			opts.Volume.VolumeName = fmt.Sprintf("%s-volume", projectName)
 			opts.Volume.ClaimName = fmt.Sprintf("%s-claim", projectName)
 			if err := api.CreateVolume(*opts.Volume); err != nil {
-				errChan <- fmt.Errorf("failed to create volume: %w", err)
+				errChan <- utils.NewError(fmt.Sprintf("failed to create volume: %s", err.Error()), nil)
 				return
 			}
-			// cleanupMgr.AddResource(cleanup.ResourceVolume, deploymentID, opts.Volume.VolumeName)
 		}
 		errChan <- nil
 	}()
@@ -359,10 +341,9 @@ func handleIngressAndDependencies(opts DeploymentOptions, deploymentID, serviceI
 	go func() {
 		domainName, err := createIngress(deploymentID, serviceID, opts, organization, projectName)
 		if err != nil {
-			errChan <- fmt.Errorf("failed to create ingress: %w", err)
+			errChan <- utils.NewError(fmt.Sprintf("failed to create ingress: %s", err.Error()), nil)
 			return
 		}
-		// cleanupMgr.AddResource(cleanup.ResourceIngress, deploymentID, domainName)
 		errChan <- nil
 		domain = domainName
 	}()
@@ -371,7 +352,7 @@ func handleIngressAndDependencies(opts DeploymentOptions, deploymentID, serviceI
 	go func() {
 		if len(opts.Dependencies) > 0 {
 			if err := handleDependencies(opts.Dependencies, userID, organization, hostnames); err != nil {
-				errChan <- fmt.Errorf("failed to handle dependencies: %w", err)
+				errChan <- utils.NewError(fmt.Sprintf("failed to handle dependencies: %s", err.Error()), nil)
 				return
 			}
 		}

@@ -71,7 +71,7 @@ func handleCreateEnvironment(c *cli.Context) error {
 	for _, env := range envVars {
 		parts := strings.SplitN(env, "=", 2)
 		if len(parts) != 2 {
-			return fmt.Errorf("invalid environment variable format: %s", env)
+			return utils.NewError("invalid environment variable format", nil)
 		}
 		keyValues = append(keyValues, api.KeyValuePair{
 			Key:   parts[0],
@@ -87,7 +87,7 @@ func handleCreateEnvironment(c *cli.Context) error {
 
 	envResp, err := api.CreateEnvironment(env)
 	if err != nil {
-		return fmt.Errorf("failed to create environment: %w", err)
+		return utils.NewError(fmt.Sprintf("failed to create environment: %s", err.Error()), nil)
 	}
 
 	utils.PrintSuccess("Environment %s created successfully\n", envResp.AppLabel)
@@ -97,7 +97,7 @@ func handleCreateEnvironment(c *cli.Context) error {
 func handleListEnvironments(c *cli.Context) error {
 	environments, err := api.ListEnvironments()
 	if err != nil {
-		return fmt.Errorf("failed to list environments: %w", err)
+		return utils.NewError(fmt.Sprintf("failed to list environments: %s", err.Error()), nil)
 	}
 
 	if len(environments) == 0 {
@@ -127,7 +127,7 @@ func handleListEnvironments(c *cli.Context) error {
 func handleDeleteEnvironment(c *cli.Context) error {
 	envID := c.String("env-id")
 	if err := api.DeleteEnvironment(nil, envID); err != nil {
-		return fmt.Errorf("failed to delete environment: %w", err)
+		return utils.NewError(fmt.Sprintf("failed to delete environment: %s", err.Error()), nil)
 	}
 
 	utils.PrintSuccess("Environment %s deleted successfully\n", envID)

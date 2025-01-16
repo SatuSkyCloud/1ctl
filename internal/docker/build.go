@@ -1,6 +1,7 @@
 package docker
 
 import (
+	"1ctl/internal/utils"
 	"1ctl/internal/validator"
 	"crypto/rand"
 	"fmt"
@@ -32,12 +33,12 @@ func validateBuildInput(opts BuildOptions) error {
 
 	// Validate Dockerfile path
 	if strings.Contains(opts.DockerfilePath, "..") {
-		return fmt.Errorf("invalid dockerfile path: must not contain parent directory references")
+		return utils.NewError("invalid dockerfile path: must not contain parent directory references", nil)
 	}
 
 	// Validate tag format
 	if !regexp.MustCompile(`^[a-zA-Z0-9][-a-zA-Z0-9_./:]*$`).MatchString(opts.Tag) {
-		return fmt.Errorf("invalid tag format")
+		return utils.NewError("invalid tag format", nil)
 	}
 
 	return nil
@@ -46,14 +47,14 @@ func validateBuildInput(opts BuildOptions) error {
 // Build builds a Docker image locally
 func Build(opts BuildOptions) error {
 	if err := validateBuildInput(opts); err != nil {
-		return fmt.Errorf("invalid build options: %w", err)
+		return utils.NewError(fmt.Sprintf("invalid build options: %s", err.Error()), nil)
 	}
 
 	if opts.Context == "" {
 		var err error
 		opts.Context, err = os.Getwd()
 		if err != nil {
-			return fmt.Errorf("failed to get working directory: %w", err)
+			return utils.NewError(fmt.Sprintf("failed to get working directory: %s", err.Error()), nil)
 		}
 	}
 
@@ -74,7 +75,7 @@ func Build(opts BuildOptions) error {
 	cmd.Stderr = os.Stderr
 
 	if err := cmd.Run(); err != nil {
-		return fmt.Errorf("failed to build Docker image: %w", err)
+		return utils.NewError(fmt.Sprintf("failed to build Docker image: %s", err.Error()), nil)
 	}
 
 	return nil
@@ -87,7 +88,7 @@ func SaveImage(projectName, outputPath string) error {
 	cmd.Stderr = os.Stderr
 
 	if err := cmd.Run(); err != nil {
-		return fmt.Errorf("failed to save Docker image: %w", err)
+		return utils.NewError(fmt.Sprintf("failed to save Docker image: %s", err.Error()), nil)
 	}
 
 	return nil
@@ -128,7 +129,7 @@ func GetProjectName() (string, error) {
 	// Fallback to directory name
 	wd, err := os.Getwd()
 	if err != nil {
-		return "", fmt.Errorf("failed to get working directory: %w", err)
+		return "", utils.NewError(fmt.Sprintf("failed to get working directory: %s", err.Error()), nil)
 	}
 	return filepath.Base(wd), nil
 }

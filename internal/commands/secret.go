@@ -53,7 +53,7 @@ func handleCreateSecret(c *cli.Context) error {
 	for _, env := range envVars {
 		parts := strings.SplitN(env, "=", 2)
 		if len(parts) != 2 {
-			return fmt.Errorf("invalid environment variable format: %s", env)
+			return utils.NewError("invalid environment variable format: %s", nil)
 		}
 		keyValues = append(keyValues, api.KeyValuePair{
 			Key:   parts[0],
@@ -70,7 +70,7 @@ func handleCreateSecret(c *cli.Context) error {
 
 	secretResp, err := api.CreateSecret(secret)
 	if err != nil {
-		return fmt.Errorf("failed to create secret: %w", err)
+		return utils.NewError(fmt.Sprintf("failed to create secret: %s", err.Error()), nil)
 	}
 
 	utils.PrintSuccess("Secret %s created successfully\n", secretResp.AppLabel)
@@ -80,7 +80,7 @@ func handleCreateSecret(c *cli.Context) error {
 func handleListSecrets(c *cli.Context) error {
 	secrets, err := api.ListSecrets()
 	if err != nil {
-		return fmt.Errorf("failed to list secrets: %w", err)
+		return utils.NewError(fmt.Sprintf("failed to list secrets: %s", err.Error()), nil)
 	}
 
 	if len(secrets) == 0 {

@@ -1,6 +1,7 @@
 package api
 
 import (
+	"1ctl/internal/utils"
 	"fmt"
 	"math"
 	"time"
@@ -58,8 +59,7 @@ func FormatTimeAgo(t time.Time) string {
 func ToUUID(s string) uuid.UUID {
 	id, err := uuid.Parse(s)
 	if err != nil {
-		// In production code, you might want to handle this error differently
-		panic(fmt.Sprintf("invalid UUID: %s", s))
+		return uuid.Nil
 	}
 	return id
 }
@@ -67,7 +67,7 @@ func ToUUID(s string) uuid.UUID {
 // SafeInt32 safely converts an int to int32, checking for overflow
 func SafeInt32(n int) (int32, error) {
 	if n > math.MaxInt32 || n < math.MinInt32 {
-		return 0, fmt.Errorf("integer overflow: value %d out of int32 range", n)
+		return 0, utils.NewError(fmt.Sprintf("integer overflow: value %d out of int32 range", n), nil)
 	}
 	return int32(n), nil
 }

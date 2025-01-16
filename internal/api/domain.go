@@ -1,6 +1,7 @@
 package api
 
 import (
+	"1ctl/internal/utils"
 	"fmt"
 	"strings"
 	"time"
@@ -24,7 +25,7 @@ func GenerateDomainName(projectName string) (string, error) {
 	for {
 		ingress, err := GetIngressByDomainName(proposedDomain)
 		if err != nil {
-			return "", fmt.Errorf("failed to check domain existence: %w", err)
+			return "", utils.NewError(fmt.Sprintf("failed to check domain existence: %s", err.Error()), nil)
 		}
 
 		// If domain is available (not found), we can use it
