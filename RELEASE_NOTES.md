@@ -1,5 +1,16 @@
 # Release Notes
 
+## Version 0.1.4 (18-03-2025)
+
+### 🔧 Technical Improvements
+- Improved machine allocation system:
+  - Automatic machine assignment if no specific hostnames provided
+  - System now intelligently selects the most cost-effective machine based on resource requirements
+- Enhanced hostname selection logic:
+  - Prioritizes user-owned machines first
+  - Falls back to monetized machines with automatic selection
+  - Improved error handling for machine allocation
+
 ## Version 0.1.3 (17-01-2025)
 
 ### 🔧 Technical Improvements

@@ -37,24 +37,35 @@ func Deploy(opts DeploymentOptions) (*api.CreateDeploymentResponse, error) {
 		return nil, utils.NewError("Failed to get user ID", nil)
 	}
 
-	//  choose hostnames from user's record if not provided
+	// First try to use owner's machines if no hostnames provided
 	if len(opts.Hostnames) == 0 {
+		// Try owner's machines first
 		machines, err := api.GetMachinesByOwnerID(api.ToUUID(userID))
 		if err != nil {
-			return nil, utils.NewError(fmt.Sprintf("Failed to get machines by owner ID: %s", err.Error()), nil)
+			// Don't return error here, we'll fall back to monetized machines
+			// log.Info("Failed to get owner's machines: %v", err)
+			utils.PrintWarning("Failed to get owner's machines: %v", err)
+		} else {
+			// Check if owner has any machines
+			var hostnames []string
+			for _, machine := range machines {
+				hostnames = append(hostnames, machine.MachineName)
+			}
+
+			if len(hostnames) > 0 {
+				opts.Hostnames = hostnames
+				utils.PrintInfo("Using owner's machines: %v", hostnames)
+			}
 		}
 
-		if len(machines) == 0 {
-			// utils.PrintError("You need to have at least one machine to deploy the application")
-			return nil, utils.NewError("You need to have at least one machine to deploy the application", nil)
+		// If still no hostnames (no owner machines or error), let backend handle monetized machine selection
+		if len(opts.Hostnames) == 0 {
+			utils.PrintWarning("No owner machines available, will use monetized machines")
+			// The backend will:
+			// 1. Find cheapest machine with sufficient resources
+			// 2. Check user's credit balance
+			// 3. Create usage records if using monetized machines
 		}
-
-		hostnames := []string{}
-		for _, machine := range machines {
-			hostnames = append(hostnames, machine.MachineName)
-		}
-
-		opts.Hostnames = hostnames
 	}
 
 	// Step 1: Build and push image
