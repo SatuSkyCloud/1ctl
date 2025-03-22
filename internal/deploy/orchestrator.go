@@ -183,6 +183,12 @@ func createMainDeployment(opts DeploymentOptions, image, name, userID, organizat
 		return "", utils.NewError(fmt.Sprintf("invalid replicas count: %s", err.Error()), nil)
 	}
 
+	// if replicas is 0, set it to 1
+	// this is to avoid creating a deployment with 0 replicas (mainly for user with no hostnames)
+	if replicas == 0 {
+		replicas = 1
+	}
+
 	deployment := api.Deployment{
 		UserID:        api.ToUUID(userID),
 		Type:          "production", // Default to production (cluster env)

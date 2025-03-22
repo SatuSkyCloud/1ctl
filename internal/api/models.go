@@ -174,7 +174,7 @@ type APIError struct {
 }
 
 func (e *APIError) Error() string {
-	return fmt.Sprintf("API Error (%s): %s", e.Code, e.Message)
+	return fmt.Sprintf("(%s): %s", e.Code, e.Message)
 }
 
 const (

@@ -1,5 +1,12 @@
 # Release Notes
 
+## Version 0.1.5 (22-03-2025)
+
+### 🔧 Technical Improvements
+- Updated API endpoints for better resource management:
+  - Fix secret and environment creation endpoints from `/create` to `upsert`
+- Enforced minimum replica count for deployments (monetized).
+
 ## Version 0.1.4 (18-03-2025)
 
 ### 🔧 Technical Improvements

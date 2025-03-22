@@ -147,7 +147,7 @@ func CreateSecret(secret Secret) (*Secret, error) {
 	// Always use the current namespace
 	secret.Namespace = context.GetCurrentNamespace()
 
-	err := makeRequest("POST", "/secrets/create", secret, &resp)
+	err := makeRequest("POST", "/secrets/upsert", secret, &resp)
 	if err != nil {
 		return nil, err
 	}
@@ -245,7 +245,7 @@ func CreateEnvironment(env Environment) (*Environment, error) {
 	// Always use the current namespace
 	env.Namespace = context.GetCurrentNamespace()
 
-	err := makeRequest("POST", "/environments/create", env, &resp)
+	err := makeRequest("POST", "/environments/upsert", env, &resp)
 	if err != nil {
 		return nil, err
 	}
@@ -459,7 +459,7 @@ func makeRequest(method, path string, body interface{}, response interface{}) er
 		if err := json.Unmarshal(respBody, &apiError); err != nil {
 			return utils.NewError(fmt.Sprintf("request failed with status %d: %s", resp.StatusCode, string(respBody)), nil)
 		}
-		return utils.NewError(fmt.Sprintf("API error: %s", apiError.Message), nil)
+		return utils.NewError(apiError.Message, nil)
 	}
 
 	if response != nil && len(respBody) > 0 {
