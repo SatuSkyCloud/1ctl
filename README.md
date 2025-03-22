@@ -44,22 +44,59 @@ task build
 ## Usage on GitHub Actions
 
 ```yaml
+name: Deploy App to SatuSky
+on:
+  push:
+    branches:
+      - main
+  workflow_dispatch:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  SATUSKY_API_KEY: ${{ secrets.SATUSKY_API_KEY }}
+  CPU_REQUEST: 100m
+  MEMORY_REQUEST: 6Mi
+
 jobs:
   deploy:
     runs-on: ubuntu-latest
     steps:
-      - name: Download and install 1ctl
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Fetch latest 1ctl version
         run: |
-          curl -L -o 1ctl https://github.com/satuskycloud/1ctl/releases/latest/download/1ctl-linux-amd64
+          VERSION=$(curl -s https://api.github.com/repos/SatuSkyCloud/1ctl/releases/latest | jq -r .tag_name)
+          [[ -z "$VERSION" || "$VERSION" == "null" ]] && exit 1
+          echo "SATUSKY_CLI_VERSION=$VERSION" >> $GITHUB_ENV
+          echo "CLEAN_VERSION=${VERSION#v}" >> $GITHUB_ENV
+
+      - name: Setup 1ctl cache
+        uses: actions/cache@v4
+        with:
+          path: /usr/local/bin/1ctl
+          key: ${{ runner.os }}-1ctl-${{ env.SATUSKY_CLI_VERSION }}
+
+      - name: Install 1ctl if not cached
+        if: steps.cache.outputs.cache-hit != 'true'
+        run: |
+          curl -L -o 1ctl.tar.gz "https://github.com/SatuSkyCloud/1ctl/releases/download/${{ env.SATUSKY_CLI_VERSION }}/1ctl-${{ env.CLEAN_VERSION }}-linux-amd64.tar.gz"
+          tar -xzvf 1ctl.tar.gz
           chmod +x 1ctl
           sudo mv 1ctl /usr/local/bin/
-      
+          rm 1ctl.tar.gz
+
       - name: Deploy app to Satusky
         run: |
           1ctl auth login
-          1ctl deploy --cpu 100m --memory 6Mi
-        env:
-          SATUSKY_API_KEY: ${{ secrets.SATUSKY_API_KEY }}
+          1ctl deploy create --cpu ${{ env.CPU_REQUEST }} --memory ${{ env.MEMORY_REQUEST }} \
+           --env DATABASE_URL=postgresql://postgres:postgres@localhost:5432/postgres \
+           --env SECRET_KEY=secret-key-hahahaha \
+           --env HELLO_WORLD=hello-world-hahahaha \
+           --env GOODBYE_WORLD=goodbye-world-hahahaha
 ```
 
 ## Quick Start

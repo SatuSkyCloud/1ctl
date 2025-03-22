@@ -1,5 +1,10 @@
 # Release Notes
 
+## Version 0.1.6 (22-03-2025)
+
+### 🔧 Technical Improvements
+- Version number fix only, no functional changes
+
 ## Version 0.1.5 (22-03-2025)
 
 ### 🔧 Technical Improvements
