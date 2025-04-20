@@ -10,28 +10,44 @@ Download the latest release for your platform:
 
 #### Linux (64-bit)
 ```bash
-curl -LO https://github.com/satuskycloud/1ctl/releases/latest/download/1ctl-linux-amd64
-chmod +x 1ctl-linux-amd64
-sudo mv 1ctl-linux-amd64 /usr/local/bin/1ctl
+# Get latest version
+VERSION=$(curl -s https://api.github.com/repos/SatuSkyCloud/1ctl/releases/latest | jq -r .tag_name)
+CLEAN_VERSION=${VERSION#v}
+
+# Download and install
+curl -L -o 1ctl.tar.gz "https://github.com/SatuSkyCloud/1ctl/releases/download/$VERSION/1ctl-$CLEAN_VERSION-linux-amd64.tar.gz"
+tar -xzvf 1ctl.tar.gz
+chmod +x 1ctl
+sudo mv 1ctl /usr/local/bin/
+rm 1ctl.tar.gz
 ```
 
 #### macOS
 ```bash
+# Get latest version
+VERSION=$(curl -s https://api.github.com/repos/SatuSkyCloud/1ctl/releases/latest | jq -r .tag_name)
+CLEAN_VERSION=${VERSION#v}
+
 # Intel Mac
-curl -LO https://github.com/satuskycloud/1ctl/releases/latest/download/1ctl-darwin-amd64
-chmod +x 1ctl-darwin-amd64
-sudo mv 1ctl-darwin-amd64 /usr/local/bin/1ctl
+curl -L -o 1ctl.tar.gz "https://github.com/SatuSkyCloud/1ctl/releases/download/$VERSION/1ctl-$CLEAN_VERSION-darwin-amd64.tar.gz"
+tar -xzvf 1ctl.tar.gz
+chmod +x 1ctl
+sudo mv 1ctl /usr/local/bin/
+rm 1ctl.tar.gz
 
 # Apple Silicon (M1/M2)
-curl -LO https://github.com/satuskycloud/1ctl/releases/latest/download/1ctl-darwin-arm64
-chmod +x 1ctl-darwin-arm64
-sudo mv 1ctl-darwin-arm64 /usr/local/bin/1ctl
+curl -L -o 1ctl.tar.gz "https://github.com/SatuSkyCloud/1ctl/releases/download/$VERSION/1ctl-$CLEAN_VERSION-darwin-arm64.tar.gz"
+tar -xzvf 1ctl.tar.gz
+chmod +x 1ctl
+sudo mv 1ctl /usr/local/bin/
+rm 1ctl.tar.gz
 ```
 
 #### Windows
-1. Download [1ctl-windows-amd64.exe](https://github.com/satuskycloud/1ctl/releases/latest/download/1ctl-windows-amd64.exe)
-2. Rename to `1ctl.exe`
-3. Add to your PATH
+1. Download the latest release from [SatuSky 1ctl Releases](https://github.com/SatuSkyCloud/1ctl/releases/latest)
+2. Extract the zip file
+3. Rename the executable to `1ctl.exe`
+4. Add to your PATH
 
 ### Option 2: Build from Source
 Requires Go 1.21 or higher:
