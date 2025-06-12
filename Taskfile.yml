@@ -2,7 +2,7 @@ version: '3'
 
 vars:
   VERSION:
-    sh: echo "${VERSION:-0.1.0}"
+    sh: git describe --tags --exact-match 2>/dev/null || git describe --tags 2>/dev/null || echo "v0.1.0"
   COMMIT:
     sh: git rev-parse --short HEAD 2>/dev/null || echo "unknown"
   DATE:
@@ -77,3 +77,10 @@ tasks:
     cmds:
       - rm -rf {{.BUILD_DIR}}
       - rm -f {{.COVERAGE_FILE}} coverage.html
+
+  version:
+    desc: Show the current version that will be used for builds
+    cmds:
+      - echo "Current version{{":"}} {{.VERSION}}"
+      - echo "Commit hash{{":"}} {{.COMMIT}}"
+      - echo "Build date{{":"}} {{.DATE}}"

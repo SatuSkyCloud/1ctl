@@ -1,5 +1,20 @@
 # Release Notes
 
+## Version 0.1.7 (12-06-2025)
+
+### 🐛 Bug Fixes
+- **Fixed hostname deduplication for monetized machines**: When multiple machines share the same hostname (e.g., "1"), the system now properly preserves the original hostname instead of incrementing it (e.g., "1" stays "1" instead of becoming "2")
+  - Added hostname deduplication logic for owner's machines in automatic selection
+  - Added hostname deduplication logic for manually specified machines via `--machine` flag
+  - Ensures consistent hostname behavior across both user-owned and monetized machine deployments
+
+### 🔧 Technical Improvements
+- **Enhanced versioning system**: Fixed automatic version detection in build process
+  - Updated `Taskfile.yml` to automatically detect version from Git tags instead of using hardcoded default
+  - Added `task version` command to easily check current version information
+  - Version now correctly reflects Git state with format like `v0.1.6-3-g94b0eb5` for commits ahead of tags
+  - Improved build-time version injection with commit hash and build date
+
 ## Version 0.1.6 (22-03-2025)
 
 ### 🔧 Technical Improvements

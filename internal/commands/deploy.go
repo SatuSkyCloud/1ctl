@@ -228,6 +228,7 @@ func prepareDeploymentOptions(c *cli.Context) (deploy.DeploymentOptions, error) 
 	// Handle hostnames if enabled when --machine is set
 	if c.IsSet("machine") {
 		machineNames := c.StringSlice("machine")
+		hostnameSet := make(map[string]bool) // Add deduplication for manually specified machines
 		for _, machineName := range machineNames {
 			machine, err := api.GetMachineByName(machineName)
 			if err != nil {
@@ -239,7 +240,11 @@ func prepareDeploymentOptions(c *cli.Context) (deploy.DeploymentOptions, error) 
 				return deploy.DeploymentOptions{}, utils.NewError(fmt.Sprintf("machine %s is not owned by you", machineName), nil)
 			}
 
-			opts.Hostnames = append(opts.Hostnames, machine.MachineName)
+			// Only add hostname if we haven't seen it before
+			if !hostnameSet[machine.MachineName] {
+				hostnameSet[machine.MachineName] = true
+				opts.Hostnames = append(opts.Hostnames, machine.MachineName)
+			}
 		}
 	}
 

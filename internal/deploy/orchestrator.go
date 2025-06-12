@@ -46,10 +46,15 @@ func Deploy(opts DeploymentOptions) (*api.CreateDeploymentResponse, error) {
 			// log.Info("Failed to get owner's machines: %v", err)
 			utils.PrintWarning("Failed to get owner's machines: %v", err)
 		} else {
-			// Check if owner has any machines
+			// Check if owner has any machines and deduplicate hostnames
+			hostnameSet := make(map[string]bool)
 			var hostnames []string
 			for _, machine := range machines {
-				hostnames = append(hostnames, machine.MachineName)
+				// Only add hostname if we haven't seen it before
+				if !hostnameSet[machine.MachineName] {
+					hostnameSet[machine.MachineName] = true
+					hostnames = append(hostnames, machine.MachineName)
+				}
 			}
 
 			if len(hostnames) > 0 {
