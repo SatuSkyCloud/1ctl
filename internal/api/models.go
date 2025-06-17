@@ -192,31 +192,49 @@ type DeploymentStatus struct {
 }
 
 type Machine struct {
-	MachineID         uuid.UUID `db:"machine_id" json:"machine_id" validate:"required,uuid"`
-	MachineName       string    `db:"machine_name" json:"machine_name" validate:"required"`
-	MachineTypes      []string  `db:"machine_types" json:"machine_types" validate:"required"`
-	OwnerID           uuid.UUID `db:"owner_id" json:"owner_id" validate:"required,uuid"`
-	IsVerified        bool      `db:"is_verified" json:"is_verified" validate:"required"`
-	MachineRegion     string    `db:"machine_region" json:"machine_region" validate:"required"`
-	MachineZone       string    `db:"machine_zone" json:"machine_zone" validate:"required"`
-	IpAddr            string    `db:"ip_addr" json:"ip_addr" validate:"required"`
-	TalosVersion      string    `db:"talos_version" json:"talos_version" validate:"required"`
-	KubernetesVersion string    `db:"kubernetes_version" json:"kubernetes_version" validate:"required"`
-	CPUCores          int       `db:"cpu_cores" json:"cpu_cores" validate:"required"`
-	MemoryGB          int       `db:"memory_gb" json:"memory_gb" validate:"required"`
-	StorageGB         int       `db:"storage_gb" json:"storage_gb" validate:"required"`
-	GPUCount          int       `db:"gpu_count" json:"gpu_count" validate:"required"`
-	GPUType           string    `db:"gpu_type" json:"gpu_type" validate:"required"`
-	BandwidthGbps     int       `db:"bandwidth_gbps" json:"bandwidth_gbps" validate:"required"`
-	Brand             string    `db:"brand" json:"brand" validate:"required"`
-	Model             string    `db:"model" json:"model" validate:"required"`
-	Manufacturer      string    `db:"manufacturer" json:"manufacturer" validate:"required"`
-	FormFactor        string    `db:"form_factor" json:"form_factor" validate:"required"`
-	Monetized         bool      `db:"monetized" json:"monetized" validate:"required"`
-	CreatedAt         time.Time `db:"created_at" json:"created_at"`
-	UpdatedAt         time.Time `db:"updated_at" json:"updated_at"`
+	ID                  int64      `db:"id" json:"id"`
+	MachineID           string     `db:"machine_id" json:"machine_id" validate:"required"`
+	MachineName         string     `db:"machine_name" json:"machine_name" validate:"required"`
+	MachineTypes        []string   `db:"machine_types" json:"machine_types" validate:"required"`
+	OwnerID             uuid.UUID  `db:"owner_id" json:"owner_id" validate:"required,uuid"`
+	IsVerified          bool       `db:"is_verified" json:"is_verified" validate:"required"`
+	MachineRegion       string     `db:"machine_region" json:"machine_region" validate:"required"`
+	MachineZone         string     `db:"machine_zone" json:"machine_zone" validate:"required"`
+	IpAddr              string     `db:"ip_addr" json:"ip_addr" validate:"required"`
+	TalosVersion        string     `db:"talos_version" json:"talos_version" validate:"required"`
+	KubernetesVersion   string     `db:"kubernetes_version" json:"kubernetes_version" validate:"required"`
+	CPUCores            int        `db:"cpu_cores" json:"cpu_cores" validate:"required"`
+	MemoryGB            int        `db:"memory_gb" json:"memory_gb" validate:"required"`
+	StorageGB           int        `db:"storage_gb" json:"storage_gb" validate:"required"`
+	GPUCount            int        `db:"gpu_count" json:"gpu_count" validate:"required"`
+	GPUType             string     `db:"gpu_type" json:"gpu_type" validate:"required"`
+	BandwidthGbps       int        `db:"bandwidth_gbps" json:"bandwidth_gbps" validate:"required"`
+	Brand               string     `db:"brand" json:"brand" validate:"required"`
+	Model               string     `db:"model" json:"model" validate:"required"`
+	Manufacturer        string     `db:"manufacturer" json:"manufacturer" validate:"required"`
+	FormFactor          string     `db:"form_factor" json:"form_factor" validate:"required"`
+	Monetized           bool       `db:"monetized" json:"monetized" validate:"required"`
+	Status              string     `db:"status" json:"status"`
+	LastHealthCheck     *time.Time `db:"last_health_check" json:"last_health_check"`
+	Recommended         bool       `db:"recommended" json:"recommended"`
+	ResourceScore       *float64   `db:"resource_score" json:"resource_score"`
+	CPUUsagePercent     *float64   `db:"cpu_usage_percent" json:"cpu_usage_percent"`
+	MemoryUsagePercent  *float64   `db:"memory_usage_percent" json:"memory_usage_percent"`
+	StorageUsagePercent *float64   `db:"storage_usage_percent" json:"storage_usage_percent"`
+	NetworkUsageGbps    *float64   `db:"network_usage_gbps" json:"network_usage_gbps"`
+	NetworkMetricsType  string     `db:"network_metrics_type" json:"network_metrics_type"`
+	UptimePercent       *float64   `db:"uptime_percent" json:"uptime_percent"`
+	ResponseTimeMs      *int       `db:"response_time_ms" json:"response_time_ms"`
+	NodeType            string     `db:"node_type" json:"node_type"`
+	HasGPU              bool       `db:"has_gpu" json:"has_gpu"`
+	HasHDD              bool       `db:"has_hdd" json:"has_hdd"`
+	HasNVME             bool       `db:"has_nvme" json:"has_nvme"`
+	PricingTier         string     `db:"pricing_tier" json:"pricing_tier"`
+	HourlyCost          float64    `db:"hourly_cost" json:"hourly_cost"`
+	CreatedAt           time.Time  `db:"created_at" json:"created_at"`
+	UpdatedAt           time.Time  `db:"updated_at" json:"updated_at"`
 }
 
 type MachineIDs struct {
-	MachineIDs []uuid.UUID `json:"machine_ids" validate:"required"`
+	MachineIDs []string `json:"machine_ids" validate:"required"`
 }

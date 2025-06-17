@@ -1,5 +1,36 @@
 # Release Notes
 
+## Version 0.1.8 (17-06-2025)
+
+### ✨ New Features
+- **Machine Marketplace Discovery**: Added `machine available` command to browse and filter available machines for rent
+  - Comprehensive filtering options: `--region`, `--zone`, `--min-cpu`, `--min-memory`, `--gpu`, `--recommended`, `--pricing-tier`
+  - Enhanced display with pricing information, performance metrics, and recommendation indicators
+  - Real-time availability status and resource specifications
+
+### 🔧 Technical Improvements
+- **Updated Machine Model**: Synchronized frontend Machine model with enhanced backend structure
+  - Changed `MachineID` from `uuid.UUID` to `string` type
+  - Added new fields: `ID`, `Status`, `LastHealthCheck`, `Recommended`, `ResourceScore`
+  - Added performance metrics: `CPUUsagePercent`, `MemoryUsagePercent`, `StorageUsagePercent`, `NetworkUsageGbps`
+  - Added hardware features: `HasGPU`, `HasHDD`, `HasNVME`, `NodeType`
+  - Added pricing information: `PricingTier`, `HourlyCost`
+  - Added reliability metrics: `UptimePercent`, `ResponseTimeMs`, `NetworkMetricsType`
+
+- **Enhanced Hostname Mapping**: Updated deployment logic to use machine IDs instead of machine names
+  - Both manual machine selection (`--machine` flag) and automatic selection now use machine IDs
+  - Improved deduplication logic based on unique machine IDs
+  - Ensures consistent backend integration with machine ID-based deployments
+
+- **Improved Machine Information Display**: Enhanced machine listing with additional useful information
+  - Added Status, Node Type, Pricing Tier, and Hourly Cost to machine details
+  - Added conditional display of Resource Score and Uptime percentage
+  - Separate optimized display format for available machines marketplace
+
+### 🛠️ API Enhancements
+- Added `GetAvailableMachines()` API function for fetching monetized machines
+- Updated `MachineIDs` struct to use string array instead of UUID array
+
 ## Version 0.1.7 (12-06-2025)
 
 ### 🐛 Bug Fixes

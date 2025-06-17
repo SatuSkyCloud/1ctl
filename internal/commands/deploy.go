@@ -240,10 +240,10 @@ func prepareDeploymentOptions(c *cli.Context) (deploy.DeploymentOptions, error) 
 				return deploy.DeploymentOptions{}, utils.NewError(fmt.Sprintf("machine %s is not owned by you", machineName), nil)
 			}
 
-			// Only add hostname if we haven't seen it before
-			if !hostnameSet[machine.MachineName] {
-				hostnameSet[machine.MachineName] = true
-				opts.Hostnames = append(opts.Hostnames, machine.MachineName)
+			// Only add hostname if we haven't seen it before (using machine ID instead of machine name)
+			if !hostnameSet[machine.MachineID] {
+				hostnameSet[machine.MachineID] = true
+				opts.Hostnames = append(opts.Hostnames, machine.MachineID)
 			}
 		}
 	}

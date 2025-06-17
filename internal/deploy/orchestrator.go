@@ -50,10 +50,10 @@ func Deploy(opts DeploymentOptions) (*api.CreateDeploymentResponse, error) {
 			hostnameSet := make(map[string]bool)
 			var hostnames []string
 			for _, machine := range machines {
-				// Only add hostname if we haven't seen it before
-				if !hostnameSet[machine.MachineName] {
-					hostnameSet[machine.MachineName] = true
-					hostnames = append(hostnames, machine.MachineName)
+				// Only add hostname if we haven't seen it before (using machine ID instead of machine name)
+				if !hostnameSet[machine.MachineID] {
+					hostnameSet[machine.MachineID] = true
+					hostnames = append(hostnames, machine.MachineID)
 				}
 			}
 

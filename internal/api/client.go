@@ -712,3 +712,22 @@ func GetMachineByName(machineName string) (*Machine, error) {
 	}
 	return &machine, nil
 }
+
+func GetAvailableMachines() ([]Machine, error) {
+	var resp apiResponse
+	err := makeRequest("GET", "/machines/monetized", nil, &resp)
+	if err != nil {
+		return nil, err
+	}
+
+	data, err := json.Marshal(resp.Data)
+	if err != nil {
+		return nil, utils.NewError(fmt.Sprintf("failed to marshal response data: %s", err.Error()), nil)
+	}
+
+	var machines []Machine
+	if err := json.Unmarshal(data, &machines); err != nil {
+		return nil, utils.NewError(fmt.Sprintf("failed to unmarshal machines: %s", err.Error()), nil)
+	}
+	return machines, nil
+}
