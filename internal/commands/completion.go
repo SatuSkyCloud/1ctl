@@ -102,7 +102,7 @@ _satusky_cli_completion() {
             ;;
         service)
             if [[ ${COMP_WORDS[2]} == "" ]]; then
-                COMPREPLY=( $(compgen -W "create list delete" -- ${cur}) )
+                COMPREPLY=( $(compgen -W "list delete" -- ${cur}) )
             fi
             ;;
         secret)
@@ -112,7 +112,7 @@ _satusky_cli_completion() {
             ;;
         ingress)
             if [[ ${COMP_WORDS[2]} == "" ]]; then
-                COMPREPLY=( $(compgen -W "create list delete" -- ${cur}) )
+                COMPREPLY=( $(compgen -W "list delete" -- ${cur}) )
             fi
             ;;
         issuer)
@@ -244,26 +244,24 @@ _satusky_cli() {
                 deploy)
                     if (( CURRENT == 2 )); then
                         local -a subcommands=(
-                            'create:Create a new deployment'
                             'list:List deployments'
-                            'delete:Delete a deployment'
                             'get:Get deployment details'
                             'status:Check deployment status'
                         )
                         _describe -t subcommands 'deploy subcommands' subcommands
                     else
                         case $words[2] in
-                            create)
-                                _arguments $deploy_create_flags
-                                ;;
                             list)
                                 _arguments $deploy_list_flags
                                 ;;
-                            get|delete)
+                            get)
                                 _arguments $deploy_get_flags
                                 ;;
                             status)
                                 _arguments $deploy_status_flags
+                                ;;
+                            *)
+                                _arguments $deploy_create_flags
                                 ;;
                         esac
                     fi
@@ -359,23 +357,21 @@ complete -c 1ctl -f -n '__fish_1ctl_using_command auth' -a 'logout' -d 'Remove s
 complete -c 1ctl -f -n '__fish_1ctl_using_command auth' -a 'status' -d 'View authentication status'
 
 # Deploy subcommands and flags
-complete -c 1ctl -f -n '__fish_1ctl_using_command deploy' -a 'create' -d 'Create a new deployment'
 complete -c 1ctl -f -n '__fish_1ctl_using_command deploy' -a 'list' -d 'List deployments'
-complete -c 1ctl -f -n '__fish_1ctl_using_command deploy' -a 'delete' -d 'Delete a deployment'
 complete -c 1ctl -f -n '__fish_1ctl_using_command deploy' -a 'get' -d 'Get deployment details'
 complete -c 1ctl -f -n '__fish_1ctl_using_command deploy' -a 'status' -d 'Check deployment status'
 
-# Deploy create flags
-complete -c 1ctl -f -n '__fish_1ctl_using_subcommand deploy create' -l cpu -d 'CPU cores allocation'
-complete -c 1ctl -f -n '__fish_1ctl_using_subcommand deploy create' -l memory -d 'Memory allocation'
-complete -c 1ctl -f -n '__fish_1ctl_using_subcommand deploy create' -l machine -d 'Machine name to deploy to'
-complete -c 1ctl -f -n '__fish_1ctl_using_subcommand deploy create' -l domain -d 'Custom domain'
-complete -c 1ctl -f -n '__fish_1ctl_using_subcommand deploy create' -l organization -d 'Organization name'
-complete -c 1ctl -f -n '__fish_1ctl_using_subcommand deploy create' -l dockerfile -d 'Path to Dockerfile'
-complete -c 1ctl -f -n '__fish_1ctl_using_subcommand deploy create' -l port -d 'Application port'
-complete -c 1ctl -f -n '__fish_1ctl_using_subcommand deploy create' -l env -d 'Environment variables'
-complete -c 1ctl -f -n '__fish_1ctl_using_subcommand deploy create' -l volume-size -d 'Storage size'
-complete -c 1ctl -f -n '__fish_1ctl_using_subcommand deploy create' -l volume-mount -d 'Storage mount path'
+# Deploy flags
+complete -c 1ctl -f -n '__fish_1ctl_using_subcommand deploy' -l cpu -d 'CPU cores allocation'
+complete -c 1ctl -f -n '__fish_1ctl_using_subcommand deploy' -l memory -d 'Memory allocation'
+complete -c 1ctl -f -n '__fish_1ctl_using_subcommand deploy' -l machine -d 'Machine name to deploy to'
+complete -c 1ctl -f -n '__fish_1ctl_using_subcommand deploy' -l domain -d 'Custom domain'
+complete -c 1ctl -f -n '__fish_1ctl_using_subcommand deploy' -l organization -d 'Organization name'
+complete -c 1ctl -f -n '__fish_1ctl_using_subcommand deploy' -l dockerfile -d 'Path to Dockerfile'
+complete -c 1ctl -f -n '__fish_1ctl_using_subcommand deploy' -l port -d 'Application port'
+complete -c 1ctl -f -n '__fish_1ctl_using_subcommand deploy' -l env -d 'Environment variables'
+complete -c 1ctl -f -n '__fish_1ctl_using_subcommand deploy' -l volume-size -d 'Storage size'
+complete -c 1ctl -f -n '__fish_1ctl_using_subcommand deploy' -l volume-mount -d 'Storage mount path'
 
 # Deploy list flags
 complete -c 1ctl -f -n '__fish_1ctl_using_subcommand deploy list' -l namespace -d 'Filter by namespace'
@@ -457,7 +453,6 @@ Register-ArgumentCompleter -Native -CommandName 1ctl -ScriptBlock {
             break
         }
         '1ctl;service' {
-            [CompletionResult]::new('create', 'create', [CompletionResultType]::ParameterValue, 'Create a new service')
             [CompletionResult]::new('list', 'list', [CompletionResultType]::ParameterValue, 'List services')
             [CompletionResult]::new('delete', 'delete', [CompletionResultType]::ParameterValue, 'Delete a service')
             break
@@ -469,7 +464,6 @@ Register-ArgumentCompleter -Native -CommandName 1ctl -ScriptBlock {
             break
         }
         '1ctl;ingress' {
-            [CompletionResult]::new('create', 'create', [CompletionResultType]::ParameterValue, 'Create a new ingress')
             [CompletionResult]::new('list', 'list', [CompletionResultType]::ParameterValue, 'List ingresses')
             [CompletionResult]::new('delete', 'delete', [CompletionResultType]::ParameterValue, 'Delete an ingress')
             break

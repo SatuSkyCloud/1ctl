@@ -1,5 +1,82 @@
 # Release Notes
 
+## Version 0.2.0 (19-06-2025)
+
+### ✨ Enhanced Command Structure
+- **Simplified Deploy Command**: Removed `deploy create` subcommand and moved deployment flags directly to main `deploy` command
+  - New usage: `1ctl deploy --cpu 100m --memory 20Mi --env HELLO=BYE --env SAY=WHAT`
+  - Subcommands `list`, `get`, and `status` remain available
+  - Enhanced validation with clear error messages for required flags
+
+- **Simplified Service Command**: Removed `service create` subcommand and moved service flags directly to main `service` command
+  - New usage: `1ctl service --deployment-id=123 --name=myservice --port=8080 --namespace=myorg`
+  - Subcommands `list` and `delete` remain available
+  - Required flags: `--deployment-id`, `--name`, `--port`
+
+- **Simplified Ingress Command**: Removed `ingress create` subcommand and moved ingress flags directly to main `ingress` command
+  - New usage: `1ctl ingress --deployment-id=123 --service-id=456 --app-label=myapp --namespace=myorg --domain=example.com`
+  - Subcommands `list` and `delete` remain available
+  - Required flags: `--deployment-id`, `--domain`, `--app-label`, `--namespace`
+
+### 🔄 API Enhancements
+- **Upsert Endpoints Migration**: Updated all resource creation to use upsert endpoints for idempotent operations
+  - **Deployment**: `POST /deployments/upsert/:namespace/:appLabel` (namespace = organization, appLabel = app name)
+  - **Service**: `POST /services/upsert/:namespace/:serviceName` (namespace = organization, serviceName = app name)
+  - **Ingress**: `POST /ingresses/upsert/:namespace/:appLabel` (namespace = organization, appLabel = app name)
+
+- **API Client Improvements**: Replaced create functions with upsert functions
+  - `CreateDeployment` → `UpsertDeployment`
+  - `CreateService` → `UpsertService`  
+  - `CreateIngress` → `UpsertIngress`
+  - Maintained same payload structure for backward compatibility
+
+### 🔧 Technical Improvements
+- **Enhanced User Experience**: Streamlined command syntax eliminates unnecessary subcommand nesting
+  - Direct flag access from main commands improves CLI ergonomics
+  - Consistent command patterns across deploy, service, and ingress resources
+  - Maintained backward compatibility for list/delete subcommands
+
+- **Comprehensive Test Updates**: Updated all test suites to reflect new command structure
+  - Mock API functions updated to use upsert patterns
+  - Integration tests migrated to new endpoint structure
+  - Command tests updated with new handler functions
+  - Maintained test coverage across all functionality
+
+- **Shell Completion Updates**: Updated all shell completion scripts for new command structure
+  - **Bash**: Removed obsolete "create" subcommands, updated flag completions
+  - **Zsh**: Enhanced completion with new command patterns
+  - **Fish**: Updated subcommand and flag completion logic
+  - **PowerShell**: Removed deprecated creation commands from completions
+
+- **Deployment Orchestrator**: Updated orchestration logic to use upsert operations
+  - Service creation now uses `UpsertService` for idempotent operations
+  - Ingress creation now uses `UpsertIngress` for consistent updates
+  - Dependency handling updated with new upsert patterns
+  - Improved error messages with operation context
+
+- **Enhanced Image Upload Reliability**: Added retry mechanism for Docker image uploads
+  - Automatic retry up to 3 attempts on upload failures
+  - Exponential backoff strategy (2, 4, 8 seconds between retries)
+  - Clear progress indication and error reporting for each attempt
+  - Improved resilience against temporary network issues or server errors
+
+- **Enhanced Docker Validation**: Significantly improved Dockerfile validation to support modern Docker features
+  - **Multistage Build Support**: Now properly validates `FROM image AS stage_name` syntax
+  - **Line Continuation Handling**: Fixed parsing of multi-line commands using backslash (`\`) continuations
+  - **Enhanced Image Name Validation**: Updated regex patterns to support registry URLs, namespaces, and case-insensitive matching
+  - **COPY --from Syntax**: Added proper validation for `COPY --from=stage_name` commands in multistage builds
+  - **Stage Name Validation**: Validates stage names allow alphanumeric characters, underscores, and hyphens
+  - **Comprehensive Test Coverage**: Added extensive test cases for all multistage build scenarios
+
+### 🛠️ Breaking Changes
+- **Command Structure**: Removed `create` subcommands from `deploy`, `service`, and `ingress` commands
+  - Old: `1ctl deploy create --cpu 100m --memory 20Mi`
+  - New: `1ctl deploy --cpu 100m --memory 20Mi`
+  - Old: `1ctl service create --deployment-id=123 --name=myservice --port=8080`
+  - New: `1ctl service --deployment-id=123 --name=myservice --port=8080`
+  - Old: `1ctl ingress create --deployment-id=123 --domain=example.com`
+  - New: `1ctl ingress --deployment-id=123 --domain=example.com --app-label=myapp --namespace=myorg`
+
 ## Version 0.1.8 (17-06-2025)
 
 ### ✨ New Features

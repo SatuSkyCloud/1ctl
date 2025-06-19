@@ -30,7 +30,7 @@ func TestIngressFlow(t *testing.T) {
 		}
 
 		// Create ingress
-		ingressResp, err := api.CreateIngress(ingress)
+		ingressResp, err := api.UpsertIngress(ingress)
 		if err != nil {
 			t.Fatalf("CreateIngress() error = %v", err)
 		}

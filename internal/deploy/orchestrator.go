@@ -9,6 +9,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"time"
 )
 
 type deploymentProgress struct {
@@ -96,7 +97,7 @@ func Deploy(opts DeploymentOptions) (*api.CreateDeploymentResponse, error) {
 	progress.done = false
 	progress.print()
 
-	deploymentID, err := createMainDeployment(opts, image, projectName, userID, opts.Organization, opts.Hostnames)
+	deploymentID, err := mainDeploy(opts, image, projectName, userID, opts.Organization, opts.Hostnames)
 	if err != nil {
 		return nil, err
 	}
@@ -109,7 +110,7 @@ func Deploy(opts DeploymentOptions) (*api.CreateDeploymentResponse, error) {
 	progress.done = false
 	progress.print()
 
-	serviceID, err := createService(deploymentID, opts, projectName, opts.Organization)
+	serviceID, err := upsertService(deploymentID, opts, projectName, opts.Organization)
 	if err != nil {
 		return nil, utils.NewError(fmt.Sprintf("failed to create service: %s", err.Error()), nil)
 	}
@@ -164,10 +165,33 @@ func buildAndUploadImage(dockerfilePath, projectName string) (string, error) {
 		return "", utils.NewError(fmt.Sprintf("failed to save Docker image: %s", err.Error()), nil)
 	}
 
-	// Upload image to backend
-	version, err := api.UploadDockerImage(tmpFile, projectName)
-	if err != nil {
-		return "", utils.NewError(fmt.Sprintf("failed to deploy Docker image: %s", err.Error()), nil)
+	// Upload image to backend with retry logic
+	var version string
+	var uploadErr error
+	maxRetries := 3
+
+	for attempt := 1; attempt <= maxRetries; attempt++ {
+		utils.PrintInfo("Uploading Docker image (attempt %d/%d)...", attempt, maxRetries)
+
+		version, uploadErr = api.UploadDockerImage(tmpFile, projectName)
+		if uploadErr == nil {
+			utils.PrintSuccess("Docker image uploaded successfully")
+			break
+		}
+
+		if attempt < maxRetries {
+			// Exponential backoff: wait 2^attempt seconds
+			waitTime := 1 << attempt // 2, 4, 8 seconds
+			utils.PrintWarning("Upload failed (attempt %d/%d): %s. Retrying in %d seconds...",
+				attempt, maxRetries, uploadErr.Error(), waitTime)
+			time.Sleep(time.Duration(waitTime) * time.Second)
+		} else {
+			utils.PrintError("Upload failed after %d attempts: %s", maxRetries, uploadErr.Error())
+		}
+	}
+
+	if uploadErr != nil {
+		return "", utils.NewError(fmt.Sprintf("failed to deploy Docker image after %d attempts: %s", maxRetries, uploadErr.Error()), nil)
 	}
 
 	// generate full image tag
@@ -176,7 +200,7 @@ func buildAndUploadImage(dockerfilePath, projectName string) (string, error) {
 	return fullImage, nil
 }
 
-func createMainDeployment(opts DeploymentOptions, image, name, userID, organization string, hostnames []string) (string, error) {
+func mainDeploy(opts DeploymentOptions, image, name, userID, organization string, hostnames []string) (string, error) {
 	port, err := api.SafeInt32(opts.Port)
 	if err != nil {
 		return "", utils.NewError(fmt.Sprintf("invalid port: %s", err.Error()), nil)
@@ -216,14 +240,14 @@ func createMainDeployment(opts DeploymentOptions, image, name, userID, organizat
 	}
 
 	var deploymentID string
-	if err := api.CreateDeployment(deployment, &deploymentID); err != nil {
-		return "", utils.NewError(fmt.Sprintf("failed to create deployment: %s", err.Error()), nil)
+	if err := api.UpsertDeployment(deployment, &deploymentID); err != nil {
+		return "", utils.NewError(fmt.Sprintf("failed to upsert deployment: %s", err.Error()), nil)
 	}
 
 	return deploymentID, nil
 }
 
-func createService(deploymentID string, opts DeploymentOptions, projectName, organization string) (string, error) {
+func upsertService(deploymentID string, opts DeploymentOptions, projectName, organization string) (string, error) {
 	port, err := api.SafeInt32(opts.Port)
 	if err != nil {
 		return "", utils.NewError(fmt.Sprintf("invalid port: %s", err.Error()), nil)
@@ -237,14 +261,14 @@ func createService(deploymentID string, opts DeploymentOptions, projectName, org
 	}
 
 	var serviceID string
-	if err := api.CreateService(service, &serviceID); err != nil {
-		return "", utils.NewError(fmt.Sprintf("failed to create service: %s", err.Error()), nil)
+	if err := api.UpsertService(service, &serviceID); err != nil {
+		return "", utils.NewError(fmt.Sprintf("failed to upsert service: %s", err.Error()), nil)
 	}
 
 	return serviceID, nil
 }
 
-func createIngress(deploymentID string, serviceID string, opts DeploymentOptions, organization, projectName string) (string, error) {
+func upsertIngress(deploymentID string, serviceID string, opts DeploymentOptions, organization, projectName string) (string, error) {
 	// Generate domain name if not provided
 	domainName := opts.Domain
 	if domainName == "" {
@@ -270,9 +294,9 @@ func createIngress(deploymentID string, serviceID string, opts DeploymentOptions
 		Port:         port,
 	}
 
-	_, err = api.CreateIngress(ingress)
+	_, err = api.UpsertIngress(ingress)
 	if err != nil {
-		return "", utils.NewError(fmt.Sprintf("failed to create ingress: %s", err.Error()), nil)
+		return "", utils.NewError(fmt.Sprintf("failed to upsert ingress: %s", err.Error()), nil)
 	}
 
 	return domainName, nil
@@ -288,7 +312,7 @@ func handleDependencies(deps []api.Dependency, userID, organization string, host
 		}
 
 		// Create deployment for dependency
-		deploymentID, err := createMainDeployment(opts, dep.Image, dep.Name, userID, organization, hostnames)
+		deploymentID, err := mainDeploy(opts, dep.Image, dep.Name, userID, organization, hostnames)
 		if err != nil {
 			return utils.NewError(fmt.Sprintf("failed to create dependency deployment: %s", err.Error()), nil)
 		}
@@ -296,8 +320,8 @@ func handleDependencies(deps []api.Dependency, userID, organization string, host
 		// Create service for dependency
 		if dep.Service != nil {
 			dep.Service.DeploymentID = api.ToUUID(deploymentID)
-			if err := api.CreateService(*dep.Service, nil); err != nil {
-				return utils.NewError(fmt.Sprintf("failed to create dependency service: %s", err.Error()), nil)
+			if err := api.UpsertService(*dep.Service, nil); err != nil {
+				return utils.NewError(fmt.Sprintf("failed to upsert dependency service: %s", err.Error()), nil)
 			}
 		}
 
@@ -322,7 +346,8 @@ func handleEnvironmentAndVolumes(opts DeploymentOptions, deploymentID, projectNa
 			opts.Environment.DeploymentID = api.ToUUID(deploymentID)
 			opts.Environment.AppLabel = projectName
 			opts.Environment.Namespace = organization
-			_, err := api.CreateEnvironment(*opts.Environment)
+
+			_, err := api.UpsertEnvironment(*opts.Environment)
 			if err != nil {
 				errChan <- utils.NewError(fmt.Sprintf("failed to create environment: %s", err.Error()), nil)
 				return
@@ -361,7 +386,7 @@ func handleIngressAndDependencies(opts DeploymentOptions, deploymentID, serviceI
 
 	// Handle ingress
 	go func() {
-		domainName, err := createIngress(deploymentID, serviceID, opts, organization, projectName)
+		domainName, err := upsertIngress(deploymentID, serviceID, opts, organization, projectName)
 		if err != nil {
 			errChan <- utils.NewError(fmt.Sprintf("failed to create ingress: %s", err.Error()), nil)
 			return

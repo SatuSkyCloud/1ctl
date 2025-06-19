@@ -18,7 +18,6 @@ func TestServiceCommand(t *testing.T) {
 
 	// Check subcommands
 	expectedSubcommands := map[string]bool{
-		"create": false,
 		"list":   false,
 		"delete": false,
 	}
@@ -89,9 +88,9 @@ func TestHandleCreateService(t *testing.T) {
 				ctx.Set(name, value)
 			}
 
-			err := handleCreateService(ctx)
+			err := handleUpsertService(ctx)
 			if (err != nil) != tt.wantErr {
-				t.Errorf("handleCreateService() error = %v, wantErr %v", err, tt.wantErr)
+				t.Errorf("handleUpsertService() error = %v, wantErr %v", err, tt.wantErr)
 			}
 		})
 	}

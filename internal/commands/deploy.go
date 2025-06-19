@@ -18,12 +18,12 @@ func DeployCommand() *cli.Command {
 		&cli.StringFlag{
 			Name:     "cpu",
 			Usage:    "CPU cores allocation (e.g., '2')",
-			Required: true,
+			Required: false,
 		},
 		&cli.StringFlag{
 			Name:     "memory",
 			Usage:    "Memory allocation (e.g., '512Mi', '2Gi')",
-			Required: true,
+			Required: false,
 		},
 		&cli.StringSliceFlag{
 			Name:  "machine",
@@ -64,13 +64,8 @@ func DeployCommand() *cli.Command {
 	return &cli.Command{
 		Name:  "deploy",
 		Usage: "Deploy your application to Satusky Cloud",
+		Flags: deployFlags,
 		Subcommands: []*cli.Command{
-			{
-				Name:   "create",
-				Usage:  "Create a new deployment",
-				Flags:  deployFlags,
-				Action: handleDeploy,
-			},
 			{
 				Name:  "list",
 				Usage: "List deployments",
@@ -110,31 +105,33 @@ func DeployCommand() *cli.Command {
 				},
 				Action: handleDeploymentStatus,
 			},
-			// {
-			// 	Name:  "logs",
-			// 	Usage: "View deployment logs",
-			// 	Flags: []cli.Flag{
-			// 		&cli.StringFlag{
-			// 			Name:     "deployment-id",
-			// 			Usage:    "Deployment ID",
-			// 			Required: true,
-			// 		},
-			// 		&cli.BoolFlag{
-			// 			Name:  "follow",
-			// 			Usage: "Follow log output",
-			// 		},
-			// 	},
-			// 	Action: handleDeploymentLogs,
-			// },
 		},
 		Action: func(c *cli.Context) error {
-			// If no subcommand is provided, show help
-			return cli.ShowSubcommandHelp(c)
+			// If no subcommand is provided and no flags, show help
+			if c.NArg() == 0 && !c.IsSet("cpu") && !c.IsSet("memory") {
+				return cli.ShowCommandHelp(c, "deploy")
+			}
+
+			// If subcommand is provided, let it handle
+			if c.NArg() > 0 {
+				return cli.ShowSubcommandHelp(c)
+			}
+
+			// Otherwise, handle deploy
+			return handleDeploy(c)
 		},
 	}
 }
 
 func handleDeploy(c *cli.Context) error {
+	// Check required flags for deploy
+	if c.String("cpu") == "" {
+		return utils.NewError("--cpu flag is required for deployment", nil)
+	}
+	if c.String("memory") == "" {
+		return utils.NewError("--memory flag is required for deployment", nil)
+	}
+
 	// Validate inputs first
 	if err := validateInputs(c); err != nil {
 		return utils.NewError(fmt.Sprintf("validation failed: %s", err.Error()), nil)

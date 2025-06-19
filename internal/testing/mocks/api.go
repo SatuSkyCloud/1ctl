@@ -12,9 +12,9 @@ import (
 type MockAPI struct {
 	LoginCLIFunc          func(token string) (*api.TokenValidate, error)
 	ValidateTokenFunc     func(token string) (*api.TokenValidate, error)
-	CreateDeploymentFunc  func(deployment api.Deployment, response *string) error
-	CreateServiceFunc     func(service api.Service, response *string) error
-	CreateIngressFunc     func(ingress api.Ingress) (*api.Ingress, error)
+	UpsertDeploymentFunc  func(deployment api.Deployment, response *string) error
+	UpsertServiceFunc     func(service api.Service, response *string) error
+	UpsertIngressFunc     func(ingress api.Ingress) (*api.Ingress, error)
 	CreateVolumeFunc      func(volume api.Volume) error
 	CreateEnvironmentFunc func(env api.Environment) (*api.Environment, error)
 }
@@ -28,15 +28,15 @@ func DefaultMockAPI() *MockAPI {
 				UserEmail: "test@example.com",
 			}, nil
 		},
-		CreateDeploymentFunc: func(deployment api.Deployment, response *string) error {
+		UpsertDeploymentFunc: func(deployment api.Deployment, response *string) error {
 			*response = uuid.New().String()
 			return nil
 		},
-		CreateServiceFunc: func(service api.Service, response *string) error {
+		UpsertServiceFunc: func(service api.Service, response *string) error {
 			*response = uuid.New().String()
 			return nil
 		},
-		CreateIngressFunc: func(ingress api.Ingress) (*api.Ingress, error) {
+		UpsertIngressFunc: func(ingress api.Ingress) (*api.Ingress, error) {
 			ingress.IngressID = uuid.New()
 			ingress.CreatedAt = time.Now()
 			return &ingress, nil
@@ -55,13 +55,13 @@ func DefaultMockAPI() *MockAPI {
 // ErrorMockAPI returns a MockAPI that returns errors
 func ErrorMockAPI() *MockAPI {
 	return &MockAPI{
-		CreateDeploymentFunc: func(deployment api.Deployment, response *string) error {
+		UpsertDeploymentFunc: func(deployment api.Deployment, response *string) error {
 			return fmt.Errorf("mock deployment error")
 		},
-		CreateServiceFunc: func(service api.Service, response *string) error {
+		UpsertServiceFunc: func(service api.Service, response *string) error {
 			return fmt.Errorf("mock service error")
 		},
-		CreateIngressFunc: func(ingress api.Ingress) (*api.Ingress, error) {
+		UpsertIngressFunc: func(ingress api.Ingress) (*api.Ingress, error) {
 			return nil, fmt.Errorf("mock ingress error")
 		},
 		CreateVolumeFunc: func(volume api.Volume) error {

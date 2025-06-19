@@ -22,13 +22,6 @@ type apiResponse struct {
 	Data    interface{} `json:"data"`
 }
 
-// CreateDeployment creates a new deployment and returns the deployment ID
-func CreateDeployment(req Deployment, response *string) error {
-	var resp apiResponse
-	resp.Data = response
-	return makeRequest("POST", "/deployments/create", req, &resp)
-}
-
 // DeleteDeployment deletes a deployment
 func DeleteDeployment(req interface{}, deploymentID string) error {
 	return makeRequest("POST", fmt.Sprintf("/deployments/delete/%s", deploymentID), req, nil)
@@ -93,25 +86,6 @@ func GetDeployment(deploymentID string) (*Deployment, error) {
 }
 
 // Service methods
-func CreateService(service Service, response *string) error {
-	var resp apiResponse
-	resp.Data = response
-	err := makeRequest("POST", "/services/create", service, &resp)
-	if err != nil {
-		return err
-	}
-
-	// Convert the data back to the correct type
-	data, err := json.Marshal(resp.Data)
-	if err != nil {
-		return utils.NewError(fmt.Sprintf("failed to marshal response data: %s", err.Error()), nil)
-	}
-
-	if err := json.Unmarshal(data, response); err != nil {
-		return utils.NewError(fmt.Sprintf("failed to unmarshal service response: %s", err.Error()), nil)
-	}
-	return nil
-}
 
 func ListServices() ([]Service, error) {
 	namespace := context.GetCurrentNamespace()
@@ -189,26 +163,6 @@ func DeleteSecret(secretID string) error {
 }
 
 // Ingress methods
-func CreateIngress(ingress Ingress) (*Ingress, error) {
-	var resp apiResponse
-	var ingressResp Ingress
-	resp.Data = &ingressResp
-
-	err := makeRequest("POST", "/ingresses/create", ingress, &resp)
-	if err != nil {
-		return nil, err
-	}
-
-	data, err := json.Marshal(resp.Data)
-	if err != nil {
-		return nil, utils.NewError(fmt.Sprintf("failed to marshal response data: %s", err.Error()), nil)
-	}
-
-	if err := json.Unmarshal(data, &ingressResp); err != nil {
-		return nil, utils.NewError(fmt.Sprintf("failed to unmarshal ingress response: %s", err.Error()), nil)
-	}
-	return &ingressResp, nil
-}
 
 // ListIngresses lists all ingresses for current namespace
 func ListIngresses() ([]Ingress, error) {
@@ -237,7 +191,7 @@ func DeleteIngress(req interface{}, ingressID string) error {
 }
 
 // Environment methods
-func CreateEnvironment(env Environment) (*Environment, error) {
+func UpsertEnvironment(env Environment) (*Environment, error) {
 	var resp apiResponse
 	var envResp Environment
 	resp.Data = &envResp
@@ -730,4 +684,45 @@ func GetAvailableMachines() ([]Machine, error) {
 		return nil, utils.NewError(fmt.Sprintf("failed to unmarshal machines: %s", err.Error()), nil)
 	}
 	return machines, nil
+}
+
+// UpsertDeployment creates or updates a deployment and returns the deployment ID
+func UpsertDeployment(req Deployment, response *string) error {
+	var resp apiResponse
+	resp.Data = response
+
+	path := fmt.Sprintf("/deployments/upsert/%s/%s", req.Namespace, req.AppLabel)
+	return makeRequest("POST", path, req, &resp)
+}
+
+// UpsertService creates or updates a service and returns the service ID
+func UpsertService(service Service, response *string) error {
+	var resp apiResponse
+	resp.Data = response
+
+	path := fmt.Sprintf("/services/upsert/%s/%s", service.Namespace, service.ServiceName)
+	return makeRequest("POST", path, service, &resp)
+}
+
+// UpsertIngress creates or updates an ingress and returns the ingress
+func UpsertIngress(ingress Ingress) (*Ingress, error) {
+	var resp apiResponse
+	var ingressResp Ingress
+	resp.Data = &ingressResp
+
+	path := fmt.Sprintf("/ingresses/upsert/%s/%s", ingress.Namespace, ingress.AppLabel)
+	err := makeRequest("POST", path, ingress, &resp)
+	if err != nil {
+		return nil, err
+	}
+
+	data, err := json.Marshal(resp.Data)
+	if err != nil {
+		return nil, utils.NewError(fmt.Sprintf("failed to marshal response data: %s", err.Error()), nil)
+	}
+
+	if err := json.Unmarshal(data, &ingressResp); err != nil {
+		return nil, utils.NewError(fmt.Sprintf("failed to unmarshal ingress response: %s", err.Error()), nil)
+	}
+	return &ingressResp, nil
 }

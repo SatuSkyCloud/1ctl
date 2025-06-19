@@ -10,36 +10,33 @@ import (
 )
 
 func ServiceCommand() *cli.Command {
+	serviceFlags := []cli.Flag{
+		&cli.StringFlag{
+			Name:     "deployment-id",
+			Usage:    "Deployment ID",
+			Required: false, // Remove required at command level, validate in handler
+		},
+		&cli.StringFlag{
+			Name:     "name",
+			Usage:    "Service name",
+			Required: false, // Remove required at command level, validate in handler
+		},
+		&cli.IntFlag{
+			Name:     "port",
+			Usage:    "Service port",
+			Required: false, // Remove required at command level, validate in handler
+		},
+		&cli.StringFlag{
+			Name:  "namespace",
+			Usage: "User's organization name",
+		},
+	}
+
 	return &cli.Command{
 		Name:  "service",
-		Usage: "Manage services",
+		Usage: "Create or update a service",
+		Flags: serviceFlags,
 		Subcommands: []*cli.Command{
-			{
-				Name:  "create",
-				Usage: "Create a new service",
-				Flags: []cli.Flag{
-					&cli.StringFlag{
-						Name:     "deployment-id",
-						Usage:    "Deployment ID",
-						Required: true,
-					},
-					&cli.StringFlag{
-						Name:     "name",
-						Usage:    "Service name",
-						Required: true,
-					},
-					&cli.IntFlag{
-						Name:     "port",
-						Usage:    "Service port",
-						Required: true,
-					},
-					&cli.StringFlag{
-						Name:  "namespace",
-						Usage: "User's organization name",
-					},
-				},
-				Action: handleCreateService,
-			},
 			{
 				Name:   "list",
 				Usage:  "List all services",
@@ -58,10 +55,35 @@ func ServiceCommand() *cli.Command {
 				Action: handleDeleteService,
 			},
 		},
+		Action: func(c *cli.Context) error {
+			// If no subcommand is provided and no flags, show help
+			if c.NArg() == 0 && !c.IsSet("deployment-id") && !c.IsSet("name") && !c.IsSet("port") {
+				return cli.ShowCommandHelp(c, "service")
+			}
+
+			// If subcommand is provided, let it handle
+			if c.NArg() > 0 {
+				return cli.ShowSubcommandHelp(c)
+			}
+
+			// Otherwise, handle service upsert
+			return handleUpsertService(c)
+		},
 	}
 }
 
-func handleCreateService(c *cli.Context) error {
+func handleUpsertService(c *cli.Context) error {
+	// Check required flags for service upsert
+	if c.String("deployment-id") == "" {
+		return utils.NewError("--deployment-id flag is required for service", nil)
+	}
+	if c.String("name") == "" {
+		return utils.NewError("--name flag is required for service", nil)
+	}
+	if c.Int("port") == 0 {
+		return utils.NewError("--port flag is required for service", nil)
+	}
+
 	port, err := api.SafeInt32(c.Int("port"))
 	if err != nil {
 		return utils.NewError("Invalid port number", err)
@@ -74,11 +96,11 @@ func handleCreateService(c *cli.Context) error {
 	}
 
 	var serviceID string
-	if err := api.CreateService(service, &serviceID); err != nil {
-		return utils.NewError(fmt.Sprintf("failed to create service: %s", err.Error()), nil)
+	if err := api.UpsertService(service, &serviceID); err != nil {
+		return utils.NewError(fmt.Sprintf("failed to upsert service: %s", err.Error()), nil)
 	}
 
-	utils.PrintSuccess("Service %s created successfully (ID: %s)\n", service.ServiceName, serviceID)
+	utils.PrintSuccess("Service %s upserted successfully (ID: %s)\n", service.ServiceName, serviceID)
 	return nil
 }
 

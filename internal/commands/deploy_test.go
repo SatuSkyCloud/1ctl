@@ -19,7 +19,6 @@ func TestDeployCommand(t *testing.T) {
 
 	// Check subcommands
 	expectedSubcommands := map[string]bool{
-		"create": false,
 		"list":   false,
 		"get":    false,
 		"status": false,

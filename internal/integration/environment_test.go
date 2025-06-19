@@ -23,9 +23,9 @@ func TestEnvironmentFlow(t *testing.T) {
 		}
 
 		// Create environment
-		envResp, err := api.CreateEnvironment(env)
+		envResp, err := api.UpsertEnvironment(env)
 		if err != nil {
-			t.Fatalf("CreateEnvironment() error = %v", err)
+			t.Fatalf("UpsertEnvironment() error = %v", err)
 		}
 
 		// Test environment listing

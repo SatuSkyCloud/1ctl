@@ -10,31 +10,48 @@ import (
 )
 
 func IngressCommand() *cli.Command {
+	ingressFlags := []cli.Flag{
+		&cli.StringFlag{
+			Name:     "deployment-id",
+			Usage:    "Deployment ID",
+			Required: false, // Remove required at command level, validate in handler
+		},
+		&cli.StringFlag{
+			Name:     "service-id",
+			Usage:    "Service ID",
+			Required: false, // Remove required at command level, validate in handler
+		},
+		&cli.StringFlag{
+			Name:     "app-label",
+			Usage:    "Application label",
+			Required: false, // Remove required at command level, validate in handler
+		},
+		&cli.StringFlag{
+			Name:     "namespace",
+			Usage:    "Organization name",
+			Required: false, // Remove required at command level, validate in handler
+		},
+		&cli.StringFlag{
+			Name:     "domain",
+			Usage:    "Domain name",
+			Required: false, // Remove required at command level, validate in handler
+		},
+		&cli.IntFlag{
+			Name:  "port",
+			Usage: "Port number",
+			Value: 8080,
+		},
+		&cli.BoolFlag{
+			Name:  "custom-dns",
+			Usage: "Use custom DNS",
+		},
+	}
+
 	return &cli.Command{
 		Name:  "ingress",
-		Usage: "Manage ingresses for a deployment",
+		Usage: "Create or update an ingress for a deployment",
+		Flags: ingressFlags,
 		Subcommands: []*cli.Command{
-			{
-				Name:  "create",
-				Usage: "Create a new ingress",
-				Flags: []cli.Flag{
-					&cli.StringFlag{
-						Name:     "deployment-id",
-						Usage:    "Deployment ID",
-						Required: true,
-					},
-					&cli.StringFlag{
-						Name:     "domain",
-						Usage:    "Domain name",
-						Required: true,
-					},
-					&cli.BoolFlag{
-						Name:  "custom-dns",
-						Usage: "Use custom DNS",
-					},
-				},
-				Action: handleCreateIngress,
-			},
 			{
 				Name:   "list",
 				Usage:  "List all ingresses",
@@ -53,22 +70,64 @@ func IngressCommand() *cli.Command {
 				Action: handleDeleteIngress,
 			},
 		},
+		Action: func(c *cli.Context) error {
+			// If no subcommand is provided and no flags, show help
+			if c.NArg() == 0 && !c.IsSet("deployment-id") && !c.IsSet("domain") {
+				return cli.ShowCommandHelp(c, "ingress")
+			}
+
+			// If subcommand is provided, let it handle
+			if c.NArg() > 0 {
+				return cli.ShowSubcommandHelp(c)
+			}
+
+			// Otherwise, handle ingress upsert
+			return handleUpsertIngress(c)
+		},
 	}
 }
 
-func handleCreateIngress(c *cli.Context) error {
+func handleUpsertIngress(c *cli.Context) error {
+	// Check required flags for ingress upsert
+	if c.String("deployment-id") == "" {
+		return utils.NewError("--deployment-id flag is required for ingress", nil)
+	}
+	if c.String("domain") == "" {
+		return utils.NewError("--domain flag is required for ingress", nil)
+	}
+	if c.String("app-label") == "" {
+		return utils.NewError("--app-label flag is required for ingress", nil)
+	}
+	if c.String("namespace") == "" {
+		return utils.NewError("--namespace flag is required for ingress", nil)
+	}
+
+	port, err := api.SafeInt32(c.Int("port"))
+	if err != nil {
+		return utils.NewError("Invalid port number", err)
+	}
+
+	dnsConfig := api.DnsConfigDefault
+	if c.Bool("custom-dns") {
+		dnsConfig = api.DnsConfigCustom
+	}
+
 	ingress := api.Ingress{
 		DeploymentID: uuid.MustParse(c.String("deployment-id")),
+		ServiceID:    uuid.MustParse(c.String("service-id")),
+		AppLabel:     c.String("app-label"),
+		Namespace:    c.String("namespace"),
 		DomainName:   c.String("domain"),
-		DnsConfig:    api.DnsConfigType(api.DnsConfigCustom),
+		Port:         port,
+		DnsConfig:    dnsConfig,
 	}
 
-	ingressResp, err := api.CreateIngress(ingress)
+	ingressResp, err := api.UpsertIngress(ingress)
 	if err != nil {
-		return utils.NewError(fmt.Sprintf("failed to create ingress: %s", err.Error()), nil)
+		return utils.NewError(fmt.Sprintf("failed to upsert ingress: %s", err.Error()), nil)
 	}
 
-	utils.PrintSuccess("Ingress for domain %s created successfully\n", ingressResp.DomainName)
+	utils.PrintSuccess("Ingress for domain %s upserted successfully\n", ingressResp.DomainName)
 	return nil
 }
 

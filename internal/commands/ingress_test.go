@@ -18,7 +18,6 @@ func TestIngressCommand(t *testing.T) {
 
 	// Check subcommands
 	expectedSubcommands := map[string]bool{
-		"create": false,
 		"list":   false,
 		"delete": false,
 	}
@@ -86,9 +85,9 @@ func TestHandleCreateIngress(t *testing.T) {
 				ctx.Set(name, value)
 			}
 
-			err := handleCreateIngress(ctx)
+			err := handleUpsertIngress(ctx)
 			if (err != nil) != tt.wantErr {
-				t.Errorf("handleCreateIngress() error = %v, wantErr %v", err, tt.wantErr)
+				t.Errorf("handleUpsertIngress() error = %v, wantErr %v", err, tt.wantErr)
 			}
 		})
 	}

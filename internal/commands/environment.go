@@ -85,9 +85,9 @@ func handleCreateEnvironment(c *cli.Context) error {
 		KeyValues:    keyValues,
 	}
 
-	envResp, err := api.CreateEnvironment(env)
+	envResp, err := api.UpsertEnvironment(env)
 	if err != nil {
-		return utils.NewError(fmt.Sprintf("failed to create environment: %s", err.Error()), nil)
+		return utils.NewError(fmt.Sprintf("failed to upsert environment: %s", err.Error()), nil)
 	}
 
 	utils.PrintSuccess("Environment %s created successfully\n", envResp.AppLabel)

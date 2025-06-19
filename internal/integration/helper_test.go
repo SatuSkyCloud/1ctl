@@ -101,7 +101,7 @@ func createTestService(t *testing.T, deploymentID uuid.UUID) string {
 	}
 
 	var serviceID string
-	err := api.CreateService(service, &serviceID)
+	err := api.UpsertService(service, &serviceID)
 	if err != nil {
 		t.Fatalf("Failed to create test service: %v", err)
 	}

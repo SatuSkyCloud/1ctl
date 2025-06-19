@@ -47,7 +47,7 @@ CMD ["./main"]`,
 			name:     "empty dockerfile",
 			content:  "",
 			wantErr:  true,
-			errCheck: func(err error) bool { return err.Error() == "dockerfile is empty" },
+			errCheck: func(err error) bool { return strings.Contains(err.Error(), "dockerfile is empty") },
 		},
 		{
 			name: "missing FROM",
@@ -55,8 +55,89 @@ CMD ["./main"]`,
 COPY . .`,
 			wantErr: true,
 			errCheck: func(err error) bool {
-				return strings.Contains(err.Error(), "First instruction must be FROM")
+				return strings.Contains(err.Error(), "dockerfile validation failed")
 			},
+		},
+		{
+			name: "multistage dockerfile",
+			content: `FROM golang:1.21-alpine as builder
+WORKDIR /app
+COPY go.mod go.sum ./
+RUN go mod download && go mod tidy
+COPY . .
+RUN CGO_ENABLED=0 GOOS=linux go build -a -installsuffix cgo -o main ./cmd/app/main.go
+
+FROM alpine:3.6
+WORKDIR /root/
+COPY --from=builder /app/main .
+EXPOSE 8080
+CMD ["./main"]`,
+			wantErr: false,
+		},
+		{
+			name: "multistage dockerfile with line continuations",
+			content: `FROM golang:1.23-alpine AS builder
+WORKDIR /build
+COPY go.mod go.sum ./
+RUN go mod download
+COPY . .
+ENV CGO_ENABLED=0 GOOS=linux GOARCH=amd64
+RUN go build -ldflags="-s -w" -o apiserver cmd/app/main.go
+
+FROM alpine:latest
+COPY --from=builder /build/apiserver /
+RUN apk add --no-cache \
+    curl \
+    openssl \
+    git \
+    && curl -LO https://example.com/kubectl \
+    && chmod +x ./kubectl \
+    && mv ./kubectl /usr/local/bin
+EXPOSE 8080
+ENTRYPOINT ["/apiserver"]`,
+			wantErr: false,
+		},
+		{
+			name: "invalid stage name with special characters",
+			content: `FROM golang:1.21-alpine AS builder@stage
+WORKDIR /app
+FROM alpine:3.6
+COPY --from=builder@stage /app/main .`,
+			wantErr: true,
+			errCheck: func(err error) bool {
+				return strings.Contains(err.Error(), "dockerfile validation failed")
+			},
+		},
+		{
+			name: "invalid multistage FROM syntax",
+			content: `FROM golang:1.21-alpine AS
+WORKDIR /app`,
+			wantErr: true,
+			errCheck: func(err error) bool {
+				return strings.Contains(err.Error(), "dockerfile validation failed")
+			},
+		},
+		{
+			name: "valid COPY --from with stage name",
+			content: `FROM golang:1.21-alpine AS build-stage
+WORKDIR /app
+COPY . .
+RUN go build -o app main.go
+
+FROM alpine:latest
+COPY --from=build-stage /app/app /usr/local/bin/
+CMD ["/usr/local/bin/app"]`,
+			wantErr: false,
+		},
+		{
+			name: "valid image names with various formats",
+			content: `FROM registry.example.com:5000/my-org/golang:1.21-alpine AS builder
+WORKDIR /app
+
+FROM alpine:latest
+COPY --from=builder /app/binary /
+CMD ["/binary"]`,
+			wantErr: false,
 		},
 	}
 

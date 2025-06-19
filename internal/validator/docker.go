@@ -69,16 +69,49 @@ func ValidateDockerfile(path string) error {
 		return utils.NewError(fmt.Sprintf("dockerfile is empty at %s", path), nil)
 	}
 
-	// Validate file content
+	// Read all lines first and handle line continuations
 	scanner := bufio.NewScanner(file)
+	var rawLines []string
+	for scanner.Scan() {
+		rawLines = append(rawLines, scanner.Text())
+	}
+
+	if err := scanner.Err(); err != nil {
+		return utils.NewError(fmt.Sprintf("error reading Dockerfile: %s", err.Error()), nil)
+	}
+
+	// Process lines and handle continuations
+	var processedLines []string
+	var currentLine string
+
+	for i, rawLine := range rawLines {
+		line := strings.TrimRight(rawLine, " \t")
+
+		if strings.HasSuffix(line, "\\") {
+			// Line continuation - remove backslash and continue building the instruction
+			currentLine += strings.TrimSuffix(line, "\\") + " "
+		} else {
+			// End of instruction
+			currentLine += line
+			if strings.TrimSpace(currentLine) != "" {
+				processedLines = append(processedLines, currentLine)
+			}
+			currentLine = ""
+		}
+
+		// Handle case where file ends with a continuation
+		if i == len(rawLines)-1 && currentLine != "" {
+			processedLines = append(processedLines, currentLine)
+		}
+	}
+
+	// Validate processed lines
 	var errors []string
-	lineNum := 0
 	hasFrom := false
 	firstNonCommentLine := true
 
-	for scanner.Scan() {
-		lineNum++
-		line := strings.TrimSpace(scanner.Text())
+	for lineIndex, processedLine := range processedLines {
+		line := strings.TrimSpace(processedLine)
 
 		// Skip empty lines and comments
 		if line == "" || strings.HasPrefix(line, "#") {
@@ -95,13 +128,13 @@ func ValidateDockerfile(path string) error {
 
 		// Validate the first non-comment line
 		if firstNonCommentLine && instruction != "FROM" && instruction != "ARG" {
-			errors = append(errors, fmt.Sprintf("line %d: First instruction must be FROM or ARG", lineNum))
+			errors = append(errors, fmt.Sprintf("line %d: First instruction must be FROM or ARG", lineIndex+1))
 		}
 		firstNonCommentLine = false
 
 		// Check if the instruction is valid
 		if !validInstructions[instruction] {
-			errors = append(errors, fmt.Sprintf("line %d: invalid instruction '%s'", lineNum, instruction))
+			errors = append(errors, fmt.Sprintf("line %d: invalid instruction '%s'", lineIndex+1, instruction))
 			continue
 		}
 
@@ -109,16 +142,34 @@ func ValidateDockerfile(path string) error {
 		if instruction == "FROM" {
 			hasFrom = true
 			if len(parts) < 2 {
-				errors = append(errors, fmt.Sprintf("line %d: FROM instruction requires a base image", lineNum))
-			} else if !isValidBaseImage(parts[1]) {
-				errors = append(errors, fmt.Sprintf("line %d: invalid base image format '%s'", lineNum, parts[1]))
+				errors = append(errors, fmt.Sprintf("line %d: FROM instruction requires a base image", lineIndex+1))
+			} else {
+				// Handle multistage syntax: FROM image AS stage_name
+				baseImage := parts[1]
+				if len(parts) >= 4 && strings.ToUpper(parts[2]) == "AS" {
+					// This is a multistage build with AS clause
+					stageName := parts[3]
+					// Validate stage name (alphanumeric, underscore, hyphen allowed)
+					if !isValidStageName(stageName) {
+						errors = append(errors, fmt.Sprintf("line %d: invalid stage name '%s'", lineIndex+1, stageName))
+					}
+				} else if len(parts) > 2 {
+					// FROM instruction has extra arguments that aren't AS clause
+					errors = append(errors, fmt.Sprintf("line %d: FROM instruction has invalid syntax '%s'", lineIndex+1, strings.Join(parts[1:], " ")))
+					continue
+				}
+
+				if !isValidBaseImage(baseImage) {
+					errors = append(errors, fmt.Sprintf("line %d: invalid base image format '%s'", lineIndex+1, baseImage))
+				}
 			}
 		}
-	}
 
-	// Check for scanning errors
-	if err := scanner.Err(); err != nil {
-		return utils.NewError(fmt.Sprintf("error reading Dockerfile: %s", err.Error()), nil)
+		// Validate COPY --from syntax for multistage builds
+		if instruction == "COPY" && len(parts) >= 3 && strings.HasPrefix(parts[1], "--from=") {
+			// This is fine - COPY --from syntax for multistage builds
+			continue
+		}
 	}
 
 	// Ensure a FROM instruction exists
@@ -169,14 +220,33 @@ func FindDockerfile(dir string) (string, error) {
 	return "", utils.NewError(fmt.Sprintf("no valid Dockerfile found in the current directory or common locations at %s", dir), nil)
 }
 
+// isValidStageName checks if the stage name in multistage builds is valid
+func isValidStageName(name string) bool {
+	if name == "" {
+		return false
+	}
+	// Stage names can contain alphanumeric characters, underscores, and hyphens
+	matched, err := regexp.MatchString(`^[a-zA-Z0-9_-]+$`, name)
+	if err != nil {
+		return false
+	}
+	return matched
+}
+
 // isValidBaseImage checks if the base image name is valid
 func isValidBaseImage(image string) bool {
 	if image == "scratch" {
 		return true
 	}
 
-	// Regex for valid image names
-	const validImagePattern = `^[a-z0-9]+(?:[._-][a-z0-9]+)*(?:/[a-z0-9]+(?:[._-][a-z0-9]+)*)*(?::[a-z0-9]+(?:[._-][a-z0-9]+)*)?(?:@sha256:[a-f0-9]{64})?$`
+	// Enhanced regex for valid image names that supports:
+	// - Registry hostnames (optional)
+	// - Namespaces/organization names
+	// - Repository names
+	// - Tags
+	// - Digest references
+	// - Case insensitive matching for practical use
+	const validImagePattern = `^(?:[a-zA-Z0-9](?:[a-zA-Z0-9-]*[a-zA-Z0-9])?(?:\.[a-zA-Z0-9](?:[a-zA-Z0-9-]*[a-zA-Z0-9])?)*(?::[0-9]+)?/)?[a-zA-Z0-9]+(?:[._-][a-zA-Z0-9]+)*(?:/[a-zA-Z0-9]+(?:[._-][a-zA-Z0-9]+)*)*(?::[a-zA-Z0-9]+(?:[._-][a-zA-Z0-9]+)*)?(?:@sha256:[a-f0-9]{64})?$`
 	matched, err := regexp.MatchString(validImagePattern, image)
 	if err != nil {
 		return false

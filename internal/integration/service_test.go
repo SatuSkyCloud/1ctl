@@ -21,7 +21,7 @@ func TestServiceFlow(t *testing.T) {
 		}
 
 		var serviceID string
-		err := api.CreateService(service, &serviceID)
+		err := api.UpsertService(service, &serviceID)
 		if err != nil {
 			t.Fatalf("CreateService() error = %v", err)
 		}

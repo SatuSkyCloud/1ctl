@@ -1,36 +1,41 @@
-FROM golang:1.21-alpine as builder
+# Stage 1: Build the Go application
+FROM golang:1.23-alpine AS builder
 
-# Set the current working directory inside the container 
-WORKDIR /app
+# Move to working directory (/build).
+WORKDIR /build
 
-# Copy go mod and sum files 
+# Copy and download dependency using go mod.
 COPY go.mod go.sum ./
+RUN go mod download
 
-# Download all dependencies. Dependencies will be cached if the go.mod and the go.sum files are not changed 
-RUN go mod download && go mod tidy
-
-# Copy the source from the current directory to the working directory inside the container 
+# Copy the code into the container.
 COPY . .
 
-# Copy the .env file into the Docker image
-COPY .env .
+# Set necessary environment variables needed for our image and build the API server.
+ENV CGO_ENABLED=0 GOOS=linux GOARCH=amd64
+RUN go build -ldflags="-s -w" -o apiserver cmd/app/main.go
 
-# Build the Go app
-RUN CGO_ENABLED=0 GOOS=linux go build -a -installsuffix cgo -o main ./cmd/app/main.go
+# Stage 2: Production image
+FROM alpine:latest
 
-# Start a new stage from scratch
-FROM alpine:3.6
+# Copy necessary dependencies from builder stage
+COPY --from=builder /build/apiserver /
+COPY --from=builder /build/templates /templates
+COPY --from=builder /build/platform/migrations /platform/migrations
 
-WORKDIR /root/
+# Install additional dependencies needed
+RUN apk add --no-cache \
+    curl \
+    openssl \
+    git \
+    docker \
+    jq \
+    && curl -LO https://storage.googleapis.com/kubernetes-release/release/$(curl -s https://storage.googleapis.com/kubernetes-release/release/stable.txt)/bin/linux/amd64/kubectl \
+    && chmod +x ./kubectl \
+    && mv ./kubectl /usr/local/bin
 
-# Copy the Pre-built binary file from the previous stage
-COPY --from=builder /app/main .
-
-# Copy the .env file into the final image
-COPY --from=builder /app/.env .
-
-# Expose port 8080 to the outside world
+# Expose necessary port.
 EXPOSE 8080
 
-# Command to run the executable
-CMD ["./main"]
+# Command to run when starting the container.
+ENTRYPOINT ["/apiserver"]
