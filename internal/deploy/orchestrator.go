@@ -269,13 +269,28 @@ func upsertService(deploymentID string, opts DeploymentOptions, projectName, org
 }
 
 func upsertIngress(deploymentID string, serviceID string, opts DeploymentOptions, organization, projectName string) (string, error) {
-	// Generate domain name if not provided
-	domainName := opts.Domain
-	if domainName == "" {
-		var err error
-		domainName, err = api.GenerateDomainName(projectName)
-		if err != nil {
-			return "", utils.NewError(fmt.Sprintf("failed to generate domain name: %s", err.Error()), nil)
+	// Check if there's an existing ingress for this deployment
+	var domainName string
+	existingIngress, err := api.GetIngressByDeploymentID(deploymentID)
+	if err != nil {
+		utils.PrintInfo("No existing ingress found for deployment %s, will create new one: %s", deploymentID, err.Error())
+
+		// Generate domain name if not provided and no existing ingress
+		if opts.Domain == "" {
+			domainName, err = api.GenerateDomainName(projectName)
+			if err != nil {
+				return "", utils.NewError(fmt.Sprintf("failed to generate domain name: %s", err.Error()), nil)
+			}
+			utils.PrintInfo("Generated new domain: %s", domainName)
+		} else {
+			domainName = opts.Domain
+		}
+	} else {
+		// Use existing domain name if no explicit domain provided
+		if opts.Domain == "" {
+			domainName = existingIngress.DomainName
+		} else {
+			domainName = opts.Domain
 		}
 	}
 
@@ -294,12 +309,12 @@ func upsertIngress(deploymentID string, serviceID string, opts DeploymentOptions
 		Port:         port,
 	}
 
-	_, err = api.UpsertIngress(ingress)
+	ingressResp, err := api.UpsertIngress(ingress)
 	if err != nil {
 		return "", utils.NewError(fmt.Sprintf("failed to upsert ingress: %s", err.Error()), nil)
 	}
 
-	return domainName, nil
+	return ingressResp.DomainName, nil
 }
 
 func handleDependencies(deps []api.Dependency, userID, organization string, hostnames []string) error {

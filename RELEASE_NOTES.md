@@ -1,5 +1,34 @@
 # Release Notes
 
+## Version 0.2.1 (20-06-2025)
+
+### 🐛 Bug Fixes
+- **Fixed ingress domain management**: Resolved issue where ingress upsert operations were generating new domains instead of reusing existing ones
+  - Enhanced `upsertIngress` function to check for existing ingresses by deployment ID before creating new ones
+  - Added proper existing domain name reuse logic to prevent unnecessary domain generation
+  - Fixed Kubernetes error "ingress not found" by properly identifying and updating existing ingress resources
+  - Improved ingress update flow to use existing domain names and preserve ingress IDs
+  - Fixed ingress upsert response parsing to correctly handle backend's string response containing only the ingress ID
+
+### 🔧 Technical Improvements
+- **Enhanced Ingress API**: Added `GetIngressByDeploymentID` function to retrieve existing ingresses
+  - Leverages existing backend route `/ingresses/deploymentId/:deploymentId`
+  - Enables proper lookup of existing ingress resources during deployment updates
+  - Simplifies client-side logic by leveraging backend's existing upsert capabilities
+
+- **Improved Deployment Orchestration**: Enhanced ingress handling in deployment process
+  - Better separation between new ingress creation and existing ingress updates
+  - Consistent domain name handling across deployment scenarios
+  - Improved logging and error messaging for ingress operations
+  - Returns domain name from backend response to ensure consistency
+
+### 🔄 API Enhancements
+- **Ingress Management**: Streamlined ingress upsert operations to work seamlessly with backend logic
+  - Client now properly leverages backend's existing ingress detection by namespace and app label
+  - Reduced client-side complexity by relying on backend's robust upsert implementation
+  - Enhanced error handling and response processing for ingress operations
+  - Updated `UpsertIngress` to correctly unmarshal string ingress ID response from backend
+
 ## Version 0.2.0 (19-06-2025)
 
 ### ✨ Enhanced Command Structure

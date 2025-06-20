@@ -589,6 +589,26 @@ func GetIngressByDomainName(domainName string) (*Ingress, error) {
 	return &ingress, nil
 }
 
+// GetIngressByDeploymentID gets existing ingress by deployment ID
+func GetIngressByDeploymentID(deploymentID string) (*Ingress, error) {
+	var resp apiResponse
+	err := makeRequest("GET", fmt.Sprintf("/ingresses/deploymentId/%s", deploymentID), nil, &resp)
+	if err != nil {
+		return nil, err
+	}
+
+	data, err := json.Marshal(resp.Data)
+	if err != nil {
+		return nil, utils.NewError(fmt.Sprintf("failed to marshal response data: %s", err.Error()), nil)
+	}
+
+	var ingress Ingress
+	if err := json.Unmarshal(data, &ingress); err != nil {
+		return nil, utils.NewError(fmt.Sprintf("failed to unmarshal ingress: %s", err.Error()), nil)
+	}
+	return &ingress, nil
+}
+
 // Environment methods
 func GetEnvironmentsByNamespace(namespace string) ([]Environment, error) {
 	var resp apiResponse
@@ -707,8 +727,8 @@ func UpsertService(service Service, response *string) error {
 // UpsertIngress creates or updates an ingress and returns the ingress
 func UpsertIngress(ingress Ingress) (*Ingress, error) {
 	var resp apiResponse
-	var ingressResp Ingress
-	resp.Data = &ingressResp
+	var ingressIDStr string
+	resp.Data = &ingressIDStr
 
 	path := fmt.Sprintf("/ingresses/upsert/%s/%s", ingress.Namespace, ingress.AppLabel)
 	err := makeRequest("POST", path, ingress, &resp)
@@ -721,8 +741,18 @@ func UpsertIngress(ingress Ingress) (*Ingress, error) {
 		return nil, utils.NewError(fmt.Sprintf("failed to marshal response data: %s", err.Error()), nil)
 	}
 
-	if err := json.Unmarshal(data, &ingressResp); err != nil {
-		return nil, utils.NewError(fmt.Sprintf("failed to unmarshal ingress response: %s", err.Error()), nil)
+	// The backend returns just the ingress ID as a string
+	if err := json.Unmarshal(data, &ingressIDStr); err != nil {
+		return nil, utils.NewError(fmt.Sprintf("failed to unmarshal ingress ID: %s", err.Error()), nil)
 	}
-	return &ingressResp, nil
+
+	// Parse the ingress ID
+	ingressID, err := uuid.Parse(ingressIDStr)
+	if err != nil {
+		return nil, utils.NewError(fmt.Sprintf("failed to parse ingress ID: %s", err.Error()), nil)
+	}
+
+	// Return the ingress object with the ID set
+	ingress.IngressID = ingressID
+	return &ingress, nil
 }
