@@ -13,9 +13,9 @@ builds:
       - amd64
       - arm64
     ldflags:
-      - -X github.com/satuskycloud/1ctl/internal/version.Version={{.Version}}
-      - -X github.com/satuskycloud/1ctl/internal/version.CommitHash={{.Commit}}
-      - -X github.com/satuskycloud/1ctl/internal/version.BuildDate={{.Date}}
+      - -X 1ctl/internal/version.Version={{.Version}}
+      - -X 1ctl/internal/version.CommitHash={{.Commit}}
+      - -X 1ctl/internal/version.BuildDate={{.Date}}
 
   - id: 1ctl-windows-darwin
     main: ./cmd/1ctl/main.go
@@ -31,9 +31,9 @@ builds:
       - goos: darwin
         goarch: "386"
     ldflags:
-      - -X github.com/satuskycloud/1ctl/internal/version.Version={{.Version}}
-      - -X github.com/satuskycloud/1ctl/internal/version.CommitHash={{.Commit}}
-      - -X github.com/satuskycloud/1ctl/internal/version.BuildDate={{.Date}}
+      - -X 1ctl/internal/version.Version={{.Version}}
+      - -X 1ctl/internal/version.CommitHash={{.Commit}}
+      - -X 1ctl/internal/version.BuildDate={{.Date}}
 
 archives:
   - name_template: "1ctl-{{ .Version }}-{{ .Os }}-{{ .Arch }}"
