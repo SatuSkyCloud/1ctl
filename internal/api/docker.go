@@ -44,7 +44,6 @@ func UploadDockerImage(imagePath, projectName string) (string, error) {
 	defer file.Close()
 
 	config := config.GetConfig()
-	url := fmt.Sprintf("%s/docker/images/upload", config.ApiURL)
 
 	// Create multipart form
 	body := &bytes.Buffer{}
@@ -78,7 +77,7 @@ func UploadDockerImage(imagePath, projectName string) (string, error) {
 	writer.Close()
 
 	// Create request
-	req, err := http.NewRequest("POST", url, body)
+	req, err := http.NewRequest("POST", config.DockerApiURL, body)
 	if err != nil {
 		return "", utils.NewError(fmt.Sprintf("failed to create request: %s", err.Error()), nil)
 	}

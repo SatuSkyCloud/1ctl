@@ -1,8 +1,23 @@
 # Release Notes
 
+## Version 0.2.2 (08-08-2025)
+
+### ✨ New Features
+
+- **Enhanced Docker Image Upload**: Added support for large Docker image uploads (>500MB and <8GB)
+
+### 🔄 API Enhancements
+
+- **Docker Upload Infrastructure**: Migrated Docker image uploads to dedicated service
+  - Previous: `/docker/images/upload` endpoint on main API
+  - New: Direct upload to specialized Docker upload service
+  - Optimized for handling large binary transfers
+  - Supports file sizes from 500MB to 8GB
+
 ## Version 0.2.1 (20-06-2025)
 
 ### 🐛 Bug Fixes
+
 - **Fixed ingress domain management**: Resolved issue where ingress upsert operations were generating new domains instead of reusing existing ones
   - Enhanced `upsertIngress` function to check for existing ingresses by deployment ID before creating new ones
   - Added proper existing domain name reuse logic to prevent unnecessary domain generation
@@ -11,7 +26,9 @@
   - Fixed ingress upsert response parsing to correctly handle backend's string response containing only the ingress ID
 
 ### 🔧 Technical Improvements
+
 - **Enhanced Ingress API**: Added `GetIngressByDeploymentID` function to retrieve existing ingresses
+
   - Leverages existing backend route `/ingresses/deploymentId/:deploymentId`
   - Enables proper lookup of existing ingress resources during deployment updates
   - Simplifies client-side logic by leveraging backend's existing upsert capabilities
@@ -23,6 +40,7 @@
   - Returns domain name from backend response to ensure consistency
 
 ### 🔄 API Enhancements
+
 - **Ingress Management**: Streamlined ingress upsert operations to work seamlessly with backend logic
   - Client now properly leverages backend's existing ingress detection by namespace and app label
   - Reduced client-side complexity by relying on backend's robust upsert implementation
@@ -32,12 +50,15 @@
 ## Version 0.2.0 (19-06-2025)
 
 ### ✨ Enhanced Command Structure
+
 - **Simplified Deploy Command**: Removed `deploy create` subcommand and moved deployment flags directly to main `deploy` command
+
   - New usage: `1ctl deploy --cpu 100m --memory 20Mi --env HELLO=BYE --env SAY=WHAT`
   - Subcommands `list`, `get`, and `status` remain available
   - Enhanced validation with clear error messages for required flags
 
 - **Simplified Service Command**: Removed `service create` subcommand and moved service flags directly to main `service` command
+
   - New usage: `1ctl service --deployment-id=123 --name=myservice --port=8080 --namespace=myorg`
   - Subcommands `list` and `delete` remain available
   - Required flags: `--deployment-id`, `--name`, `--port`
@@ -48,42 +69,50 @@
   - Required flags: `--deployment-id`, `--domain`, `--app-label`, `--namespace`
 
 ### 🔄 API Enhancements
+
 - **Upsert Endpoints Migration**: Updated all resource creation to use upsert endpoints for idempotent operations
+
   - **Deployment**: `POST /deployments/upsert/:namespace/:appLabel` (namespace = organization, appLabel = app name)
   - **Service**: `POST /services/upsert/:namespace/:serviceName` (namespace = organization, serviceName = app name)
   - **Ingress**: `POST /ingresses/upsert/:namespace/:appLabel` (namespace = organization, appLabel = app name)
 
 - **API Client Improvements**: Replaced create functions with upsert functions
   - `CreateDeployment` → `UpsertDeployment`
-  - `CreateService` → `UpsertService`  
+  - `CreateService` → `UpsertService`
   - `CreateIngress` → `UpsertIngress`
   - Maintained same payload structure for backward compatibility
 
 ### 🔧 Technical Improvements
+
 - **Enhanced User Experience**: Streamlined command syntax eliminates unnecessary subcommand nesting
+
   - Direct flag access from main commands improves CLI ergonomics
   - Consistent command patterns across deploy, service, and ingress resources
   - Maintained backward compatibility for list/delete subcommands
 
 - **Comprehensive Test Updates**: Updated all test suites to reflect new command structure
+
   - Mock API functions updated to use upsert patterns
   - Integration tests migrated to new endpoint structure
   - Command tests updated with new handler functions
   - Maintained test coverage across all functionality
 
 - **Shell Completion Updates**: Updated all shell completion scripts for new command structure
+
   - **Bash**: Removed obsolete "create" subcommands, updated flag completions
   - **Zsh**: Enhanced completion with new command patterns
   - **Fish**: Updated subcommand and flag completion logic
   - **PowerShell**: Removed deprecated creation commands from completions
 
 - **Deployment Orchestrator**: Updated orchestration logic to use upsert operations
+
   - Service creation now uses `UpsertService` for idempotent operations
   - Ingress creation now uses `UpsertIngress` for consistent updates
   - Dependency handling updated with new upsert patterns
   - Improved error messages with operation context
 
 - **Enhanced Image Upload Reliability**: Added retry mechanism for Docker image uploads
+
   - Automatic retry up to 3 attempts on upload failures
   - Exponential backoff strategy (2, 4, 8 seconds between retries)
   - Clear progress indication and error reporting for each attempt
@@ -98,6 +127,7 @@
   - **Comprehensive Test Coverage**: Added extensive test cases for all multistage build scenarios
 
 ### 🛠️ Breaking Changes
+
 - **Command Structure**: Removed `create` subcommands from `deploy`, `service`, and `ingress` commands
   - Old: `1ctl deploy create --cpu 100m --memory 20Mi`
   - New: `1ctl deploy --cpu 100m --memory 20Mi`
@@ -109,13 +139,16 @@
 ## Version 0.1.8 (17-06-2025)
 
 ### ✨ New Features
+
 - **Machine Marketplace Discovery**: Added `machine available` command to browse and filter available machines for rent
   - Comprehensive filtering options: `--region`, `--zone`, `--min-cpu`, `--min-memory`, `--gpu`, `--recommended`, `--pricing-tier`
   - Enhanced display with pricing information, performance metrics, and recommendation indicators
   - Real-time availability status and resource specifications
 
 ### 🔧 Technical Improvements
+
 - **Updated Machine Model**: Synchronized frontend Machine model with enhanced backend structure
+
   - Changed `MachineID` from `uuid.UUID` to `string` type
   - Added new fields: `ID`, `Status`, `LastHealthCheck`, `Recommended`, `ResourceScore`
   - Added performance metrics: `CPUUsagePercent`, `MemoryUsagePercent`, `StorageUsagePercent`, `NetworkUsageGbps`
@@ -124,6 +157,7 @@
   - Added reliability metrics: `UptimePercent`, `ResponseTimeMs`, `NetworkMetricsType`
 
 - **Enhanced Hostname Mapping**: Updated deployment logic to use machine IDs instead of machine names
+
   - Both manual machine selection (`--machine` flag) and automatic selection now use machine IDs
   - Improved deduplication logic based on unique machine IDs
   - Ensures consistent backend integration with machine ID-based deployments
@@ -134,18 +168,21 @@
   - Separate optimized display format for available machines marketplace
 
 ### 🛠️ API Enhancements
+
 - Added `GetAvailableMachines()` API function for fetching monetized machines
 - Updated `MachineIDs` struct to use string array instead of UUID array
 
 ## Version 0.1.7 (12-06-2025)
 
 ### 🐛 Bug Fixes
+
 - **Fixed hostname deduplication for monetized machines**: When multiple machines share the same hostname (e.g., "1"), the system now properly preserves the original hostname instead of incrementing it (e.g., "1" stays "1" instead of becoming "2")
   - Added hostname deduplication logic for owner's machines in automatic selection
   - Added hostname deduplication logic for manually specified machines via `--machine` flag
   - Ensures consistent hostname behavior across both user-owned and monetized machine deployments
 
 ### 🔧 Technical Improvements
+
 - **Enhanced versioning system**: Fixed automatic version detection in build process
   - Updated `Taskfile.yml` to automatically detect version from Git tags instead of using hardcoded default
   - Added `task version` command to easily check current version information
@@ -155,11 +192,13 @@
 ## Version 0.1.6 (22-03-2025)
 
 ### 🔧 Technical Improvements
+
 - Version number fix only, no functional changes
 
 ## Version 0.1.5 (22-03-2025)
 
 ### 🔧 Technical Improvements
+
 - Updated API endpoints for better resource management:
   - Fix secret and environment creation endpoints from `/create` to `upsert`
 - Enforced minimum replica count for deployments (monetized).
@@ -167,6 +206,7 @@
 ## Version 0.1.4 (18-03-2025)
 
 ### 🔧 Technical Improvements
+
 - Improved machine allocation system:
   - Automatic machine assignment if no specific hostnames provided
   - System now intelligently selects the most cost-effective machine based on resource requirements
@@ -178,6 +218,7 @@
 ## Version 0.1.3 (17-01-2025)
 
 ### 🔧 Technical Improvements
+
 - Introduced centralized error handling with `utils.NewError`
 - Standardized error formatting across the codebase
 - Improved error messages with better context and readability
@@ -187,6 +228,7 @@
 ## Version 0.1.2 (13-01-2025)
 
 ### 🔧 Technical Improvements
+
 - Updated registry URL to use the new registry
 
 ## Version 0.1.1 (04-01-2025)
@@ -216,15 +258,18 @@ First public release of the Satusky CLI (1ctl) with core functionality for manag
 ### ✨ Features
 
 #### Authentication
+
 - Login with API token support
 - Automatic token management and validation
 - Session status checking
 - Secure logout functionality
 
 #### Machine Management
+
 - List and view machine details
 
 #### Deployment Management
+
 - Create new deployments with customizable resources
 - List and view deployment details
 - Support for multiple deployment environments
@@ -232,12 +277,14 @@ First public release of the Satusky CLI (1ctl) with core functionality for manag
 - Automatic Dockerfile detection and validation
 
 #### Container Management
+
 - Automated Docker image building
 - Secure registry authentication
 - Support for custom Dockerfiles
 - Automatic image versioning and tagging
 
 #### Resource Configuration
+
 - CPU and memory allocation management
 - Environment variables management
 - Volume management for persistent storage
@@ -245,17 +292,20 @@ First public release of the Satusky CLI (1ctl) with core functionality for manag
 - Service port configuration
 
 #### Service Management
+
 - Create and configure services
 - Automatic service discovery
 - Port mapping and exposure
 
 #### Networking
+
 - Ingress configuration and management
 - Custom domain support
 - SSL/TLS certificate management
 - Domain validation and verification
 
 ### 🔧 Technical Improvements
+
 - Color-coded CLI output for better user experience
 - Progress spinners for long-running operations
 - Structured error handling and user feedback
@@ -263,23 +313,27 @@ First public release of the Satusky CLI (1ctl) with core functionality for manag
 - Secure credential management
 
 ### 📚 Documentation
+
 - Basic usage documentation
 - Command reference
 - Installation instructions
 - Resource limits documentation
 
 ### 🔒 Security
+
 - Secure token storage
 - Encrypted communication
 - Input sanitization and validation
 
 ### 🐛 Known Issues
+
 - Broken CI (both unit and integration tests are not completed yet)
 - Darwin 386 builds are not supported
 
 ### 📋 Requirements
+
 - Go 1.21 or higher
 - Docker installed and running
 - Verified Satusky Control Panel account
 
-For detailed documentation, visit [https://docs.satusky.com/1ctl](https://docs.satusky.com/1ctl) 
+For detailed documentation, visit [https://docs.satusky.com/1ctl](https://docs.satusky.com/1ctl)

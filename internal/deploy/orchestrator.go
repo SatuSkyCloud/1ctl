@@ -92,7 +92,7 @@ func Deploy(opts DeploymentOptions) (*api.CreateDeploymentResponse, error) {
 
 	// Step 2: Create deployment
 	progress.step = 2
-	progress.message = "Creating deployment"
+	progress.message = "Creating/updating deployment"
 	progress.resource = projectName
 	progress.done = false
 	progress.print()

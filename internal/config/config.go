@@ -10,12 +10,13 @@ import (
 )
 
 const (
-	defaultAPIURL = "https://api.satusky.com/v1/cli"
+	defaultAPIURL          = "https://api.satusky.com/v1/cli"
+	defaultDockerUploadURL = "http://docker-upload.api.satusky.com"
 )
 
 type Config struct {
-	ApiURL  string
-	DevMode bool
+	ApiURL       string
+	DockerApiURL string
 }
 
 func init() {
@@ -30,12 +31,18 @@ func init() {
 
 func GetConfig() *Config {
 	config := &Config{
-		ApiURL: defaultAPIURL,
+		ApiURL:       defaultAPIURL,
+		DockerApiURL: defaultDockerUploadURL,
 	}
 
 	// Override API URL if explicitly set
 	if apiURL := os.Getenv("SATUSKY_API_URL"); apiURL != "" {
 		config.ApiURL = apiURL
+	}
+
+	// Override Docker API URL if explicitly set
+	if dockerURL := os.Getenv("SATUSKY_DOCKER_API_URL"); dockerURL != "" {
+		config.DockerApiURL = dockerURL
 	}
 
 	return config
