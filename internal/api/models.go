@@ -27,6 +27,7 @@ type TokenValidate struct {
 	UserConfigKey    string    `json:"user_config_key,omitempty"`
 	OrganizationID   uuid.UUID `json:"organization_id,omitempty"`
 	OrganizationName string    `json:"organization_name,omitempty"`
+	Namespace        string    `json:"namespace,omitempty"`
 }
 
 type Deployment struct {

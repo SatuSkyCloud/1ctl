@@ -71,8 +71,12 @@ func handleLogin(c *cli.Context) error {
 		return utils.NewError(fmt.Sprintf("failed to store user ID: %s", err.Error()), nil)
 	}
 
-	// Store namespace in context.json
-	if err := context.SetCurrentNamespace(result.OrganizationName); err != nil {
+	// Store namespace in context.json - use the full namespace if available, otherwise fall back to organization name
+	namespace := result.Namespace
+	if namespace == "" {
+		namespace = result.OrganizationName
+	}
+	if err := context.SetCurrentNamespace(namespace); err != nil {
 		return utils.NewError(fmt.Sprintf("failed to store namespace: %s", err.Error()), nil)
 	}
 

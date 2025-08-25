@@ -272,7 +272,7 @@ func LoginCLI(token string) (*TokenValidate, error) {
 		return nil, utils.NewError(fmt.Sprintf("failed to decode response: %s", err.Error()), nil)
 	}
 
-	userTokens, err := GetUserTokens(result.UserID.String())
+	userTokens, err := GetUserTokens(result.UserID.String(), result.OrganizationID.String())
 	if err != nil {
 		return nil, utils.NewError(fmt.Sprintf("failed to get user tokens: %s", err.Error()), nil)
 	}
@@ -281,26 +281,30 @@ func LoginCLI(token string) (*TokenValidate, error) {
 		return nil, utils.NewError("token not found", nil)
 	}
 
-	// Get user details
-	user, err := GetUserByEmail(result.UserEmail)
-	if err != nil {
-		return nil, utils.NewError(fmt.Sprintf("failed to fetch user details: %s", err.Error()), nil)
+	// The backend now returns the correct organization ID and name for the token
+	// No need to fetch additional user/org details if they're already provided
+	if result.OrganizationID.String() == "00000000-0000-0000-0000-000000000000" || result.OrganizationName == "" {
+		// Fallback: Get user details if organization info is missing
+		user, err := GetUserByEmail(result.UserEmail)
+		if err != nil {
+			return nil, utils.NewError(fmt.Sprintf("failed to fetch user details: %s", err.Error()), nil)
+		}
+
+		if len(user.OrganizationIDs) == 0 {
+			return nil, utils.NewError("user has no organizations", nil)
+		}
+
+		orgID := ToUUID(user.OrganizationIDs[0])
+
+		// Fetch organization details using the first organization ID
+		org, err := GetOrganizationByID(orgID)
+		if err != nil {
+			return nil, utils.NewError(fmt.Sprintf("failed to fetch organization details: %s", err.Error()), nil)
+		}
+
+		result.OrganizationID = org.OrganizationID
+		result.OrganizationName = org.OrganizationName
 	}
-
-	if len(user.OrganizationIDs) == 0 {
-		return nil, utils.NewError("user has no organizations", nil)
-	}
-
-	orgID := ToUUID(user.OrganizationIDs[0])
-
-	// Fetch organization details using the first organization ID
-	org, err := GetOrganizationByID(orgID)
-	if err != nil {
-		return nil, utils.NewError(fmt.Sprintf("failed to fetch organization details: %s", err.Error()), nil)
-	}
-
-	result.OrganizationID = org.OrganizationID
-	result.OrganizationName = org.OrganizationName
 
 	return &result, nil
 }
@@ -550,9 +554,9 @@ func GetUserByEmail(email string) (*User, error) {
 }
 
 // API Token methods
-func GetUserTokens(userID string) ([]APIToken, error) {
+func GetUserTokens(userID, orgID string) ([]APIToken, error) {
 	var resp apiResponse
-	err := makeRequest("GET", fmt.Sprintf("/api-tokens/list/%s", userID), nil, &resp)
+	err := makeRequest("GET", fmt.Sprintf("/api-tokens/list/%s/%s", userID, orgID), nil, &resp)
 	if err != nil {
 		return nil, err
 	}

@@ -4,6 +4,7 @@ import (
 	"1ctl/internal/context"
 	"1ctl/internal/utils"
 	"errors"
+	"fmt"
 	"os"
 
 	"github.com/joho/godotenv"
@@ -39,6 +40,7 @@ func GetConfig() *Config {
 	if apiURL := os.Getenv("SATUSKY_API_URL"); apiURL != "" {
 		config.ApiURL = apiURL
 	}
+	fmt.Println("Using API URL:", config.ApiURL)
 
 	// Override Docker API URL if explicitly set
 	if dockerURL := os.Getenv("SATUSKY_DOCKER_API_URL"); dockerURL != "" {
