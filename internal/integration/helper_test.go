@@ -26,6 +26,15 @@ func setupTestAuth(t *testing.T) {
 	if err := context.SetToken(token); err != nil {
 		t.Fatalf("Failed to set token: %v", err)
 	}
+	// Set test user ID for deployment operations
+	testUserID := uuid.New().String()
+	if err := context.SetUserID(testUserID); err != nil {
+		t.Fatalf("Failed to set user ID: %v", err)
+	}
+	// Set test organization context
+	if err := context.SetCurrentOrganization("test-org-id", "Test Org", "test-org"); err != nil {
+		t.Fatalf("Failed to set organization: %v", err)
+	}
 }
 
 // setupTestDockerfile creates a test Dockerfile

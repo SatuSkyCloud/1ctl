@@ -46,8 +46,11 @@ func TestHandleCreateIngress(t *testing.T) {
 			name: "valid ingress",
 			flags: map[string]string{
 				"deployment-id": uuid.New().String(),
+				"service-id":    uuid.New().String(),
 				"domain":        "test.example.com",
 				"custom-dns":    "true",
+				"app-label":     "test-app",
+				"namespace":     "test-namespace",
 			},
 			wantErr: false,
 		},

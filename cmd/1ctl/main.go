@@ -26,6 +26,7 @@ func createApp() *cli.App {
 		// TODO: commands for deploy marketplace apps
 		Commands: []*cli.Command{
 			commands.AuthCommand(),
+			commands.OrgCommand(),
 			commands.DeployCommand(),
 			commands.ServiceCommand(),
 			commands.SecretCommand(),
@@ -41,6 +42,7 @@ func createApp() *cli.App {
 
 			// Skip token validation for these cases
 			if cmdName == "auth" ||
+				cmdName == "org" ||
 				cmdName == "completion" ||
 				cmdName == "help" ||
 				c.Bool("help") ||

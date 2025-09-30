@@ -83,7 +83,52 @@ func TestContextOperations(t *testing.T) {
 		}
 	})
 
-	// Test file persistence
+	// Test organization ID operations
+	t.Run("organization ID operations", func(t *testing.T) {
+		testOrgID := "org-123-uuid"
+		if err := SetCurrentOrgID(testOrgID); err != nil {
+			t.Fatalf("SetCurrentOrgID() error = %v", err)
+		}
+
+		if got := GetCurrentOrgID(); got != testOrgID {
+			t.Errorf("GetCurrentOrgID() = %v, want %v", got, testOrgID)
+		}
+	})
+
+	// Test organization name operations
+	t.Run("organization name operations", func(t *testing.T) {
+		testOrgName := "Test Organization"
+		if err := SetCurrentOrgName(testOrgName); err != nil {
+			t.Fatalf("SetCurrentOrgName() error = %v", err)
+		}
+
+		if got := GetCurrentOrgName(); got != testOrgName {
+			t.Errorf("GetCurrentOrgName() = %v, want %v", got, testOrgName)
+		}
+	})
+
+	// Test SetCurrentOrganization (sets all three at once)
+	t.Run("set current organization", func(t *testing.T) {
+		testOrgID := "org-456-uuid"
+		testOrgName := "Complete Org"
+		testNamespace := "complete-org-namespace"
+
+		if err := SetCurrentOrganization(testOrgID, testOrgName, testNamespace); err != nil {
+			t.Fatalf("SetCurrentOrganization() error = %v", err)
+		}
+
+		if got := GetCurrentOrgID(); got != testOrgID {
+			t.Errorf("GetCurrentOrgID() = %v, want %v", got, testOrgID)
+		}
+		if got := GetCurrentOrgName(); got != testOrgName {
+			t.Errorf("GetCurrentOrgName() = %v, want %v", got, testOrgName)
+		}
+		if got := GetCurrentNamespace(); got != testNamespace {
+			t.Errorf("GetCurrentNamespace() = %v, want %v", got, testNamespace)
+		}
+	})
+
+	// Test file persistence (after SetCurrentOrganization was called)
 	t.Run("context file persistence", func(t *testing.T) {
 		contextFile := filepath.Join(configDir, "context.json")
 		data, err := os.ReadFile(contextFile)
@@ -96,11 +141,22 @@ func TestContextOperations(t *testing.T) {
 			t.Fatalf("Failed to unmarshal context: %v", err)
 		}
 
+		// After SetCurrentOrganization, namespace should be "complete-org-namespace"
+		expectedNamespace := "complete-org-namespace"
+		expectedOrgID := "org-456-uuid"
+		expectedOrgName := "Complete Org"
+
 		if ctx.Token != testToken {
 			t.Errorf("Persisted token = %v, want %v", ctx.Token, testToken)
 		}
-		if ctx.CurrentNamespace != testNamespace {
-			t.Errorf("Persisted namespace = %v, want %v", ctx.CurrentNamespace, testNamespace)
+		if ctx.CurrentNamespace != expectedNamespace {
+			t.Errorf("Persisted namespace = %v, want %v", ctx.CurrentNamespace, expectedNamespace)
+		}
+		if ctx.CurrentOrgID != expectedOrgID {
+			t.Errorf("Persisted org ID = %v, want %v", ctx.CurrentOrgID, expectedOrgID)
+		}
+		if ctx.CurrentOrgName != expectedOrgName {
+			t.Errorf("Persisted org name = %v, want %v", ctx.CurrentOrgName, expectedOrgName)
 		}
 		if ctx.UserID != testUserID {
 			t.Errorf("Persisted user ID = %v, want %v", ctx.UserID, testUserID)

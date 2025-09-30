@@ -47,8 +47,18 @@ func IssuerCommand() *cli.Command {
 }
 
 func handleCreateIssuer(c *cli.Context) error {
+	deploymentIDStr := c.String("deployment-id")
+	if deploymentIDStr == "" {
+		return utils.NewError("deployment-id is required", nil)
+	}
+
+	deploymentID, err := uuid.Parse(deploymentIDStr)
+	if err != nil {
+		return utils.NewError(fmt.Sprintf("invalid deployment-id: %s", err.Error()), nil)
+	}
+
 	issuer := api.Issuer{
-		DeploymentID: uuid.MustParse(c.String("deployment-id")),
+		DeploymentID: deploymentID,
 		UserEmail:    c.String("email"),
 		Environment:  c.String("environment"),
 		Namespace:    context.GetCurrentNamespace(),

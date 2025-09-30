@@ -102,6 +102,18 @@ func handleUpsertIngress(c *cli.Context) error {
 		return utils.NewError("--namespace flag is required for ingress", nil)
 	}
 
+	deploymentIDStr := c.String("deployment-id")
+	deploymentID, err := uuid.Parse(deploymentIDStr)
+	if err != nil {
+		return utils.NewError(fmt.Sprintf("invalid deployment-id: %s", err.Error()), nil)
+	}
+
+	serviceIDStr := c.String("service-id")
+	serviceID, err := uuid.Parse(serviceIDStr)
+	if err != nil {
+		return utils.NewError(fmt.Sprintf("invalid service-id: %s", err.Error()), nil)
+	}
+
 	port, err := api.SafeInt32(c.Int("port"))
 	if err != nil {
 		return utils.NewError("Invalid port number", err)
@@ -113,8 +125,8 @@ func handleUpsertIngress(c *cli.Context) error {
 	}
 
 	ingress := api.Ingress{
-		DeploymentID: uuid.MustParse(c.String("deployment-id")),
-		ServiceID:    uuid.MustParse(c.String("service-id")),
+		DeploymentID: deploymentID,
+		ServiceID:    serviceID,
 		AppLabel:     c.String("app-label"),
 		Namespace:    c.String("namespace"),
 		DomainName:   c.String("domain"),

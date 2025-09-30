@@ -11,7 +11,9 @@ import (
 )
 
 type CLIContext struct {
-	CurrentNamespace string `json:"organization"`
+	CurrentNamespace string `json:"organization"` // Keep for backwards compatibility (stores namespace)
+	CurrentOrgID     string `json:"current_org_id,omitempty"`
+	CurrentOrgName   string `json:"current_org_name,omitempty"`
 	Token            string `json:"token"`
 	UserConfigKey    string `json:"user_config_key"`
 	UserID           string `json:"user_id"`
@@ -149,6 +151,61 @@ func GetUserConfigKey() string {
 func SetUserConfigKey(userConfigKey string) error {
 	return saveContext(func(ctx *CLIContext) {
 		ctx.UserConfigKey = userConfigKey
+	})
+}
+
+// GetCurrentOrgID returns the current organization ID from context.json
+func GetCurrentOrgID() string {
+	contextFile := filepath.Join(configDir, "context.json")
+	data, err := os.ReadFile(contextFile)
+	if err != nil {
+		return ""
+	}
+
+	var ctx CLIContext
+	if err := json.Unmarshal(data, &ctx); err != nil {
+		return ""
+	}
+
+	return ctx.CurrentOrgID
+}
+
+// SetCurrentOrgID saves the organization ID to context.json
+func SetCurrentOrgID(orgID string) error {
+	return saveContext(func(ctx *CLIContext) {
+		ctx.CurrentOrgID = orgID
+	})
+}
+
+// GetCurrentOrgName returns the current organization name from context.json
+func GetCurrentOrgName() string {
+	contextFile := filepath.Join(configDir, "context.json")
+	data, err := os.ReadFile(contextFile)
+	if err != nil {
+		return ""
+	}
+
+	var ctx CLIContext
+	if err := json.Unmarshal(data, &ctx); err != nil {
+		return ""
+	}
+
+	return ctx.CurrentOrgName
+}
+
+// SetCurrentOrgName saves the organization name to context.json
+func SetCurrentOrgName(orgName string) error {
+	return saveContext(func(ctx *CLIContext) {
+		ctx.CurrentOrgName = orgName
+	})
+}
+
+// SetCurrentOrganization saves both org ID, name, and namespace to context.json
+func SetCurrentOrganization(orgID, orgName, namespace string) error {
+	return saveContext(func(ctx *CLIContext) {
+		ctx.CurrentOrgID = orgID
+		ctx.CurrentOrgName = orgName
+		ctx.CurrentNamespace = namespace
 	})
 }
 

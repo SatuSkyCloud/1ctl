@@ -21,12 +21,15 @@ type TokenValidate struct {
 	Valid            bool      `json:"valid"`
 	ExpiresAt        time.Time `json:"expires_at"`
 	IsActive         bool      `json:"is_active"`
-	TokenID          uuid.UUID `json:"token_id,omitempty"`
-	UserID           uuid.UUID `json:"user_id,omitempty"`
+	TokenID          string    `json:"token_id,omitempty"`
+	UserID           string    `json:"user_id,omitempty"`
+	Token            string    `json:"token,omitempty"`
 	UserEmail        string    `json:"user_email,omitempty"`
 	UserConfigKey    string    `json:"user_config_key,omitempty"`
-	OrganizationID   uuid.UUID `json:"organization_id,omitempty"`
+	OrganizationID   string    `json:"organization_id,omitempty"`
 	OrganizationName string    `json:"organization_name,omitempty"`
+	Namespace        string    `json:"namespace,omitempty"`
+	Message          string    `json:"message,omitempty"`
 }
 
 type Deployment struct {
@@ -159,6 +162,15 @@ type User struct {
 	OrganizationIDs []string  `json:"organization_ids"`
 	CreatedAt       time.Time `json:"created_at"`
 	UpdatedAt       time.Time `json:"updated_at"`
+}
+
+type UserProfile struct {
+	UserID       string    `json:"user_id"`
+	Email        string    `json:"email"`
+	Name         string    `json:"name"`
+	Organization string    `json:"organization"`
+	Role         string    `json:"role"`
+	CreatedAt    time.Time `json:"created_at"`
 }
 
 type DnsConfigType string

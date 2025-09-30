@@ -9,6 +9,7 @@ A command-line tool for managing containerized applications with Satusky Cloud P
 Download the latest release for your platform:
 
 #### Linux (64-bit)
+
 ```bash
 # Get latest version
 VERSION=$(curl -s https://api.github.com/repos/SatuSkyCloud/1ctl/releases/latest | jq -r .tag_name)
@@ -23,6 +24,7 @@ rm 1ctl.tar.gz
 ```
 
 #### macOS
+
 ```bash
 # Get latest version
 VERSION=$(curl -s https://api.github.com/repos/SatuSkyCloud/1ctl/releases/latest | jq -r .tag_name)
@@ -44,13 +46,16 @@ rm 1ctl.tar.gz
 ```
 
 #### Windows
+
 1. Download the latest release from [SatuSky 1ctl Releases](https://github.com/SatuSkyCloud/1ctl/releases/latest)
 2. Extract the zip file
 3. Rename the executable to `1ctl.exe`
 4. Add to your PATH
 
 ### Option 2: Build from Source
+
 Requires Go 1.21 or higher:
+
 ```bash
 git clone https://github.com/satuskycloud/1ctl.git
 cd 1ctl
@@ -120,6 +125,7 @@ jobs:
 1. Get your API token from [Satusky Control Panel](https://cloud.satusky.com/token)
 
 2. Authenticate:
+
 ```bash
 1ctl auth login --token=your_api_token
 
@@ -127,11 +133,15 @@ jobs:
 export SATUSKY_API_KEY=your_api_token
 1ctl auth login
 
+# check authentication status (includes org info)
+1ctl auth status
+
 # logout
 1ctl auth logout
 ```
 
 3. Deploy your first application:
+
 ```bash
 # Navigate to your project directory with a Dockerfile
 cd your-project
@@ -143,6 +153,7 @@ cd your-project
 ## Usage Examples
 
 ### Deployments
+
 ```bash
 # Create a deployment
 1ctl deploy create --cpu=2 --memory=512Mi --domain=example.com --project=myproject
@@ -155,6 +166,7 @@ cd your-project
 ```
 
 ### Services
+
 ```bash
 # Create a service
 1ctl service create --deployment-id=123 --name=myapp --port=8080 --project=test-genesis-org
@@ -167,6 +179,7 @@ cd your-project
 ```
 
 ### Secrets
+
 ```bash
 # Create a secret
 1ctl secret create --deployment-id=123 --name=mysecret --env="KEY1=value1" --env="KEY2=value2" --project=test-genesis-org
@@ -176,6 +189,7 @@ cd your-project
 ```
 
 ### Environment Variables
+
 ```bash
 # Create environment variables
 1ctl env create --deployment-id=123 --name=myenv --env="DB_HOST=localhost" --env="DB_PORT=5432" --project=test-genesis-org
@@ -190,6 +204,7 @@ cd your-project
 ```
 
 ### Ingress/DNS
+
 ```bash
 # Create ingress
 1ctl ingress create --deployment-id=123 --domain=myapp.example.com --custom-dns=true
@@ -201,7 +216,21 @@ cd your-project
 1ctl ingress delete --ingress-id=789
 ```
 
+### Organizations (Multi-Tenant)
+
+```bash
+# View current organization
+1ctl org current
+
+# Switch to a different organization (for multi-org users)
+1ctl org switch --org-id=<organization-uuid>
+
+# Check authentication status (shows current org)
+1ctl auth status
+```
+
 ### Machines
+
 ```bash
 # List machines
 1ctl machine list
@@ -211,6 +240,7 @@ cd your-project
 ```
 
 ### Help & Version
+
 ```bash
 # Get help
 1ctl --help

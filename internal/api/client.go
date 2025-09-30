@@ -258,7 +258,6 @@ func LoginCLI(token string) (*TokenValidate, error) {
 	}
 
 	request.Header.Set("Content-Type", "application/json")
-	request.Header.Set("x-satusky-api-key", token)
 
 	client := &http.Client{}
 	resp, err := client.Do(request)
@@ -267,40 +266,19 @@ func LoginCLI(token string) (*TokenValidate, error) {
 	}
 	defer resp.Body.Close()
 
+	if resp.StatusCode != 200 {
+		bodyBytes, _ := io.ReadAll(resp.Body)
+		return nil, utils.NewError(fmt.Sprintf("login failed with status %d: %s", resp.StatusCode, string(bodyBytes)), nil)
+	}
+
 	var result TokenValidate
 	if err := json.NewDecoder(resp.Body).Decode(&result); err != nil {
 		return nil, utils.NewError(fmt.Sprintf("failed to decode response: %s", err.Error()), nil)
 	}
 
-	userTokens, err := GetUserTokens(result.UserID.String())
-	if err != nil {
-		return nil, utils.NewError(fmt.Sprintf("failed to get user tokens: %s", err.Error()), nil)
+	if !result.Valid {
+		return nil, utils.NewError("invalid token", nil)
 	}
-
-	if len(userTokens) == 0 {
-		return nil, utils.NewError("token not found", nil)
-	}
-
-	// Get user details
-	user, err := GetUserByEmail(result.UserEmail)
-	if err != nil {
-		return nil, utils.NewError(fmt.Sprintf("failed to fetch user details: %s", err.Error()), nil)
-	}
-
-	if len(user.OrganizationIDs) == 0 {
-		return nil, utils.NewError("user has no organizations", nil)
-	}
-
-	orgID := ToUUID(user.OrganizationIDs[0])
-
-	// Fetch organization details using the first organization ID
-	org, err := GetOrganizationByID(orgID)
-	if err != nil {
-		return nil, utils.NewError(fmt.Sprintf("failed to fetch organization details: %s", err.Error()), nil)
-	}
-
-	result.OrganizationID = org.OrganizationID
-	result.OrganizationName = org.OrganizationName
 
 	return &result, nil
 }
@@ -453,7 +431,7 @@ func CreateIssuer(issuer Issuer) (*Issuer, error) {
 	var issuerResp Issuer
 	resp.Data = &issuerResp
 
-	err := makeRequest("POST", "/issuers/create", issuer, &resp)
+	err := makeRequest("POST", "/issuers/upsert", issuer, &resp)
 	if err != nil {
 		return nil, err
 	}
@@ -549,10 +527,30 @@ func GetUserByEmail(email string) (*User, error) {
 	return &user, nil
 }
 
-// API Token methods
-func GetUserTokens(userID string) ([]APIToken, error) {
+// GetUserProfile gets the current user's profile with organization information
+func GetUserProfile() (*UserProfile, error) {
 	var resp apiResponse
-	err := makeRequest("GET", fmt.Sprintf("/api-tokens/list/%s", userID), nil, &resp)
+	err := makeRequest("GET", "/users/profile", nil, &resp)
+	if err != nil {
+		return nil, err
+	}
+
+	data, err := json.Marshal(resp.Data)
+	if err != nil {
+		return nil, utils.NewError(fmt.Sprintf("failed to marshal response data: %s", err.Error()), nil)
+	}
+
+	var profile UserProfile
+	if err := json.Unmarshal(data, &profile); err != nil {
+		return nil, utils.NewError(fmt.Sprintf("failed to unmarshal user profile: %s", err.Error()), nil)
+	}
+	return &profile, nil
+}
+
+// API Token methods
+func GetUserTokens(userID string, orgID string) ([]APIToken, error) {
+	var resp apiResponse
+	err := makeRequest("GET", fmt.Sprintf("/api-tokens/list/%s/%s", userID, orgID), nil, &resp)
 	if err != nil {
 		return nil, err
 	}

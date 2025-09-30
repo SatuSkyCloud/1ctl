@@ -67,13 +67,17 @@ func handleLogin(c *cli.Context) error {
 	}
 
 	// Store user ID in context.json
-	if err := context.SetUserID(result.UserID.String()); err != nil {
+	if err := context.SetUserID(result.UserID); err != nil {
 		return utils.NewError(fmt.Sprintf("failed to store user ID: %s", err.Error()), nil)
 	}
 
-	// Store namespace in context.json
-	if err := context.SetCurrentNamespace(result.OrganizationName); err != nil {
-		return utils.NewError(fmt.Sprintf("failed to store namespace: %s", err.Error()), nil)
+	// Store organization info in context.json
+	namespace := result.Namespace
+	if namespace == "" {
+		namespace = result.OrganizationName
+	}
+	if err := context.SetCurrentOrganization(result.OrganizationID, result.OrganizationName, namespace); err != nil {
+		return utils.NewError(fmt.Sprintf("failed to store organization info: %s", err.Error()), nil)
 	}
 
 	// Store user config key in context.json
@@ -135,6 +139,8 @@ func handleAuthStatus(c *cli.Context) error {
 	utils.PrintSuccess("Authenticated with Satusky\n")
 	utils.PrintStatusLine("User Email", result.UserEmail)
 	utils.PrintStatusLine("Organization", result.OrganizationName)
+	utils.PrintStatusLine("Organization ID", result.OrganizationID)
+	utils.PrintStatusLine("Namespace", result.Namespace)
 	utils.PrintStatusLine("Token expires", fmt.Sprintf("in %.0f days", daysUntilExpiry))
 	return nil
 }

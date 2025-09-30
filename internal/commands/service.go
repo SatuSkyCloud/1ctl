@@ -84,12 +84,18 @@ func handleUpsertService(c *cli.Context) error {
 		return utils.NewError("--port flag is required for service", nil)
 	}
 
+	deploymentIDStr := c.String("deployment-id")
+	deploymentID, err := uuid.Parse(deploymentIDStr)
+	if err != nil {
+		return utils.NewError(fmt.Sprintf("invalid deployment-id: %s", err.Error()), nil)
+	}
+
 	port, err := api.SafeInt32(c.Int("port"))
 	if err != nil {
 		return utils.NewError("Invalid port number", err)
 	}
 	service := api.Service{
-		DeploymentID: uuid.MustParse(c.String("deployment-id")),
+		DeploymentID: deploymentID,
 		ServiceName:  c.String("name"),
 		Port:         port,
 		Namespace:    c.String("namespace"),

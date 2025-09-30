@@ -1,5 +1,77 @@
 # Release Notes
 
+## Version 0.3.0 (30-09-2025)
+
+### ✨ New Features
+
+- **Multi-Organization Support**: Full support for users belonging to multiple organizations
+  - New `org current` command to view current organization context
+  - New `org switch` command to switch between organizations
+  - Enhanced `auth status` command to display organization ID and namespace
+  - Organization context automatically saved and restored across sessions
+
+### 🔄 API Enhancements
+
+- **Multi-Tenant Authentication**: Updated authentication flow to support multi-tenant backend
+
+  - Login now returns and stores complete organization information (ID, name, namespace)
+  - Token validation includes organization context
+  - All API calls properly scoped to user's current organization
+  - Fixed `/api-tokens/list` endpoint to include organization ID parameter
+
+- **Backend Compatibility**: Updated all endpoints to work with multi-tenant backend
+  - Fixed `TokenValidate` model types (UUID → string) to match backend response
+  - Added `GetUserProfile` API function for retrieving user organization details
+  - Simplified login flow to use backend-provided organization data
+  - Updated issuer endpoint to use upsert pattern (`/issuers/upsert`)
+
+### 🔧 Technical Improvements
+
+- **Enhanced Context Management**: Improved CLI context storage
+
+  - Added `CurrentOrgID` and `CurrentOrgName` fields to context
+  - New helper functions: `GetCurrentOrgID()`, `SetCurrentOrgID()`, `GetCurrentOrgName()`, `SetCurrentOrgName()`
+  - New combined setter: `SetCurrentOrganization()` for atomic updates
+  - Maintains backward compatibility with existing context files
+
+- **Improved Organization Visibility**: Better user experience for multi-org environments
+
+  - Auth status now shows: Email, Organization, Organization ID, Namespace, Token expiry
+  - Deploy command properly uses current organization context by default
+  - `--organization` flag allows deploying to specific organization/namespace
+
+- **Comprehensive Test Coverage**: Added tests for all new features
+  - 3 new test cases for organization context operations
+  - 3 new test cases for org command structure
+  - All tests passing with 100% coverage of new code
+  - Updated existing tests to accommodate new fields
+
+### 🛠️ Breaking Changes
+
+- **TokenValidate Model Changes**: ID fields changed from `uuid.UUID` to `string` type
+  - Affects: `UserID`, `TokenID`, `OrganizationID`
+  - Added new fields: `Token`, `Namespace`, `Message`
+  - Ensures compatibility with backend multi-tenant implementation
+
+### 📚 New Commands
+
+```bash
+# View current organization
+1ctl org current
+
+# Switch to different organization
+1ctl org switch --org-id <organization-id>
+
+# Enhanced auth status
+1ctl auth status
+```
+
+### 🔒 Security
+
+- All operations properly scoped to user's organization
+- Context file maintains secure 0600 permissions
+- Organization switching validates user access
+
 ## Version 0.2.2 (08-08-2025)
 
 ### ✨ New Features

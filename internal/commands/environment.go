@@ -65,6 +65,16 @@ func EnvironmentCommand() *cli.Command {
 }
 
 func handleCreateEnvironment(c *cli.Context) error {
+	deploymentIDStr := c.String("deployment-id")
+	if deploymentIDStr == "" {
+		return utils.NewError("deployment-id is required", nil)
+	}
+
+	deploymentID, err := uuid.Parse(deploymentIDStr)
+	if err != nil {
+		return utils.NewError(fmt.Sprintf("invalid deployment-id: %s", err.Error()), nil)
+	}
+
 	envVars := c.StringSlice("env")
 	keyValues := make([]api.KeyValuePair, 0, len(envVars))
 
@@ -80,7 +90,7 @@ func handleCreateEnvironment(c *cli.Context) error {
 	}
 
 	env := api.Environment{
-		DeploymentID: uuid.MustParse(c.String("deployment-id")),
+		DeploymentID: deploymentID,
 		AppLabel:     c.String("name"),
 		KeyValues:    keyValues,
 	}

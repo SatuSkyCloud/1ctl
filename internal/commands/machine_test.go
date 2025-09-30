@@ -13,13 +13,14 @@ func TestMachineCommand(t *testing.T) {
 		t.Errorf("Expected command name 'machine', got %s", cmd.Name)
 	}
 
-	if cmd.Usage != "Check your machines and their status" {
-		t.Errorf("Expected usage 'Check your machines and their status', got %s", cmd.Usage)
+	if cmd.Usage != "Manage machines and check availability" {
+		t.Errorf("Expected usage 'Manage machines and check availability', got %s", cmd.Usage)
 	}
 
 	// Check subcommands
 	expectedSubcommands := map[string]bool{
-		"list": false,
+		"list":      false,
+		"available": false,
 	}
 
 	for _, subcmd := range cmd.Subcommands {
