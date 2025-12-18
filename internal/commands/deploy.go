@@ -59,6 +59,36 @@ func DeployCommand() *cli.Command {
 			Name:  "volume-mount",
 			Usage: "Storage mount path",
 		},
+		// Multi-cluster deployment flags
+		&cli.BoolFlag{
+			Name:  "multicluster",
+			Usage: "Enable multi-cluster deployment across KL and BKI clusters",
+		},
+		&cli.StringFlag{
+			Name:  "multicluster-mode",
+			Usage: "Multi-cluster mode: 'active-active' or 'active-passive' (default: active-passive)",
+			Value: "active-passive",
+		},
+		&cli.BoolFlag{
+			Name:  "backup-enabled",
+			Usage: "Enable backups (auto-enabled for active-passive, optional for active-active)",
+			Value: true,
+		},
+		&cli.StringFlag{
+			Name:  "backup-schedule",
+			Usage: "Backup frequency: 'hourly', 'daily', 'weekly' (default: daily)",
+			Value: "daily",
+		},
+		&cli.StringFlag{
+			Name:  "backup-retention",
+			Usage: "Backup retention: '24h', '72h', '168h', '720h' (default: 168h)",
+			Value: "168h",
+		},
+		&cli.IntFlag{
+			Name:  "backup-priority-cluster",
+			Usage: "Which cluster performs backups: 1 (Primary/KL) or 2 (Secondary/BKI) (default: 1)",
+			Value: 1,
+		},
 	}
 
 	return &cli.Command{
@@ -253,6 +283,16 @@ func prepareDeploymentOptions(c *cli.Context) (deploy.DeploymentOptions, error) 
 			MountPath:   c.String("volume-mount"),
 		}
 		opts.Volume = vol
+	}
+
+	// Handle multicluster configuration
+	if c.Bool("multicluster") {
+		opts.MulticlusterEnabled = true
+		opts.MulticlusterMode = c.String("multicluster-mode")
+		opts.BackupEnabled = c.Bool("backup-enabled")
+		opts.BackupSchedule = c.String("backup-schedule")
+		opts.BackupRetention = c.String("backup-retention")
+		opts.BackupPriorityCluster = c.Int("backup-priority-cluster")
 	}
 
 	return opts, nil

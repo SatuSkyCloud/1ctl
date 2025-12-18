@@ -239,6 +239,38 @@ func mainDeploy(opts DeploymentOptions, image, name, userID, organization string
 		VolumeEnabled: opts.VolumeEnabled,
 	}
 
+	// Add multicluster configuration if enabled
+	if opts.MulticlusterEnabled {
+		scheduleMap := map[string]string{
+			"hourly": "0 * * * *",
+			"daily":  "0 0 * * *",
+			"weekly": "0 18 * * 6", // 2 AM MYT Sunday
+		}
+
+		isActivePassive := opts.MulticlusterMode == "active-passive"
+
+		// For active-passive: backup is always enabled
+		// For active-active: backup is optional (user can toggle via --backup-enabled)
+		backupEnabled := isActivePassive || opts.BackupEnabled
+
+		// Priority cluster defaults to 1 (primary) if not set
+		priorityCluster := opts.BackupPriorityCluster
+		if priorityCluster <= 0 {
+			priorityCluster = 1
+		}
+
+		deployment.MulticlusterConfig = &api.MulticlusterConfig{
+			Enabled:               true,
+			Mode:                  opts.MulticlusterMode,
+			BackupEnabled:         backupEnabled,
+			BackupSchedule:        scheduleMap[opts.BackupSchedule],
+			BackupRetention:       opts.BackupRetention,
+			BackupPriorityCluster: priorityCluster,
+			FailoverEnabled:       isActivePassive,
+			RestoreOnFailover:     isActivePassive,
+		}
+	}
+
 	var deploymentID string
 	if err := api.UpsertDeployment(deployment, &deploymentID); err != nil {
 		return "", utils.NewError(fmt.Sprintf("failed to upsert deployment: %s", err.Error()), nil)

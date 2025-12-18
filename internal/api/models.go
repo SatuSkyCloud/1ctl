@@ -32,34 +32,48 @@ type TokenValidate struct {
 	Message          string    `json:"message,omitempty"`
 }
 
+// MulticlusterConfig represents multi-cluster deployment configuration
+type MulticlusterConfig struct {
+	Enabled               bool   `json:"enabled"`
+	Mode                  string `json:"mode"`                              // "active-active" or "active-passive"
+	TargetClusters        string `json:"target_clusters,omitempty"`         // "all" or comma-separated cluster names
+	BackupEnabled         bool   `json:"backup_enabled,omitempty"`          // Enable Velero backups (works for both modes)
+	BackupSchedule        string `json:"backup_schedule,omitempty"`         // Cron schedule (e.g., "0 0 * * *")
+	BackupRetention       string `json:"backup_retention,omitempty"`        // Duration (e.g., "168h" for 7 days)
+	BackupPriorityCluster int    `json:"backup_priority_cluster,omitempty"` // Which priority cluster performs backups (1 = highest priority)
+	FailoverEnabled       bool   `json:"failover_enabled,omitempty"`        // Enable automatic failover (active-passive only)
+	RestoreOnFailover     bool   `json:"restore_on_failover,omitempty"`     // Restore from backup on failover (active-passive only)
+}
+
 type Deployment struct {
-	DeploymentID       uuid.UUID `json:"deployment_id,omitempty"`
-	UserID             uuid.UUID `json:"user_id"`
-	Hostnames          []string  `json:"hostnames"`
-	Type               string    `json:"type"`
-	Zone               string    `json:"zone"`
-	Region             string    `json:"region"`
-	SSD                string    `json:"ssd"`
-	GPU                string    `json:"gpu"`
-	Namespace          string    `json:"namespace"`
-	Replicas           int32     `json:"replicas"`
-	Image              string    `json:"image"`
-	AppLabel           string    `json:"app_label"`
-	Port               int32     `json:"port"`
-	CpuRequest         string    `json:"cpu_request"`
-	MemoryRequest      string    `json:"memory_request"`
-	MemoryLimit        string    `json:"memory_limit"`
-	RepoURL            string    `json:"repo_url,omitempty"`
-	BranchName         string    `json:"branch_name,omitempty"`
-	DockerfilePath     string    `json:"dockerfile_path,omitempty"`
-	EnvEnabled         bool      `json:"env_enabled"`
-	SecretEnabled      bool      `json:"secret_enabled"`
-	VolumeEnabled      bool      `json:"volume_enabled"`
-	Status             string    `json:"status"`
-	Environment        string    `json:"environment"`
-	MarketplaceAppName string    `json:"marketplace_app_name"`
-	CreatedAt          time.Time `json:"created_at"`
-	UpdatedAt          time.Time `json:"updated_at"`
+	DeploymentID       uuid.UUID           `json:"deployment_id,omitempty"`
+	UserID             uuid.UUID           `json:"user_id"`
+	Hostnames          []string            `json:"hostnames"`
+	Type               string              `json:"type"`
+	Zone               string              `json:"zone"`
+	Region             string              `json:"region"`
+	SSD                string              `json:"ssd"`
+	GPU                string              `json:"gpu"`
+	Namespace          string              `json:"namespace"`
+	Replicas           int32               `json:"replicas"`
+	Image              string              `json:"image"`
+	AppLabel           string              `json:"app_label"`
+	Port               int32               `json:"port"`
+	CpuRequest         string              `json:"cpu_request"`
+	MemoryRequest      string              `json:"memory_request"`
+	MemoryLimit        string              `json:"memory_limit"`
+	RepoURL            string              `json:"repo_url,omitempty"`
+	BranchName         string              `json:"branch_name,omitempty"`
+	DockerfilePath     string              `json:"dockerfile_path,omitempty"`
+	EnvEnabled         bool                `json:"env_enabled"`
+	SecretEnabled      bool                `json:"secret_enabled"`
+	VolumeEnabled      bool                `json:"volume_enabled"`
+	Status             string              `json:"status"`
+	Environment        string              `json:"environment"`
+	MarketplaceAppName string              `json:"marketplace_app_name"`
+	MulticlusterConfig *MulticlusterConfig `json:"multicluster_config,omitempty"`
+	CreatedAt          time.Time           `json:"created_at"`
+	UpdatedAt          time.Time           `json:"updated_at"`
 }
 
 type CreateDeploymentResponse struct {
