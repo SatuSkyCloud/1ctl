@@ -53,7 +53,7 @@ func ValidateDockerfile(path string) error {
 	if err != nil {
 		return utils.NewError(fmt.Sprintf("failed to open Dockerfile: %s", err.Error()), nil)
 	}
-	defer file.Close()
+	defer func() { _ = file.Close() }() //nolint:errcheck
 
 	// Validate file properties
 	info, err := file.Stat()
@@ -166,7 +166,7 @@ func ValidateDockerfile(path string) error {
 		}
 
 		// Validate COPY --from syntax for multistage builds
-		if instruction == "COPY" && len(parts) >= 3 && strings.HasPrefix(parts[1], "--from=") {
+		if instruction == "COPY" && len(parts) >= 3 && strings.HasPrefix(parts[1], "--from=") { //nolint:staticcheck // return value is used in condition
 			// This is fine - COPY --from syntax for multistage builds
 			continue
 		}

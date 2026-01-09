@@ -64,7 +64,9 @@ func TestHandleLogin(t *testing.T) {
 			flags.String("token", tt.token, "test token flag")
 			ctx := cli.NewContext(app, flags, nil)
 			if tt.token != "" {
-				ctx.Set("token", tt.token)
+				if err := ctx.Set("token", tt.token); err != nil {
+					t.Fatalf("failed to set token flag: %v", err)
+				}
 			}
 
 			err := handleLogin(ctx)
@@ -102,7 +104,7 @@ func TestHandleLogout(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			dir := tt.setup(t)
-			defer os.RemoveAll(dir)
+			defer func() { _ = os.RemoveAll(dir) }() //nolint:errcheck
 			err := handleLogout(cli.NewContext(nil, nil, nil))
 			if (err != nil) != tt.wantErr {
 				t.Errorf("handleLogout() error = %v, wantErr %v", err, tt.wantErr)

@@ -23,7 +23,6 @@ func createApp() *cli.App {
 		Name:    "1ctl",
 		Usage:   "1ctl is the command line tool for Satusky",
 		Version: version.Version,
-		// TODO: commands for deploy marketplace apps
 		Commands: []*cli.Command{
 			commands.AuthCommand(),
 			commands.OrgCommand(),
@@ -35,6 +34,21 @@ func createApp() *cli.App {
 			commands.EnvironmentCommand(),
 			commands.MachineCommand(),
 			commands.CompletionCommand(),
+			// Phase 1: Credits, Storage, Logs
+			commands.CreditsCommand(),
+			commands.StorageCommand(),
+			commands.LogsCommand(),
+			// Phase 2: GitHub, Notifications
+			commands.GithubCommand(),
+			commands.NotificationsCommand(),
+			// Phase 3: User, Token
+			commands.UserCommand(),
+			commands.TokenCommand(),
+			// Phase 5: Marketplace, Audit, Talos, Admin
+			commands.MarketplaceCommand(),
+			commands.AuditCommand(),
+			commands.TalosCommand(),
+			commands.AdminCommand(),
 		},
 		Before: func(c *cli.Context) error {
 			// Get the command or first argument
@@ -82,7 +96,7 @@ func createApp() *cli.App {
 
 func main() {
 	if err := run(); err != nil {
-		utils.HandleError(err)
+		_ = utils.HandleError(err) //nolint:errcheck
 		os.Exit(1)
 	}
 }

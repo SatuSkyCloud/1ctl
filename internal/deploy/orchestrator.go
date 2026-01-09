@@ -158,8 +158,8 @@ func buildAndUploadImage(dockerfilePath, projectName string) (string, error) {
 	}
 
 	// Save image to temporary file
-	tmpFile := filepath.Join(os.TempDir(), fmt.Sprintf("%s.tar", strings.Replace(projectName, "/", "_", -1)))
-	defer os.Remove(tmpFile) // Clean up temp file
+	tmpFile := filepath.Join(os.TempDir(), fmt.Sprintf("%s.tar", strings.ReplaceAll(projectName, "/", "_")))
+	defer func() { _ = os.Remove(tmpFile) }() //nolint:errcheck // Clean up temp file
 
 	if err := docker.SaveImage(projectName, tmpFile); err != nil {
 		return "", utils.NewError(fmt.Sprintf("failed to save Docker image: %s", err.Error()), nil)

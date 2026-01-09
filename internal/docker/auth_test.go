@@ -12,7 +12,7 @@ import (
 func TestEnsureDockerLogin(t *testing.T) {
 	// Save original home dir and restore after test
 	originalHome := os.Getenv("HOME")
-	defer os.Setenv("HOME", originalHome)
+	defer func() { _ = os.Setenv("HOME", originalHome) }() //nolint:errcheck
 
 	tests := []struct {
 		name           string
@@ -48,7 +48,9 @@ func TestEnsureDockerLogin(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			// Create temp home directory
 			homeDir := helpers.CreateTempDir(t)
-			os.Setenv("HOME", homeDir)
+			if err := os.Setenv("HOME", homeDir); err != nil {
+				t.Fatalf("failed to set HOME: %v", err)
+			}
 
 			// Set test config
 			originalConfig := DockerConfigBase64

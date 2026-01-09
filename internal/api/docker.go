@@ -41,7 +41,7 @@ func UploadDockerImage(imagePath, projectName string) (string, error) {
 	if err != nil {
 		return "", utils.NewError(fmt.Sprintf("failed to open image file: %s", err.Error()), nil)
 	}
-	defer file.Close()
+	defer func() { _ = file.Close() }() //nolint:errcheck
 
 	config := config.GetConfig()
 
@@ -74,7 +74,9 @@ func UploadDockerImage(imagePath, projectName string) (string, error) {
 		return "", utils.NewError(fmt.Sprintf("failed to add version control to form: %s", err.Error()), nil)
 	}
 
-	writer.Close()
+	if err := writer.Close(); err != nil {
+		return "", utils.NewError(fmt.Sprintf("failed to close multipart writer: %s", err.Error()), nil)
+	}
 
 	// Create request
 	req, err := http.NewRequest("POST", config.DockerApiURL, body)
@@ -101,7 +103,7 @@ func UploadDockerImage(imagePath, projectName string) (string, error) {
 	if err != nil {
 		return "", utils.NewError(fmt.Sprintf("failed to deploy Docker image: %s", err.Error()), nil)
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }() //nolint:errcheck
 
 	if resp.StatusCode != http.StatusOK {
 		return "", utils.NewError(fmt.Sprintf("failed to deploy image: server returned %d", resp.StatusCode), nil)

@@ -27,8 +27,12 @@ func TestOrgCommand(t *testing.T) {
 
 	// Check subcommands
 	expectedSubcommands := map[string]bool{
+		"list":    false,
 		"current": false,
 		"switch":  false,
+		"create":  false,
+		"delete":  false,
+		"team":    false,
 	}
 
 	for _, subcmd := range cmd.Subcommands {

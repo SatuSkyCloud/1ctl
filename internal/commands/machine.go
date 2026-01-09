@@ -136,7 +136,7 @@ func handleListAvailableMachines(c *cli.Context) error {
 		return nil
 	}
 
-	utils.PrintHeader(fmt.Sprintf("Available Machines (%d found)", len(filteredMachines)))
+	utils.PrintHeader("Available Machines (%d found)", len(filteredMachines))
 	for _, machine := range filteredMachines {
 		printAvailableMachineDetails(&machine)
 		utils.PrintDivider()

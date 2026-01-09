@@ -219,14 +219,247 @@ cd your-project
 ### Organizations (Multi-Tenant)
 
 ```bash
+# List all organizations
+1ctl org list
+
 # View current organization
 1ctl org current
 
 # Switch to a different organization (for multi-org users)
 1ctl org switch --org-id=<organization-uuid>
+1ctl org switch --org-name=my-org
 
-# Check authentication status (shows current org)
-1ctl auth status
+# Create a new organization
+1ctl org create --name "My Organization" --description "Description"
+
+# Delete an organization
+1ctl org delete <org-id>
+
+# Team management
+1ctl org team list
+1ctl org team add --email user@example.com --role member
+1ctl org team role <org-user-id> --role admin
+1ctl org team remove <org-user-id>
+```
+
+### Credits & Billing
+
+```bash
+# View credit balance
+1ctl credits balance
+
+# View transaction history
+1ctl credits transactions --limit 10
+
+# View machine usage
+1ctl credits usage --days 7
+
+# Initiate a top-up
+1ctl credits topup --amount 100
+
+# Manage invoices
+1ctl credits invoices
+1ctl credits invoices get <invoice-id>
+1ctl credits invoices download <invoice-id> --output invoice.pdf
+1ctl credits invoices generate --start-date 2025-01-01 --end-date 2025-01-31
+```
+
+### Storage (S3)
+
+```bash
+# List storage configurations
+1ctl storage list
+
+# Get storage details
+1ctl storage get <storage-id>
+
+# Create storage
+1ctl storage create --name my-storage --type s3 --size 10Gi
+
+# Delete storage
+1ctl storage delete <storage-id>
+
+# Bucket operations
+1ctl storage buckets
+1ctl storage buckets create --name my-bucket
+1ctl storage buckets delete <bucket-name>
+
+# File operations
+1ctl storage files <storage-id>
+1ctl storage upload <storage-id> ./myfile.txt
+1ctl storage download <object-id> --output ./downloaded.txt
+1ctl storage presign <storage-id> --file myfile.txt --expires 3600
+
+# Usage info
+1ctl storage usage <storage-id>
+```
+
+### Logs
+
+```bash
+# View deployment logs
+1ctl logs --deployment-id <deployment-id>
+
+# Stream logs in real-time
+1ctl logs --deployment-id <deployment-id> --follow
+
+# View log statistics
+1ctl logs --deployment-id <deployment-id> --stats
+
+# Limit number of lines
+1ctl logs --deployment-id <deployment-id> --tail 50
+```
+
+### GitHub Integration
+
+```bash
+# Check GitHub connection status
+1ctl github status
+
+# Connect GitHub account
+1ctl github connect
+
+# Disconnect GitHub account
+1ctl github disconnect
+
+# List synced repositories
+1ctl github repos
+1ctl github repos --page 1 --limit 20
+
+# Sync repositories from GitHub
+1ctl github repos sync
+
+# Get repository details
+1ctl github repos get --repo-id <repo-id>
+
+# GitHub App installation
+1ctl github installation info
+1ctl github installation revoke
+```
+
+### Notifications
+
+```bash
+# List notifications
+1ctl notifications list
+1ctl notifications list --unread --limit 10
+
+# Get unread count
+1ctl notifications count
+
+# Mark notifications as read
+1ctl notifications read --id <notification-id>
+1ctl notifications read --all
+
+# Delete a notification
+1ctl notifications delete --id <notification-id>
+```
+
+### Marketplace
+
+```bash
+# Browse marketplace apps
+1ctl marketplace list
+1ctl marketplace list --limit 10 --sort popularity
+
+# Get app details
+1ctl marketplace get <marketplace-id>
+
+# Deploy a marketplace app
+1ctl marketplace deploy <marketplace-id> --name my-wordpress \
+  --hostname my-machine --cpu 2 --memory 4Gi \
+  --storage-size 20Gi
+```
+
+### User Profile
+
+```bash
+# View current user profile
+1ctl user me
+
+# Update profile
+1ctl user update --name "New Name" --email "new@email.com"
+
+# Change password (interactive)
+1ctl user password
+
+# View permissions
+1ctl user permissions
+
+# Revoke all sessions
+1ctl user sessions revoke
+```
+
+### API Tokens
+
+```bash
+# List API tokens
+1ctl token list
+
+# Create a new token
+1ctl token create --name "CI/CD Token" --expires 90
+
+# Get token details
+1ctl token get <token-id>
+
+# Enable/disable a token
+1ctl token enable <token-id>
+1ctl token disable <token-id>
+
+# Delete a token
+1ctl token delete <token-id>
+```
+
+### Audit Logs
+
+```bash
+# List audit logs
+1ctl audit list
+1ctl audit list --limit 20 --action create --user <user-id>
+
+# Get audit log details
+1ctl audit get <log-id>
+
+# Export audit logs
+1ctl audit export --format json --output audit.json
+```
+
+### Talos Configuration
+
+```bash
+# Generate Talos configuration
+1ctl talos generate --machine-id <id> --cluster-name my-cluster --role worker
+
+# Apply configuration to a machine
+1ctl talos apply --machine-id <id> --config-file talos.yaml
+
+# View configuration history
+1ctl talos history <machine-id>
+
+# View network info
+1ctl talos network <machine-id>
+```
+
+### Admin Operations (Super-admin only)
+
+```bash
+# Machine usage management
+1ctl admin usage unbilled
+1ctl admin usage machine <machine-id>
+1ctl admin usage bill <usage-id>
+
+# Credits management
+1ctl admin credits add <org-id> --amount 100 --description "Bonus"
+1ctl admin credits refund <org-id> --amount 50 --description "Refund"
+
+# View all namespaces
+1ctl admin namespaces
+
+# View cluster roles
+1ctl admin cluster-roles
+
+# Cleanup resources
+1ctl admin cleanup --label app=test --namespace my-ns
 ```
 
 ### Machines

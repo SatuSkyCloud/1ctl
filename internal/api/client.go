@@ -264,10 +264,10 @@ func LoginCLI(token string) (*TokenValidate, error) {
 	if err != nil {
 		return nil, utils.NewError(fmt.Sprintf("failed to send request: %s", err.Error()), nil)
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }() //nolint:errcheck
 
 	if resp.StatusCode != 200 {
-		bodyBytes, _ := io.ReadAll(resp.Body)
+		bodyBytes, _ := io.ReadAll(resp.Body) //nolint:errcheck
 		return nil, utils.NewError(fmt.Sprintf("login failed with status %d: %s", resp.StatusCode, string(bodyBytes)), nil)
 	}
 
@@ -379,7 +379,7 @@ func makeRequest(method, path string, body interface{}, response interface{}) er
 	if err != nil {
 		return utils.NewError(fmt.Sprintf("failed to make request: %s", err.Error()), nil)
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }() //nolint:errcheck
 
 	respBody, err := io.ReadAll(resp.Body)
 	if err != nil {

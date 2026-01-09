@@ -1,5 +1,148 @@
 # Release Notes
 
+## Version 0.5.0 (09-01-2026)
+
+### ✨ New Features
+
+- **Credits & Billing Management**: Complete billing and credits integration
+  - `credits balance` - View organization credit balance
+  - `credits transactions` - View transaction history
+  - `credits usage` - View machine usage and costs
+  - `credits topup` - Initiate credit top-up via Stripe
+  - `credits invoices` - Manage invoices (list, get, download PDF, generate)
+
+- **Storage Management (S3)**: Full S3-compatible object storage support
+  - `storage list/get/create/delete` - Manage storage configurations
+  - `storage buckets` - Bucket management operations
+  - `storage files/upload/download` - File operations
+  - `storage presign` - Generate presigned URLs
+  - `storage usage` - View storage usage statistics
+
+- **Logs Command**: Deployment log viewing and streaming
+  - `logs --deployment-id` - View stored deployment logs
+  - `logs --follow` - Stream logs in real-time (WebSocket)
+  - `logs --stats` - View log statistics
+  - `logs --tail` - Limit number of lines
+
+- **GitHub Integration**: Complete GitHub OAuth and repository management
+  - `github status` - Check GitHub connection status
+  - `github connect/disconnect` - Manage GitHub account connection
+  - `github repos` - List, sync, and get repository details
+  - `github installation` - Manage GitHub App installation
+
+- **Notifications**: In-app notification management
+  - `notifications list` - List notifications with filtering
+  - `notifications count` - Get unread notification count
+  - `notifications read` - Mark notifications as read
+  - `notifications delete` - Delete notifications
+
+- **Marketplace**: Browse and deploy pre-configured applications
+  - `marketplace list` - Browse available apps
+  - `marketplace get` - Get app details
+  - `marketplace deploy` - Deploy marketplace apps (WordPress, Immich, N8N, etc.)
+
+- **User Profile Management**: Personal account management
+  - `user me` - View current user profile
+  - `user update` - Update profile (name, email)
+  - `user password` - Change password (interactive)
+  - `user permissions` - View role and permissions
+  - `user sessions revoke` - Revoke all sessions
+
+- **API Token Management**: Manage API tokens programmatically
+  - `token list` - List all API tokens
+  - `token create` - Create new tokens with expiry
+  - `token get` - Get token details
+  - `token enable/disable` - Toggle token state
+  - `token delete` - Delete tokens
+
+- **Audit Logs**: View organization audit trails
+  - `audit list` - List audit logs with filtering
+  - `audit get` - Get audit log details
+  - `audit export` - Export logs to JSON/CSV
+
+- **Talos Configuration**: Talos Linux machine configuration
+  - `talos generate` - Generate Talos configuration
+  - `talos apply` - Apply configuration to machines
+  - `talos history` - View configuration history
+  - `talos network` - View machine network info
+
+- **Admin Operations**: Super-admin management tools
+  - `admin usage` - Manage machine usage records
+  - `admin credits` - Add/refund organization credits
+  - `admin namespaces` - List all Kubernetes namespaces
+  - `admin cluster-roles` - List cluster roles
+  - `admin cleanup` - Cleanup resources by label
+
+### 🔄 Enhanced Commands
+
+- **Organization Command Enhancements**
+  - `org list` - List all user organizations
+  - `org create` - Create new organizations
+  - `org delete` - Delete organizations
+  - `org team list` - List team members
+  - `org team add` - Add team members with role
+  - `org team role` - Update member roles
+  - `org team remove` - Remove team members
+  - Enhanced `org switch` with `--org-name` support
+
+### 🔧 Technical Improvements
+
+- **Backend Route Expansion**: Added 70+ new CLI routes to backend
+  - Full DI pattern implementation for CLI controllers
+  - Split controllers for better separation of concerns
+  - Enhanced authentication middleware
+
+- **API Client Architecture**: Modular API client files
+  - `api/credits.go` - Credits and billing operations
+  - `api/storage.go` - S3 storage operations
+  - `api/logs.go` - Log operations
+  - `api/github.go` - GitHub integration
+  - `api/notifications.go` - Notification operations
+  - `api/marketplace.go` - Marketplace operations
+  - `api/audit.go` - Audit log operations
+  - `api/talos.go` - Talos configuration
+  - `api/admin.go` - Admin operations
+  - `api/user.go` - User profile operations
+  - `api/token.go` - API token operations
+  - `api/org.go` - Organization and team management
+
+- **Command Structure**: 11 new command files with consistent patterns
+  - Beautiful output formatting with status lines, headers, dividers
+  - Comprehensive error handling
+  - Flag validation and help text
+
+### 📚 Documentation
+
+- Updated README.md with all new commands and examples
+- Added usage examples for:
+  - Credits & billing operations
+  - Storage management
+  - Log streaming
+  - GitHub integration
+  - Marketplace deployment
+  - Team management
+  - API token management
+  - Admin operations
+
+### 📋 New Commands Summary
+
+| Category | Commands Added |
+|----------|---------------|
+| Credits | 9 subcommands |
+| Storage | 12 subcommands |
+| Logs | 1 command with 4 flags |
+| GitHub | 10 subcommands |
+| Notifications | 5 subcommands |
+| Marketplace | 3 subcommands |
+| User | 5 subcommands |
+| Token | 6 subcommands |
+| Audit | 3 subcommands |
+| Talos | 4 subcommands |
+| Admin | 8 subcommands |
+| Org (enhanced) | 7 new subcommands |
+
+---
+
 ## Version 0.4.0 (18-12-2025)
 
 ### ✨ New Features

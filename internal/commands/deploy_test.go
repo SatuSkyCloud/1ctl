@@ -91,7 +91,9 @@ func TestHandleDeploy(t *testing.T) {
 			}
 			ctx := cli.NewContext(app, flags, nil)
 			for name, value := range tt.flags {
-				ctx.Set(name, value)
+				if err := ctx.Set(name, value); err != nil {
+					t.Fatalf("failed to set flag %s: %v", name, err)
+				}
 			}
 
 			err := handleDeploy(ctx)
