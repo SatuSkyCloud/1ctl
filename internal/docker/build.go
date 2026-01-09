@@ -64,6 +64,7 @@ func Build(opts BuildOptions) error {
 	}
 
 	// Build the Docker image locally only
+	// #nosec G204 -- User-provided build options are validated before use
 	cmd := exec.Command("docker", "build",
 		"--platform", "linux/amd64", // TODO: remove this once we have multi-arch support
 		"-f", opts.DockerfilePath,

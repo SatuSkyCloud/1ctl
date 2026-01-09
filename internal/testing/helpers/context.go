@@ -18,7 +18,7 @@ func SetupTestContext(t *testing.T) string {
 func CreateContextFile(t *testing.T, dir, content string) string {
 	t.Helper()
 	configDir := filepath.Join(dir, ".satusky")
-	if err := os.MkdirAll(configDir, 0755); err != nil {
+	if err := os.MkdirAll(configDir, 0750); err != nil { // #nosec G301 -- test directory permissions
 		t.Fatalf("Failed to create config dir: %v", err)
 	}
 	return CreateTestFile(t, configDir, "context.json", content)

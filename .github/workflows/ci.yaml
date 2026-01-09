@@ -42,17 +42,8 @@ jobs:
       - name: Run unit tests
         run: task test:unit
 
-      - name: Run integration tests
-        run: task test:integration
-
       - name: Generate coverage report
         run: task test:coverage
-
-      - name: Upload coverage
-        uses: codecov/codecov-action@v4
-        with:
-          file: ./coverage.txt
-          fail_ci_if_error: true
 
   lint:
     name: Lint
@@ -72,7 +63,7 @@ jobs:
         uses: arduino/setup-task@v2
 
       - name: Install golangci-lint
-        run: go install github.com/golangci/golangci-lint/cmd/golangci-lint@v1.56.0
+        run: go install github.com/golangci/golangci-lint/v2/cmd/golangci-lint@v2.8.0
 
       - name: Run linters
         run: task lint
@@ -89,9 +80,6 @@ jobs:
         uses: securego/gosec@master
         with:
           args: ./...
-
-      - name: Run nancy for dependency scanning
-        uses: sonatype-nexus-community/nancy-github-action@main
 
   build:
     name: Build

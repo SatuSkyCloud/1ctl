@@ -21,7 +21,7 @@ func CreateTempDir(t *testing.T) string {
 func CreateTestFile(t *testing.T, dir, name, content string) string {
 	t.Helper()
 	path := filepath.Join(dir, name)
-	err := os.WriteFile(path, []byte(content), 0644)
+	err := os.WriteFile(path, []byte(content), 0644) // #nosec G306 -- test file permissions
 	if err != nil {
 		t.Fatalf("failed to create test file: %v", err)
 	}

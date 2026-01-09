@@ -37,7 +37,7 @@ func UploadDockerImage(imagePath, projectName string) (string, error) {
 		return "", utils.NewError(fmt.Sprintf("invalid image path: %s", err.Error()), nil)
 	}
 
-	file, err := os.Open(imagePath)
+	file, err := os.Open(imagePath) // #nosec G304 -- User-provided image path is intentional
 	if err != nil {
 		return "", utils.NewError(fmt.Sprintf("failed to open image file: %s", err.Error()), nil)
 	}

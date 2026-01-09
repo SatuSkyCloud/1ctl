@@ -373,18 +373,20 @@ func FormatBytes(bytes int64) string {
 	}
 
 	exp := int(math.Log(float64(bytes)) / math.Log(1024))
-	if exp >= len(units) {
+	if exp < 0 {
+		exp = 0
+	} else if exp >= len(units) {
 		exp = len(units) - 1
 	}
 
 	value := float64(bytes) / math.Pow(1024, float64(exp))
 
 	if value >= 100 || exp == 0 {
-		return fmt.Sprintf("%.0f %s", value, units[exp])
+		return fmt.Sprintf("%.0f %s", value, units[exp]) // #nosec G602 -- bounds checked above
 	} else if value >= 10 {
-		return fmt.Sprintf("%.1f %s", value, units[exp])
+		return fmt.Sprintf("%.1f %s", value, units[exp]) // #nosec G602 -- bounds checked above
 	}
-	return fmt.Sprintf("%.2f %s", value, units[exp])
+	return fmt.Sprintf("%.2f %s", value, units[exp]) // #nosec G602 -- bounds checked above
 }
 
 // FormatBytesKubernetes formats bytes like Kubernetes (Ki, Mi, Gi)
@@ -399,18 +401,20 @@ func FormatBytesKubernetes(bytes int64) string {
 	}
 
 	exp := int(math.Log(float64(bytes)) / math.Log(1024))
-	if exp >= len(units) {
+	if exp < 0 {
+		exp = 0
+	} else if exp >= len(units) {
 		exp = len(units) - 1
 	}
 
 	value := float64(bytes) / math.Pow(1024, float64(exp))
 
 	if value >= 100 || exp == 0 {
-		return fmt.Sprintf("%.0f%s", value, units[exp])
+		return fmt.Sprintf("%.0f%s", value, units[exp]) // #nosec G602 -- bounds checked above
 	} else if value >= 10 {
-		return fmt.Sprintf("%.1f%s", value, units[exp])
+		return fmt.Sprintf("%.1f%s", value, units[exp]) // #nosec G602 -- bounds checked above
 	}
-	return fmt.Sprintf("%.2f%s", value, units[exp])
+	return fmt.Sprintf("%.2f%s", value, units[exp]) // #nosec G602 -- bounds checked above
 }
 
 // FormatDuration formats a duration into human-readable format

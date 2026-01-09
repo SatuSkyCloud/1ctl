@@ -171,7 +171,7 @@ func handleAuditExport(c *cli.Context) error {
 	}
 
 	if output != "" {
-		if err := os.WriteFile(output, data, 0644); err != nil {
+		if err := os.WriteFile(output, data, 0600); err != nil {
 			return utils.NewError(fmt.Sprintf("failed to write file: %s", err.Error()), nil)
 		}
 		utils.PrintSuccess("Audit logs exported to %s", output)

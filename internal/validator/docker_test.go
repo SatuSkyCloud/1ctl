@@ -20,7 +20,7 @@ func createTempDir(t *testing.T) string {
 func createTestFile(t *testing.T, dir, name, content string) string {
 	t.Helper()
 	path := filepath.Join(dir, name)
-	err := os.WriteFile(path, []byte(content), 0644)
+	err := os.WriteFile(path, []byte(content), 0644) // #nosec G306 -- test file permissions
 	if err != nil {
 		t.Fatalf("failed to create test file: %v", err)
 	}
@@ -145,7 +145,7 @@ CMD ["/binary"]`,
 		t.Run(tt.name, func(t *testing.T) {
 			dir := t.TempDir()
 			path := filepath.Join(dir, "Dockerfile")
-			if err := os.WriteFile(path, []byte(tt.content), 0644); err != nil {
+			if err := os.WriteFile(path, []byte(tt.content), 0644); err != nil { // #nosec G306 -- test file
 				t.Fatal(err)
 			}
 

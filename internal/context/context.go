@@ -65,7 +65,7 @@ func GetToken() string {
 		return ""
 	}
 
-	data, err := os.ReadFile(contextFile)
+	data, err := os.ReadFile(contextFile) // #nosec G304 -- Path constructed from home directory
 	if err != nil {
 		return ""
 	}
@@ -88,7 +88,7 @@ func SetToken(token string) error {
 // GetUserID returns the user ID from context.json
 func GetUserID() string {
 	contextFile := filepath.Join(configDir, "context.json")
-	data, err := os.ReadFile(contextFile)
+	data, err := os.ReadFile(contextFile) // #nosec G304 -- Path constructed from home directory
 	if err != nil {
 		return ""
 	}
@@ -111,7 +111,7 @@ func SetUserID(userID string) error {
 // GetCurrentNamespace returns the current namespace from context.json
 func GetCurrentNamespace() string {
 	contextFile := filepath.Join(configDir, "context.json")
-	data, err := os.ReadFile(contextFile)
+	data, err := os.ReadFile(contextFile) // #nosec G304 -- Path constructed from home directory
 	if err != nil {
 		return ""
 	}
@@ -134,7 +134,7 @@ func SetCurrentNamespace(namespace string) error {
 // GetUserConfigKey returns the user config key from context.json
 func GetUserConfigKey() string {
 	contextFile := filepath.Join(configDir, "context.json")
-	data, err := os.ReadFile(contextFile)
+	data, err := os.ReadFile(contextFile) // #nosec G304 -- Path constructed from home directory
 	if err != nil {
 		return ""
 	}
@@ -157,7 +157,7 @@ func SetUserConfigKey(userConfigKey string) error {
 // GetCurrentOrgID returns the current organization ID from context.json
 func GetCurrentOrgID() string {
 	contextFile := filepath.Join(configDir, "context.json")
-	data, err := os.ReadFile(contextFile)
+	data, err := os.ReadFile(contextFile) // #nosec G304 -- Path constructed from home directory
 	if err != nil {
 		return ""
 	}
@@ -180,7 +180,7 @@ func SetCurrentOrgID(orgID string) error {
 // GetCurrentOrgName returns the current organization name from context.json
 func GetCurrentOrgName() string {
 	contextFile := filepath.Join(configDir, "context.json")
-	data, err := os.ReadFile(contextFile)
+	data, err := os.ReadFile(contextFile) // #nosec G304 -- Path constructed from home directory
 	if err != nil {
 		return ""
 	}
@@ -214,7 +214,7 @@ func saveContext(modifier func(*CLIContext)) error {
 	contextFile := filepath.Join(configDir, "context.json")
 
 	var ctx CLIContext
-	data, err := os.ReadFile(contextFile)
+	data, err := os.ReadFile(contextFile) // #nosec G304 -- Path constructed from home directory
 	if err == nil {
 		if err := json.Unmarshal(data, &ctx); err != nil {
 			return err

@@ -108,7 +108,7 @@ func handleTalosGenerate(c *cli.Context) error {
 	}
 
 	if output != "" {
-		if err := os.WriteFile(output, []byte(config.ConfigData), 0644); err != nil {
+		if err := os.WriteFile(output, []byte(config.ConfigData), 0600); err != nil {
 			return utils.NewError(fmt.Sprintf("failed to write config file: %s", err.Error()), nil)
 		}
 		utils.PrintSuccess("Talos config written to %s", output)
@@ -130,7 +130,7 @@ func handleTalosApply(c *cli.Context) error {
 	machineID := c.String("machine-id")
 	configFile := c.String("config-file")
 
-	configData, err := os.ReadFile(configFile)
+	configData, err := os.ReadFile(configFile) // #nosec G304 -- User-provided config file path is intentional
 	if err != nil {
 		return utils.NewError(fmt.Sprintf("failed to read config file: %s", err.Error()), nil)
 	}

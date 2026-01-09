@@ -49,9 +49,9 @@ tasks:
       - go test -v -short $(go list ./... | grep -v '/testing/' | grep -v '/testutils') ./...
 
   test:integration:
-    desc: Run integration tests
+    desc: Run integration tests (requires Docker and API auth)
     cmds:
-      - go test -v -race -coverprofile={{.COVERAGE_FILE}} -covermode=atomic ./internal/integration/...
+      - go test -v -race -tags=integration -coverprofile={{.COVERAGE_FILE}} -covermode=atomic ./internal/integration/...
 
   test:coverage:
     desc: Generate test coverage report

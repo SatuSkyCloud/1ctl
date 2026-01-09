@@ -49,7 +49,7 @@ func ValidateDockerfile(path string) error {
 	}
 
 	// Open the Dockerfile
-	file, err := os.Open(path)
+	file, err := os.Open(path) // #nosec G304 -- User-provided Dockerfile path is intentional
 	if err != nil {
 		return utils.NewError(fmt.Sprintf("failed to open Dockerfile: %s", err.Error()), nil)
 	}

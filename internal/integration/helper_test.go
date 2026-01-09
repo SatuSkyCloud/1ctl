@@ -56,7 +56,7 @@ WORKDIR /app
 COPY . .
 CMD ["./app"]`
 
-	if err := os.WriteFile(dockerfilePath, []byte(dockerfileContent), 0644); err != nil {
+	if err := os.WriteFile(dockerfilePath, []byte(dockerfileContent), 0644); err != nil { // #nosec G306 -- test file
 		t.Fatalf("Failed to create test Dockerfile: %v", err)
 	}
 

@@ -59,7 +59,7 @@ CMD ["./app"]`,
 			// Create test dockerfile
 			dir := t.TempDir()
 			dockerfilePath := filepath.Join(dir, "Dockerfile")
-			if err := os.WriteFile(dockerfilePath, []byte(tt.dockerfileContent), 0644); err != nil {
+			if err := os.WriteFile(dockerfilePath, []byte(tt.dockerfileContent), 0644); err != nil { // #nosec G306 -- test file
 				t.Fatal(err)
 			}
 
