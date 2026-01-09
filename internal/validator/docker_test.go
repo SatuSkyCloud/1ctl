@@ -207,8 +207,12 @@ func TestFindDockerfile(t *testing.T) {
 			if (err != nil) != tt.expectErr {
 				t.Errorf("FindDockerfile() error = %v, expectErr %v", err, tt.expectErr)
 			}
-			if !tt.expectErr && !strings.HasSuffix(path, tt.expectedPath) {
-				t.Errorf("FindDockerfile() = %v, want %v", path, tt.expectedPath)
+			if !tt.expectErr {
+				// Use filepath.Join to handle OS-specific path separators
+				expectedSuffix := filepath.Join(strings.Split(tt.expectedPath, "/")...)
+				if !strings.HasSuffix(path, expectedSuffix) {
+					t.Errorf("FindDockerfile() = %v, want suffix %v", path, expectedSuffix)
+				}
 			}
 		})
 	}

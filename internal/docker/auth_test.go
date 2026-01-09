@@ -4,6 +4,7 @@ import (
 	"encoding/base64"
 	"os"
 	"path/filepath"
+	"runtime"
 	"testing"
 
 	"1ctl/internal/testing/helpers"
@@ -48,8 +49,11 @@ func TestEnsureDockerLogin(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			// Create temp home directory
 			homeDir := helpers.CreateTempDir(t)
-			if err := os.Setenv("HOME", homeDir); err != nil {
-				t.Fatalf("failed to set HOME: %v", err)
+
+			// Set HOME for Unix, USERPROFILE for Windows
+			t.Setenv("HOME", homeDir)
+			if runtime.GOOS == "windows" {
+				t.Setenv("USERPROFILE", homeDir)
 			}
 
 			// Set test config
@@ -63,12 +67,13 @@ func TestEnsureDockerLogin(t *testing.T) {
 			}
 
 			if tt.validateConfig {
-				// Check if config file was created with correct permissions
+				// Check if config file was created with correct permissions (skip on Windows)
 				configPath := filepath.Join(homeDir, ".docker", "config.json")
 				info, err := os.Stat(configPath)
 				if err != nil {
 					t.Errorf("Failed to stat config file: %v", err)
-				} else {
+				} else if runtime.GOOS != "windows" {
+					// Only check permissions on Unix - Windows doesn't support them
 					if info.Mode().Perm() != 0600 {
 						t.Errorf("Config file has wrong permissions: got %v, want %v", info.Mode().Perm(), 0600)
 					}

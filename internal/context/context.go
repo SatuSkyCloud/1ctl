@@ -3,7 +3,6 @@ package context
 import (
 	"1ctl/internal/utils"
 	"encoding/json"
-	"fmt"
 	"log"
 	"os"
 	"path/filepath"
@@ -33,13 +32,10 @@ func validatePath(path string) error {
 
 	// Check if path is absolute
 	if filepath.IsAbs(cleanPath) {
-		// Verify it's within the user's home directory
-		homeDir, err := os.UserHomeDir()
-		if err != nil {
-			return utils.NewError(fmt.Sprintf("failed to get home directory: %s", err.Error()), nil)
-		}
-		if !strings.HasPrefix(cleanPath, homeDir) {
-			return utils.NewError("invalid path: must be within user's home directory", nil)
+		// Verify it's within the configured config directory
+		// This allows tests to override configDir while still being secure
+		if !strings.HasPrefix(cleanPath, configDir) {
+			return utils.NewError("invalid path: must be within config directory", nil)
 		}
 	}
 

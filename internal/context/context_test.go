@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"os"
 	"path/filepath"
+	"runtime"
 	"testing"
 )
 
@@ -12,19 +13,23 @@ func setupTestContext(t *testing.T) string {
 	dir := t.TempDir()
 
 	// Create .satusky directory
-	configDir := filepath.Join(dir, ".satusky")
-	if err := os.MkdirAll(configDir, 0755); err != nil {
+	testConfigDir := filepath.Join(dir, ".satusky")
+	if err := os.MkdirAll(testConfigDir, 0755); err != nil {
 		t.Fatalf("Failed to create config dir: %v", err)
 	}
 
 	// Create empty context file
-	contextFile := filepath.Join(configDir, "context.json")
+	contextFile := filepath.Join(testConfigDir, "context.json")
 	if err := os.WriteFile(contextFile, []byte("{}"), 0600); err != nil {
 		t.Fatalf("Failed to create context file: %v", err)
 	}
 
-	// Set HOME environment variable
+	// Set HOME environment variable (works on Unix)
 	t.Setenv("HOME", dir)
+	// Also set USERPROFILE for Windows
+	if runtime.GOOS == "windows" {
+		t.Setenv("USERPROFILE", dir)
+	}
 	return dir
 }
 
@@ -185,6 +190,11 @@ func TestContextOperations(t *testing.T) {
 }
 
 func TestContextFilePermissions(t *testing.T) {
+	// Skip on Windows - Windows doesn't support Unix-style file permissions
+	if runtime.GOOS == "windows" {
+		t.Skip("Skipping file permissions test on Windows")
+	}
+
 	// Save original configDir and restore after test
 	originalConfigDir := configDir
 	defer func() { configDir = originalConfigDir }()
