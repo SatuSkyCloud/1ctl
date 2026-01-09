@@ -115,9 +115,14 @@ jobs:
         run: task build
 
       - name: Test binary
-        if: matrix.os != 'windows'
+        # Only test binary when it matches the runner (ubuntu-latest = linux/amd64)
+        # Cross-compiled binaries cannot be executed on different platforms
+        if: matrix.os == 'linux' && matrix.arch == 'amd64'
         run: ./bin/1ctl --version
 
-      - name: Test binary (Windows)
-        if: matrix.os == 'windows'
-        run: ./bin/1ctl.exe --version
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: 1ctl-${{ matrix.os }}-${{ matrix.arch }}
+          path: bin/1ctl${{ matrix.os == 'windows' && '.exe' || '' }}
+          retention-days: 7
