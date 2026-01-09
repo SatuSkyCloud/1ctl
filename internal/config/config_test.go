@@ -1,6 +1,8 @@
 package config
 
 import (
+	"os"
+	"path/filepath"
 	"runtime"
 	"testing"
 
@@ -20,6 +22,25 @@ func TestValidateEnvironment(t *testing.T) {
 	if runtime.GOOS == "windows" {
 		t.Skip("Skipping context-dependent test on Windows")
 	}
+
+	// Set up isolated test context directory
+	tempDir := t.TempDir()
+	testConfigDir := filepath.Join(tempDir, ".satusky")
+	if err := os.MkdirAll(testConfigDir, 0755); err != nil {
+		t.Fatalf("Failed to create test config dir: %v", err)
+	}
+
+	// Create empty context file with valid JSON
+	contextFile := filepath.Join(testConfigDir, "context.json")
+	if err := os.WriteFile(contextFile, []byte("{}"), 0600); err != nil {
+		t.Fatalf("Failed to create context file: %v", err)
+	}
+
+	// Override HOME to use test directory
+	t.Setenv("HOME", tempDir)
+
+	// Override context package's configDir
+	context.SetConfigDir(testConfigDir)
 
 	tests := []struct {
 		name    string
@@ -45,12 +66,6 @@ func TestValidateEnvironment(t *testing.T) {
 			wantErr: true,
 		},
 	}
-
-	// Save original token and restore after tests
-	originalToken := context.GetToken()
-	defer func() {
-		_ = context.SetToken(originalToken) //nolint:errcheck
-	}()
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {

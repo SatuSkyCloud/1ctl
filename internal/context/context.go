@@ -54,6 +54,11 @@ func init() {
 	}
 }
 
+// SetConfigDir overrides the config directory (for testing only)
+func SetConfigDir(dir string) {
+	configDir = dir
+}
+
 // GetToken returns the token from context.json
 func GetToken() string {
 	contextFile := filepath.Join(configDir, "context.json")
@@ -211,7 +216,7 @@ func saveContext(modifier func(*CLIContext)) error {
 
 	var ctx CLIContext
 	data, err := os.ReadFile(contextFile) // #nosec G304 -- Path constructed from home directory
-	if err == nil {
+	if err == nil && len(data) > 0 {
 		if err := json.Unmarshal(data, &ctx); err != nil {
 			return err
 		}
