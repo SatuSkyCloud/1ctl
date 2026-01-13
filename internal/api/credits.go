@@ -9,12 +9,32 @@ import (
 	"github.com/google/uuid"
 )
 
+// TierLimits represents the resource limits for a tier
+type TierLimits struct {
+	CPU    string `json:"cpu"`
+	Memory string `json:"memory"`
+	Pods   int32  `json:"pods"`
+	PVCs   int32  `json:"pvcs"`
+}
+
+// TierInfo represents the current tier and upgrade path
+type TierInfo struct {
+	CurrentTier       string      `json:"current_tier"`
+	HighestTier       string      `json:"highest_tier"` // Peak tier achieved - never drops below this
+	CurrentLimits     TierLimits  `json:"current_limits"`
+	NextTier          string      `json:"next_tier,omitempty"`
+	NextTierLimits    *TierLimits `json:"next_tier_limits,omitempty"`
+	CreditsToNextTier float64     `json:"credits_to_next_tier"`
+	CanUpgrade        bool        `json:"can_upgrade"`
+}
+
 // CreditBalance represents the organization's credit balance
 type CreditBalance struct {
 	OrganizationID uuid.UUID `json:"organization_id"`
 	Balance        float64   `json:"balance"`
 	Currency       string    `json:"currency"`
 	UpdatedAt      time.Time `json:"updated_at"`
+	Tier           *TierInfo `json:"tier,omitempty"` // Tier information based on credits balance
 }
 
 // CreditTransaction represents a credit transaction

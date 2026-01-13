@@ -176,6 +176,10 @@ func handleDeploy(c *cli.Context) error {
 	// Execute deployment
 	resp, err := deploy.Deploy(opts)
 	if err != nil {
+		// Check if this is a resource exhausted error - already formatted, just return it
+		if _, ok := err.(*utils.ResourceExhaustedCLIError); ok {
+			return err
+		}
 		return utils.NewError(fmt.Sprintf("deployment failed: %s", err.Error()), nil)
 	}
 

@@ -387,6 +387,11 @@ func makeRequest(method, path string, body interface{}, response interface{}) er
 	}
 
 	if resp.StatusCode >= 400 {
+		// Check for resource exhausted error (422 Unprocessable Entity)
+		if resourceErr, _ := utils.ParseResourceExhaustedFromBytes(respBody, resp.StatusCode); resourceErr != nil {
+			return utils.NewResourceExhaustedCLIError(resourceErr)
+		}
+
 		var apiError APIError
 		if err := json.Unmarshal(respBody, &apiError); err != nil {
 			return utils.NewError(fmt.Sprintf("request failed with status %d: %s", resp.StatusCode, string(respBody)), nil)

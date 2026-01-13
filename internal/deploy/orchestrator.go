@@ -273,6 +273,11 @@ func mainDeploy(opts DeploymentOptions, image, name, userID, organization string
 
 	var deploymentID string
 	if err := api.UpsertDeployment(deployment, &deploymentID); err != nil {
+		// Check if this is a resource exhausted error and handle it specially
+		if resourceErr, ok := err.(*utils.ResourceExhaustedCLIError); ok {
+			utils.PrintResourceExhaustedError(resourceErr.ResourceError)
+			return "", resourceErr
+		}
 		return "", utils.NewError(fmt.Sprintf("failed to upsert deployment: %s", err.Error()), nil)
 	}
 

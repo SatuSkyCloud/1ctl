@@ -147,7 +147,57 @@ func handleCreditsBalance(c *cli.Context) error {
 	utils.PrintStatusLine("Organization ID", balance.OrganizationID.String())
 	utils.PrintStatusLine("Balance", fmt.Sprintf("$%.2f %s", balance.Balance, balance.Currency))
 	utils.PrintStatusLine("Last Updated", formatTimeAgo(balance.UpdatedAt))
+
+	// Display tier information if available
+	if balance.Tier != nil {
+		fmt.Println()
+		utils.PrintHeader("Tier Status")
+		utils.PrintStatusLine("Current Tier", utils.SuccessColor(formatTierDisplayName(balance.Tier.CurrentTier)))
+
+		// Show peak tier if different from current
+		if balance.Tier.HighestTier != "" && balance.Tier.HighestTier != balance.Tier.CurrentTier {
+			utils.PrintStatusLine("Peak Tier", utils.SuccessColor(formatTierDisplayName(balance.Tier.HighestTier))+" (achieved)")
+		}
+
+		// Show current limits
+		fmt.Println()
+		utils.PrintHeader("Resource Limits")
+		utils.PrintStatusLine("CPU", balance.Tier.CurrentLimits.CPU)
+		utils.PrintStatusLine("Memory", balance.Tier.CurrentLimits.Memory)
+		utils.PrintStatusLine("Pods", fmt.Sprintf("%d", balance.Tier.CurrentLimits.Pods))
+		utils.PrintStatusLine("PVCs", fmt.Sprintf("%d", balance.Tier.CurrentLimits.PVCs))
+
+		// Show upgrade path if available
+		if balance.Tier.CanUpgrade && balance.Tier.NextTier != "" {
+			fmt.Println()
+			utils.PrintHeader("Upgrade Path")
+			utils.PrintStatusLine("Next Tier", formatTierDisplayName(balance.Tier.NextTier))
+			utils.PrintStatusLine("Credits Needed", fmt.Sprintf("$%.2f", balance.Tier.CreditsToNextTier))
+			if balance.Tier.NextTierLimits != nil {
+				utils.PrintStatusLine("Next Tier CPU", balance.Tier.NextTierLimits.CPU)
+				utils.PrintStatusLine("Next Tier Memory", balance.Tier.NextTierLimits.Memory)
+				utils.PrintStatusLine("Next Tier Pods", fmt.Sprintf("%d", balance.Tier.NextTierLimits.Pods))
+			}
+		}
+	}
+
 	return nil
+}
+
+// formatTierDisplayName converts tier ID to display name
+func formatTierDisplayName(tier string) string {
+	switch tier {
+	case "free":
+		return "Free"
+	case "starter":
+		return "Starter"
+	case "pro":
+		return "Pro"
+	case "enterprise":
+		return "Enterprise"
+	default:
+		return tier
+	}
 }
 
 func handleCreditsTransactions(c *cli.Context) error {
