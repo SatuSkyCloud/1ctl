@@ -1,5 +1,40 @@
 # Release Notes
 
+## Version 0.5.1 (13-01-2026)
+
+### ✨ New Features
+
+- **Resource Exhausted Error Handling**: Enhanced error handling for resource quota exceeded scenarios
+  - Beautiful formatted error display showing current tier limits
+  - Clear guidance on which resources are exhausted (CPU, Memory, Pods, etc.)
+  - Automatic tier upgrade suggestions when applicable
+  - Support for displaying next tier limits and requirements
+
+- **Tier Info Display**: Added tier information to credits commands
+  - `credits balance` now shows current tier and limits
+  - Display of highest achieved tier (peak tier)
+  - Credits required to reach next tier
+  - Current resource limits per tier
+
+### 🔧 Technical Improvements
+
+- **Resource Error Utilities**: New `internal/utils/resource_error.go` module
+  - `ParseResourceExhaustedError()` - Parse API error responses for resource exhaustion
+  - `FormatResourceExhaustedError()` - Beautiful CLI formatting for resource errors
+  - Comprehensive test coverage with `resource_error_test.go`
+
+- **Deploy Command Enhancement**: Improved error handling during deployment
+  - Detects resource exhausted errors from API
+  - Displays actionable upgrade guidance
+  - Shows current vs required resources
+
+- **Credits API Integration**: Enhanced credits balance endpoint integration
+  - Added `TierInfo` struct with tier details
+  - Support for tier limits display
+  - Upgrade path information
+
+---
+
 ## Version 0.5.0 (09-01-2026)
 
 ### ✨ New Features
