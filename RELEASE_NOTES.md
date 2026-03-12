@@ -1,5 +1,20 @@
 # Release Notes
 
+## Version 0.5.3 (12-03-2026)
+
+### 🔧 Improvements
+
+- **GitHub integration removed**: `github` command removed — GitHub deployment feature is discontinued
+- **`secret delete`**: Added missing `secret delete --secret-id` subcommand
+- **`issuer delete`**: Added missing `issuer delete --issuer-id` subcommand
+- **Ingress validation**: `--service-id` now gives a clear error when omitted instead of a confusing UUID parse error
+
+### 🔒 Security
+
+- Fixed gosec G204 false positive in Docker `SaveImage` (correct `// #nosec G204` directive)
+
+---
+
 ## Version 0.5.2 (12-03-2026)
 
 ### ✨ New Features
