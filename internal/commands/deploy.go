@@ -403,11 +403,17 @@ func prepareDeploymentOptions(c *cli.Context) (deploy.DeploymentOptions, error) 
 			Type:    deploy.PDBConfigType(c.String("pdb-type")),
 		}
 		if c.IsSet("pdb-min-available") {
-			val := int32(c.Int("pdb-min-available"))
+			val, err := api.SafeInt32(c.Int("pdb-min-available"))
+			if err != nil {
+				return deploy.DeploymentOptions{}, utils.NewError("invalid pdb-min-available value", err)
+			}
 			pdbConfig.MinAvailable = &val
 		}
 		if c.IsSet("pdb-percent") {
-			val := int32(c.Int("pdb-percent"))
+			val, err := api.SafeInt32(c.Int("pdb-percent"))
+			if err != nil {
+				return deploy.DeploymentOptions{}, utils.NewError("invalid pdb-percent value", err)
+			}
 			pdbConfig.Percent = &val
 		}
 		opts.PDBConfig = pdbConfig
@@ -415,15 +421,29 @@ func prepareDeploymentOptions(c *cli.Context) (deploy.DeploymentOptions, error) 
 
 	// Handle HPA configuration
 	if c.IsSet("hpa") && c.Bool("hpa") {
-		cpuTarget := int32(c.Int("hpa-cpu-target"))
+		cpuTarget, err := api.SafeInt32(c.Int("hpa-cpu-target"))
+		if err != nil {
+			return deploy.DeploymentOptions{}, utils.NewError("invalid hpa-cpu-target value", err)
+		}
+		minReplicas, err := api.SafeInt32(c.Int("hpa-min-replicas"))
+		if err != nil {
+			return deploy.DeploymentOptions{}, utils.NewError("invalid hpa-min-replicas value", err)
+		}
+		maxReplicas, err := api.SafeInt32(c.Int("hpa-max-replicas"))
+		if err != nil {
+			return deploy.DeploymentOptions{}, utils.NewError("invalid hpa-max-replicas value", err)
+		}
 		hpaConfig := &api.HPAConfig{
 			Enabled:     true,
-			MinReplicas: int32(c.Int("hpa-min-replicas")),
-			MaxReplicas: int32(c.Int("hpa-max-replicas")),
+			MinReplicas: minReplicas,
+			MaxReplicas: maxReplicas,
 			CPUTarget:   &cpuTarget,
 		}
 		if c.IsSet("hpa-memory-target") && c.Int("hpa-memory-target") > 0 {
-			memTarget := int32(c.Int("hpa-memory-target"))
+			memTarget, err := api.SafeInt32(c.Int("hpa-memory-target"))
+			if err != nil {
+				return deploy.DeploymentOptions{}, utils.NewError("invalid hpa-memory-target value", err)
+			}
 			hpaConfig.MemoryTarget = &memTarget
 		}
 		opts.HPAConfig = hpaConfig
