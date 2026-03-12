@@ -84,7 +84,7 @@ func Build(opts BuildOptions) error {
 
 // SaveImage saves the Docker image as a tar archive
 func SaveImage(projectName, outputPath string) error {
-	cmd := exec.Command("docker", "save", "-o", outputPath, projectName) //nolint:gosec // G204: executable is fixed "docker", args are validated by callers
+	cmd := exec.Command("docker", "save", "-o", outputPath, projectName) // #nosec G204 -- executable is fixed "docker", args are validated by callers
 	cmd.Stdout = os.Stdout
 	cmd.Stderr = os.Stderr
 
