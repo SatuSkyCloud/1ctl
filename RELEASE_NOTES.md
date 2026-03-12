@@ -1,5 +1,17 @@
 # Release Notes
 
+## Version 0.5.6 (13-03-2026)
+
+### 🔒 Security
+
+- **Safe integer conversions**: All CLI flag value conversions (`int` → `int32`) now use `SafeInt32()` to prevent potential integer overflow (gosec G115)
+
+### 🔧 Improvements
+
+- Includes all features from v0.5.5 (PDB/HPA/VPA CLI flags)
+
+---
+
 ## Version 0.5.5 (12-03-2026)
 
 ### ✨ New Features
