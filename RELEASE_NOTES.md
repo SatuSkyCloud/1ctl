@@ -1,5 +1,18 @@
 # Release Notes
 
+## Version 0.5.4 (12-03-2026)
+
+### ✨ New Features
+
+- **`domain purchase-status`**: New subcommand to poll the status of a pending domain purchase intent
+- **`domain contact`**: New subcommand to view saved contact info from the last domain purchase
+
+### 🔧 Improvements
+
+- **Domain purchase flow**: `domain purchase` now initiates a Stripe Checkout session — returns a payment URL and intent ID instead of purchasing directly. Complete payment in browser, then use `domain purchase-status <intent-id>` to confirm.
+
+---
+
 ## Version 0.5.3 (12-03-2026)
 
 ### 🔧 Improvements
