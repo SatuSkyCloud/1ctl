@@ -1,5 +1,67 @@
 # Release Notes
 
+## Version 0.5.5 (12-03-2026)
+
+### ✨ New Features
+
+- **PDB CLI Flags**: Configure PodDisruptionBudgets from the CLI
+  - `--pdb` — Enable PDB (auto-enabled when replicas > 1)
+  - `--pdb-type` — Strategy: `auto` (default), `fixed`, or `percent`
+  - `--pdb-min-available` — Minimum available pods (for type=fixed)
+  - `--pdb-percent` — Minimum available percentage (for type=percent)
+
+- **HPA CLI Flags**: Configure HorizontalPodAutoscalers from the CLI
+  - `--hpa` — Enable HPA
+  - `--hpa-min-replicas` — Minimum replicas (default: 1)
+  - `--hpa-max-replicas` — Maximum replicas (default: 10)
+  - `--hpa-cpu-target` — Target CPU utilization % (default: 80)
+  - `--hpa-memory-target` — Target memory utilization % (0 = disabled)
+
+- **VPA CLI Flags**: Configure VerticalPodAutoscalers from the CLI
+  - `--vpa` — Enable VPA
+  - `--vpa-mode` — Update mode: `Off` (default), `Initial`, or `Auto`
+  - `--vpa-min-cpu`, `--vpa-max-cpu` — CPU resource bounds
+  - `--vpa-min-memory`, `--vpa-max-memory` — Memory resource bounds
+
+- **Replica Count Override**: `--replicas` flag to set replica count manually instead of deriving from machine count
+
+### 🔧 Improvements
+
+- **Smart PDB Auto-Enable**: PDB automatically enabled when replicas > 1, even without `--pdb` flag
+- **Validation**: HPA + VPA with mode `Auto` rejected (resource scaling conflict), HPA min/max bounds checked, PDB percent range validated (1-100)
+
+### 📋 New Flags Summary
+
+| Flag | Default | Description |
+|------|---------|-------------|
+| `--replicas` | auto | Manual replica count override |
+| `--pdb` | false | Enable PodDisruptionBudget |
+| `--pdb-type` | auto | PDB strategy (auto/fixed/percent) |
+| `--hpa` | false | Enable HorizontalPodAutoscaler |
+| `--hpa-min-replicas` | 1 | HPA minimum replicas |
+| `--hpa-max-replicas` | 10 | HPA maximum replicas |
+| `--hpa-cpu-target` | 80 | Target CPU % |
+| `--vpa` | false | Enable VerticalPodAutoscaler |
+| `--vpa-mode` | Off | VPA mode (Off/Initial/Auto) |
+
+### 📚 New Command Usage
+
+```bash
+# Deploy with HPA auto-scaling
+1ctl deploy --cpu 2 --memory 1Gi --hpa --hpa-max-replicas 5
+
+# Deploy with VPA recommendations (read-only mode)
+1ctl deploy --cpu 2 --memory 1Gi --vpa --vpa-mode Off
+
+# Deploy with PDB for high availability
+1ctl deploy --cpu 2 --memory 1Gi --replicas 3 --pdb --pdb-type percent --pdb-percent 60
+
+# Combined: HPA + VPA in Off mode (recommendations only)
+1ctl deploy --cpu 2 --memory 1Gi --hpa --vpa --vpa-mode Off
+```
+
+---
+
 ## Version 0.5.4 (12-03-2026)
 
 ### ✨ New Features
