@@ -155,15 +155,50 @@ cd your-project
 ### Deployments
 
 ```bash
-# Create a deployment
-1ctl deploy create --cpu=2 --memory=512Mi --domain=example.com --project=myproject
+# Basic deployment
+1ctl deploy --cpu 2 --memory 512Mi
+
+# Deploy with custom domain and machine targeting
+1ctl deploy --cpu 2 --memory 1Gi --domain example.com --machine my-machine-1
 
 # List deployments
 1ctl deploy list
 
 # Get deployment info
-1ctl deploy info --deployment-id=123
+1ctl deploy get --deployment-id=123
+
+# Check deployment status
+1ctl deploy status --deployment-id=123 --watch
 ```
+
+### High Availability (PDB, HPA, VPA)
+
+```bash
+# Deploy with HPA auto-scaling
+1ctl deploy --cpu 2 --memory 1Gi --hpa --hpa-max-replicas 5
+
+# Deploy with VPA recommendations (read-only mode)
+1ctl deploy --cpu 2 --memory 1Gi --vpa --vpa-mode Off
+
+# Deploy with VPA resource bounds
+1ctl deploy --cpu 2 --memory 1Gi --vpa --vpa-mode Initial \
+  --vpa-min-cpu 100m --vpa-max-cpu 4 \
+  --vpa-min-memory 128Mi --vpa-max-memory 8Gi
+
+# Deploy with PDB for disruption protection
+1ctl deploy --cpu 2 --memory 1Gi --replicas 3 --pdb --pdb-type percent --pdb-percent 60
+
+# Deploy with fixed PDB minimum
+1ctl deploy --cpu 2 --memory 1Gi --replicas 3 --pdb --pdb-type fixed --pdb-min-available 2
+
+# Combined: HPA + VPA in Off mode (scaling + recommendations)
+1ctl deploy --cpu 2 --memory 1Gi --hpa --hpa-cpu-target 70 --vpa --vpa-mode Off
+
+# Manual replica count
+1ctl deploy --cpu 2 --memory 1Gi --replicas 3
+```
+
+**Note:** PDB auto-enables when replicas > 1. HPA and VPA with mode `Auto` cannot be used together.
 
 ### Services
 
