@@ -21,6 +21,8 @@ func CreditsCommand() *cli.Command {
 			creditsUsageCommand(),
 			creditsTopupCommand(),
 			creditsInvoicesCommand(),
+			creditsAutoTopupCommand(),
+			creditsNotificationsCommand(),
 		},
 	}
 }
@@ -404,6 +406,261 @@ func handleInvoiceGenerate(c *cli.Context) error {
 	utils.PrintStatusLine("Amount", fmt.Sprintf("$%.2f", invoice.Amount))
 	utils.PrintStatusLine("Status", invoice.Status)
 	return nil
+}
+
+// ============================================================
+// Auto-Topup Settings
+// ============================================================
+
+func creditsAutoTopupCommand() *cli.Command {
+	return &cli.Command{
+		Name:  "auto-topup",
+		Usage: "Manage auto-topup settings",
+		Subcommands: []*cli.Command{
+			{
+				Name:   "get",
+				Usage:  "Show current auto-topup settings",
+				Action: handleAutoTopupGet,
+			},
+			{
+				Name:  "set",
+				Usage: "Configure auto-topup settings",
+				Flags: []cli.Flag{
+					&cli.BoolFlag{
+						Name:  "enabled",
+						Usage: "Enable auto-topup",
+					},
+					&cli.Float64Flag{
+						Name:  "threshold",
+						Usage: "Balance threshold that triggers auto-topup (USD)",
+					},
+					&cli.Float64Flag{
+						Name:  "amount",
+						Usage: "Amount to top up when triggered (USD)",
+					},
+				},
+				Action: handleAutoTopupSet,
+			},
+		},
+	}
+}
+
+func handleAutoTopupGet(c *cli.Context) error {
+	orgID := context.GetCurrentOrgID()
+	if orgID == "" {
+		return utils.NewError("organization ID not found. Please run '1ctl auth login' first", nil)
+	}
+
+	settings, err := api.GetAutoTopupSettings(orgID)
+	if err != nil {
+		return utils.NewError(fmt.Sprintf("failed to get auto-topup settings: %s", err.Error()), nil)
+	}
+
+	utils.PrintHeader("Auto-Topup Settings")
+	enabledStr := utils.WarnColor("disabled")
+	if settings.Enabled {
+		enabledStr = utils.SuccessColor("enabled")
+	}
+	utils.PrintStatusLine("Status", enabledStr)
+	utils.PrintStatusLine("Threshold", fmt.Sprintf("$%.2f", settings.ThresholdAmount))
+	utils.PrintStatusLine("Topup Amount", fmt.Sprintf("$%.2f", settings.TopupAmount))
+	if settings.HasPaymentMethod {
+		pm := fmt.Sprintf("%s •••• %s", settings.PaymentMethodBrand, settings.PaymentMethodLast4)
+		utils.PrintStatusLine("Payment Method", pm)
+	} else {
+		utils.PrintStatusLine("Payment Method", utils.WarnColor("none configured"))
+	}
+	if settings.LastTopupAt != nil {
+		utils.PrintStatusLine("Last Topup", *settings.LastTopupAt)
+	}
+	return nil
+}
+
+func handleAutoTopupSet(c *cli.Context) error {
+	orgID := context.GetCurrentOrgID()
+	if orgID == "" {
+		return utils.NewError("organization ID not found. Please run '1ctl auth login' first", nil)
+	}
+
+	// Fetch current settings to use as defaults for unset flags
+	current, err := api.GetAutoTopupSettings(orgID)
+	if err != nil {
+		return utils.NewError(fmt.Sprintf("failed to get current settings: %s", err.Error()), nil)
+	}
+
+	req := api.AutoTopupSettingsRequest{
+		Enabled:         current.Enabled,
+		ThresholdAmount: current.ThresholdAmount,
+		TopupAmount:     current.TopupAmount,
+	}
+	if c.IsSet("enabled") {
+		req.Enabled = c.Bool("enabled")
+	}
+	if c.IsSet("threshold") {
+		req.ThresholdAmount = c.Float64("threshold")
+	}
+	if c.IsSet("amount") {
+		req.TopupAmount = c.Float64("amount")
+	}
+
+	updated, err := api.UpdateAutoTopupSettings(orgID, req)
+	if err != nil {
+		return utils.NewError(fmt.Sprintf("failed to update auto-topup settings: %s", err.Error()), nil)
+	}
+
+	utils.PrintSuccess("Auto-topup settings updated")
+	enabledStr := utils.WarnColor("disabled")
+	if updated.Enabled {
+		enabledStr = utils.SuccessColor("enabled")
+	}
+	utils.PrintStatusLine("Status", enabledStr)
+	utils.PrintStatusLine("Threshold", fmt.Sprintf("$%.2f", updated.ThresholdAmount))
+	utils.PrintStatusLine("Topup Amount", fmt.Sprintf("$%.2f", updated.TopupAmount))
+	return nil
+}
+
+// ============================================================
+// Notification Preferences
+// ============================================================
+
+func creditsNotificationsCommand() *cli.Command {
+	return &cli.Command{
+		Name:  "notifications",
+		Usage: "Manage billing notification preferences",
+		Subcommands: []*cli.Command{
+			{
+				Name:   "get",
+				Usage:  "Show current notification preferences",
+				Action: handleNotificationsGet,
+			},
+			{
+				Name:  "set",
+				Usage: "Update notification preferences",
+				Flags: []cli.Flag{
+					&cli.BoolFlag{
+						Name:  "email",
+						Usage: "Enable email notifications",
+					},
+					&cli.BoolFlag{
+						Name:  "in-app",
+						Usage: "Enable in-app notifications",
+					},
+					&cli.BoolFlag{
+						Name:  "webhook",
+						Usage: "Enable webhook notifications",
+					},
+					&cli.StringFlag{
+						Name:  "webhook-url",
+						Usage: "Webhook URL for notifications",
+					},
+					&cli.BoolFlag{
+						Name:  "digest",
+						Usage: "Enable digest notifications",
+					},
+					&cli.StringFlag{
+						Name:  "digest-frequency",
+						Usage: "Digest frequency (daily, weekly)",
+					},
+					&cli.Float64Flag{
+						Name:  "low-balance-amount",
+						Usage: "Alert when balance falls below this amount (USD)",
+					},
+				},
+				Action: handleNotificationsSet,
+			},
+		},
+	}
+}
+
+func handleNotificationsGet(c *cli.Context) error {
+	orgID := context.GetCurrentOrgID()
+	if orgID == "" {
+		return utils.NewError("organization ID not found. Please run '1ctl auth login' first", nil)
+	}
+
+	prefs, err := api.GetNotificationPreferences(orgID)
+	if err != nil {
+		return utils.NewError(fmt.Sprintf("failed to get notification preferences: %s", err.Error()), nil)
+	}
+
+	utils.PrintHeader("Notification Preferences")
+	utils.PrintStatusLine("Email", formatBoolEnabled(prefs.EmailEnabled))
+	utils.PrintStatusLine("In-App", formatBoolEnabled(prefs.InAppEnabled))
+	utils.PrintStatusLine("Webhook", formatBoolEnabled(prefs.WebhookEnabled))
+	if prefs.WebhookEnabled && prefs.WebhookURL != "" {
+		utils.PrintStatusLine("Webhook URL", prefs.WebhookURL)
+	}
+	utils.PrintStatusLine("Digest", formatBoolEnabled(prefs.DigestEnabled))
+	if prefs.DigestEnabled && prefs.DigestFrequency != "" {
+		utils.PrintStatusLine("Digest Frequency", prefs.DigestFrequency)
+	}
+	utils.PrintStatusLine("Low Balance Alert", fmt.Sprintf("$%.2f", prefs.LowBalanceThresholdAmount))
+	utils.PrintStatusLine("Alert Cooldown", fmt.Sprintf("%d hours", prefs.AlertCooldownHours))
+	return nil
+}
+
+func handleNotificationsSet(c *cli.Context) error {
+	orgID := context.GetCurrentOrgID()
+	if orgID == "" {
+		return utils.NewError("organization ID not found. Please run '1ctl auth login' first", nil)
+	}
+
+	// Fetch current to use as defaults for unset flags
+	current, err := api.GetNotificationPreferences(orgID)
+	if err != nil {
+		return utils.NewError(fmt.Sprintf("failed to get current preferences: %s", err.Error()), nil)
+	}
+
+	req := api.NotificationPreferencesRequest{
+		EmailEnabled:              current.EmailEnabled,
+		InAppEnabled:              current.InAppEnabled,
+		WebhookEnabled:            current.WebhookEnabled,
+		WebhookURL:                current.WebhookURL,
+		DigestEnabled:             current.DigestEnabled,
+		DigestFrequency:           current.DigestFrequency,
+		LowBalanceThresholdAmount: current.LowBalanceThresholdAmount,
+		AlertCooldownHours:        current.AlertCooldownHours,
+	}
+	if c.IsSet("email") {
+		req.EmailEnabled = c.Bool("email")
+	}
+	if c.IsSet("in-app") {
+		req.InAppEnabled = c.Bool("in-app")
+	}
+	if c.IsSet("webhook") {
+		req.WebhookEnabled = c.Bool("webhook")
+	}
+	if c.IsSet("webhook-url") {
+		req.WebhookURL = c.String("webhook-url")
+	}
+	if c.IsSet("digest") {
+		req.DigestEnabled = c.Bool("digest")
+	}
+	if c.IsSet("digest-frequency") {
+		req.DigestFrequency = c.String("digest-frequency")
+	}
+	if c.IsSet("low-balance-amount") {
+		req.LowBalanceThresholdAmount = c.Float64("low-balance-amount")
+	}
+
+	updated, err := api.UpdateNotificationPreferences(orgID, req)
+	if err != nil {
+		return utils.NewError(fmt.Sprintf("failed to update notification preferences: %s", err.Error()), nil)
+	}
+
+	utils.PrintSuccess("Notification preferences updated")
+	utils.PrintStatusLine("Email", formatBoolEnabled(updated.EmailEnabled))
+	utils.PrintStatusLine("In-App", formatBoolEnabled(updated.InAppEnabled))
+	utils.PrintStatusLine("Webhook", formatBoolEnabled(updated.WebhookEnabled))
+	utils.PrintStatusLine("Digest", formatBoolEnabled(updated.DigestEnabled))
+	return nil
+}
+
+func formatBoolEnabled(b bool) string {
+	if b {
+		return utils.SuccessColor("enabled")
+	}
+	return utils.WarnColor("disabled")
 }
 
 // formatTimeAgo formats a time as a human-readable "X ago" string

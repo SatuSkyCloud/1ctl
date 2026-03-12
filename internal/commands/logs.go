@@ -2,9 +2,11 @@ package commands
 
 import (
 	"1ctl/internal/api"
+	"1ctl/internal/context"
 	"1ctl/internal/utils"
 	"fmt"
 
+	gorillaws "github.com/gorilla/websocket"
 	"github.com/urfave/cli/v2"
 )
 
@@ -31,6 +33,7 @@ func LogsCommand() *cli.Command {
 			},
 		},
 		Subcommands: []*cli.Command{
+			logsStreamCommand(),
 			logsStatsCommand(),
 			logsDeleteCommand(),
 		},
@@ -154,4 +157,89 @@ func handleLogsDelete(c *cli.Context) error {
 
 	utils.PrintSuccess("Logs for deployment %s deleted successfully", deploymentID)
 	return nil
+}
+
+// requireUserContext returns the userID from context or an error
+func requireUserContext() (string, error) {
+	userID := context.GetUserID()
+	if userID == "" {
+		return "", utils.NewError("user ID not found. Please run '1ctl auth login' first", nil)
+	}
+	return userID, nil
+}
+
+func handleLogsStream(c *cli.Context) error {
+	namespace := c.String("namespace")
+	appLabel := c.String("app")
+	batchSize := c.Int("batch-size")
+
+	// Resolve via deployment ID if explicit flags not given
+	if deploymentID := c.String("deployment-id"); deploymentID != "" {
+		deployment, err := api.GetDeployment(deploymentID)
+		if err != nil {
+			return utils.NewError(fmt.Sprintf("failed to get deployment: %s", err.Error()), nil)
+		}
+		namespace = deployment.Namespace
+		appLabel = deployment.AppLabel
+	}
+
+	if namespace == "" || appLabel == "" {
+		return utils.NewError("provide --deployment-id, or both --namespace and --app", nil)
+	}
+
+	wsURL, err := api.StreamPodLogsWSURL(namespace, appLabel)
+	if err != nil {
+		return err
+	}
+	if batchSize > 0 {
+		wsURL = fmt.Sprintf("%s?batchSize=%d", wsURL, batchSize)
+	}
+
+	conn, _, err := gorillaws.DefaultDialer.Dial(wsURL, nil)
+	if err != nil {
+		return utils.NewError(fmt.Sprintf("failed to connect to log stream: %s", err.Error()), nil)
+	}
+	defer conn.Close() //nolint:errcheck // cleanup on exit, error unactionable
+
+	utils.PrintInfo("Streaming logs for %s/%s — press Ctrl+C to stop", namespace, appLabel)
+
+	for {
+		_, msg, err := conn.ReadMessage()
+		if err != nil {
+			// Normal close on Ctrl+C or server disconnect
+			return nil
+		}
+		fmt.Println(string(msg))
+	}
+}
+
+// logsStreamCommand streams live pod logs over WebSocket
+func logsStreamCommand() *cli.Command {
+	return &cli.Command{
+		Name:  "stream",
+		Usage: "Stream live pod logs (like kubectl logs -f)",
+		Flags: []cli.Flag{
+			&cli.StringFlag{
+				Name:    "deployment-id",
+				Aliases: []string{"d"},
+				Usage:   "Deployment ID (resolves namespace and app label automatically)",
+			},
+			&cli.StringFlag{
+				Name:    "namespace",
+				Aliases: []string{"n"},
+				Usage:   "Kubernetes namespace (use with --app)",
+			},
+			&cli.StringFlag{
+				Name:    "app",
+				Aliases: []string{"a"},
+				Usage:   "App label (use with --namespace)",
+			},
+			&cli.IntFlag{
+				Name:  "batch-size",
+				Usage: "Log lines per batch sent by the server",
+				Value: 100,
+			},
+		},
+		Action: handleLogsStream,
+	}
 }

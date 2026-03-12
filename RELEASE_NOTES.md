@@ -1,5 +1,67 @@
 # Release Notes
 
+## Version 0.5.2 (12-03-2026)
+
+### ✨ New Features
+
+- **Mac VM Agent Commands**: Full lifecycle control for Mac mini machines via the Mac agent
+  - `machine vm status` — Show current VM state
+  - `machine vm start/stop/reboot` — Power control commands
+  - `machine vm stop --force` — Force stop with optional grace period
+  - `machine vm resize --cpu N --memory N` — Resize VM resources
+  - `machine vm apply-config --config-file PATH` — Apply Talos configuration (base64 encoded)
+  - `machine vm console [--enable|--disable]` — Toggle console streaming
+
+- **Domain Management**: Full lifecycle for external domain registration and DNS via OpenProvider
+  - `domain list/get/create/delete/verify` — Domain lifecycle management
+  - `domain check` — Check domain availability
+  - `domain search` — Search available domains
+  - `domain purchase` — Purchase a domain
+  - `domain dns list/create/update/delete` — DNS record management
+
+- **Machine Usage Tracking**: View and calculate usage costs for deployed machines
+  - `machine usage list` — List all usage records for current user
+  - `machine usage get --usage-id <id>` — Get usage record details
+  - `machine usage cost --usage-id <id>` — Calculate cost for a usage record
+
+- **Pricing Configuration**: Browse platform pricing information
+  - `pricing list` — List all pricing configurations
+  - `pricing get --id <id>` — Get specific pricing config
+  - `pricing lookup --region <r> --type <t> --sla <s>` — Look up pricing by region/type/SLA
+  - `pricing calculate --machine-ref-id <id> --machine-id <id>` — Calculate machine cost
+
+- **Billing Settings**: Manage auto top-up and notification preferences
+  - `credits auto-topup get` — View current auto top-up settings
+  - `credits auto-topup set --enabled [--threshold N] [--amount N]` — Configure auto top-up
+  - `credits notifications get` — View notification preferences
+  - `credits notifications set --low-balance [--email] [--push] [--threshold N]` — Configure notifications
+
+- **Live Log Streaming**: Real-time log streaming via WebSocket
+  - `logs stream --deployment-id <id>` — Stream logs using deployment ID
+  - `logs stream --namespace <ns> --app <label>` — Stream logs using namespace + app label
+  - `logs stream --batch-size N` — Control log lines per batch
+
+### 🔧 Technical Improvements
+
+- **Backend CLI Route Expansion**: Added machine usage, pricing, and billing settings routes to CLI API
+- **WebSocket Log Streaming**: Direct WebSocket connection replacing Loki log querying
+- **Mac VM Agent Integration**: `POST /machines/:machineId/command` now exposed via CLI routes
+- **Machine Model Enhancement**: Added `VMState` and `ConnectionMode` fields to Machine struct
+- **New `gorilla/websocket` dependency**: WebSocket client for live log streaming
+
+### 📋 New Commands Summary
+
+| Category | Commands Added |
+|----------|---------------|
+| Machine VM | 7 subcommands |
+| Domain | 9 subcommands + 4 DNS subcommands |
+| Machine Usage | 3 subcommands |
+| Pricing | 4 subcommands |
+| Billing Settings | 4 subcommands |
+| Logs Streaming | 1 subcommand |
+
+---
+
 ## Version 0.5.1 (13-01-2026)
 
 ### ✨ New Features

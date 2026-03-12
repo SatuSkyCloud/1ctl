@@ -33,6 +33,7 @@ func createApp() *cli.App {
 			commands.IssuerCommand(),
 			commands.EnvironmentCommand(),
 			commands.MachineCommand(),
+			commands.DomainCommand(),
 			commands.CompletionCommand(),
 			// Phase 1: Credits, Storage, Logs
 			commands.CreditsCommand(),
@@ -49,6 +50,8 @@ func createApp() *cli.App {
 			commands.AuditCommand(),
 			commands.TalosCommand(),
 			commands.AdminCommand(),
+			// Phase 3+4: Pricing
+			commands.PricingCommand(),
 		},
 		Before: func(c *cli.Context) error {
 			// Get the command or first argument

@@ -1,6 +1,7 @@
 package api
 
 import (
+	"1ctl/internal/config"
 	"1ctl/internal/utils"
 	"encoding/json"
 	"fmt"
@@ -86,6 +87,32 @@ func GetLogStats(deploymentID string) (*LogStats, error) {
 // DeleteLogs deletes logs for a deployment
 func DeleteLogs(deploymentID string) error {
 	return makeRequest("DELETE", fmt.Sprintf("/pods/logs/%s", deploymentID), nil, nil)
+}
+
+// StreamPodLogsWSURL returns the WebSocket URL for streaming pod logs.
+// The WS endpoint lives outside the CLI path (/v1/pods/stream/...) so we
+// reconstruct the host from the CLI API base URL.
+func StreamPodLogsWSURL(namespace, appLabel string) (string, error) {
+	cfg := config.GetConfig()
+	// cfg.ApiURL is e.g. "https://api.satusky.com/v1/cli"
+	// Strip the /v1/cli suffix to get the base host
+	base := cfg.ApiURL
+	for _, suffix := range []string{"/v1/cli", "/v1"} {
+		if idx := len(base) - len(suffix); idx >= 0 && base[idx:] == suffix {
+			base = base[:idx]
+			break
+		}
+	}
+	// Swap http→ws and https→wss
+	switch {
+	case len(base) >= 8 && base[:8] == "https://":
+		base = "wss://" + base[8:]
+	case len(base) >= 7 && base[:7] == "http://":
+		base = "ws://" + base[7:]
+	default:
+		return "", utils.NewError("unexpected API URL scheme: "+cfg.ApiURL, nil)
+	}
+	return fmt.Sprintf("%s/v1/pods/stream/logs/%s/%s", base, namespace, appLabel), nil
 }
 
 // GetPodByLabel gets pod information by deployment ID

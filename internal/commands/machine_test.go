@@ -21,6 +21,8 @@ func TestMachineCommand(t *testing.T) {
 	expectedSubcommands := map[string]bool{
 		"list":      false,
 		"available": false,
+		"vm":        false,
+		"usage":     false,
 	}
 
 	for _, subcmd := range cmd.Subcommands {

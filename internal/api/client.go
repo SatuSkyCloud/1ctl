@@ -710,6 +710,26 @@ func GetAvailableMachines() ([]Machine, error) {
 	return machines, nil
 }
 
+// SendMachineCommand sends a command to a Mac agent machine
+func SendMachineCommand(machineID string, req SendCommandRequest) (*SendCommandResponse, error) {
+	var resp apiResponse
+	err := makeRequest("POST", fmt.Sprintf("/machines/%s/command", machineID), req, &resp)
+	if err != nil {
+		return nil, err
+	}
+
+	data, err := json.Marshal(resp.Data)
+	if err != nil {
+		return nil, utils.NewError(fmt.Sprintf("failed to marshal response data: %s", err.Error()), nil)
+	}
+
+	var cmdResp SendCommandResponse
+	if err := json.Unmarshal(data, &cmdResp); err != nil {
+		return nil, utils.NewError(fmt.Sprintf("failed to unmarshal command response: %s", err.Error()), nil)
+	}
+	return &cmdResp, nil
+}
+
 // UpsertDeployment creates or updates a deployment and returns the deployment ID
 func UpsertDeployment(req Deployment, response *string) error {
 	var resp apiResponse
@@ -759,4 +779,203 @@ func UpsertIngress(ingress Ingress) (*Ingress, error) {
 	// Return the ingress object with the ID set
 	ingress.IngressID = ingressID
 	return &ingress, nil
+}
+
+// ============================================================
+// Machine Usage API
+// ============================================================
+
+// GetUserMachineUsages lists machine usage records for a user
+func GetUserMachineUsages(userID string) ([]MachineUsageRecord, error) {
+	var resp apiResponse
+	if err := makeRequest("GET", fmt.Sprintf("/machine-usage/user/%s", userID), nil, &resp); err != nil {
+		return nil, err
+	}
+	data, err := json.Marshal(resp.Data)
+	if err != nil {
+		return nil, utils.NewError(fmt.Sprintf("failed to marshal response: %s", err.Error()), nil)
+	}
+	var usages []MachineUsageRecord
+	if err := json.Unmarshal(data, &usages); err != nil {
+		return nil, utils.NewError(fmt.Sprintf("failed to unmarshal machine usages: %s", err.Error()), nil)
+	}
+	return usages, nil
+}
+
+// GetMachineUsageByID retrieves a single machine usage record by ID
+func GetMachineUsageByID(usageID string) (*MachineUsageRecord, error) {
+	var resp apiResponse
+	if err := makeRequest("GET", fmt.Sprintf("/machine-usage/%s", usageID), nil, &resp); err != nil {
+		return nil, err
+	}
+	data, err := json.Marshal(resp.Data)
+	if err != nil {
+		return nil, utils.NewError(fmt.Sprintf("failed to marshal response: %s", err.Error()), nil)
+	}
+	var usage MachineUsageRecord
+	if err := json.Unmarshal(data, &usage); err != nil {
+		return nil, utils.NewError(fmt.Sprintf("failed to unmarshal machine usage: %s", err.Error()), nil)
+	}
+	return &usage, nil
+}
+
+// GetUsageCost calculates cost for a machine usage record
+func GetUsageCost(usageID string) (*UsageCostResponse, error) {
+	var resp apiResponse
+	if err := makeRequest("GET", fmt.Sprintf("/machine-usage/%s/cost", usageID), nil, &resp); err != nil {
+		return nil, err
+	}
+	data, err := json.Marshal(resp.Data)
+	if err != nil {
+		return nil, utils.NewError(fmt.Sprintf("failed to marshal response: %s", err.Error()), nil)
+	}
+	var cost UsageCostResponse
+	if err := json.Unmarshal(data, &cost); err != nil {
+		return nil, utils.NewError(fmt.Sprintf("failed to unmarshal usage cost: %s", err.Error()), nil)
+	}
+	return &cost, nil
+}
+
+// ============================================================
+// Pricing Config API
+// ============================================================
+
+// ListPricingConfigs lists all pricing configurations
+func ListPricingConfigs() ([]PricingConfig, error) {
+	var resp apiResponse
+	if err := makeRequest("GET", "/pricing/configs", nil, &resp); err != nil {
+		return nil, err
+	}
+	data, err := json.Marshal(resp.Data)
+	if err != nil {
+		return nil, utils.NewError(fmt.Sprintf("failed to marshal response: %s", err.Error()), nil)
+	}
+	var configs []PricingConfig
+	if err := json.Unmarshal(data, &configs); err != nil {
+		return nil, utils.NewError(fmt.Sprintf("failed to unmarshal pricing configs: %s", err.Error()), nil)
+	}
+	return configs, nil
+}
+
+// GetPricingConfig retrieves a single pricing config by ID
+func GetPricingConfig(configID string) (*PricingConfig, error) {
+	var resp apiResponse
+	if err := makeRequest("GET", fmt.Sprintf("/pricing/configs/%s", configID), nil, &resp); err != nil {
+		return nil, err
+	}
+	data, err := json.Marshal(resp.Data)
+	if err != nil {
+		return nil, utils.NewError(fmt.Sprintf("failed to marshal response: %s", err.Error()), nil)
+	}
+	var config PricingConfig
+	if err := json.Unmarshal(data, &config); err != nil {
+		return nil, utils.NewError(fmt.Sprintf("failed to unmarshal pricing config: %s", err.Error()), nil)
+	}
+	return &config, nil
+}
+
+// GetPricingByRegionAndType looks up pricing for a specific region, machine type, and SLA tier
+func GetPricingByRegionAndType(region, machineType, slaTier string) (*PricingConfig, error) {
+	var resp apiResponse
+	if err := makeRequest("GET", fmt.Sprintf("/pricing/lookup/%s/%s/%s", region, machineType, slaTier), nil, &resp); err != nil {
+		return nil, err
+	}
+	data, err := json.Marshal(resp.Data)
+	if err != nil {
+		return nil, utils.NewError(fmt.Sprintf("failed to marshal response: %s", err.Error()), nil)
+	}
+	var config PricingConfig
+	if err := json.Unmarshal(data, &config); err != nil {
+		return nil, utils.NewError(fmt.Sprintf("failed to unmarshal pricing config: %s", err.Error()), nil)
+	}
+	return &config, nil
+}
+
+// CalculateMachineCost calculates cost for a machine over a time range
+func CalculateMachineCost(machineRefID, machineID string, req CostCalculationRequest) (*CostCalculationResponse, error) {
+	var resp apiResponse
+	if err := makeRequest("POST", fmt.Sprintf("/pricing/calculate/%s/%s", machineRefID, machineID), req, &resp); err != nil {
+		return nil, err
+	}
+	data, err := json.Marshal(resp.Data)
+	if err != nil {
+		return nil, utils.NewError(fmt.Sprintf("failed to marshal response: %s", err.Error()), nil)
+	}
+	var result CostCalculationResponse
+	if err := json.Unmarshal(data, &result); err != nil {
+		return nil, utils.NewError(fmt.Sprintf("failed to unmarshal cost calculation: %s", err.Error()), nil)
+	}
+	return &result, nil
+}
+
+// ============================================================
+// Billing Settings API
+// ============================================================
+
+// GetAutoTopupSettings retrieves auto-topup settings for an organization
+func GetAutoTopupSettings(orgID string) (*AutoTopupSettings, error) {
+	var resp apiResponse
+	if err := makeRequest("GET", fmt.Sprintf("/billing/organizations/%s/auto-topup", orgID), nil, &resp); err != nil {
+		return nil, err
+	}
+	data, err := json.Marshal(resp.Data)
+	if err != nil {
+		return nil, utils.NewError(fmt.Sprintf("failed to marshal response: %s", err.Error()), nil)
+	}
+	var settings AutoTopupSettings
+	if err := json.Unmarshal(data, &settings); err != nil {
+		return nil, utils.NewError(fmt.Sprintf("failed to unmarshal auto-topup settings: %s", err.Error()), nil)
+	}
+	return &settings, nil
+}
+
+// UpdateAutoTopupSettings updates auto-topup settings for an organization
+func UpdateAutoTopupSettings(orgID string, req AutoTopupSettingsRequest) (*AutoTopupSettings, error) {
+	var resp apiResponse
+	if err := makeRequest("PUT", fmt.Sprintf("/billing/organizations/%s/auto-topup", orgID), req, &resp); err != nil {
+		return nil, err
+	}
+	data, err := json.Marshal(resp.Data)
+	if err != nil {
+		return nil, utils.NewError(fmt.Sprintf("failed to marshal response: %s", err.Error()), nil)
+	}
+	var settings AutoTopupSettings
+	if err := json.Unmarshal(data, &settings); err != nil {
+		return nil, utils.NewError(fmt.Sprintf("failed to unmarshal auto-topup settings: %s", err.Error()), nil)
+	}
+	return &settings, nil
+}
+
+// GetNotificationPreferences retrieves billing notification preferences for an organization
+func GetNotificationPreferences(orgID string) (*NotificationPreferences, error) {
+	var resp apiResponse
+	if err := makeRequest("GET", fmt.Sprintf("/billing/organizations/%s/notifications", orgID), nil, &resp); err != nil {
+		return nil, err
+	}
+	data, err := json.Marshal(resp.Data)
+	if err != nil {
+		return nil, utils.NewError(fmt.Sprintf("failed to marshal response: %s", err.Error()), nil)
+	}
+	var prefs NotificationPreferences
+	if err := json.Unmarshal(data, &prefs); err != nil {
+		return nil, utils.NewError(fmt.Sprintf("failed to unmarshal notification preferences: %s", err.Error()), nil)
+	}
+	return &prefs, nil
+}
+
+// UpdateNotificationPreferences updates billing notification preferences for an organization
+func UpdateNotificationPreferences(orgID string, req NotificationPreferencesRequest) (*NotificationPreferences, error) {
+	var resp apiResponse
+	if err := makeRequest("PUT", fmt.Sprintf("/billing/organizations/%s/notifications", orgID), req, &resp); err != nil {
+		return nil, err
+	}
+	data, err := json.Marshal(resp.Data)
+	if err != nil {
+		return nil, utils.NewError(fmt.Sprintf("failed to marshal response: %s", err.Error()), nil)
+	}
+	var prefs NotificationPreferences
+	if err := json.Unmarshal(data, &prefs); err != nil {
+		return nil, utils.NewError(fmt.Sprintf("failed to unmarshal notification preferences: %s", err.Error()), nil)
+	}
+	return &prefs, nil
 }

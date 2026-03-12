@@ -249,6 +249,8 @@ type Machine struct {
 	StorageUsagePercent *float64   `db:"storage_usage_percent" json:"storage_usage_percent"`
 	NetworkUsageGbps    *float64   `db:"network_usage_gbps" json:"network_usage_gbps"`
 	NetworkMetricsType  string     `db:"network_metrics_type" json:"network_metrics_type"`
+	ConnectionMode      *string    `db:"connection_mode" json:"connection_mode,omitempty"`
+	VMState             *string    `db:"vm_state" json:"vm_state,omitempty"`
 	UptimePercent       *float64   `db:"uptime_percent" json:"uptime_percent"`
 	ResponseTimeMs      *int       `db:"response_time_ms" json:"response_time_ms"`
 	NodeType            string     `db:"node_type" json:"node_type"`
@@ -263,4 +265,297 @@ type Machine struct {
 
 type MachineIDs struct {
 	MachineIDs []string `json:"machine_ids" validate:"required"`
+}
+
+// Mac agent command type constants
+const (
+	CmdStart         = "CMD_START"
+	CmdStop          = "CMD_STOP"
+	CmdForceStop     = "CMD_FORCE_STOP"
+	CmdReboot        = "CMD_REBOOT"
+	CmdResize        = "CMD_RESIZE"
+	CmdApplyConfig   = "CMD_APPLY_TALOS_CONFIG"
+	CmdStreamConsole = "CMD_STREAM_CONSOLE"
+)
+
+// Domain management types
+
+// Domain represents a domain registered in the system
+type Domain struct {
+	DomainID  string    `json:"domain_id"`
+	Name      string    `json:"name"`
+	Status    string    `json:"status"`
+	TTL       int       `json:"ttl"`
+	CreatedAt time.Time `json:"created_at"`
+	UpdatedAt time.Time `json:"updated_at"`
+}
+
+// DNSRecord represents a DNS record for a domain
+type DNSRecord struct {
+	RecordID  string    `json:"record_id"`
+	DomainID  string    `json:"domain_id"`
+	Type      string    `json:"type"`
+	Name      string    `json:"name"`
+	Data      string    `json:"data"`
+	Priority  *int      `json:"priority,omitempty"`
+	Port      *int      `json:"port,omitempty"`
+	Weight    *int      `json:"weight,omitempty"`
+	TTL       int       `json:"ttl"`
+	Flags     *int      `json:"flags,omitempty"`
+	Tag       *string   `json:"tag,omitempty"`
+	CreatedAt time.Time `json:"created_at"`
+	UpdatedAt time.Time `json:"updated_at"`
+}
+
+// DomainPrice represents pricing information for a domain
+type DomainPrice struct {
+	Amount   float64 `json:"amount"`
+	Currency string  `json:"currency"`
+}
+
+// DomainAvailabilityResult is the result of a domain availability check
+type DomainAvailabilityResult struct {
+	Domain       string       `json:"domain"`
+	Available    bool         `json:"available"`
+	Status       string       `json:"status"`
+	Reason       string       `json:"reason,omitempty"`
+	IsPremium    bool         `json:"is_premium,omitempty"`
+	Price        *DomainPrice `json:"price,omitempty"`
+	PremiumPrice float64      `json:"premium_price,omitempty"`
+}
+
+// DomainSearchResult is a single domain search result
+type DomainSearchResult struct {
+	Domain    string  `json:"domain"`
+	Extension string  `json:"extension"`
+	Available bool    `json:"available"`
+	Status    string  `json:"status"`
+	Price     float64 `json:"price"`
+	Currency  string  `json:"currency"`
+	IsPremium bool    `json:"is_premium"`
+	Period    int     `json:"period"`
+}
+
+// NameserverStatus is the result of a nameserver verification
+type NameserverStatus struct {
+	Verified            bool     `json:"verified"`
+	CurrentNameservers  []string `json:"current_nameservers"`
+	ExpectedNameservers []string `json:"expected_nameservers"`
+	Message             string   `json:"message"`
+}
+
+// DomainContactInfo contains contact information for domain registration
+type DomainContactInfo struct {
+	FirstName        string `json:"first_name"`
+	LastName         string `json:"last_name"`
+	Email            string `json:"email"`
+	PhoneCountryCode string `json:"phone_country_code"`
+	PhoneNumber      string `json:"phone_number"`
+	Street           string `json:"street"`
+	StreetNumber     string `json:"street_number"`
+	PostalCode       string `json:"postal_code"`
+	City             string `json:"city"`
+	State            string `json:"state,omitempty"`
+	Country          string `json:"country"`
+	CompanyName      string `json:"company_name,omitempty"`
+}
+
+// DomainCreateRequest is the request for creating a new domain
+type DomainCreateRequest struct {
+	Name      string `json:"name"`
+	IPAddress string `json:"ip_address,omitempty"`
+}
+
+// DomainCheckRequest is the request for checking domain availability
+type DomainCheckRequest struct {
+	Domains   []string `json:"domains"`
+	WithPrice bool     `json:"with_price"`
+}
+
+// DomainSearchRequest is the request for searching domain availability
+type DomainSearchRequest struct {
+	DomainName string   `json:"domain_name"`
+	Extensions []string `json:"extensions,omitempty"`
+	Period     int      `json:"period,omitempty"`
+}
+
+// DomainPurchaseRequest is the request for purchasing a domain
+type DomainPurchaseRequest struct {
+	Domain  string             `json:"domain"`
+	Period  int                `json:"period,omitempty"`
+	Contact *DomainContactInfo `json:"contact"`
+}
+
+// DNSRecordCreateRequest is the request for creating a new DNS record
+type DNSRecordCreateRequest struct {
+	Type     string  `json:"type"`
+	Name     string  `json:"name"`
+	Data     string  `json:"data"`
+	Priority *int    `json:"priority,omitempty"`
+	Port     *int    `json:"port,omitempty"`
+	Weight   *int    `json:"weight,omitempty"`
+	TTL      *int    `json:"ttl,omitempty"`
+	Flags    *int    `json:"flags,omitempty"`
+	Tag      *string `json:"tag,omitempty"`
+}
+
+// DNSRecordUpdateRequest is the request for updating a DNS record
+type DNSRecordUpdateRequest struct {
+	Type     *string `json:"type,omitempty"`
+	Name     *string `json:"name,omitempty"`
+	Data     *string `json:"data,omitempty"`
+	Priority *int    `json:"priority,omitempty"`
+	Port     *int    `json:"port,omitempty"`
+	Weight   *int    `json:"weight,omitempty"`
+	TTL      *int    `json:"ttl,omitempty"`
+	Flags    *int    `json:"flags,omitempty"`
+	Tag      *string `json:"tag,omitempty"`
+}
+
+// ============================================================
+// Machine Usage (user-facing)
+// ============================================================
+
+// MachineUsageRecord represents a raw machine usage record from the usage tracking API
+type MachineUsageRecord struct {
+	UsageID        string  `json:"usage_id"`
+	DeploymentID   string  `json:"deployment_id"`
+	MachineID      string  `json:"machine_id"`
+	UserID         string  `json:"user_id"`
+	OrganizationID string  `json:"organization_id"`
+	StartTime      string  `json:"start_time"`
+	EndTime        *string `json:"end_time,omitempty"`
+	HourlyRate     float64 `json:"hourly_rate"`
+	Status         string  `json:"status"`
+	IsBilled       bool    `json:"is_billed"`
+	LastBilledAt   *string `json:"last_billed_at,omitempty"`
+	MachineRefID   int64   `json:"machine_ref_id,omitempty"`
+	CreatedAt      string  `json:"created_at"`
+	UpdatedAt      string  `json:"updated_at"`
+}
+
+// UsageCostResponse is the response from GET /machine-usage/:usageId/cost
+type UsageCostResponse struct {
+	UsageID string  `json:"usage_id"`
+	Cost    float64 `json:"cost"`
+}
+
+// ============================================================
+// Pricing Configuration
+// ============================================================
+
+// PricingConfig represents a pricing configuration entry
+type PricingConfig struct {
+	ConfigID          string  `json:"config_id"`
+	Region            string  `json:"region"`
+	MachineType       string  `json:"machine_type"`
+	SLATier           string  `json:"sla_tier"`
+	BaseHourlyRate    float64 `json:"base_hourly_rate"`
+	CPUCoreRate       float64 `json:"cpu_core_rate"`
+	MemoryGBRate      float64 `json:"memory_gb_rate"`
+	StorageGBRate     float64 `json:"storage_gb_rate"`
+	GPURate           float64 `json:"gpu_rate"`
+	BandwidthGBPSRate float64 `json:"bandwidth_gbps_rate"`
+	CreatedAt         string  `json:"created_at"`
+	UpdatedAt         string  `json:"updated_at"`
+}
+
+// CostCalculationRequest is the request body for POST /pricing/calculate/:machine_ref_id/:machine_id
+type CostCalculationRequest struct {
+	StartTime string `json:"start_time"`
+	EndTime   string `json:"end_time"`
+}
+
+// CostBreakdown contains per-component cost details
+type CostBreakdown struct {
+	BaseCost      float64 `json:"base_cost"`
+	CPUCost       float64 `json:"cpu_cost"`
+	MemoryCost    float64 `json:"memory_cost"`
+	StorageCost   float64 `json:"storage_cost"`
+	GPUCost       float64 `json:"gpu_cost"`
+	BandwidthCost float64 `json:"bandwidth_cost"`
+}
+
+// CostCalculationResponse is the response from POST /pricing/calculate
+type CostCalculationResponse struct {
+	MachineID    string        `json:"machine_id"`
+	MachineRefID int64         `json:"machine_ref_id"`
+	StartTime    string        `json:"start_time"`
+	EndTime      string        `json:"end_time"`
+	TotalCost    float64       `json:"total_cost"`
+	Breakdown    CostBreakdown `json:"breakdown"`
+}
+
+// ============================================================
+// Billing Settings
+// ============================================================
+
+// AutoTopupSettings represents the auto-topup configuration for an organization
+type AutoTopupSettings struct {
+	SettingsID         string  `json:"settings_id"`
+	OrganizationID     string  `json:"organization_id"`
+	Enabled            bool    `json:"enabled"`
+	ThresholdAmount    float64 `json:"threshold_amount"`
+	TopupAmount        float64 `json:"topup_amount"`
+	HasPaymentMethod   bool    `json:"has_payment_method"`
+	PaymentMethodLast4 string  `json:"payment_method_last4,omitempty"`
+	PaymentMethodBrand string  `json:"payment_method_brand,omitempty"`
+	LastTopupAt        *string `json:"last_topup_at,omitempty"`
+	CreatedAt          string  `json:"created_at"`
+	UpdatedAt          string  `json:"updated_at"`
+}
+
+// AutoTopupSettingsRequest is the request to update auto-topup settings
+type AutoTopupSettingsRequest struct {
+	Enabled         bool    `json:"enabled"`
+	ThresholdAmount float64 `json:"threshold_amount"`
+	TopupAmount     float64 `json:"topup_amount"`
+}
+
+// NotificationPreferences represents the billing notification preferences
+type NotificationPreferences struct {
+	ID                         string   `json:"id"`
+	OrganizationID             string   `json:"organization_id"`
+	EmailEnabled               bool     `json:"email_enabled"`
+	InAppEnabled               bool     `json:"in_app_enabled"`
+	WebhookEnabled             bool     `json:"webhook_enabled"`
+	WebhookURL                 string   `json:"webhook_url,omitempty"`
+	EnabledTypes               []string `json:"enabled_types"`
+	QuietHoursEnabled          bool     `json:"quiet_hours_enabled"`
+	QuietHoursTimezone         string   `json:"quiet_hours_timezone,omitempty"`
+	DigestEnabled              bool     `json:"digest_enabled"`
+	DigestFrequency            string   `json:"digest_frequency,omitempty"`
+	LowBalanceThresholdPercent int      `json:"low_balance_threshold_percent"`
+	LowBalanceThresholdAmount  float64  `json:"low_balance_threshold_amount"`
+	AlertCooldownHours         int      `json:"alert_cooldown_hours"`
+}
+
+// NotificationPreferencesRequest is the request to update notification preferences
+type NotificationPreferencesRequest struct {
+	EmailEnabled               bool     `json:"email_enabled"`
+	InAppEnabled               bool     `json:"in_app_enabled"`
+	WebhookEnabled             bool     `json:"webhook_enabled"`
+	WebhookURL                 string   `json:"webhook_url,omitempty"`
+	EnabledTypes               []string `json:"enabled_types,omitempty"`
+	QuietHoursEnabled          bool     `json:"quiet_hours_enabled"`
+	QuietHoursStart            string   `json:"quiet_hours_start,omitempty"`
+	QuietHoursEnd              string   `json:"quiet_hours_end,omitempty"`
+	QuietHoursTimezone         string   `json:"quiet_hours_timezone,omitempty"`
+	DigestEnabled              bool     `json:"digest_enabled"`
+	DigestFrequency            string   `json:"digest_frequency,omitempty"`
+	LowBalanceThresholdPercent int      `json:"low_balance_threshold_percent"`
+	LowBalanceThresholdAmount  float64  `json:"low_balance_threshold_amount"`
+	AlertCooldownHours         int      `json:"alert_cooldown_hours"`
+}
+
+// SendCommandRequest is the request body for POST /machines/:machineId/command
+type SendCommandRequest struct {
+	Type    string                 `json:"type"`
+	Payload map[string]interface{} `json:"payload,omitempty"`
+}
+
+// SendCommandResponse is the response from POST /machines/:machineId/command
+type SendCommandResponse struct {
+	CommandID string `json:"command_id"`
+	Status    string `json:"status"`
 }
