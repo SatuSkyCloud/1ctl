@@ -473,6 +473,11 @@ func ListIssuers() ([]Issuer, error) {
 	return issuers, nil
 }
 
+func DeleteIssuer(issuerID string) error {
+	var resp apiResponse
+	return makeRequest("POST", fmt.Sprintf("/issuers/delete/%s", issuerID), nil, &resp)
+}
+
 // GetOrganizationByID gets organization details by ID
 func GetOrganizationByID(orgID uuid.UUID) (*Organization, error) {
 	var resp apiResponse

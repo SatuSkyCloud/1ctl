@@ -109,6 +109,9 @@ func handleUpsertIngress(c *cli.Context) error {
 	}
 
 	serviceIDStr := c.String("service-id")
+	if serviceIDStr == "" {
+		return utils.NewError("--service-id flag is required for ingress", nil)
+	}
 	serviceID, err := uuid.Parse(serviceIDStr)
 	if err != nil {
 		return utils.NewError(fmt.Sprintf("invalid service-id: %s", err.Error()), nil)

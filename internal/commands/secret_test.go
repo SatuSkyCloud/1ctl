@@ -20,6 +20,7 @@ func TestSecretCommand(t *testing.T) {
 	expectedSubcommands := map[string]bool{
 		"create": false,
 		"list":   false,
+		"delete": false,
 	}
 
 	for _, subcmd := range cmd.Subcommands {

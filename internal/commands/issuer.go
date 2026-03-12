@@ -42,6 +42,19 @@ func IssuerCommand() *cli.Command {
 				Usage:  "List all certificate issuers",
 				Action: handleListIssuers,
 			},
+			{
+				Name:  "delete",
+				Usage: "Delete a certificate issuer",
+				Flags: []cli.Flag{
+					&cli.StringFlag{
+						Name:     "issuer-id",
+						Aliases:  []string{"i"},
+						Usage:    "Issuer ID to delete",
+						Required: true,
+					},
+				},
+				Action: handleDeleteIssuer,
+			},
 		},
 	}
 }
@@ -70,6 +83,15 @@ func handleCreateIssuer(c *cli.Context) error {
 	}
 
 	utils.PrintSuccess("Certificate issuer created successfully (ID: %s)\n", resp.IssuerID)
+	return nil
+}
+
+func handleDeleteIssuer(c *cli.Context) error {
+	issuerID := c.String("issuer-id")
+	if err := api.DeleteIssuer(issuerID); err != nil {
+		return utils.NewError(fmt.Sprintf("failed to delete issuer: %s", err.Error()), nil)
+	}
+	utils.PrintSuccess("Certificate issuer %s deleted successfully", issuerID)
 	return nil
 }
 

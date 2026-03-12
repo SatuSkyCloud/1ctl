@@ -42,6 +42,19 @@ func SecretCommand() *cli.Command {
 				Usage:  "List all secrets",
 				Action: handleListSecrets,
 			},
+			{
+				Name:  "delete",
+				Usage: "Delete a secret",
+				Flags: []cli.Flag{
+					&cli.StringFlag{
+						Name:     "secret-id",
+						Aliases:  []string{"s"},
+						Usage:    "Secret ID to delete",
+						Required: true,
+					},
+				},
+				Action: handleDeleteSecret,
+			},
 		},
 	}
 }
@@ -84,6 +97,15 @@ func handleCreateSecret(c *cli.Context) error {
 	}
 
 	utils.PrintSuccess("Secret %s created successfully\n", secretResp.AppLabel)
+	return nil
+}
+
+func handleDeleteSecret(c *cli.Context) error {
+	secretID := c.String("secret-id")
+	if err := api.DeleteSecret(secretID); err != nil {
+		return utils.NewError(fmt.Sprintf("failed to delete secret: %s", err.Error()), nil)
+	}
+	utils.PrintSuccess("Secret %s deleted successfully", secretID)
 	return nil
 }
 
