@@ -206,10 +206,18 @@ func mainDeploy(opts DeploymentOptions, image, name, userID, organization string
 		return "", utils.NewError(fmt.Sprintf("invalid port: %s", err.Error()), nil)
 	}
 
-	// number of replicas will be based on the number of hostnames
-	replicas, err := api.SafeInt32(len(hostnames))
-	if err != nil {
-		return "", utils.NewError(fmt.Sprintf("invalid replicas count: %s", err.Error()), nil)
+	// Replica count: use manual override if set, otherwise derive from hostnames
+	var replicas int32
+	if opts.Replicas > 0 {
+		replicas, err = api.SafeInt32(opts.Replicas)
+		if err != nil {
+			return "", utils.NewError(fmt.Sprintf("invalid replicas count: %s", err.Error()), nil)
+		}
+	} else {
+		replicas, err = api.SafeInt32(len(hostnames))
+		if err != nil {
+			return "", utils.NewError(fmt.Sprintf("invalid replicas count: %s", err.Error()), nil)
+		}
 	}
 
 	// if replicas is 0, set it to 1
@@ -269,6 +277,32 @@ func mainDeploy(opts DeploymentOptions, image, name, userID, organization string
 			FailoverEnabled:       isActivePassive,
 			RestoreOnFailover:     isActivePassive,
 		}
+	}
+
+	// Add PDB configuration
+	if opts.PDBConfig != nil && opts.PDBConfig.Enabled {
+		deployment.PDBConfig = &api.PDBConfig{
+			Enabled:      opts.PDBConfig.Enabled,
+			Type:         string(opts.PDBConfig.Type),
+			MinAvailable: opts.PDBConfig.MinAvailable,
+			Percent:      opts.PDBConfig.Percent,
+		}
+	} else if replicas > 1 {
+		// Auto-enable PDB when replicas > 1
+		deployment.PDBConfig = &api.PDBConfig{
+			Enabled: true,
+			Type:    "auto",
+		}
+	}
+
+	// Add HPA configuration
+	if opts.HPAConfig != nil {
+		deployment.HPAConfig = opts.HPAConfig
+	}
+
+	// Add VPA configuration
+	if opts.VPAConfig != nil {
+		deployment.VPAConfig = opts.VPAConfig
 	}
 
 	var deploymentID string

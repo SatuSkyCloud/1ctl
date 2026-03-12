@@ -39,6 +39,9 @@ type DeploymentOptions struct {
 	BackupSchedule        string // "hourly", "daily", "weekly"
 	BackupRetention       string // "24h", "72h", "168h", "720h"
 	BackupPriorityCluster int    // Which cluster performs backups (1 = primary, 2 = secondary)
-	// PodDisruptionBudget configuration
-	PDBConfig *PDBConfig `json:"pdb_config,omitempty"` // PDB configuration (Pro/Enterprise feature)
+	// HA settings
+	Replicas  int            // Manual replica count override (0 = auto from hostnames)
+	PDBConfig *PDBConfig     `json:"pdb_config,omitempty"`
+	HPAConfig *api.HPAConfig `json:"hpa_config,omitempty"`
+	VPAConfig *api.VPAConfig `json:"vpa_config,omitempty"`
 }

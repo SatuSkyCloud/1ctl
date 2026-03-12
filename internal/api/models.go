@@ -45,6 +45,37 @@ type MulticlusterConfig struct {
 	RestoreOnFailover     bool   `json:"restore_on_failover,omitempty"`     // Restore from backup on failover (active-passive only)
 }
 
+// PDBConfig represents PodDisruptionBudget configuration
+type PDBConfig struct {
+	Enabled      bool   `json:"enabled"`
+	Type         string `json:"type"`                    // "auto", "fixed", "percent"
+	MinAvailable *int32 `json:"min_available,omitempty"` // For type=fixed
+	Percent      *int32 `json:"percent,omitempty"`       // For type=percent
+}
+
+// HPAConfig represents HorizontalPodAutoscaler configuration
+type HPAConfig struct {
+	Enabled                bool   `json:"enabled"`
+	MinReplicas            int32  `json:"min_replicas"`
+	MaxReplicas            int32  `json:"max_replicas"`
+	CPUTarget              *int32 `json:"cpu_target,omitempty"`
+	MemoryTarget           *int32 `json:"memory_target,omitempty"`
+	ScaleUpStabilization   *int32 `json:"scale_up_stabilization,omitempty"`
+	ScaleDownStabilization *int32 `json:"scale_down_stabilization,omitempty"`
+	ScaleUpMaxPods         *int32 `json:"scale_up_max_pods,omitempty"`
+	ScaleDownMaxPods       *int32 `json:"scale_down_max_pods,omitempty"`
+}
+
+// VPAConfig represents VerticalPodAutoscaler configuration
+type VPAConfig struct {
+	Enabled    bool   `json:"enabled"`
+	UpdateMode string `json:"update_mode"`          // "Off", "Initial", "Auto"
+	MinCPU     string `json:"min_cpu,omitempty"`    // e.g., "100m"
+	MaxCPU     string `json:"max_cpu,omitempty"`    // e.g., "4"
+	MinMemory  string `json:"min_memory,omitempty"` // e.g., "128Mi"
+	MaxMemory  string `json:"max_memory,omitempty"` // e.g., "8Gi"
+}
+
 type Deployment struct {
 	DeploymentID       uuid.UUID           `json:"deployment_id,omitempty"`
 	UserID             uuid.UUID           `json:"user_id"`
@@ -72,6 +103,9 @@ type Deployment struct {
 	Environment        string              `json:"environment"`
 	MarketplaceAppName string              `json:"marketplace_app_name"`
 	MulticlusterConfig *MulticlusterConfig `json:"multicluster_config,omitempty"`
+	PDBConfig          *PDBConfig          `json:"pdb_config,omitempty"`
+	HPAConfig          *HPAConfig          `json:"hpa_config,omitempty"`
+	VPAConfig          *VPAConfig          `json:"vpa_config,omitempty"`
 	CreatedAt          time.Time           `json:"created_at"`
 	UpdatedAt          time.Time           `json:"updated_at"`
 }

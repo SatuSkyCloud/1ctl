@@ -89,6 +89,80 @@ func DeployCommand() *cli.Command {
 			Usage: "Which cluster performs backups: 1 (Primary/KL) or 2 (Secondary/BKI) (default: 1)",
 			Value: 1,
 		},
+		// HA settings flags
+		&cli.IntFlag{
+			Name:  "replicas",
+			Usage: "Manual replica count override (default: auto from machine count)",
+		},
+		// PDB flags
+		&cli.BoolFlag{
+			Name:  "pdb",
+			Usage: "Enable PodDisruptionBudget (auto-enabled when replicas > 1)",
+		},
+		&cli.StringFlag{
+			Name:  "pdb-type",
+			Usage: "PDB type: 'auto', 'fixed', 'percent' (default: auto)",
+			Value: "auto",
+		},
+		&cli.IntFlag{
+			Name:  "pdb-min-available",
+			Usage: "Minimum available pods for PDB type=fixed",
+		},
+		&cli.IntFlag{
+			Name:  "pdb-percent",
+			Usage: "Minimum available percentage for PDB type=percent (1-100)",
+		},
+		// HPA flags
+		&cli.BoolFlag{
+			Name:  "hpa",
+			Usage: "Enable HorizontalPodAutoscaler",
+		},
+		&cli.IntFlag{
+			Name:  "hpa-min-replicas",
+			Usage: "HPA minimum replicas (default: 1)",
+			Value: 1,
+		},
+		&cli.IntFlag{
+			Name:  "hpa-max-replicas",
+			Usage: "HPA maximum replicas (default: 10)",
+			Value: 10,
+		},
+		&cli.IntFlag{
+			Name:  "hpa-cpu-target",
+			Usage: "HPA target CPU utilization percentage (default: 80)",
+			Value: 80,
+		},
+		&cli.IntFlag{
+			Name:  "hpa-memory-target",
+			Usage: "HPA target memory utilization percentage (0 = disabled)",
+			Value: 0,
+		},
+		// VPA flags
+		&cli.BoolFlag{
+			Name:  "vpa",
+			Usage: "Enable VerticalPodAutoscaler",
+		},
+		&cli.StringFlag{
+			Name:  "vpa-mode",
+			Usage: "VPA update mode: 'Off', 'Initial', 'Auto' (default: Off)",
+			Value: "Off",
+		},
+		&cli.StringFlag{
+			Name:  "vpa-min-cpu",
+			Usage: "VPA minimum CPU (e.g., '100m')",
+		},
+		&cli.StringFlag{
+			Name:  "vpa-max-cpu",
+			Usage: "VPA maximum CPU (e.g., '4')",
+		},
+		&cli.StringFlag{
+			Name:  "vpa-min-memory",
+			Usage: "VPA minimum memory (e.g., '128Mi')",
+		},
+		&cli.StringFlag{
+			Name:  "vpa-max-memory",
+			Usage: "VPA maximum memory (e.g., '8Gi')",
+		},
 	}
 
 	return &cli.Command{
@@ -227,6 +301,24 @@ func validateInputs(c *cli.Context) error {
 		}
 	}
 
+	// Validate HA settings
+	if c.IsSet("hpa") && c.IsSet("vpa") && c.Bool("hpa") && c.Bool("vpa") {
+		vpaMode := c.String("vpa-mode")
+		if vpaMode == "Auto" {
+			return utils.NewError("HPA and VPA with mode 'Auto' cannot be used together - they both try to scale resources", nil)
+		}
+	}
+	if c.IsSet("hpa-min-replicas") && c.IsSet("hpa-max-replicas") {
+		if c.Int("hpa-min-replicas") > c.Int("hpa-max-replicas") {
+			return utils.NewError("hpa-min-replicas cannot be greater than hpa-max-replicas", nil)
+		}
+	}
+	if c.IsSet("pdb-percent") {
+		if c.Int("pdb-percent") < 1 || c.Int("pdb-percent") > 100 {
+			return utils.NewError("pdb-percent must be between 1 and 100", nil)
+		}
+	}
+
 	return nil
 }
 
@@ -297,6 +389,56 @@ func prepareDeploymentOptions(c *cli.Context) (deploy.DeploymentOptions, error) 
 		opts.BackupSchedule = c.String("backup-schedule")
 		opts.BackupRetention = c.String("backup-retention")
 		opts.BackupPriorityCluster = c.Int("backup-priority-cluster")
+	}
+
+	// Handle replica count override
+	if c.IsSet("replicas") {
+		opts.Replicas = c.Int("replicas")
+	}
+
+	// Handle PDB configuration
+	if c.IsSet("pdb") && c.Bool("pdb") {
+		pdbConfig := &deploy.PDBConfig{
+			Enabled: true,
+			Type:    deploy.PDBConfigType(c.String("pdb-type")),
+		}
+		if c.IsSet("pdb-min-available") {
+			val := int32(c.Int("pdb-min-available"))
+			pdbConfig.MinAvailable = &val
+		}
+		if c.IsSet("pdb-percent") {
+			val := int32(c.Int("pdb-percent"))
+			pdbConfig.Percent = &val
+		}
+		opts.PDBConfig = pdbConfig
+	}
+
+	// Handle HPA configuration
+	if c.IsSet("hpa") && c.Bool("hpa") {
+		cpuTarget := int32(c.Int("hpa-cpu-target"))
+		hpaConfig := &api.HPAConfig{
+			Enabled:     true,
+			MinReplicas: int32(c.Int("hpa-min-replicas")),
+			MaxReplicas: int32(c.Int("hpa-max-replicas")),
+			CPUTarget:   &cpuTarget,
+		}
+		if c.IsSet("hpa-memory-target") && c.Int("hpa-memory-target") > 0 {
+			memTarget := int32(c.Int("hpa-memory-target"))
+			hpaConfig.MemoryTarget = &memTarget
+		}
+		opts.HPAConfig = hpaConfig
+	}
+
+	// Handle VPA configuration
+	if c.IsSet("vpa") && c.Bool("vpa") {
+		opts.VPAConfig = &api.VPAConfig{
+			Enabled:    true,
+			UpdateMode: c.String("vpa-mode"),
+			MinCPU:     c.String("vpa-min-cpu"),
+			MaxCPU:     c.String("vpa-max-cpu"),
+			MinMemory:  c.String("vpa-min-memory"),
+			MaxMemory:  c.String("vpa-max-memory"),
+		}
 	}
 
 	return opts, nil
