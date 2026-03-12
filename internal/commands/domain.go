@@ -23,6 +23,8 @@ func DomainCommand() *cli.Command {
 			domainCheckCommand(),
 			domainSearchCommand(),
 			domainPurchaseCommand(),
+			domainPurchaseStatusCommand(),
+			domainContactCommand(),
 			domainDNSCommand(),
 		},
 	}
@@ -309,7 +311,7 @@ func domainSearchCommand() *cli.Command {
 func domainPurchaseCommand() *cli.Command {
 	return &cli.Command{
 		Name:  "purchase",
-		Usage: "Purchase a domain through OpenProvider",
+		Usage: "Initiate a domain purchase via Stripe Checkout",
 		Flags: []cli.Flag{
 			&cli.StringFlag{Name: "domain", Aliases: []string{"d"}, Usage: "Domain name to purchase", Required: true},
 			&cli.IntFlag{Name: "period", Usage: "Registration period in years (1-10)", Value: 1},
@@ -350,12 +352,76 @@ func domainPurchaseCommand() *cli.Command {
 				Period:  c.Int("period"),
 				Contact: contact,
 			}
-			d, err := api.PurchaseDomain(userID, orgID, req)
+			intent, err := api.InitiateDomainPurchase(userID, orgID, req)
 			if err != nil {
-				return utils.NewError(fmt.Sprintf("failed to purchase domain: %s", err.Error()), nil)
+				return utils.NewError(fmt.Sprintf("failed to initiate domain purchase: %s", err.Error()), nil)
 			}
-			utils.PrintSuccess("Domain purchase initiated")
-			printDomainDetails(d)
+			utils.PrintSuccess("Domain purchase intent created")
+			utils.PrintStatusLine("Domain", intent.Domain)
+			utils.PrintStatusLine("Price", fmt.Sprintf("%.2f %s/yr", intent.Price, intent.Currency))
+			utils.PrintStatusLine("Intent ID", intent.IntentID)
+			utils.PrintDivider()
+			utils.PrintInfo("Complete your purchase in the browser:")
+			fmt.Println(intent.RedirectURL)
+			utils.PrintDivider()
+			utils.PrintInfo("Run '1ctl domain purchase-status %s' to check payment status", intent.IntentID)
+			return nil
+		},
+	}
+}
+
+func domainPurchaseStatusCommand() *cli.Command {
+	return &cli.Command{
+		Name:      "purchase-status",
+		Usage:     "Check the status of a domain purchase intent",
+		ArgsUsage: "<intent-id>",
+		Action: func(c *cli.Context) error {
+			userID, orgID, err := requireDomainContext()
+			if err != nil {
+				return err
+			}
+			intentID := c.Args().First()
+			if intentID == "" {
+				return utils.NewError("intent ID is required", nil)
+			}
+			status, err := api.GetPurchaseIntentStatus(userID, orgID, intentID)
+			if err != nil {
+				return utils.NewError(fmt.Sprintf("failed to get purchase intent status: %s", err.Error()), nil)
+			}
+			utils.PrintHeader("Purchase Intent: %s", status.Domain)
+			utils.PrintStatusLine("Intent ID", status.IntentID)
+			utils.PrintStatusLine("Domain", status.Domain)
+			utils.PrintStatusLine("Status", colorPurchaseStatus(status.Status))
+			return nil
+		},
+	}
+}
+
+func domainContactCommand() *cli.Command {
+	return &cli.Command{
+		Name:  "contact",
+		Usage: "Show the saved contact info from the last domain purchase",
+		Action: func(c *cli.Context) error {
+			userID, orgID, err := requireDomainContext()
+			if err != nil {
+				return err
+			}
+			contact, err := api.GetSavedContact(userID, orgID)
+			if err != nil {
+				return utils.NewError(fmt.Sprintf("failed to get saved contact: %s", err.Error()), nil)
+			}
+			if contact == nil || contact.Email == "" {
+				utils.PrintInfo("No saved contact found")
+				return nil
+			}
+			utils.PrintHeader("Saved Contact")
+			utils.PrintStatusLine("Name", fmt.Sprintf("%s %s", contact.FirstName, contact.LastName))
+			utils.PrintStatusLine("Email", contact.Email)
+			utils.PrintStatusLine("Phone", fmt.Sprintf("%s %s", contact.PhoneCountryCode, contact.PhoneNumber))
+			utils.PrintStatusLine("Address", fmt.Sprintf("%s %s, %s, %s %s", contact.Street, contact.StreetNumber, contact.City, contact.PostalCode, contact.Country))
+			if contact.CompanyName != "" {
+				utils.PrintStatusLine("Company", contact.CompanyName)
+			}
 			return nil
 		},
 	}
@@ -579,6 +645,19 @@ func colorDomainStatus(status string) string {
 	case "failed":
 		return utils.ErrorColor(status)
 	case "pending", "verifying":
+		return utils.WarnColor(status)
+	default:
+		return status
+	}
+}
+
+func colorPurchaseStatus(status string) string {
+	switch status {
+	case "completed":
+		return utils.SuccessColor(status)
+	case "failed", "canceled":
+		return utils.ErrorColor(status)
+	case "pending":
 		return utils.WarnColor(status)
 	default:
 		return status

@@ -386,6 +386,23 @@ type DomainPurchaseRequest struct {
 	Contact *DomainContactInfo `json:"contact"`
 }
 
+// DomainPurchaseIntentResponse is returned when a domain purchase intent is created
+type DomainPurchaseIntentResponse struct {
+	SessionID   string  `json:"session_id"`
+	RedirectURL string  `json:"redirect_url"`
+	Domain      string  `json:"domain"`
+	Price       float64 `json:"price"`
+	Currency    string  `json:"currency"`
+	IntentID    string  `json:"intent_id"`
+}
+
+// DomainPurchaseIntentStatus is the status of a domain purchase intent
+type DomainPurchaseIntentStatus struct {
+	IntentID string `json:"intent_id"`
+	Domain   string `json:"domain"`
+	Status   string `json:"status"`
+}
+
 // DNSRecordCreateRequest is the request for creating a new DNS record
 type DNSRecordCreateRequest struct {
 	Type     string  `json:"type"`

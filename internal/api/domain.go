@@ -131,10 +131,10 @@ func SearchDomains(userID, orgID string, req DomainSearchRequest) ([]DomainSearc
 	return result.Results, nil
 }
 
-// PurchaseDomain purchases a domain through OpenProvider
-func PurchaseDomain(userID, orgID string, req DomainPurchaseRequest) (*Domain, error) {
+// InitiateDomainPurchase creates a Stripe Checkout session for a domain purchase
+func InitiateDomainPurchase(userID, orgID string, req DomainPurchaseRequest) (*DomainPurchaseIntentResponse, error) {
 	var resp apiResponse
-	err := makeRequest("POST", fmt.Sprintf("/domains/purchase/%s/%s", userID, orgID), req, &resp)
+	err := makeRequest("POST", fmt.Sprintf("/domains/purchase-intent/%s/%s", userID, orgID), req, &resp)
 	if err != nil {
 		return nil, err
 	}
@@ -142,11 +142,50 @@ func PurchaseDomain(userID, orgID string, req DomainPurchaseRequest) (*Domain, e
 	if err != nil {
 		return nil, utils.NewError(fmt.Sprintf("failed to marshal response: %s", err.Error()), nil)
 	}
-	var domain Domain
-	if err := json.Unmarshal(data, &domain); err != nil {
-		return nil, utils.NewError(fmt.Sprintf("failed to unmarshal domain: %s", err.Error()), nil)
+	var intent DomainPurchaseIntentResponse
+	if err := json.Unmarshal(data, &intent); err != nil {
+		return nil, utils.NewError(fmt.Sprintf("failed to unmarshal purchase intent: %s", err.Error()), nil)
 	}
-	return &domain, nil
+	return &intent, nil
+}
+
+// GetPurchaseIntentStatus returns the current status of a domain purchase intent
+func GetPurchaseIntentStatus(userID, orgID, intentID string) (*DomainPurchaseIntentStatus, error) {
+	var resp apiResponse
+	err := makeRequest("GET", fmt.Sprintf("/domains/purchase-intent/%s/%s/%s", userID, orgID, intentID), nil, &resp)
+	if err != nil {
+		return nil, err
+	}
+	data, err := json.Marshal(resp.Data)
+	if err != nil {
+		return nil, utils.NewError(fmt.Sprintf("failed to marshal response: %s", err.Error()), nil)
+	}
+	var status DomainPurchaseIntentStatus
+	if err := json.Unmarshal(data, &status); err != nil {
+		return nil, utils.NewError(fmt.Sprintf("failed to unmarshal intent status: %s", err.Error()), nil)
+	}
+	return &status, nil
+}
+
+// GetSavedContact returns the last used contact info for domain purchases in the org
+func GetSavedContact(userID, orgID string) (*DomainContactInfo, error) {
+	var resp apiResponse
+	err := makeRequest("GET", fmt.Sprintf("/domains/contact/%s/%s", userID, orgID), nil, &resp)
+	if err != nil {
+		return nil, err
+	}
+	if resp.Data == nil {
+		return nil, nil
+	}
+	data, err := json.Marshal(resp.Data)
+	if err != nil {
+		return nil, utils.NewError(fmt.Sprintf("failed to marshal response: %s", err.Error()), nil)
+	}
+	var contact DomainContactInfo
+	if err := json.Unmarshal(data, &contact); err != nil {
+		return nil, utils.NewError(fmt.Sprintf("failed to unmarshal contact: %s", err.Error()), nil)
+	}
+	return &contact, nil
 }
 
 // ListDNSRecords lists all DNS records for a domain
