@@ -39,8 +39,7 @@ func createApp() *cli.App {
 			commands.CreditsCommand(),
 			commands.StorageCommand(),
 			commands.LogsCommand(),
-			// Phase 2: GitHub, Notifications
-			commands.GithubCommand(),
+			// Phase 2: Notifications
 			commands.NotificationsCommand(),
 			// Phase 3: User, Token
 			commands.UserCommand(),
