@@ -258,6 +258,7 @@ func LoginCLI(token string) (*TokenValidate, error) {
 	}
 
 	request.Header.Set("Content-Type", "application/json")
+	request.Header.Set("x-satusky-api-key", token)
 
 	client := &http.Client{}
 	resp, err := client.Do(request)
