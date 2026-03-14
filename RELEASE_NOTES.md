@@ -1,5 +1,13 @@
 # Release Notes
 
+## Version 0.5.7 (14-03-2026)
+
+### 🐛 Bug Fixes
+
+- **Fix CLI authentication**: Send `x-satusky-api-key` header in login requests. Backend's `InternalAccessMiddleware` (deployed in v0.44.0) requires this header for remote CLI access. Without it, `1ctl auth login` fails with 401.
+
+---
+
 ## Version 0.5.6 (13-03-2026)
 
 ### 🔒 Security
