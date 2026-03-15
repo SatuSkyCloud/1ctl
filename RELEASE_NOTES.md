@@ -1,5 +1,22 @@
 # Release Notes
 
+## Version 0.5.8 (15-03-2026)
+
+### 🐛 Bug Fixes
+
+- **`org team list`**: Fix JSON field mapping — was showing blank Name/Email and zero UUID
+- **`token list`**: Fix JSON field mapping — ID showed as zero UUID, status always "Disabled"
+- **`user me`**: Fix endpoint path (`/auth/me` → `/users/profile`) and response struct
+- **`notifications list`**: Handle paginated wrapper response, fix field names (`title` → `subject`)
+- **`audit list`**: Handle paginated wrapper response, fix field names (`user_email` → `actor_email`)
+- **`machine list`**: Fixed machine `owner_id` in prod DB (was nil UUID)
+
+### 🔧 Requires
+
+- Backend v0.44.4+ (fixes credit route parameter name mismatch)
+
+---
+
 ## Version 0.5.7 (14-03-2026)
 
 ### 🐛 Bug Fixes
