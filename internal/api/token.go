@@ -11,15 +11,15 @@ import (
 
 // CLIToken represents an API token for CLI operations
 type CLIToken struct {
-	ID         uuid.UUID  `json:"id"`
-	UserID     uuid.UUID  `json:"user_id"`
-	OrgID      uuid.UUID  `json:"org_id"`
-	Name       string     `json:"name"`
-	Token      string     `json:"token,omitempty"` // Only returned on creation
-	LastUsedAt *time.Time `json:"last_used_at,omitempty"`
-	ExpiresAt  *time.Time `json:"expires_at,omitempty"`
-	Enabled    bool       `json:"enabled"`
-	CreatedAt  time.Time  `json:"created_at"`
+	ID                 uuid.UUID  `json:"token_id"`
+	OrganizationUserID *uuid.UUID `json:"organization_user_id,omitempty"`
+	Name               string     `json:"name"`
+	Description        *string    `json:"description,omitempty"`
+	Token              string     `json:"token,omitempty"` // Only returned on creation
+	LastUsedAt         *time.Time `json:"last_used_at,omitempty"`
+	ExpiresAt          *time.Time `json:"expires_at,omitempty"`
+	IsActive           bool       `json:"is_active"`
+	CreatedAt          time.Time  `json:"created_at"`
 }
 
 // CreateTokenRequest represents request to create a token

@@ -285,11 +285,15 @@ func handleOrgTeamList(c *cli.Context) error {
 
 	utils.PrintHeader("Team Members")
 	for _, member := range members {
-		utils.PrintStatusLine("ID", member.ID.String())
-		utils.PrintStatusLine("Name", member.Name)
+		utils.PrintStatusLine("ID", member.OrganizationUserID.String())
+		name := ""
+		if member.Name != nil {
+			name = *member.Name
+		}
+		utils.PrintStatusLine("Name", name)
 		utils.PrintStatusLine("Email", member.Email)
 		utils.PrintStatusLine("Role", member.Role)
-		utils.PrintStatusLine("Joined", formatTimeAgo(member.JoinedAt))
+		utils.PrintStatusLine("Joined", formatTimeAgo(member.CreatedAt))
 		utils.PrintDivider()
 	}
 	return nil
@@ -315,7 +319,7 @@ func handleOrgTeamAdd(c *cli.Context) error {
 	}
 
 	utils.PrintSuccess("Team member added successfully")
-	utils.PrintStatusLine("ID", member.ID.String())
+	utils.PrintStatusLine("ID", member.OrganizationUserID.String())
 	utils.PrintStatusLine("Email", member.Email)
 	utils.PrintStatusLine("Role", member.Role)
 	return nil

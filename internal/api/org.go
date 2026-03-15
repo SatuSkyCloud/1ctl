@@ -11,13 +11,13 @@ import (
 
 // TeamMember represents a member of an organization team
 type TeamMember struct {
-	ID             uuid.UUID `json:"id"`
-	UserID         uuid.UUID `json:"user_id"`
-	OrganizationID uuid.UUID `json:"organization_id"`
-	Email          string    `json:"email"`
-	Name           string    `json:"name"`
-	Role           string    `json:"role"`
-	JoinedAt       time.Time `json:"joined_at"`
+	OrganizationUserID uuid.UUID `json:"organization_user_id"`
+	UserID             uuid.UUID `json:"user_id"`
+	OrganizationID     uuid.UUID `json:"organization_id"`
+	Email              string    `json:"user_email"`
+	Name               *string   `json:"user_name,omitempty"`
+	Role               string    `json:"role"`
+	CreatedAt          time.Time `json:"created_at"`
 }
 
 // CreateOrganizationRequest represents a request to create an organization

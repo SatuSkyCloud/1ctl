@@ -97,10 +97,10 @@ func handleAuditList(c *cli.Context) error {
 	for _, log := range logs {
 		utils.PrintStatusLine("ID", log.ID.String())
 		utils.PrintStatusLine("Action", log.Action)
-		utils.PrintStatusLine("User", log.UserEmail)
+		utils.PrintStatusLine("User", log.ActorEmail)
 		utils.PrintStatusLine("Resource Type", log.ResourceType)
-		if log.ResourceID != "" {
-			utils.PrintStatusLine("Resource ID", log.ResourceID)
+		if log.ResourceID != nil {
+			utils.PrintStatusLine("Resource ID", log.ResourceID.String())
 		}
 		if log.IPAddress != "" {
 			utils.PrintStatusLine("IP Address", log.IPAddress)
@@ -131,11 +131,13 @@ func handleAuditGet(c *cli.Context) error {
 	utils.PrintHeader("Audit Log Details")
 	utils.PrintStatusLine("ID", log.ID.String())
 	utils.PrintStatusLine("Action", log.Action)
-	utils.PrintStatusLine("User", log.UserEmail)
-	utils.PrintStatusLine("User ID", log.UserID.String())
+	utils.PrintStatusLine("User", log.ActorEmail)
+	if log.ActorID != nil {
+		utils.PrintStatusLine("User ID", log.ActorID.String())
+	}
 	utils.PrintStatusLine("Resource Type", log.ResourceType)
-	if log.ResourceID != "" {
-		utils.PrintStatusLine("Resource ID", log.ResourceID)
+	if log.ResourceID != nil {
+		utils.PrintStatusLine("Resource ID", log.ResourceID.String())
 	}
 	if log.IPAddress != "" {
 		utils.PrintStatusLine("IP Address", log.IPAddress)
@@ -145,10 +147,10 @@ func handleAuditGet(c *cli.Context) error {
 	}
 	utils.PrintStatusLine("Time", log.CreatedAt.Format("2006-01-02 15:04:05"))
 
-	if len(log.Details) > 0 {
+	if len(log.Metadata) > 0 {
 		fmt.Println()
-		utils.PrintHeader("Details")
-		for key, value := range log.Details {
+		utils.PrintHeader("Metadata")
+		for key, value := range log.Metadata {
 			utils.PrintStatusLine(key, fmt.Sprintf("%v", value))
 		}
 	}

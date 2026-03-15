@@ -109,7 +109,7 @@ func handleTokenList(c *cli.Context) error {
 	utils.PrintHeader("API Tokens")
 	for _, token := range tokens {
 		status := "Enabled"
-		if !token.Enabled {
+		if !token.IsActive {
 			status = "Disabled"
 		}
 		utils.PrintStatusLine("ID", token.ID.String())
@@ -183,7 +183,7 @@ func handleTokenGet(c *cli.Context) error {
 	}
 
 	status := "Enabled"
-	if !token.Enabled {
+	if !token.IsActive {
 		status = "Disabled"
 	}
 

@@ -11,15 +11,26 @@ import (
 
 // Notification represents a notification
 type Notification struct {
-	ID             uuid.UUID              `json:"id"`
+	NotificationID uuid.UUID              `json:"notification_id"`
 	OrganizationID uuid.UUID              `json:"organization_id"`
-	UserID         uuid.UUID              `json:"user_id"`
+	UserID         *uuid.UUID             `json:"user_id,omitempty"`
 	Type           string                 `json:"type"`
-	Title          string                 `json:"title"`
+	Channel        string                 `json:"channel"`
+	Priority       string                 `json:"priority"`
+	Status         string                 `json:"status"`
+	Subject        string                 `json:"subject"`
 	Message        string                 `json:"message"`
 	Data           map[string]interface{} `json:"data,omitempty"`
-	Read           bool                   `json:"read"`
+	ReadAt         *time.Time             `json:"read_at,omitempty"`
 	CreatedAt      time.Time              `json:"created_at"`
+}
+
+// notificationListResponse represents paginated notification response
+type notificationListResponse struct {
+	Notifications []Notification `json:"notifications"`
+	Total         int64          `json:"total"`
+	Page          int            `json:"page"`
+	PageSize      int            `json:"page_size"`
 }
 
 // UnreadCount represents unread notification count
@@ -56,6 +67,12 @@ func GetNotifications(orgID string, unreadOnly bool, limit int) ([]Notification,
 	data, err := json.Marshal(resp.Data)
 	if err != nil {
 		return nil, utils.NewError(fmt.Sprintf("failed to marshal response data: %s", err.Error()), nil)
+	}
+
+	// Try paginated response first, fall back to flat array
+	var listResp notificationListResponse
+	if err := json.Unmarshal(data, &listResp); err == nil && listResp.Notifications != nil {
+		return listResp.Notifications, nil
 	}
 
 	var notifications []Notification

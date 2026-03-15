@@ -92,14 +92,20 @@ func handleUserMe(c *cli.Context) error {
 	}
 
 	utils.PrintHeader("User Profile")
-	utils.PrintStatusLine("ID", user.ID.String())
+	utils.PrintStatusLine("ID", user.UserID)
 	utils.PrintStatusLine("Email", user.Email)
-	utils.PrintStatusLine("Name", user.Name)
-	if user.AvatarURL != "" {
-		utils.PrintStatusLine("Avatar", user.AvatarURL)
+	name := ""
+	if user.Name != nil {
+		name = *user.Name
+	}
+	utils.PrintStatusLine("Name", name)
+	if user.Organization != "" {
+		utils.PrintStatusLine("Organization", user.Organization)
+	}
+	if user.Role != "" {
+		utils.PrintStatusLine("Role", user.Role)
 	}
 	utils.PrintStatusLine("Created", formatTimeAgo(user.CreatedAt))
-	utils.PrintStatusLine("Updated", formatTimeAgo(user.UpdatedAt))
 	return nil
 }
 
@@ -121,13 +127,17 @@ func handleUserUpdate(c *cli.Context) error {
 		Email: email,
 	}
 
-	updatedUser, err := api.UpdateUser(user.ID.String(), req)
+	updatedUser, err := api.UpdateUser(user.UserID, req)
 	if err != nil {
 		return utils.NewError(fmt.Sprintf("failed to update user: %s", err.Error()), nil)
 	}
 
 	utils.PrintSuccess("User profile updated successfully")
-	utils.PrintStatusLine("Name", updatedUser.Name)
+	updatedName := ""
+	if updatedUser.Name != nil {
+		updatedName = *updatedUser.Name
+	}
+	utils.PrintStatusLine("Name", updatedName)
 	utils.PrintStatusLine("Email", updatedUser.Email)
 	return nil
 }

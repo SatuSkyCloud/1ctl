@@ -11,12 +11,12 @@ import (
 
 // CLIUserProfile represents user profile information for CLI operations
 type CLIUserProfile struct {
-	ID        uuid.UUID `json:"id"`
-	Email     string    `json:"email"`
-	Name      string    `json:"name"`
-	AvatarURL string    `json:"avatar_url,omitempty"`
-	CreatedAt time.Time `json:"created_at"`
-	UpdatedAt time.Time `json:"updated_at"`
+	UserID       string  `json:"user_id"`
+	Email        string  `json:"email"`
+	Name         *string `json:"name,omitempty"`
+	Organization string  `json:"organization,omitempty"`
+	Role         string  `json:"role,omitempty"`
+	CreatedAt    time.Time `json:"created_at"`
 }
 
 // UserPermissions represents user permissions for an organization
@@ -42,7 +42,7 @@ type ChangePasswordRequest struct {
 // GetCurrentUser gets the current user's profile
 func GetCurrentUser() (*CLIUserProfile, error) {
 	var resp apiResponse
-	err := makeRequest("GET", "/auth/me", nil, &resp)
+	err := makeRequest("GET", "/users/profile", nil, &resp)
 	if err != nil {
 		return nil, err
 	}

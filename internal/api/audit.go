@@ -12,16 +12,27 @@ import (
 // AuditLog represents an audit log entry
 type AuditLog struct {
 	ID             uuid.UUID              `json:"id"`
-	OrganizationID uuid.UUID              `json:"organization_id"`
-	UserID         uuid.UUID              `json:"user_id"`
-	UserEmail      string                 `json:"user_email"`
+	OrganizationID *uuid.UUID             `json:"organization_id,omitempty"`
+	ActorID        *uuid.UUID             `json:"actor_id,omitempty"`
+	ActorEmail     string                 `json:"actor_email"`
+	ActorType      string                 `json:"actor_type"`
 	Action         string                 `json:"action"`
 	ResourceType   string                 `json:"resource_type"`
-	ResourceID     string                 `json:"resource_id"`
-	Details        map[string]interface{} `json:"details,omitempty"`
-	IPAddress      string                 `json:"ip_address"`
-	UserAgent      string                 `json:"user_agent"`
+	ResourceID     *uuid.UUID             `json:"resource_id,omitempty"`
+	ResourceName   string                 `json:"resource_name"`
+	IPAddress      string                 `json:"ip_address,omitempty"`
+	UserAgent      string                 `json:"user_agent,omitempty"`
+	Changes        map[string]interface{} `json:"changes,omitempty"`
+	Metadata       map[string]interface{} `json:"metadata,omitempty"`
 	CreatedAt      time.Time              `json:"created_at"`
+}
+
+// auditLogListResponse represents paginated audit log response
+type auditLogListResponse struct {
+	AuditLogs []AuditLog `json:"audit_logs"`
+	Total     int        `json:"total"`
+	Limit     int        `json:"limit"`
+	Offset    int        `json:"offset"`
 }
 
 // GetAuditLogs gets audit logs for an organization
@@ -56,6 +67,12 @@ func GetAuditLogs(orgID string, limit int, action, userID string) ([]AuditLog, e
 	data, err := json.Marshal(resp.Data)
 	if err != nil {
 		return nil, utils.NewError(fmt.Sprintf("failed to marshal response data: %s", err.Error()), nil)
+	}
+
+	// Try paginated response first, fall back to flat array
+	var listResp auditLogListResponse
+	if err := json.Unmarshal(data, &listResp); err == nil && listResp.AuditLogs != nil {
+		return listResp.AuditLogs, nil
 	}
 
 	var logs []AuditLog
