@@ -41,20 +41,11 @@ type ChangePasswordRequest struct {
 
 // GetCurrentUser gets the current user's profile
 func GetCurrentUser() (*CLIUserProfile, error) {
-	var resp apiResponse
-	err := makeRequest("GET", "/users/profile", nil, &resp)
+	// This endpoint returns fields at top level (not wrapped in data)
+	var user CLIUserProfile
+	err := makeRequest("GET", "/users/profile", nil, &user)
 	if err != nil {
 		return nil, err
-	}
-
-	data, err := json.Marshal(resp.Data)
-	if err != nil {
-		return nil, utils.NewError(fmt.Sprintf("failed to marshal response data: %s", err.Error()), nil)
-	}
-
-	var user CLIUserProfile
-	if err := json.Unmarshal(data, &user); err != nil {
-		return nil, utils.NewError(fmt.Sprintf("failed to unmarshal user profile: %s", err.Error()), nil)
 	}
 	return &user, nil
 }

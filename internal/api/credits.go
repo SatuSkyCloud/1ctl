@@ -141,6 +141,15 @@ func GetCreditTransactions(orgID string, limit, offset int) ([]CreditTransaction
 		return nil, utils.NewError(fmt.Sprintf("failed to marshal response data: %s", err.Error()), nil)
 	}
 
+	// Try paginated response first, fall back to flat array
+	var listResp struct {
+		Transactions []CreditTransaction `json:"transactions"`
+		Total        int                 `json:"total"`
+	}
+	if err := json.Unmarshal(data, &listResp); err == nil && listResp.Transactions != nil {
+		return listResp.Transactions, nil
+	}
+
 	var transactions []CreditTransaction
 	if err := json.Unmarshal(data, &transactions); err != nil {
 		return nil, utils.NewError(fmt.Sprintf("failed to unmarshal transactions: %s", err.Error()), nil)
