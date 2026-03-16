@@ -59,7 +59,7 @@ changelog:
   disable: false
 
 brews:
-  - name: 1ctl
+  - name: onectl
     repository:
       owner: SatuSkyCloud
       name: homebrew-tap
