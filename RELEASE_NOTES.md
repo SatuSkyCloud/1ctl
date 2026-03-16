@@ -1,5 +1,25 @@
 # Release Notes
 
+## Version 0.5.11 (16-03-2026)
+
+### 🚀 Distribution
+
+- **Homebrew tap**: `brew install SatuSkyCloud/tap/1ctl` now available
+- **GitHub Action**: `SatuSkyCloud/setup-1ctl@v1` for CI/CD workflows
+- **Install script**: `curl -sSL .../install.sh | bash` for quick installs
+- **GoReleaser auto-publish**: Homebrew formula auto-updated on every release
+- Simplified README installation and GitHub Actions sections
+
+---
+
+## Version 0.5.9 (16-03-2026)
+
+### 🔧 Improvements
+
+- Internal maintenance release
+
+---
+
 ## Version 0.5.8 (15-03-2026)
 
 ### 🐛 Bug Fixes

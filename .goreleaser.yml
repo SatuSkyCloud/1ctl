@@ -60,7 +60,6 @@ changelog:
 
 brews:
   - name: 1ctl
-    class: OneCtl
     repository:
       owner: SatuSkyCloud
       name: homebrew-tap

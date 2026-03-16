@@ -29,3 +29,17 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           HOMEBREW_TAP_TOKEN: ${{ secrets.HOMEBREW_TAP_TOKEN }}
+
+      - name: Fix Homebrew formula class name
+        env:
+          GH_TOKEN: ${{ secrets.HOMEBREW_TAP_TOKEN }}
+        run: |
+          # GoReleaser generates "class 1ctl" which is invalid Ruby (can't start with number)
+          gh api repos/SatuSkyCloud/homebrew-tap/contents/Formula/1ctl.rb --jq '.sha' > /tmp/sha.txt
+          gh api repos/SatuSkyCloud/homebrew-tap/contents/Formula/1ctl.rb --jq '.content' | base64 -d | sed 's/^class 1ctl /class OneCtl /' > /tmp/1ctl.rb
+          CONTENT=$(base64 -w 0 /tmp/1ctl.rb)
+          SHA=$(cat /tmp/sha.txt)
+          gh api -X PUT repos/SatuSkyCloud/homebrew-tap/contents/Formula/1ctl.rb \
+            -f message="fix: rename class to OneCtl (valid Ruby)" \
+            -f content="$CONTENT" \
+            -f sha="$SHA"
