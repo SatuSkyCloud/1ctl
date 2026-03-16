@@ -7,7 +7,7 @@ A command-line tool for managing containerized applications with Satusky Cloud P
 ### Homebrew (macOS/Linux)
 
 ```bash
-brew install SatuSkyCloud/tap/onectl
+brew install SatuSkyCloud/tap/satuctl
 ```
 
 ### Shell script (Linux/macOS)
