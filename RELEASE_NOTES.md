@@ -1,14 +1,23 @@
 # Release Notes
 
-## Version 0.5.11 (16-03-2026)
+## Version 0.5.12 (16-03-2026)
 
 ### 🚀 Distribution
 
-- **Homebrew tap**: `brew install SatuSkyCloud/tap/1ctl` now available
+- **Homebrew tap**: `brew install SatuSkyCloud/tap/satuctl` (installs `1ctl` binary)
 - **GitHub Action**: `SatuSkyCloud/setup-1ctl@v1` for CI/CD workflows
 - **Install script**: `curl -sSL .../install.sh | bash` for quick installs
 - **GoReleaser auto-publish**: Homebrew formula auto-updated on every release
 - Simplified README installation and GitHub Actions sections
+- Formula named `satuctl` because Homebrew can't handle names starting with a digit
+
+---
+
+## Version 0.5.11 (16-03-2026)
+
+### 🔧 Fixes
+
+- Fixed Homebrew formula class name (Ruby class can't start with a digit)
 
 ---
 
