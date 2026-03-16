@@ -4,118 +4,43 @@ A command-line tool for managing containerized applications with Satusky Cloud P
 
 ## Installation
 
-### Option 1: Download Binary (Recommended)
-
-Download the latest release for your platform:
-
-#### Linux (64-bit)
+### Homebrew (macOS/Linux)
 
 ```bash
-# Get latest version
-VERSION=$(curl -s https://api.github.com/repos/SatuSkyCloud/1ctl/releases/latest | jq -r .tag_name)
-CLEAN_VERSION=${VERSION#v}
-
-# Download and install
-curl -L -o 1ctl.tar.gz "https://github.com/SatuSkyCloud/1ctl/releases/download/$VERSION/1ctl-$CLEAN_VERSION-linux-amd64.tar.gz"
-tar -xzvf 1ctl.tar.gz
-chmod +x 1ctl
-sudo mv 1ctl /usr/local/bin/
-rm 1ctl.tar.gz
+brew install SatuSkyCloud/tap/1ctl
 ```
 
-#### macOS
+### Shell script (Linux/macOS)
 
 ```bash
-# Get latest version
-VERSION=$(curl -s https://api.github.com/repos/SatuSkyCloud/1ctl/releases/latest | jq -r .tag_name)
-CLEAN_VERSION=${VERSION#v}
-
-# Intel Mac
-curl -L -o 1ctl.tar.gz "https://github.com/SatuSkyCloud/1ctl/releases/download/$VERSION/1ctl-$CLEAN_VERSION-darwin-amd64.tar.gz"
-tar -xzvf 1ctl.tar.gz
-chmod +x 1ctl
-sudo mv 1ctl /usr/local/bin/
-rm 1ctl.tar.gz
-
-# Apple Silicon (M1/M2)
-curl -L -o 1ctl.tar.gz "https://github.com/SatuSkyCloud/1ctl/releases/download/$VERSION/1ctl-$CLEAN_VERSION-darwin-arm64.tar.gz"
-tar -xzvf 1ctl.tar.gz
-chmod +x 1ctl
-sudo mv 1ctl /usr/local/bin/
-rm 1ctl.tar.gz
+curl -sSL https://raw.githubusercontent.com/SatuSkyCloud/1ctl/main/install.sh | bash
 ```
 
-#### Windows
+### Windows
 
-1. Download the latest release from [SatuSky 1ctl Releases](https://github.com/SatuSkyCloud/1ctl/releases/latest)
-2. Extract the zip file
-3. Rename the executable to `1ctl.exe`
-4. Add to your PATH
+Download from [Releases](https://github.com/SatuSkyCloud/1ctl/releases/latest), extract, and add to PATH.
 
-### Option 2: Build from Source
-
-Requires Go 1.21 or higher:
+### Build from source
 
 ```bash
-git clone https://github.com/satuskycloud/1ctl.git
-cd 1ctl
-task build
+git clone https://github.com/satuskycloud/1ctl.git && cd 1ctl && go build -o 1ctl ./cmd/...
 ```
 
 ## Usage on GitHub Actions
 
 ```yaml
-name: Deploy App to SatuSky
-on:
-  push:
-    branches:
-      - main
-  workflow_dispatch:
+steps:
+  - uses: actions/checkout@v4
 
-concurrency:
-  group: ${{ github.workflow }}-${{ github.ref }}
-  cancel-in-progress: true
+  - uses: SatuSkyCloud/setup-1ctl@v1
 
-env:
-  SATUSKY_API_KEY: ${{ secrets.SATUSKY_API_KEY }}
-  CPU_REQUEST: 100m
-  MEMORY_REQUEST: 6Mi
-
-jobs:
-  deploy:
-    runs-on: ubuntu-latest
-    steps:
-      - name: Checkout code
-        uses: actions/checkout@v4
-
-      - name: Fetch latest 1ctl version
-        run: |
-          VERSION=$(curl -s https://api.github.com/repos/SatuSkyCloud/1ctl/releases/latest | jq -r .tag_name)
-          [[ -z "$VERSION" || "$VERSION" == "null" ]] && exit 1
-          echo "SATUSKY_CLI_VERSION=$VERSION" >> $GITHUB_ENV
-          echo "CLEAN_VERSION=${VERSION#v}" >> $GITHUB_ENV
-
-      - name: Setup 1ctl cache
-        uses: actions/cache@v4
-        with:
-          path: /usr/local/bin/1ctl
-          key: ${{ runner.os }}-1ctl-${{ env.SATUSKY_CLI_VERSION }}
-
-      - name: Install 1ctl if not cached
-        if: steps.cache.outputs.cache-hit != 'true'
-        run: |
-          curl -L -o 1ctl.tar.gz "https://github.com/SatuSkyCloud/1ctl/releases/download/${{ env.SATUSKY_CLI_VERSION }}/1ctl-${{ env.CLEAN_VERSION }}-linux-amd64.tar.gz"
-          tar -xzvf 1ctl.tar.gz
-          chmod +x 1ctl
-          sudo mv 1ctl /usr/local/bin/
-          rm 1ctl.tar.gz
-
-      - name: Deploy app to Satusky
-        run: |
-          1ctl auth login
-          1ctl deploy --cpu ${{ env.CPU_REQUEST }} --memory ${{ env.MEMORY_REQUEST }} \
-           --env DATABASE_URL=postgresql://postgres:postgres@localhost:5432/postgres \
-           --env SECRET_KEY=secret-key
+  - name: Deploy app
+    env:
+      SATUSKY_API_KEY: ${{ secrets.SATUSKY_API_KEY }}
+    run: |
+      1ctl auth login
+      1ctl deploy --cpu 100m --memory 256Mi \
+        --env DATABASE_URL=${{ secrets.DATABASE_URL }}
 ```
 
 ## Quick Start

@@ -57,3 +57,18 @@ release:
 
 changelog:
   disable: false
+
+brews:
+  - name: 1ctl
+    repository:
+      owner: SatuSkyCloud
+      name: homebrew-tap
+      token: "{{ .Env.HOMEBREW_TAP_TOKEN }}"
+    directory: Formula
+    homepage: "https://github.com/SatuSkyCloud/1ctl"
+    description: "CLI for SatuSky Cloud Platform"
+    license: "MIT"
+    install: |
+      bin.install "1ctl"
+    test: |
+      assert_match "1ctl version", shell_output("#{bin}/1ctl --version")
