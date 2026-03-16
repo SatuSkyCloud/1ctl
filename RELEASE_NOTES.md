@@ -12,6 +12,15 @@
 
 ---
 
+## Version 0.5.10 (16-03-2026)
+
+### 🚀 Distribution (initial)
+
+- Added Homebrew formula, GitHub Action, and install script
+- GoReleaser brews config for auto-publish (class name fix pending)
+
+---
+
 ## Version 0.5.9 (16-03-2026)
 
 ### 🔧 Improvements
