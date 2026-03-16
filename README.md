@@ -113,11 +113,9 @@ jobs:
       - name: Deploy app to Satusky
         run: |
           1ctl auth login
-          1ctl deploy create --cpu ${{ env.CPU_REQUEST }} --memory ${{ env.MEMORY_REQUEST }} \
+          1ctl deploy --cpu ${{ env.CPU_REQUEST }} --memory ${{ env.MEMORY_REQUEST }} \
            --env DATABASE_URL=postgresql://postgres:postgres@localhost:5432/postgres \
-           --env SECRET_KEY=secret-key-hahahaha \
-           --env HELLO_WORLD=hello-world-hahahaha \
-           --env GOODBYE_WORLD=goodbye-world-hahahaha
+           --env SECRET_KEY=secret-key
 ```
 
 ## Quick Start
@@ -147,7 +145,7 @@ export SATUSKY_API_KEY=your_api_token
 cd your-project
 
 # Deploy the application
-1ctl deploy create --cpu=1 --memory=512Mi --project=myproject
+1ctl deploy --cpu 1 --memory 512Mi
 ```
 
 ## Usage Examples
@@ -203,8 +201,8 @@ cd your-project
 ### Services
 
 ```bash
-# Create a service
-1ctl service create --deployment-id=123 --name=myapp --port=8080 --project=test-genesis-org
+# Create/update a service
+1ctl service --deployment-id=123 --name=myapp --port=8080 --namespace=my-org
 
 # List services
 1ctl service list
@@ -241,8 +239,8 @@ cd your-project
 ### Ingress/DNS
 
 ```bash
-# Create ingress
-1ctl ingress create --deployment-id=123 --domain=myapp.example.com --custom-dns=true
+# Create/update ingress
+1ctl ingress --deployment-id=123 --service-id=456 --domain=myapp.example.com --app-label=myapp --namespace=my-org
 
 # List ingress rules
 1ctl ingress list
@@ -343,33 +341,6 @@ cd your-project
 
 # Limit number of lines
 1ctl logs --deployment-id <deployment-id> --tail 50
-```
-
-### GitHub Integration
-
-```bash
-# Check GitHub connection status
-1ctl github status
-
-# Connect GitHub account
-1ctl github connect
-
-# Disconnect GitHub account
-1ctl github disconnect
-
-# List synced repositories
-1ctl github repos
-1ctl github repos --page 1 --limit 20
-
-# Sync repositories from GitHub
-1ctl github repos sync
-
-# Get repository details
-1ctl github repos get --repo-id <repo-id>
-
-# GitHub App installation
-1ctl github installation info
-1ctl github installation revoke
 ```
 
 ### Notifications
