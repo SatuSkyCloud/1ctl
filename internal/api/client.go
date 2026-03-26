@@ -328,11 +328,11 @@ func WaitForDeployment(deploymentID string, timeout time.Duration) (*DeploymentS
 		}
 
 		switch status.Status {
-		case StatusCompleted:
+		case StatusCompleted, StatusRunningK8s:
 			return status, nil
-		case StatusFailed:
+		case StatusFailed, StatusFailedK8s:
 			return status, utils.NewError(fmt.Sprintf("deployment failed: %s", status.Message), nil)
-		case StatusPending, StatusCreating, StatusRunning, StatusNotReady:
+		case StatusPending, StatusCreating, StatusRunning, StatusNotReady, StatusProgressing, StatusUnknown:
 			utils.PrintInfo("Deployment status: %s (%d%%)\n", status.Status, status.Progress)
 		default:
 			return nil, utils.NewError(fmt.Sprintf("unknown deployment status: %s", status.Status), nil)
