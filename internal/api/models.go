@@ -243,6 +243,7 @@ const (
 	StatusRunning   = "running"
 	StatusFailed    = "failed"
 	StatusCompleted = "completed"
+	StatusNotReady  = "NotReady"
 )
 
 type DeploymentStatus struct {

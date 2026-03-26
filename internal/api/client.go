@@ -332,7 +332,7 @@ func WaitForDeployment(deploymentID string, timeout time.Duration) (*DeploymentS
 			return status, nil
 		case StatusFailed:
 			return status, utils.NewError(fmt.Sprintf("deployment failed: %s", status.Message), nil)
-		case StatusPending, StatusCreating, StatusRunning:
+		case StatusPending, StatusCreating, StatusRunning, StatusNotReady:
 			utils.PrintInfo("Deployment status: %s (%d%%)\n", status.Status, status.Progress)
 		default:
 			return nil, utils.NewError(fmt.Sprintf("unknown deployment status: %s", status.Status), nil)
