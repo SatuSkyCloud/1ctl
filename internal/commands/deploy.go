@@ -262,6 +262,7 @@ func handleDeploy(c *cli.Context) error {
 	}
 
 	utils.PrintSuccess("🚀 Deployment for %s is successful! Your app is live at: https://%s", resp.AppLabel, resp.Domain)
+	utils.PrintStatusLine("Deployment ID", resp.DeploymentID.String())
 	return nil
 }
 
@@ -365,8 +366,8 @@ func prepareDeploymentOptions(c *cli.Context) (deploy.DeploymentOptions, error) 
 				return deploy.DeploymentOptions{}, utils.NewError(fmt.Sprintf("failed to get machine by name: %s", err.Error()), nil)
 			}
 
-			// check if machine is owned by the current user
-			if machine.OwnerID.String() != context.GetUserID() {
+			// check if machine is owned by the current user (monetized machines can be used by anyone)
+			if !machine.Monetized && machine.OwnerID.String() != context.GetUserID() {
 				return deploy.DeploymentOptions{}, utils.NewError(fmt.Sprintf("machine %s is not owned by you", machineName), nil)
 			}
 
