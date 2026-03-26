@@ -44,4 +44,7 @@ type DeploymentOptions struct {
 	PDBConfig *PDBConfig     `json:"pdb_config,omitempty"`
 	HPAConfig *api.HPAConfig `json:"hpa_config,omitempty"`
 	VPAConfig *api.VPAConfig `json:"vpa_config,omitempty"`
+	// PrebuiltImage, when non-empty, skips local Docker build and upload.
+	// The image must already exist in the registry and be pullable by the cluster.
+	PrebuiltImage string
 }

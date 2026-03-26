@@ -74,21 +74,27 @@ func Deploy(opts DeploymentOptions) (*api.CreateDeploymentResponse, error) {
 		}
 	}
 
-	// Step 1: Build and push image
-	progress.step = 1
-	progress.message = "Building and pushing Docker image"
-	progress.print()
-
 	projectName, err := docker.GetProjectName()
 	if err != nil {
 		return nil, utils.NewError("Failed to determine project name", err)
 	}
 
-	image, err := buildAndUploadImage(opts.DockerfilePath, projectName)
-	if err != nil {
-		return nil, utils.NewError("Failed to build and push image", err)
+	// Step 1: Build and push image (skipped when a pre-built image is provided)
+	var image string
+	if opts.PrebuiltImage != "" {
+		image = opts.PrebuiltImage
+		utils.PrintInfo("Using pre-built image: %s", image)
+	} else {
+		progress.step = 1
+		progress.message = "Building and pushing Docker image"
+		progress.print()
+
+		image, err = buildAndUploadImage(opts.DockerfilePath, projectName)
+		if err != nil {
+			return nil, utils.NewError("Failed to build and push image", err)
+		}
+		progress.complete()
 	}
-	progress.complete()
 
 	// Step 2: Create deployment
 	progress.step = 2

@@ -42,6 +42,10 @@ func DeployCommand() *cli.Command {
 			Usage: "Path to Dockerfile (default: ./Dockerfile)",
 			Value: "Dockerfile",
 		},
+		&cli.StringFlag{
+			Name:  "image",
+			Usage: "Pre-built image reference (skips local Docker build and upload, e.g. registry.satusky.com/satusky-container-registry/myapp:abc1234)",
+		},
 		&cli.IntFlag{
 			Name:  "port",
 			Usage: "Application port (default: 8080)",
@@ -262,18 +266,20 @@ func handleDeploy(c *cli.Context) error {
 }
 
 func validateInputs(c *cli.Context) error {
-	// Validate Dockerfile first
-	dockerfilePath := c.String("dockerfile")
-	if err := validator.ValidateDockerfile(dockerfilePath); err != nil {
-		// Try to find Dockerfile in common locations
-		var err error
-		dockerfilePath, err = validator.FindDockerfile(".")
-		if err != nil {
-			return utils.NewError("no valid Dockerfile found: please ensure a Dockerfile exists in your project", err)
-		}
-		// Update the context with the found Dockerfile path
-		if err := c.Set("dockerfile", dockerfilePath); err != nil {
-			return utils.NewError(fmt.Sprintf("failed to set dockerfile path: %s", err.Error()), nil)
+	// Validate Dockerfile only when not using a pre-built image
+	if !c.IsSet("image") {
+		dockerfilePath := c.String("dockerfile")
+		if err := validator.ValidateDockerfile(dockerfilePath); err != nil {
+			// Try to find Dockerfile in common locations
+			var err error
+			dockerfilePath, err = validator.FindDockerfile(".")
+			if err != nil {
+				return utils.NewError("no valid Dockerfile found: please ensure a Dockerfile exists in your project", err)
+			}
+			// Update the context with the found Dockerfile path
+			if err := c.Set("dockerfile", dockerfilePath); err != nil {
+				return utils.NewError(fmt.Sprintf("failed to set dockerfile path: %s", err.Error()), nil)
+			}
 		}
 	}
 
@@ -330,6 +336,7 @@ func prepareDeploymentOptions(c *cli.Context) (deploy.DeploymentOptions, error) 
 		Organization:   c.String("organization"),
 		Port:           c.Int("port"),
 		DockerfilePath: c.String("dockerfile"),
+		PrebuiltImage:  c.String("image"),
 	}
 
 	// Handle project organization for future use (multi-tenant)
