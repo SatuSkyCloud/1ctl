@@ -42,6 +42,10 @@ func DeployCommand() *cli.Command {
 			Usage: "Path to Dockerfile (default: ./Dockerfile)",
 			Value: "Dockerfile",
 		},
+		&cli.StringFlag{
+			Name:  "image",
+			Usage: "Pre-built image reference (skips local Docker build and upload, e.g. registry.satusky.com/satusky-container-registry/myapp:abc1234)",
+		},
 		&cli.IntFlag{
 			Name:  "port",
 			Usage: "Application port (default: 8080)",
@@ -258,22 +262,25 @@ func handleDeploy(c *cli.Context) error {
 	}
 
 	utils.PrintSuccess("🚀 Deployment for %s is successful! Your app is live at: https://%s", resp.AppLabel, resp.Domain)
+	utils.PrintStatusLine("Deployment ID", resp.DeploymentID.String())
 	return nil
 }
 
 func validateInputs(c *cli.Context) error {
-	// Validate Dockerfile first
-	dockerfilePath := c.String("dockerfile")
-	if err := validator.ValidateDockerfile(dockerfilePath); err != nil {
-		// Try to find Dockerfile in common locations
-		var err error
-		dockerfilePath, err = validator.FindDockerfile(".")
-		if err != nil {
-			return utils.NewError("no valid Dockerfile found: please ensure a Dockerfile exists in your project", err)
-		}
-		// Update the context with the found Dockerfile path
-		if err := c.Set("dockerfile", dockerfilePath); err != nil {
-			return utils.NewError(fmt.Sprintf("failed to set dockerfile path: %s", err.Error()), nil)
+	// Validate Dockerfile only when not using a pre-built image
+	if !c.IsSet("image") {
+		dockerfilePath := c.String("dockerfile")
+		if err := validator.ValidateDockerfile(dockerfilePath); err != nil {
+			// Try to find Dockerfile in common locations
+			var err error
+			dockerfilePath, err = validator.FindDockerfile(".")
+			if err != nil {
+				return utils.NewError("no valid Dockerfile found: please ensure a Dockerfile exists in your project", err)
+			}
+			// Update the context with the found Dockerfile path
+			if err := c.Set("dockerfile", dockerfilePath); err != nil {
+				return utils.NewError(fmt.Sprintf("failed to set dockerfile path: %s", err.Error()), nil)
+			}
 		}
 	}
 
@@ -330,6 +337,7 @@ func prepareDeploymentOptions(c *cli.Context) (deploy.DeploymentOptions, error) 
 		Organization:   c.String("organization"),
 		Port:           c.Int("port"),
 		DockerfilePath: c.String("dockerfile"),
+		PrebuiltImage:  c.String("image"),
 	}
 
 	// Handle project organization for future use (multi-tenant)
@@ -358,8 +366,8 @@ func prepareDeploymentOptions(c *cli.Context) (deploy.DeploymentOptions, error) 
 				return deploy.DeploymentOptions{}, utils.NewError(fmt.Sprintf("failed to get machine by name: %s", err.Error()), nil)
 			}
 
-			// check if machine is owned by the current user
-			if machine.OwnerID.String() != context.GetUserID() {
+			// check if machine is owned by the current user (monetized machines can be used by anyone)
+			if !machine.Monetized && machine.OwnerID.String() != context.GetUserID() {
 				return deploy.DeploymentOptions{}, utils.NewError(fmt.Sprintf("machine %s is not owned by you", machineName), nil)
 			}
 

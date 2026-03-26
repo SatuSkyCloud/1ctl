@@ -238,11 +238,16 @@ func (e *APIError) Error() string {
 }
 
 const (
-	StatusPending   = "pending"
-	StatusCreating  = "creating"
-	StatusRunning   = "running"
-	StatusFailed    = "failed"
-	StatusCompleted = "completed"
+	StatusPending     = "pending"
+	StatusCreating    = "creating"
+	StatusRunning     = "running"
+	StatusFailed      = "failed"
+	StatusCompleted   = "completed"
+	StatusNotReady    = "NotReady"
+	StatusRunningK8s  = "Running"
+	StatusFailedK8s   = "Failed"
+	StatusProgressing = "Progressing"
+	StatusUnknown     = "Unknown"
 )
 
 type DeploymentStatus struct {
