@@ -1,5 +1,23 @@
 # Release Notes
 
+## Version 0.5.13 (26-03-2026)
+
+### ✨ New Features
+
+- **`--image` flag for prebuilt images**: Skip local Docker build and push by supplying a prebuilt image reference directly
+  - `1ctl deploy --image myregistry.io/myapp:v1.0 --cpu 100m --memory 256Mi`
+  - Useful for CI/CD pipelines where images are built externally
+  - When `--image` is provided, Dockerfile validation, Docker build, and Docker push steps are all skipped
+
+- **Deployment ID output**: `deploy` now prints the deployment ID after a successful deploy, making it easier to reference in follow-up commands (`deploy status`, `logs`, etc.)
+
+### 🐛 Bug Fixes
+
+- **Deployment status polling**: Fixed handling of Kubernetes-style status values (`True`/`False`/`Unknown`) from the deployment status endpoint — previously only `Ready`/`NotReady` were recognized, causing status checks to hang or misreport
+- **NotReady status handling**: `WaitForDeployment` now correctly detects and reports `NotReady` status instead of timing out silently
+
+---
+
 ## Version 0.5.12 (16-03-2026)
 
 ### 🚀 Distribution
