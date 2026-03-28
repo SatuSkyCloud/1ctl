@@ -86,9 +86,9 @@ func ValidateWaitFor(value string) (host string, port int32, err error) {
 	if host == "" {
 		return "", 0, utils.NewError(fmt.Sprintf("--wait-for %q: host cannot be empty", value), nil)
 	}
-	p, parseErr := strconv.Atoi(strings.TrimSpace(parts[1]))
+	p, parseErr := strconv.ParseInt(strings.TrimSpace(parts[1]), 10, 32)
 	if parseErr != nil || p < 1 || p > 65535 {
 		return "", 0, utils.NewError(fmt.Sprintf("--wait-for %q: port must be a number between 1 and 65535", value), nil)
 	}
-	return host, int32(p), nil //nolint:gosec // port is validated to be within 1–65535
+	return host, int32(p), nil // #nosec G109 -- p is ParseInt with bitSize=32 and range-checked to 1–65535
 }
