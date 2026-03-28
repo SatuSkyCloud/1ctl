@@ -47,4 +47,8 @@ type DeploymentOptions struct {
 	// PrebuiltImage, when non-empty, skips local Docker build and upload.
 	// The image must already exist in the registry and be pullable by the cluster.
 	PrebuiltImage string
+	// WaitFor declares TCP dependencies that must be reachable before the app starts.
+	// The platform injects init containers so the main container never crashes while
+	// dependencies are unavailable. Format: [{Host: "postgres", Port: 5432}]
+	WaitFor []api.WaitFor
 }
