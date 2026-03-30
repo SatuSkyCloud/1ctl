@@ -1,5 +1,17 @@
 # Release Notes
 
+## Version 0.6.0 (30-03-2026)
+
+### ✨ New Features
+
+- **`--wait-for` flag for dependency readiness**: Declare TCP dependencies that must be reachable before your app starts. The platform injects init containers server-side, eliminating crash-restart loops when dependencies (postgres, redis, etc.) are slow to start.
+  - `1ctl deploy --wait-for postgres:5432 --wait-for redis:6379 --cpu 500m --memory 512Mi --image myapp:latest`
+  - Supports multiple `--wait-for` flags for multiple dependencies
+  - Validates `host:port` format with port range 1–65535
+  - Mirrors flyctl's philosophy: declare what you need, platform handles the mechanism
+
+---
+
 ## Version 0.5.13 (26-03-2026)
 
 ### ✨ New Features
