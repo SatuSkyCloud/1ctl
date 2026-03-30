@@ -2,8 +2,10 @@ package validator
 
 import (
 	"1ctl/internal/utils"
+	"fmt"
 	"regexp"
 	"strconv"
+	"strings"
 )
 
 var memoryPattern = regexp.MustCompile(`^(\d+)(Mi|Gi)?$`)
@@ -72,4 +74,21 @@ func ValidateDomain(domain string) error {
 	}
 
 	return nil
+}
+
+// ValidateWaitFor validates a --wait-for value in "host:port" format.
+func ValidateWaitFor(value string) (host string, port int32, err error) {
+	parts := strings.SplitN(value, ":", 2)
+	if len(parts) != 2 {
+		return "", 0, utils.NewError(fmt.Sprintf("--wait-for %q must be in host:port format (e.g., postgres:5432)", value), nil)
+	}
+	host = strings.TrimSpace(parts[0])
+	if host == "" {
+		return "", 0, utils.NewError(fmt.Sprintf("--wait-for %q: host cannot be empty", value), nil)
+	}
+	p, parseErr := strconv.ParseInt(strings.TrimSpace(parts[1]), 10, 32)
+	if parseErr != nil || p < 1 || p > 65535 {
+		return "", 0, utils.NewError(fmt.Sprintf("--wait-for %q: port must be a number between 1 and 65535", value), nil)
+	}
+	return host, int32(p), nil // #nosec G109 -- p is ParseInt with bitSize=32 and range-checked to 1–65535
 }

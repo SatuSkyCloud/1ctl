@@ -76,6 +76,14 @@ type VPAConfig struct {
 	MaxMemory  string `json:"max_memory,omitempty"` // e.g., "8Gi"
 }
 
+// WaitFor declares a TCP dependency that must be reachable before the app starts.
+// The platform injects an init container that polls HOST:PORT until it responds,
+// so the main container never starts — and never crashes — while dependencies are unavailable.
+type WaitFor struct {
+	Host string `json:"host"`
+	Port int32  `json:"port"`
+}
+
 type Deployment struct {
 	DeploymentID       uuid.UUID           `json:"deployment_id,omitempty"`
 	UserID             uuid.UUID           `json:"user_id"`
@@ -106,6 +114,7 @@ type Deployment struct {
 	PDBConfig          *PDBConfig          `json:"pdb_config,omitempty"`
 	HPAConfig          *HPAConfig          `json:"hpa_config,omitempty"`
 	VPAConfig          *VPAConfig          `json:"vpa_config,omitempty"`
+	WaitFor            []WaitFor           `json:"wait_for,omitempty"`
 	CreatedAt          time.Time           `json:"created_at"`
 	UpdatedAt          time.Time           `json:"updated_at"`
 }

@@ -167,6 +167,11 @@ func DeployCommand() *cli.Command {
 			Name:  "vpa-max-memory",
 			Usage: "VPA maximum memory (e.g., '8Gi')",
 		},
+		// Dependency readiness flags
+		&cli.StringSliceFlag{
+			Name:  "wait-for",
+			Usage: "Wait for a TCP dependency before starting (format: host:port, e.g. postgres:5432). Can be repeated for multiple dependencies.",
+		},
 	}
 
 	return &cli.Command{
@@ -326,6 +331,13 @@ func validateInputs(c *cli.Context) error {
 		}
 	}
 
+	// Validate --wait-for entries
+	for _, v := range c.StringSlice("wait-for") {
+		if _, _, err := validator.ValidateWaitFor(v); err != nil {
+			return err
+		}
+	}
+
 	return nil
 }
 
@@ -467,6 +479,15 @@ func prepareDeploymentOptions(c *cli.Context) (deploy.DeploymentOptions, error) 
 			MinMemory:  c.String("vpa-min-memory"),
 			MaxMemory:  c.String("vpa-max-memory"),
 		}
+	}
+
+	// Handle --wait-for dependencies
+	for _, v := range c.StringSlice("wait-for") {
+		host, port, err := validator.ValidateWaitFor(v)
+		if err != nil {
+			return deploy.DeploymentOptions{}, err
+		}
+		opts.WaitFor = append(opts.WaitFor, api.WaitFor{Host: host, Port: port})
 	}
 
 	return opts, nil

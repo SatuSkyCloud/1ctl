@@ -311,6 +311,11 @@ func mainDeploy(opts DeploymentOptions, image, name, userID, organization string
 		deployment.VPAConfig = opts.VPAConfig
 	}
 
+	// Add wait-for dependencies (platform injects init containers)
+	if len(opts.WaitFor) > 0 {
+		deployment.WaitFor = opts.WaitFor
+	}
+
 	var deploymentID string
 	if err := api.UpsertDeployment(deployment, &deploymentID); err != nil {
 		// Check if this is a resource exhausted error and handle it specially
