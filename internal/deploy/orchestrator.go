@@ -243,8 +243,8 @@ func mainDeploy(opts DeploymentOptions, image, name, userID, organization string
 		Namespace:     organization,
 		Port:          port,
 		Image:         image,
-		Region:        "SG",       // Default to Singapore region
-		Zone:          "sg-sgp-1", // Default to Singapore zone
+		Region:        "", // Let backend auto-select region based on available machines
+		Zone:          "", // Let backend auto-select zone
 		SSD:           "true",
 		GPU:           "false",
 		AppLabel:      name,
