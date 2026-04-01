@@ -1,5 +1,13 @@
 # Release Notes
 
+## Version 0.6.1 (01-04-2026)
+
+### 🐛 Bug Fixes
+
+- **Remove hardcoded SG region**: Deployments no longer force `Region: "SG"` and `Zone: "sg-sgp-1"`. Previously, this caused 500 errors when no machines existed in the SG region. The region fields are now left empty so the backend calls `GetMonetizedMachines()` and auto-selects from all available machines regardless of region.
+
+---
+
 ## Version 0.6.0 (30-03-2026)
 
 ### ✨ New Features
