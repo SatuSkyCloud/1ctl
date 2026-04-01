@@ -172,6 +172,35 @@ func DeployCommand() *cli.Command {
 			Name:  "wait-for",
 			Usage: "Wait for a TCP dependency before starting (format: host:port, e.g. postgres:5432). Can be repeated for multiple dependencies.",
 		},
+		// Deployment strategy flags
+		&cli.StringFlag{
+			Name:  "strategy",
+			Usage: "Deployment rollout strategy: rolling (default), recreate, blue-green, canary, ab-testing",
+			Value: "rolling",
+		},
+		&cli.IntFlag{
+			Name:  "canary-weight",
+			Usage: "Initial canary traffic percentage (1-99). Used with --strategy canary or ab-testing",
+			Value: 10,
+		},
+		&cli.StringFlag{
+			Name:  "rolling-max-surge",
+			Usage: "Rolling update max surge. Pods or percentage, e.g. '1' or '25%'",
+			Value: "25%",
+		},
+		&cli.StringFlag{
+			Name:  "rolling-max-unavailable",
+			Usage: "Rolling update max unavailable. Pods or percentage, e.g. '0' or '25%'",
+			Value: "25%",
+		},
+		&cli.StringFlag{
+			Name:  "ab-header",
+			Usage: "HTTP header name for A/B testing routing. Used with --strategy ab-testing",
+		},
+		&cli.StringFlag{
+			Name:  "ab-header-value",
+			Usage: "HTTP header value for A/B testing routing. Used with --strategy ab-testing",
+		},
 	}
 
 	return &cli.Command{
@@ -217,6 +246,73 @@ func DeployCommand() *cli.Command {
 					},
 				},
 				Action: handleDeploymentStatus,
+			},
+			{
+				Name:  "promote",
+				Usage: "Promote deployment strategy (blue-green: switch slots; canary: promote to stable)",
+				Flags: []cli.Flag{
+					&cli.StringFlag{
+						Name:     "deployment-id",
+						Usage:    "Deployment ID",
+						Required: true,
+					},
+				},
+				Action: func(cCtx *cli.Context) error {
+					if err := api.PromoteDeploymentStrategy(cCtx.String("deployment-id")); err != nil {
+						utils.PrintError("Failed to promote strategy: %v", err)
+						return err
+					}
+					utils.PrintSuccess("Strategy promoted successfully")
+					return nil
+				},
+			},
+			{
+				Name:  "rollback",
+				Usage: "Rollback deployment strategy (blue-green: switch back; canary: delete canary resources)",
+				Flags: []cli.Flag{
+					&cli.StringFlag{
+						Name:     "deployment-id",
+						Usage:    "Deployment ID",
+						Required: true,
+					},
+				},
+				Action: func(cCtx *cli.Context) error {
+					if err := api.RollbackDeploymentStrategy(cCtx.String("deployment-id")); err != nil {
+						utils.PrintError("Failed to rollback strategy: %v", err)
+						return err
+					}
+					utils.PrintSuccess("Strategy rolled back successfully")
+					return nil
+				},
+			},
+			{
+				Name:  "weight",
+				Usage: "Update canary traffic weight (1-99)",
+				Flags: []cli.Flag{
+					&cli.StringFlag{
+						Name:     "deployment-id",
+						Usage:    "Deployment ID",
+						Required: true,
+					},
+					&cli.IntFlag{
+						Name:     "weight",
+						Usage:    "Canary traffic percentage (1-99)",
+						Required: true,
+					},
+				},
+				Action: func(cCtx *cli.Context) error {
+					weight := cCtx.Int("weight")
+					if weight < 1 || weight > 99 {
+						utils.PrintError("weight must be between 1 and 99")
+						return fmt.Errorf("invalid weight: %d", weight)
+					}
+					if err := api.UpdateDeploymentCanaryWeight(cCtx.String("deployment-id"), weight); err != nil {
+						utils.PrintError("Failed to update canary weight: %v", err)
+						return err
+					}
+					utils.PrintSuccess("Canary weight updated to %d%%", weight)
+					return nil
+				},
 			},
 		},
 		Action: func(c *cli.Context) error {
@@ -489,6 +585,14 @@ func prepareDeploymentOptions(c *cli.Context) (deploy.DeploymentOptions, error) 
 		}
 		opts.WaitFor = append(opts.WaitFor, api.WaitFor{Host: host, Port: port})
 	}
+
+	// Handle deployment strategy options
+	opts.Strategy = c.String("strategy")
+	opts.CanaryWeight = c.Int("canary-weight")
+	opts.RollingMaxSurge = c.String("rolling-max-surge")
+	opts.RollingMaxUnavailable = c.String("rolling-max-unavailable")
+	opts.ABHeader = c.String("ab-header")
+	opts.ABHeaderValue = c.String("ab-header-value")
 
 	return opts, nil
 }
