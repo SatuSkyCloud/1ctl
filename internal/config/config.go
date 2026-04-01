@@ -9,7 +9,9 @@ import (
 	"github.com/joho/godotenv"
 )
 
-const (
+// These vars are intentionally overridable at build time via -ldflags
+// e.g. go build -ldflags "-X '1ctl/internal/config.defaultAPIURL=http://localhost:8080/v1/cli'"
+var (
 	defaultAPIURL          = "https://api.satusky.com/v1/cli"
 	defaultDockerUploadURL = "http://docker-upload.api.satusky.com"
 )
