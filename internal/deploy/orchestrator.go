@@ -316,6 +316,9 @@ func mainDeploy(opts DeploymentOptions, image, name, userID, organization string
 		deployment.WaitFor = opts.WaitFor
 	}
 
+	// Add deployment strategy configuration
+	deployment.StrategyConfig = buildStrategyConfig(opts)
+
 	var deploymentID string
 	if err := api.UpsertDeployment(deployment, &deploymentID); err != nil {
 		// Check if this is a resource exhausted error and handle it specially
@@ -475,6 +478,51 @@ func handleEnvironmentAndVolumes(opts DeploymentOptions, deploymentID, projectNa
 	}
 
 	return nil
+}
+
+// buildStrategyConfig converts DeploymentOptions strategy fields into the API struct
+func buildStrategyConfig(opts DeploymentOptions) *api.DeploymentStrategyConfig {
+	strategy := opts.Strategy
+	if strategy == "" || strategy == "rolling" {
+		if opts.RollingMaxSurge == "25%" && opts.RollingMaxUnavailable == "25%" {
+			// Default rolling - omit config to reduce noise
+			return nil
+		}
+		// Custom rolling config
+		return &api.DeploymentStrategyConfig{
+			Type: api.StrategyRolling,
+			Rolling: &api.RollingUpdateConfig{
+				MaxSurge:       opts.RollingMaxSurge,
+				MaxUnavailable: opts.RollingMaxUnavailable,
+			},
+		}
+	}
+
+	switch api.DeploymentStrategyType(strategy) {
+	case api.StrategyRecreate:
+		return &api.DeploymentStrategyConfig{Type: api.StrategyRecreate}
+	case api.StrategyBlueGreen:
+		return &api.DeploymentStrategyConfig{
+			Type:      api.StrategyBlueGreen,
+			BlueGreen: &api.BlueGreenConfig{ActiveSlot: "blue"},
+		}
+	case api.StrategyCanary:
+		return &api.DeploymentStrategyConfig{
+			Type:   api.StrategyCanary,
+			Canary: &api.CanaryConfig{Weight: opts.CanaryWeight},
+		}
+	case api.StrategyABTesting:
+		return &api.DeploymentStrategyConfig{
+			Type: api.StrategyABTesting,
+			ABTesting: &api.ABTestingConfig{
+				Header:      opts.ABHeader,
+				HeaderValue: opts.ABHeaderValue,
+				Weight:      opts.CanaryWeight,
+			},
+		}
+	default:
+		return nil
+	}
 }
 
 func handleIngressAndDependencies(opts DeploymentOptions, deploymentID, serviceID, userID, organization, projectName string, hostnames []string) (string, error) {

@@ -84,6 +84,51 @@ type WaitFor struct {
 	Port int32  `json:"port"`
 }
 
+// DeploymentStrategyType represents the rollout strategy type
+type DeploymentStrategyType string
+
+const (
+	StrategyRolling   DeploymentStrategyType = "rolling"
+	StrategyRecreate  DeploymentStrategyType = "recreate"
+	StrategyBlueGreen DeploymentStrategyType = "blue-green"
+	StrategyCanary    DeploymentStrategyType = "canary"
+	StrategyABTesting DeploymentStrategyType = "ab-testing"
+)
+
+// RollingUpdateConfig configures rolling update behaviour
+type RollingUpdateConfig struct {
+	MaxSurge       string `json:"max_surge"`
+	MaxUnavailable string `json:"max_unavailable"`
+}
+
+// BlueGreenConfig tracks the active slot for blue-green deployments
+type BlueGreenConfig struct {
+	ActiveSlot string `json:"active_slot"`
+}
+
+// CanaryConfig configures canary traffic splitting
+type CanaryConfig struct {
+	Weight        int    `json:"weight"`
+	StableService string `json:"stable_service,omitempty"`
+	CanaryService string `json:"canary_service,omitempty"`
+}
+
+// ABTestingConfig configures header-based A/B routing
+type ABTestingConfig struct {
+	Header      string `json:"header"`
+	HeaderValue string `json:"header_value"`
+	Weight      int    `json:"weight,omitempty"`
+}
+
+// DeploymentStrategyConfig holds the complete strategy configuration
+type DeploymentStrategyConfig struct {
+	Type      DeploymentStrategyType `json:"type"`
+	Rolling   *RollingUpdateConfig   `json:"rolling,omitempty"`
+	BlueGreen *BlueGreenConfig       `json:"blue_green,omitempty"`
+	Canary    *CanaryConfig          `json:"canary,omitempty"`
+	ABTesting *ABTestingConfig       `json:"ab_testing,omitempty"`
+}
+
 type Deployment struct {
 	DeploymentID       uuid.UUID           `json:"deployment_id,omitempty"`
 	UserID             uuid.UUID           `json:"user_id"`
@@ -113,8 +158,9 @@ type Deployment struct {
 	MulticlusterConfig *MulticlusterConfig `json:"multicluster_config,omitempty"`
 	PDBConfig          *PDBConfig          `json:"pdb_config,omitempty"`
 	HPAConfig          *HPAConfig          `json:"hpa_config,omitempty"`
-	VPAConfig          *VPAConfig          `json:"vpa_config,omitempty"`
-	WaitFor            []WaitFor           `json:"wait_for,omitempty"`
+	VPAConfig          *VPAConfig                `json:"vpa_config,omitempty"`
+	StrategyConfig     *DeploymentStrategyConfig `json:"deployment_strategy,omitempty"`
+	WaitFor            []WaitFor                 `json:"wait_for,omitempty"`
 	CreatedAt          time.Time           `json:"created_at"`
 	UpdatedAt          time.Time           `json:"updated_at"`
 }
