@@ -52,10 +52,7 @@ type DeploymentOptions struct {
 	// dependencies are unavailable. Format: [{Host: "postgres", Port: 5432}]
 	WaitFor []api.WaitFor
 	// Deployment strategy options
-	Strategy              string // "rolling" (default), "recreate", "blue-green", "canary", "ab-testing"
-	CanaryWeight          int    // Initial canary traffic percentage (1-99), used with canary/ab-testing
+	Strategy              string // "rolling" (default), "recreate"
 	RollingMaxSurge       string // Rolling update max surge (e.g. "25%" or "1")
 	RollingMaxUnavailable string // Rolling update max unavailable (e.g. "25%" or "0")
-	ABHeader              string // HTTP header name for A/B testing routing
-	ABHeaderValue         string // HTTP header value for A/B testing routing
 }

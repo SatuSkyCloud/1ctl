@@ -498,31 +498,10 @@ func buildStrategyConfig(opts DeploymentOptions) *api.DeploymentStrategyConfig {
 		}
 	}
 
-	switch api.DeploymentStrategyType(strategy) {
-	case api.StrategyRecreate:
+	if api.DeploymentStrategyType(strategy) == api.StrategyRecreate {
 		return &api.DeploymentStrategyConfig{Type: api.StrategyRecreate}
-	case api.StrategyBlueGreen:
-		return &api.DeploymentStrategyConfig{
-			Type:      api.StrategyBlueGreen,
-			BlueGreen: &api.BlueGreenConfig{ActiveSlot: "blue"},
-		}
-	case api.StrategyCanary:
-		return &api.DeploymentStrategyConfig{
-			Type:   api.StrategyCanary,
-			Canary: &api.CanaryConfig{Weight: opts.CanaryWeight},
-		}
-	case api.StrategyABTesting:
-		return &api.DeploymentStrategyConfig{
-			Type: api.StrategyABTesting,
-			ABTesting: &api.ABTestingConfig{
-				Header:      opts.ABHeader,
-				HeaderValue: opts.ABHeaderValue,
-				Weight:      opts.CanaryWeight,
-			},
-		}
-	default:
-		return nil
 	}
+	return nil
 }
 
 func handleIngressAndDependencies(opts DeploymentOptions, deploymentID, serviceID, userID, organization, projectName string, hostnames []string) (string, error) {
