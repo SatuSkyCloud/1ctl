@@ -88,11 +88,8 @@ type WaitFor struct {
 type DeploymentStrategyType string
 
 const (
-	StrategyRolling   DeploymentStrategyType = "rolling"
-	StrategyRecreate  DeploymentStrategyType = "recreate"
-	StrategyBlueGreen DeploymentStrategyType = "blue-green"
-	StrategyCanary    DeploymentStrategyType = "canary"
-	StrategyABTesting DeploymentStrategyType = "ab-testing"
+	StrategyRolling  DeploymentStrategyType = "rolling"
+	StrategyRecreate DeploymentStrategyType = "recreate"
 )
 
 // RollingUpdateConfig configures rolling update behaviour
@@ -101,32 +98,10 @@ type RollingUpdateConfig struct {
 	MaxUnavailable string `json:"max_unavailable"`
 }
 
-// BlueGreenConfig tracks the active slot for blue-green deployments
-type BlueGreenConfig struct {
-	ActiveSlot string `json:"active_slot"`
-}
-
-// CanaryConfig configures canary traffic splitting
-type CanaryConfig struct {
-	Weight        int    `json:"weight"`
-	StableService string `json:"stable_service,omitempty"`
-	CanaryService string `json:"canary_service,omitempty"`
-}
-
-// ABTestingConfig configures header-based A/B routing
-type ABTestingConfig struct {
-	Header      string `json:"header"`
-	HeaderValue string `json:"header_value"`
-	Weight      int    `json:"weight,omitempty"`
-}
-
 // DeploymentStrategyConfig holds the complete strategy configuration
 type DeploymentStrategyConfig struct {
-	Type      DeploymentStrategyType `json:"type"`
-	Rolling   *RollingUpdateConfig   `json:"rolling,omitempty"`
-	BlueGreen *BlueGreenConfig       `json:"blue_green,omitempty"`
-	Canary    *CanaryConfig          `json:"canary,omitempty"`
-	ABTesting *ABTestingConfig       `json:"ab_testing,omitempty"`
+	Type    DeploymentStrategyType `json:"type"`
+	Rolling *RollingUpdateConfig   `json:"rolling,omitempty"`
 }
 
 type Deployment struct {

@@ -745,22 +745,6 @@ func UpsertDeployment(req Deployment, response *string) error {
 	return makeRequest("POST", path, req, &resp)
 }
 
-// PromoteDeploymentStrategy promotes the deployment strategy (blue-green: switch slots; canary: promote to stable)
-func PromoteDeploymentStrategy(deploymentID string) error {
-	return makeRequest("POST", fmt.Sprintf("/deployments/%s/strategy/promote", deploymentID), nil, nil)
-}
-
-// RollbackDeploymentStrategy rolls back the deployment strategy
-func RollbackDeploymentStrategy(deploymentID string) error {
-	return makeRequest("POST", fmt.Sprintf("/deployments/%s/strategy/rollback", deploymentID), nil, nil)
-}
-
-// UpdateDeploymentCanaryWeight updates the canary ingress weight for a deployment
-func UpdateDeploymentCanaryWeight(deploymentID string, weight int) error {
-	body := map[string]int{"weight": weight}
-	return makeRequest("PATCH", fmt.Sprintf("/deployments/%s/strategy/weight", deploymentID), body, nil)
-}
-
 // UpsertService creates or updates a service and returns the service ID
 func UpsertService(service Service, response *string) error {
 	var resp apiResponse
