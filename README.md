@@ -22,9 +22,42 @@ Download from [Releases](https://github.com/SatuSkyCloud/1ctl/releases/latest), 
 
 ### Build from source
 
+#### Local development build
+
+A standard build connects to `api.satusky.com` by default:
+
 ```bash
-git clone https://github.com/satuskycloud/1ctl.git && cd 1ctl && go build -o 1ctl ./cmd/...
+git clone https://github.com/satuskycloud/1ctl.git
+cd 1ctl
+go build -o 1ctl ./cmd/...
 ```
+
+To point the binary at a local API server, override the default URLs at compile time via ldflags:
+
+```bash
+go build \
+  -ldflags "-X '1ctl/internal/config.defaultAPIURL=http://localhost:8080/v1/cli' \
+            -X '1ctl/internal/config.defaultDockerUploadURL=http://localhost:3000'" \
+  -o 1ctl ./cmd/...
+```
+
+Alternatively, override at runtime with environment variables (no rebuild needed):
+
+```bash
+export SATUSKY_API_URL=http://localhost:8080/v1/cli
+export SATUSKY_DOCKER_API_URL=http://localhost:3000
+./1ctl deploy ...
+```
+
+#### Production build (CI/CD)
+
+Production releases are built by GoReleaser and triggered automatically when a semver tag is pushed. The CI pipeline produces cross-platform binaries (Linux, macOS, Windows — amd64 and arm64) with version metadata embedded:
+
+```bash
+git tag v0.X.Y && git push origin v0.X.Y
+```
+
+Do **not** run GoReleaser locally for production releases — the pipeline requires `HOMEBREW_TAP_TOKEN` and other CI secrets.
 
 ## Usage on GitHub Actions
 
@@ -83,6 +116,18 @@ cd your-project
 
 # Deploy with custom domain and machine targeting
 1ctl deploy --cpu 2 --memory 1Gi --domain example.com --machine my-machine-1
+
+# Deploy a pre-built image (skips local Docker build and push)
+1ctl deploy --cpu 2 --memory 512Mi --image registry.satusky.com/satusky-container-registry/myapp:abc1234
+
+# Deploy with rolling update strategy (default: 25% max surge, 25% max unavailable)
+1ctl deploy --cpu 2 --memory 1Gi --strategy rolling --rolling-max-surge 1 --rolling-max-unavailable 0
+
+# Deploy with recreate strategy (stops all pods before starting new ones)
+1ctl deploy --cpu 2 --memory 1Gi --strategy recreate
+
+# Wait for TCP dependencies to be ready before the app starts
+1ctl deploy --cpu 2 --memory 1Gi --wait-for postgres:5432 --wait-for redis:6379
 
 # List deployments
 1ctl deploy list
