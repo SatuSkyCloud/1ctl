@@ -5,6 +5,7 @@ import (
 	"1ctl/internal/context"
 	"1ctl/internal/utils"
 	"fmt"
+	"net/http"
 
 	gorillaws "github.com/gorilla/websocket"
 	"github.com/urfave/cli/v2"
@@ -16,10 +17,9 @@ func LogsCommand() *cli.Command {
 		Usage: "View and manage pod logs",
 		Flags: []cli.Flag{
 			&cli.StringFlag{
-				Name:     "deployment-id",
-				Aliases:  []string{"d"},
-				Usage:    "Deployment ID to view logs for",
-				Required: true,
+				Name:    "deployment-id",
+				Aliases: []string{"d"},
+				Usage:   "Deployment ID to view logs for",
 			},
 			&cli.IntFlag{
 				Name:    "tail",
@@ -191,11 +191,16 @@ func handleLogsStream(c *cli.Context) error {
 	if err != nil {
 		return err
 	}
+
 	if batchSize > 0 {
 		wsURL = fmt.Sprintf("%s?batchSize=%d", wsURL, batchSize)
 	}
 
-	conn, _, err := gorillaws.DefaultDialer.Dial(wsURL, nil)
+	headers := http.Header{}
+	headers.Set("x-satusky-api-key", context.GetToken())
+	headers.Set("x-satusky-config", context.GetUserConfigKey())
+
+	conn, _, err := gorillaws.DefaultDialer.Dial(wsURL, headers)
 	if err != nil {
 		return utils.NewError(fmt.Sprintf("failed to connect to log stream: %s", err.Error()), nil)
 	}
