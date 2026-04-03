@@ -39,9 +39,9 @@ type PodInfo struct {
 	UID       string    `json:"uid"`
 }
 
-// GetStoredLogs retrieves stored logs for a deployment
+// GetStoredLogs retrieves logs for a deployment via Loki (populated by Promtail).
 func GetStoredLogs(deploymentID string, tail int) ([]DeploymentLog, error) {
-	path := fmt.Sprintf("/pods/logs/%s", deploymentID)
+	path := fmt.Sprintf("/loki/logs/%s", deploymentID)
 	if tail > 0 {
 		path = fmt.Sprintf("%s?tail=%d", path, tail)
 	}
