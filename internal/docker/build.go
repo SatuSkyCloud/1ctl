@@ -3,8 +3,12 @@ package docker
 import (
 	"1ctl/internal/utils"
 	"1ctl/internal/validator"
+	"archive/tar"
+	"bytes"
 	"crypto/rand"
+	"encoding/json"
 	"fmt"
+	"io"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -82,14 +86,116 @@ func Build(opts BuildOptions) error {
 	return nil
 }
 
-// SaveImage saves the Docker image as a tar archive
+// isPodman returns true if the docker CLI is actually Podman.
+func isPodman() bool {
+	out, err := exec.Command("docker", "--version").Output() // #nosec G204
+	if err != nil {
+		return false
+	}
+	return strings.Contains(strings.ToLower(string(out)), "podman")
+}
+
+// getImageID returns the image ID (sha256:...) for a local image name.
+func getImageID(imageName string) (string, error) {
+	out, err := exec.Command("docker", "inspect", "--format", "{{.Id}}", imageName).Output() // #nosec G204
+	if err != nil {
+		return "", err
+	}
+	return strings.TrimSpace(string(out)), nil
+}
+
+// patchManifestRepoTags rewrites the manifest.json inside a Docker-archive tar so that
+// every entry has RepoTags set to [tag:latest]. This is necessary when Podman embeds
+// "localhost/<name>" as the repo tag, which the registry upload service cannot resolve.
+func patchManifestRepoTags(tarPath, tag string) error {
+	// Read the original tar into memory.
+	origData, err := os.ReadFile(tarPath) // #nosec G304
+	if err != nil {
+		return err
+	}
+
+	var buf bytes.Buffer
+	tw := tar.NewWriter(&buf)
+	tr := tar.NewReader(bytes.NewReader(origData))
+
+	for {
+		hdr, err := tr.Next()
+		if err == io.EOF {
+			break
+		}
+		if err != nil {
+			return err
+		}
+
+		data, err := io.ReadAll(tr)
+		if err != nil {
+			return err
+		}
+
+		if hdr.Name == "manifest.json" {
+			var manifests []map[string]interface{}
+			if err := json.Unmarshal(data, &manifests); err != nil {
+				return err
+			}
+			repoTag := tag
+			if !strings.Contains(repoTag, ":") {
+				repoTag = repoTag + ":latest"
+			}
+			for i := range manifests {
+				manifests[i]["RepoTags"] = []string{repoTag}
+			}
+			data, err = json.Marshal(manifests)
+			if err != nil {
+				return err
+			}
+			hdr.Size = int64(len(data))
+		}
+
+		if err := tw.WriteHeader(hdr); err != nil {
+			return err
+		}
+		if _, err := tw.Write(data); err != nil {
+			return err
+		}
+	}
+
+	if err := tw.Close(); err != nil {
+		return err
+	}
+
+	return os.WriteFile(tarPath, buf.Bytes(), 0600) // #nosec G306
+}
+
+// SaveImage saves the Docker image as a tar archive in Docker format.
+// When running under Podman, it saves by image ID (to avoid OCI format) and then
+// patches manifest.json to set the correct RepoTags so the registry can tag by name.
 func SaveImage(projectName, outputPath string) error {
-	cmd := exec.Command("docker", "save", "-o", outputPath, projectName) // #nosec G204 -- executable is fixed "docker", args are validated by callers
+	ref := projectName
+	args := []string{"save"}
+
+	if isPodman() {
+		// Podman stores unqualified images as "localhost/<name>:latest".
+		// Save by image ID to get a valid Docker archive without OCI metadata.
+		if id, err := getImageID(projectName); err == nil && id != "" {
+			ref = id
+		}
+		args = append(args, "--format", "docker-archive")
+	}
+
+	args = append(args, "-o", outputPath, ref)
+	cmd := exec.Command("docker", args...) // #nosec G204 -- executable is fixed "docker", args are validated by callers
 	cmd.Stdout = os.Stdout
 	cmd.Stderr = os.Stderr
 
 	if err := cmd.Run(); err != nil {
 		return utils.NewError(fmt.Sprintf("failed to save Docker image: %s", err.Error()), nil)
+	}
+
+	// Patch the manifest so the registry service can locate the image by name after load.
+	if isPodman() {
+		if err := patchManifestRepoTags(outputPath, projectName); err != nil {
+			return utils.NewError(fmt.Sprintf("failed to patch image manifest: %s", err.Error()), nil)
+		}
 	}
 
 	return nil
