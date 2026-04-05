@@ -1,5 +1,19 @@
 # Release Notes
 
+## Version 0.7.0 (05-04-2026)
+
+### New Features
+
+- **Multi-cluster zone targeting**: New `--zone` flag on `1ctl deploy` to target a specific deployment zone (e.g., `--zone my-bki-1a` to deploy to BKI cluster). When omitted, the backend auto-selects from all available machines.
+  - `1ctl deploy --zone my-bki-1a --cpu 2 --memory 1Gi` deploys to BKI cluster
+  - `1ctl deploy --multicluster --zone my-kul-1b` deploys to KUL and replicates to other clusters
+  - `1ctl deploy --multicluster` deploys to default cluster (KUL) and replicates to all
+- **Cluster management commands**: New `1ctl cluster` command group for viewing cluster and zone information:
+  - `1ctl cluster zones` lists all available deployment zones with their cluster mappings
+  - `1ctl cluster list` shows all enabled clusters with health status, endpoints, and priority
+
+---
+
 ## Version 0.6.1 (01-04-2026)
 
 ### 🐛 Bug Fixes

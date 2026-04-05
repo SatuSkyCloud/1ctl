@@ -63,6 +63,11 @@ func DeployCommand() *cli.Command {
 			Name:  "volume-mount",
 			Usage: "Storage mount path",
 		},
+		// Zone targeting flag
+		&cli.StringFlag{
+			Name:  "zone",
+			Usage: "Target deployment zone (e.g., 'my-kul-1b', 'my-bki-1a'). Run '1ctl cluster zones' to list available zones.",
+		},
 		// Multi-cluster deployment flags
 		&cli.BoolFlag{
 			Name:  "multicluster",
@@ -399,6 +404,14 @@ func prepareDeploymentOptions(c *cli.Context) (deploy.DeploymentOptions, error) 
 			MountPath:   c.String("volume-mount"),
 		}
 		opts.Volume = vol
+	}
+
+	// Handle zone targeting
+	if c.IsSet("zone") {
+		opts.Zone = c.String("zone")
+		// For backward compatibility, also set Region to the zone value
+		// The backend uses Region for machine filtering when Zone is not explicitly handled
+		opts.Region = c.String("zone")
 	}
 
 	// Handle multicluster configuration

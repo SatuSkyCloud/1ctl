@@ -243,8 +243,8 @@ func mainDeploy(opts DeploymentOptions, image, name, userID, organization string
 		Namespace:     organization,
 		Port:          port,
 		Image:         image,
-		Region:        "", // Let backend auto-select region based on available machines
-		Zone:          "", // Let backend auto-select zone
+		Region:        opts.Region, // Zone value for backward compat, or empty for auto-select
+		Zone:          opts.Zone,   // Target zone for cluster routing
 		SSD:           "true",
 		GPU:           "false",
 		AppLabel:      name,

@@ -51,6 +51,7 @@ func createApp() *cli.App {
 			commands.AdminCommand(),
 			// Phase 3+4: Pricing
 			commands.PricingCommand(),
+			commands.ClusterCommand(),
 		},
 		Before: func(c *cli.Context) error {
 			// Get the command or first argument
