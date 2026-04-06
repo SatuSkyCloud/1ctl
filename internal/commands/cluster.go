@@ -41,7 +41,7 @@ func clusterListCommand() *cli.Command {
 func handleListZones(_ *cli.Context) error {
 	zones, err := api.GetAvailableZones()
 	if err != nil {
-		return utils.NewError("failed to list zones: %s", err)
+		return utils.NewError(fmt.Sprintf("failed to list zones: %s", err.Error()), nil)
 	}
 
 	if len(zones) == 0 {
@@ -63,7 +63,7 @@ func handleListZones(_ *cli.Context) error {
 func handleListClusters(_ *cli.Context) error {
 	clusters, err := api.GetClusters()
 	if err != nil {
-		return utils.NewError("failed to list clusters: %s", err)
+		return utils.NewError(fmt.Sprintf("failed to list clusters: %s", err.Error()), nil)
 	}
 
 	if len(clusters) == 0 {

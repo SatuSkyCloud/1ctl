@@ -6,6 +6,11 @@ import (
 	"github.com/urfave/cli/v2"
 )
 
+// CompletionCommand returns the completion command group.
+//
+// Maintenance note: when adding or removing commands/subcommands/flags in 1ctl,
+// update ALL four shell templates below (bash, zsh, fish, powershell) to keep
+// tab-completion in sync. Each template lists the full command inventory.
 func CompletionCommand() *cli.Command {
 	return &cli.Command{
 		Name:  "completion",
@@ -48,7 +53,7 @@ _satusky_cli_completion() {
 
     # Top level commands
     if [[ $COMP_CWORD == 1 ]]; then
-        opts="auth deploy service secret ingress issuer environment machine org github notifications user token marketplace audit talos admin credits storage logs completion --help --version"
+        opts="auth org deploy service secret ingress issuer environment machine domain credits storage logs notifications user token marketplace audit talos admin pricing cluster completion --help --version"
         COMPREPLY=( $(compgen -W "${opts}" -- ${cur}) )
         return 0
     fi
@@ -88,6 +93,31 @@ _satusky_cli_completion() {
             COMPREPLY=( $(compgen -W "active-active active-passive" -- ${cur}) )
             return 0
             ;;
+        --zone)
+            local zones=$(1ctl cluster zones 2>/dev/null | awk 'NR>2 {print $1}')
+            COMPREPLY=( $(compgen -W "${zones}" -- ${cur}) )
+            return 0
+            ;;
+        --backup-schedule)
+            COMPREPLY=( $(compgen -W "hourly daily weekly" -- ${cur}) )
+            return 0
+            ;;
+        --backup-retention)
+            COMPREPLY=( $(compgen -W "24h 72h 168h 720h" -- ${cur}) )
+            return 0
+            ;;
+        --pdb-type)
+            COMPREPLY=( $(compgen -W "auto fixed percent" -- ${cur}) )
+            return 0
+            ;;
+        --vpa-mode)
+            COMPREPLY=( $(compgen -W "Off Initial Auto" -- ${cur}) )
+            return 0
+            ;;
+        --pricing-tier)
+            COMPREPLY=( $(compgen -W "basic premium" -- ${cur}) )
+            return 0
+            ;;
     esac
 
     # Handle subcommands and their flags
@@ -95,72 +125,7 @@ _satusky_cli_completion() {
         auth)
             COMPREPLY=( $(compgen -W "login logout status" -- ${cur}) )
             ;;
-        deploy)
-            if [[ ${COMP_CWORD} == 2 ]]; then
-                COMPREPLY=( $(compgen -W "list get status delete" -- ${cur}) )
-            else
-                case "${subcmd}" in
-                    list)
-                        COMPREPLY=( $(compgen -W "--namespace --quiet --live" -- ${cur}) )
-                        ;;
-                    get|status|delete)
-                        COMPREPLY=( $(compgen -W "--deployment-id --watch --live" -- ${cur}) )
-                        ;;
-                esac
-            fi
-            ;;
-        service)
-            if [[ ${COMP_CWORD} == 2 ]]; then
-                COMPREPLY=( $(compgen -W "list delete get" -- ${cur}) )
-            fi
-            ;;
-        secret)
-            if [[ ${COMP_CWORD} == 2 ]]; then
-                COMPREPLY=( $(compgen -W "create list delete" -- ${cur}) )
-            fi
-            ;;
-        ingress)
-            if [[ ${COMP_CWORD} == 2 ]]; then
-                COMPREPLY=( $(compgen -W "list delete get" -- ${cur}) )
-            fi
-            ;;
-        issuer)
-            if [[ ${COMP_CWORD} == 2 ]]; then
-                COMPREPLY=( $(compgen -W "create list delete" -- ${cur}) )
-            fi
-            ;;
-        environment)
-            if [[ ${COMP_CWORD} == 2 ]]; then
-                COMPREPLY=( $(compgen -W "create list delete get" -- ${cur}) )
-            fi
-            ;;
-        machine)
-            if [[ ${COMP_CWORD} == 2 ]]; then
-                COMPREPLY=( $(compgen -W "list available get recommended hardware labels iso siderolink talos" -- ${cur}) )
-            else
-                case "${subcmd}" in
-                    list|available)
-                        COMPREPLY=( $(compgen -W "--quiet --region --zone --min-cpu --min-memory --gpu --recommended --pricing-tier" -- ${cur}) )
-                        ;;
-                    get)
-                        COMPREPLY=( $(compgen -W "--machine-id --name" -- ${cur}) )
-                        ;;
-                    hardware)
-                        COMPREPLY=( $(compgen -W "refresh" -- ${cur}) )
-                        ;;
-                    labels)
-                        COMPREPLY=( $(compgen -W "set" -- ${cur}) )
-                        ;;
-                    iso)
-                        COMPREPLY=( $(compgen -W "generate download" -- ${cur}) )
-                        ;;
-                    talos)
-                        COMPREPLY=( $(compgen -W "status metadata" -- ${cur}) )
-                        ;;
-                esac
-            fi
-            ;;
-        org)
+        org|organization)
             if [[ ${COMP_CWORD} == 2 ]]; then
                 COMPREPLY=( $(compgen -W "list current switch create delete team" -- ${cur}) )
             else
@@ -188,30 +153,120 @@ _satusky_cli_completion() {
                 esac
             fi
             ;;
-        github)
+        deploy)
             if [[ ${COMP_CWORD} == 2 ]]; then
-                COMPREPLY=( $(compgen -W "status connect disconnect repos deploy installation" -- ${cur}) )
+                COMPREPLY=( $(compgen -W "list get status --cpu --memory --machine --domain --image --dockerfile --env --port --volume-size --volume-mount --zone --multicluster --multicluster-mode --backup-enabled --backup-schedule --backup-retention --backup-priority-cluster --replicas --pdb --pdb-type --pdb-min-available --pdb-percent --hpa --hpa-min-replicas --hpa-max-replicas --hpa-cpu-target --hpa-memory-target --vpa --vpa-mode --vpa-min-cpu --vpa-max-cpu --vpa-min-memory --vpa-max-memory --wait-for" -- ${cur}) )
             else
                 case "${subcmd}" in
-                    repos)
-                        if [[ ${COMP_CWORD} == 3 ]]; then
-                            COMPREPLY=( $(compgen -W "sync get --page --limit" -- ${cur}) )
-                        fi
+                    list)
+                        COMPREPLY=( $(compgen -W "--namespace --quiet" -- ${cur}) )
                         ;;
-                    deploy)
-                        COMPREPLY=( $(compgen -W "--repo --namespace --cpu --memory" -- ${cur}) )
+                    get|status)
+                        COMPREPLY=( $(compgen -W "--deployment-id --watch" -- ${cur}) )
                         ;;
-                    installation)
+                esac
+            fi
+            ;;
+        service)
+            if [[ ${COMP_CWORD} == 2 ]]; then
+                COMPREPLY=( $(compgen -W "list delete" -- ${cur}) )
+            fi
+            ;;
+        secret)
+            if [[ ${COMP_CWORD} == 2 ]]; then
+                COMPREPLY=( $(compgen -W "create list delete" -- ${cur}) )
+            fi
+            ;;
+        ingress)
+            if [[ ${COMP_CWORD} == 2 ]]; then
+                COMPREPLY=( $(compgen -W "list delete" -- ${cur}) )
+            fi
+            ;;
+        issuer)
+            if [[ ${COMP_CWORD} == 2 ]]; then
+                COMPREPLY=( $(compgen -W "create list delete" -- ${cur}) )
+            fi
+            ;;
+        env|environment)
+            if [[ ${COMP_CWORD} == 2 ]]; then
+                COMPREPLY=( $(compgen -W "create list delete" -- ${cur}) )
+            fi
+            ;;
+        machine)
+            if [[ ${COMP_CWORD} == 2 ]]; then
+                COMPREPLY=( $(compgen -W "list available vm usage" -- ${cur}) )
+            else
+                case "${subcmd}" in
+                    list)
+                        COMPREPLY=( $(compgen -W "--quiet" -- ${cur}) )
+                        ;;
+                    available)
+                        COMPREPLY=( $(compgen -W "--quiet --region --zone --min-cpu --min-memory --gpu --recommended --pricing-tier" -- ${cur}) )
+                        ;;
+                    vm)
                         if [[ ${COMP_CWORD} == 3 ]]; then
-                            COMPREPLY=( $(compgen -W "info revoke" -- ${cur}) )
+                            COMPREPLY=( $(compgen -W "status start stop reboot resize apply-config console" -- ${cur}) )
                         fi
                         ;;
                 esac
             fi
             ;;
-        notifications)
+        domain)
             if [[ ${COMP_CWORD} == 2 ]]; then
-                COMPREPLY=( $(compgen -W "list count read delete watch" -- ${cur}) )
+                COMPREPLY=( $(compgen -W "list get create delete verify check search purchase purchase-status contact dns" -- ${cur}) )
+            fi
+            ;;
+        credits|billing)
+            if [[ ${COMP_CWORD} == 2 ]]; then
+                COMPREPLY=( $(compgen -W "balance transactions usage topup invoices auto-topup notifications" -- ${cur}) )
+            else
+                case "${subcmd}" in
+                    transactions|usage)
+                        COMPREPLY=( $(compgen -W "--limit --offset --days" -- ${cur}) )
+                        ;;
+                    topup)
+                        COMPREPLY=( $(compgen -W "--amount" -- ${cur}) )
+                        ;;
+                    invoices)
+                        if [[ ${COMP_CWORD} == 3 ]]; then
+                            COMPREPLY=( $(compgen -W "get download generate" -- ${cur}) )
+                        else
+                            COMPREPLY=( $(compgen -W "--output --start-date --end-date" -- ${cur}) )
+                        fi
+                        ;;
+                esac
+            fi
+            ;;
+        storage|s3|spaces)
+            if [[ ${COMP_CWORD} == 2 ]]; then
+                COMPREPLY=( $(compgen -W "list get buckets files usage presign delete" -- ${cur}) )
+            else
+                case "${subcmd}" in
+                    buckets)
+                        if [[ ${COMP_CWORD} == 3 ]]; then
+                            COMPREPLY=( $(compgen -W "list create delete" -- ${cur}) )
+                        fi
+                        ;;
+                    presign)
+                        COMPREPLY=( $(compgen -W "--file --expires" -- ${cur}) )
+                        ;;
+                esac
+            fi
+            ;;
+        logs)
+            if [[ ${COMP_CWORD} == 2 ]]; then
+                COMPREPLY=( $(compgen -W "stream stats delete" -- ${cur}) )
+            else
+                case "${subcmd}" in
+                    stream)
+                        COMPREPLY=( $(compgen -W "--deployment-id --follow --tail" -- ${cur}) )
+                        ;;
+                esac
+            fi
+            ;;
+        notifications|notif)
+            if [[ ${COMP_CWORD} == 2 ]]; then
+                COMPREPLY=( $(compgen -W "list count read delete" -- ${cur}) )
             else
                 case "${subcmd}" in
                     list)
@@ -223,7 +278,7 @@ _satusky_cli_completion() {
                 esac
             fi
             ;;
-        user)
+        user|profile)
             if [[ ${COMP_CWORD} == 2 ]]; then
                 COMPREPLY=( $(compgen -W "me update password permissions sessions" -- ${cur}) )
             else
@@ -231,15 +286,10 @@ _satusky_cli_completion() {
                     update)
                         COMPREPLY=( $(compgen -W "--name --email" -- ${cur}) )
                         ;;
-                    sessions)
-                        if [[ ${COMP_CWORD} == 3 ]]; then
-                            COMPREPLY=( $(compgen -W "revoke" -- ${cur}) )
-                        fi
-                        ;;
                 esac
             fi
             ;;
-        token)
+        token|api-token)
             if [[ ${COMP_CWORD} == 2 ]]; then
                 COMPREPLY=( $(compgen -W "list create get enable disable delete" -- ${cur}) )
             else
@@ -250,7 +300,7 @@ _satusky_cli_completion() {
                 esac
             fi
             ;;
-        marketplace)
+        marketplace|market|apps)
             if [[ ${COMP_CWORD} == 2 ]]; then
                 COMPREPLY=( $(compgen -W "list get deploy" -- ${cur}) )
             else
@@ -259,7 +309,7 @@ _satusky_cli_completion() {
                         COMPREPLY=( $(compgen -W "--limit --offset --sort" -- ${cur}) )
                         ;;
                     deploy)
-                        COMPREPLY=( $(compgen -W "--name --hostname --cpu --memory --domain --storage-size --storage-class --multicluster --multicluster-mode" -- ${cur}) )
+                        COMPREPLY=( $(compgen -W "--name --hostname --cpu --memory --domain --storage-size --storage-class --multicluster --multicluster-mode --zone" -- ${cur}) )
                         ;;
                 esac
             fi
@@ -315,53 +365,21 @@ _satusky_cli_completion() {
                 esac
             fi
             ;;
-        credits)
+        pricing|price)
             if [[ ${COMP_CWORD} == 2 ]]; then
-                COMPREPLY=( $(compgen -W "balance transactions usage topup invoices" -- ${cur}) )
+                COMPREPLY=( $(compgen -W "list get lookup calculate" -- ${cur}) )
             else
                 case "${subcmd}" in
-                    transactions|usage)
-                        COMPREPLY=( $(compgen -W "--limit --offset --days" -- ${cur}) )
-                        ;;
-                    topup)
-                        COMPREPLY=( $(compgen -W "--amount" -- ${cur}) )
-                        ;;
-                    invoices)
-                        if [[ ${COMP_CWORD} == 3 ]]; then
-                            COMPREPLY=( $(compgen -W "get download generate" -- ${cur}) )
-                        else
-                            COMPREPLY=( $(compgen -W "--output --start-date --end-date" -- ${cur}) )
-                        fi
+                    lookup)
+                        COMPREPLY=( $(compgen -W "--region --type --sla" -- ${cur}) )
                         ;;
                 esac
             fi
             ;;
-        storage)
+        cluster)
             if [[ ${COMP_CWORD} == 2 ]]; then
-                COMPREPLY=( $(compgen -W "list get create delete buckets files upload download presign usage" -- ${cur}) )
-            else
-                case "${subcmd}" in
-                    create)
-                        COMPREPLY=( $(compgen -W "--name --type --size" -- ${cur}) )
-                        ;;
-                    buckets)
-                        if [[ ${COMP_CWORD} == 3 ]]; then
-                            COMPREPLY=( $(compgen -W "create delete" -- ${cur}) )
-                        else
-                            COMPREPLY=( $(compgen -W "--name" -- ${cur}) )
-                        fi
-                        ;;
-                    download)
-                        COMPREPLY=( $(compgen -W "--output" -- ${cur}) )
-                        ;;
-                    presign)
-                        COMPREPLY=( $(compgen -W "--file --expires" -- ${cur}) )
-                        ;;
-                esac
+                COMPREPLY=( $(compgen -W "zones list" -- ${cur}) )
             fi
-            ;;
-        logs)
-            COMPREPLY=( $(compgen -W "--deployment-id -d --follow -f --stats --tail" -- ${cur}) )
             ;;
         completion)
             if [[ ${COMP_CWORD} == 2 ]]; then
@@ -409,15 +427,18 @@ _satusky_cli() {
             local -a commands
             commands=(
                 'auth:Authentication commands'
-                'deploy:Manage deployments'
+                'org:Manage organizations'
+                'deploy:Deploy applications'
                 'service:Manage services'
                 'secret:Manage secrets'
                 'ingress:Manage ingresses'
                 'issuer:Manage certificate issuers'
                 'environment:Manage environments'
                 'machine:Manage machines'
-                'org:Manage organizations'
-                'github:GitHub integration'
+                'domain:Manage custom domains'
+                'credits:Manage credits and billing'
+                'storage:Manage S3/object storage'
+                'logs:View and stream pod logs'
                 'notifications:Manage notifications'
                 'user:Manage user profile'
                 'token:Manage API tokens'
@@ -425,9 +446,8 @@ _satusky_cli() {
                 'audit:View audit logs'
                 'talos:Talos Linux configuration'
                 'admin:Admin operations'
-                'credits:Manage credits and billing'
-                'storage:Manage S3/object storage'
-                'logs:View and stream pod logs'
+                'pricing:View machine pricing'
+                'cluster:View cluster and zone information'
                 'completion:Generate shell completion scripts'
             )
             _describe -t commands 'commands' commands
@@ -448,9 +468,56 @@ _satusky_cli() {
                             'list:List deployments'
                             'get:Get deployment details'
                             'status:Check deployment status'
-                            'delete:Delete a deployment'
                         )
                         _describe -t subcommands 'deploy subcommands' subcommands
+                    fi
+                    ;;
+                service)
+                    if (( CURRENT == 2 )); then
+                        local -a subcommands=(
+                            'list:List services'
+                            'delete:Delete a service'
+                        )
+                        _describe -t subcommands 'service subcommands' subcommands
+                    fi
+                    ;;
+                secret)
+                    if (( CURRENT == 2 )); then
+                        local -a subcommands=(
+                            'create:Create a secret'
+                            'list:List secrets'
+                            'delete:Delete a secret'
+                        )
+                        _describe -t subcommands 'secret subcommands' subcommands
+                    fi
+                    ;;
+                ingress)
+                    if (( CURRENT == 2 )); then
+                        local -a subcommands=(
+                            'list:List ingresses'
+                            'delete:Delete an ingress'
+                        )
+                        _describe -t subcommands 'ingress subcommands' subcommands
+                    fi
+                    ;;
+                issuer)
+                    if (( CURRENT == 2 )); then
+                        local -a subcommands=(
+                            'create:Create an issuer'
+                            'list:List issuers'
+                            'delete:Delete an issuer'
+                        )
+                        _describe -t subcommands 'issuer subcommands' subcommands
+                    fi
+                    ;;
+                environment)
+                    if (( CURRENT == 2 )); then
+                        local -a subcommands=(
+                            'create:Create an environment'
+                            'list:List environments'
+                            'delete:Delete an environment'
+                        )
+                        _describe -t subcommands 'env subcommands' subcommands
                     fi
                     ;;
                 machine)
@@ -458,15 +525,21 @@ _satusky_cli() {
                         local -a subcommands=(
                             'list:List owned machines'
                             'available:List available machines for rent'
-                            'get:Get machine details'
-                            'recommended:List recommended machines'
-                            'hardware:View machine hardware info'
-                            'labels:Manage machine labels'
-                            'iso:Generate/download ISO'
-                            'siderolink:View siderolink connections'
-                            'talos:View Talos status'
+                            'vm:Manage Mac agent VM lifecycle'
+                            'usage:View machine usage'
                         )
                         _describe -t subcommands 'machine subcommands' subcommands
+                    elif [[ $words[2] == "vm" ]] && (( CURRENT == 3 )); then
+                        local -a vmcmds=(
+                            'status:Show VM state'
+                            'start:Start a VM'
+                            'stop:Stop a VM'
+                            'reboot:Reboot a VM'
+                            'resize:Resize a VM'
+                            'apply-config:Apply Talos config'
+                            'console:Enable/disable console streaming'
+                        )
+                        _describe -t subcommands 'vm subcommands' vmcmds
                     fi
                     ;;
                 org)
@@ -490,17 +563,22 @@ _satusky_cli() {
                         _describe -t subcommands 'team subcommands' teamcmds
                     fi
                     ;;
-                github)
+                domain)
                     if (( CURRENT == 2 )); then
                         local -a subcommands=(
-                            'status:Check GitHub connection'
-                            'connect:Connect to GitHub'
-                            'disconnect:Disconnect from GitHub'
-                            'repos:Manage repositories'
-                            'deploy:Deploy from GitHub'
-                            'installation:Manage GitHub installation'
+                            'list:List domains'
+                            'get:Get domain details'
+                            'create:Register a domain'
+                            'delete:Delete a domain'
+                            'verify:Verify domain ownership'
+                            'check:Check domain availability'
+                            'search:Search available domains'
+                            'purchase:Create purchase intent'
+                            'purchase-status:Check purchase status'
+                            'contact:Manage contact details'
+                            'dns:Manage DNS records'
                         )
-                        _describe -t subcommands 'github subcommands' subcommands
+                        _describe -t subcommands 'domain subcommands' subcommands
                     fi
                     ;;
                 notifications)
@@ -510,7 +588,6 @@ _satusky_cli() {
                             'count:Get unread count'
                             'read:Mark as read'
                             'delete:Delete notification'
-                            'watch:Watch notifications'
                         )
                         _describe -t subcommands 'notifications subcommands' subcommands
                     fi
@@ -591,6 +668,8 @@ _satusky_cli() {
                             'usage:View usage history'
                             'topup:Top up credits'
                             'invoices:Manage invoices'
+                            'auto-topup:Manage auto top-up'
+                            'notifications:Manage billing notifications'
                         )
                         _describe -t subcommands 'credits subcommands' subcommands
                     fi
@@ -600,12 +679,9 @@ _satusky_cli() {
                         local -a subcommands=(
                             'list:List storage configs'
                             'get:Get storage details'
-                            'create:Create storage'
                             'delete:Delete storage'
                             'buckets:Manage buckets'
                             'files:List files'
-                            'upload:Upload file'
-                            'download:Download file'
                             'presign:Get presigned URL'
                             'usage:View storage usage'
                         )
@@ -613,11 +689,34 @@ _satusky_cli() {
                     fi
                     ;;
                 logs)
-                    _arguments \
-                        '(-d --deployment-id)'{-d,--deployment-id}'[Deployment ID]:id:' \
-                        '(-f --follow)'{-f,--follow}'[Stream logs]' \
-                        '--stats[Show log statistics]' \
-                        '--tail[Number of lines]:lines:'
+                    if (( CURRENT == 2 )); then
+                        local -a subcommands=(
+                            'stream:Stream pod logs'
+                            'stats:Show log statistics'
+                            'delete:Delete stored logs'
+                        )
+                        _describe -t subcommands 'logs subcommands' subcommands
+                    fi
+                    ;;
+                pricing)
+                    if (( CURRENT == 2 )); then
+                        local -a subcommands=(
+                            'list:List pricing configs'
+                            'get:Get pricing details'
+                            'lookup:Lookup price by region/type/SLA'
+                            'calculate:Calculate deployment cost'
+                        )
+                        _describe -t subcommands 'pricing subcommands' subcommands
+                    fi
+                    ;;
+                cluster)
+                    if (( CURRENT == 2 )); then
+                        local -a subcommands=(
+                            'zones:List available deployment zones'
+                            'list:List enabled clusters'
+                        )
+                        _describe -t subcommands 'cluster subcommands' subcommands
+                    fi
                     ;;
                 completion)
                     if (( CURRENT == 2 )); then
@@ -648,7 +747,7 @@ func handleFishCompletion(c *cli.Context) error {
 
 function __fish_1ctl_no_subcommand
     for i in (commandline -opc)
-        if contains -- $i auth deploy service secret ingress issuer environment machine org github notifications user token marketplace audit talos admin credits storage logs completion
+        if contains -- $i auth org deploy service secret ingress issuer environment machine domain credits storage logs notifications user token marketplace audit talos admin pricing cluster completion
             return 1
         end
     end
@@ -680,6 +779,11 @@ function __fish_1ctl_machines
     1ctl machine list --quiet 2>/dev/null
 end
 
+# Zone completion helper
+function __fish_1ctl_zones
+    1ctl cluster zones 2>/dev/null | awk 'NR>2 {print $1}'
+end
+
 # Common value completions
 complete -c 1ctl -l cpu -xa '0.5 1 2 4 8 16'
 complete -c 1ctl -l memory -xa '512Mi 1Gi 2Gi 4Gi 8Gi 16Gi 32Gi'
@@ -691,18 +795,27 @@ complete -c 1ctl -l storage-size -xa '1Gi 5Gi 10Gi 20Gi 50Gi 100Gi'
 complete -c 1ctl -l role -xa 'admin member owner'
 complete -c 1ctl -l format -xa 'json csv yaml'
 complete -c 1ctl -l multicluster-mode -xa 'active-active active-passive'
+complete -c 1ctl -l backup-schedule -xa 'hourly daily weekly'
+complete -c 1ctl -l backup-retention -xa '24h 72h 168h 720h'
+complete -c 1ctl -l pdb-type -xa 'auto fixed percent'
+complete -c 1ctl -l vpa-mode -xa 'Off Initial Auto'
+complete -c 1ctl -l pricing-tier -xa 'basic premium'
+complete -c 1ctl -l zone -xa '(__fish_1ctl_zones)'
 
 # Top level commands
 complete -c 1ctl -f -n __fish_1ctl_no_subcommand -a auth -d 'Authentication commands'
-complete -c 1ctl -f -n __fish_1ctl_no_subcommand -a deploy -d 'Manage deployments'
+complete -c 1ctl -f -n __fish_1ctl_no_subcommand -a org -d 'Manage organizations'
+complete -c 1ctl -f -n __fish_1ctl_no_subcommand -a deploy -d 'Deploy applications'
 complete -c 1ctl -f -n __fish_1ctl_no_subcommand -a service -d 'Manage services'
 complete -c 1ctl -f -n __fish_1ctl_no_subcommand -a secret -d 'Manage secrets'
 complete -c 1ctl -f -n __fish_1ctl_no_subcommand -a ingress -d 'Manage ingresses'
 complete -c 1ctl -f -n __fish_1ctl_no_subcommand -a issuer -d 'Manage certificate issuers'
 complete -c 1ctl -f -n __fish_1ctl_no_subcommand -a environment -d 'Manage environments'
 complete -c 1ctl -f -n __fish_1ctl_no_subcommand -a machine -d 'Manage machines'
-complete -c 1ctl -f -n __fish_1ctl_no_subcommand -a org -d 'Manage organizations'
-complete -c 1ctl -f -n __fish_1ctl_no_subcommand -a github -d 'GitHub integration'
+complete -c 1ctl -f -n __fish_1ctl_no_subcommand -a domain -d 'Manage custom domains'
+complete -c 1ctl -f -n __fish_1ctl_no_subcommand -a credits -d 'Manage credits and billing'
+complete -c 1ctl -f -n __fish_1ctl_no_subcommand -a storage -d 'Manage S3/object storage'
+complete -c 1ctl -f -n __fish_1ctl_no_subcommand -a logs -d 'View and stream pod logs'
 complete -c 1ctl -f -n __fish_1ctl_no_subcommand -a notifications -d 'Manage notifications'
 complete -c 1ctl -f -n __fish_1ctl_no_subcommand -a user -d 'Manage user profile'
 complete -c 1ctl -f -n __fish_1ctl_no_subcommand -a token -d 'Manage API tokens'
@@ -710,32 +823,14 @@ complete -c 1ctl -f -n __fish_1ctl_no_subcommand -a marketplace -d 'Browse and d
 complete -c 1ctl -f -n __fish_1ctl_no_subcommand -a audit -d 'View audit logs'
 complete -c 1ctl -f -n __fish_1ctl_no_subcommand -a talos -d 'Talos Linux configuration'
 complete -c 1ctl -f -n __fish_1ctl_no_subcommand -a admin -d 'Admin operations'
-complete -c 1ctl -f -n __fish_1ctl_no_subcommand -a credits -d 'Manage credits and billing'
-complete -c 1ctl -f -n __fish_1ctl_no_subcommand -a storage -d 'Manage S3/object storage'
-complete -c 1ctl -f -n __fish_1ctl_no_subcommand -a logs -d 'View and stream pod logs'
+complete -c 1ctl -f -n __fish_1ctl_no_subcommand -a pricing -d 'View machine pricing'
+complete -c 1ctl -f -n __fish_1ctl_no_subcommand -a cluster -d 'View cluster and zone information'
 complete -c 1ctl -f -n __fish_1ctl_no_subcommand -a completion -d 'Generate shell completion scripts'
 
 # Auth subcommands
 complete -c 1ctl -f -n '__fish_1ctl_using_command auth' -a 'login' -d 'Authenticate with Satusky'
 complete -c 1ctl -f -n '__fish_1ctl_using_command auth' -a 'logout' -d 'Remove stored authentication'
 complete -c 1ctl -f -n '__fish_1ctl_using_command auth' -a 'status' -d 'View authentication status'
-
-# Deploy subcommands
-complete -c 1ctl -f -n '__fish_1ctl_using_command deploy' -a 'list' -d 'List deployments'
-complete -c 1ctl -f -n '__fish_1ctl_using_command deploy' -a 'get' -d 'Get deployment details'
-complete -c 1ctl -f -n '__fish_1ctl_using_command deploy' -a 'status' -d 'Check deployment status'
-complete -c 1ctl -f -n '__fish_1ctl_using_command deploy' -a 'delete' -d 'Delete a deployment'
-
-# Machine subcommands
-complete -c 1ctl -f -n '__fish_1ctl_using_command machine' -a 'list' -d 'List owned machines'
-complete -c 1ctl -f -n '__fish_1ctl_using_command machine' -a 'available' -d 'List available machines'
-complete -c 1ctl -f -n '__fish_1ctl_using_command machine' -a 'get' -d 'Get machine details'
-complete -c 1ctl -f -n '__fish_1ctl_using_command machine' -a 'recommended' -d 'List recommended machines'
-complete -c 1ctl -f -n '__fish_1ctl_using_command machine' -a 'hardware' -d 'View machine hardware'
-complete -c 1ctl -f -n '__fish_1ctl_using_command machine' -a 'labels' -d 'Manage machine labels'
-complete -c 1ctl -f -n '__fish_1ctl_using_command machine' -a 'iso' -d 'Generate/download ISO'
-complete -c 1ctl -f -n '__fish_1ctl_using_command machine' -a 'siderolink' -d 'View siderolink connections'
-complete -c 1ctl -f -n '__fish_1ctl_using_command machine' -a 'talos' -d 'View Talos status'
 
 # Org subcommands
 complete -c 1ctl -f -n '__fish_1ctl_using_command org' -a 'list' -d 'List organizations'
@@ -745,20 +840,81 @@ complete -c 1ctl -f -n '__fish_1ctl_using_command org' -a 'create' -d 'Create or
 complete -c 1ctl -f -n '__fish_1ctl_using_command org' -a 'delete' -d 'Delete organization'
 complete -c 1ctl -f -n '__fish_1ctl_using_command org' -a 'team' -d 'Manage team members'
 
-# GitHub subcommands
-complete -c 1ctl -f -n '__fish_1ctl_using_command github' -a 'status' -d 'Check GitHub connection'
-complete -c 1ctl -f -n '__fish_1ctl_using_command github' -a 'connect' -d 'Connect to GitHub'
-complete -c 1ctl -f -n '__fish_1ctl_using_command github' -a 'disconnect' -d 'Disconnect from GitHub'
-complete -c 1ctl -f -n '__fish_1ctl_using_command github' -a 'repos' -d 'Manage repositories'
-complete -c 1ctl -f -n '__fish_1ctl_using_command github' -a 'deploy' -d 'Deploy from GitHub'
-complete -c 1ctl -f -n '__fish_1ctl_using_command github' -a 'installation' -d 'Manage installation'
+# Deploy subcommands
+complete -c 1ctl -f -n '__fish_1ctl_using_command deploy' -a 'list' -d 'List deployments'
+complete -c 1ctl -f -n '__fish_1ctl_using_command deploy' -a 'get' -d 'Get deployment details'
+complete -c 1ctl -f -n '__fish_1ctl_using_command deploy' -a 'status' -d 'Check deployment status'
+
+# Service subcommands
+complete -c 1ctl -f -n '__fish_1ctl_using_command service' -a 'list' -d 'List services'
+complete -c 1ctl -f -n '__fish_1ctl_using_command service' -a 'delete' -d 'Delete a service'
+
+# Secret subcommands
+complete -c 1ctl -f -n '__fish_1ctl_using_command secret' -a 'create' -d 'Create a secret'
+complete -c 1ctl -f -n '__fish_1ctl_using_command secret' -a 'list' -d 'List secrets'
+complete -c 1ctl -f -n '__fish_1ctl_using_command secret' -a 'delete' -d 'Delete a secret'
+
+# Ingress subcommands
+complete -c 1ctl -f -n '__fish_1ctl_using_command ingress' -a 'list' -d 'List ingresses'
+complete -c 1ctl -f -n '__fish_1ctl_using_command ingress' -a 'delete' -d 'Delete an ingress'
+
+# Issuer subcommands
+complete -c 1ctl -f -n '__fish_1ctl_using_command issuer' -a 'create' -d 'Create an issuer'
+complete -c 1ctl -f -n '__fish_1ctl_using_command issuer' -a 'list' -d 'List issuers'
+complete -c 1ctl -f -n '__fish_1ctl_using_command issuer' -a 'delete' -d 'Delete an issuer'
+
+# Environment subcommands
+complete -c 1ctl -f -n '__fish_1ctl_using_command environment' -a 'create' -d 'Create an environment'
+complete -c 1ctl -f -n '__fish_1ctl_using_command environment' -a 'list' -d 'List environments'
+complete -c 1ctl -f -n '__fish_1ctl_using_command environment' -a 'delete' -d 'Delete an environment'
+
+# Machine subcommands
+complete -c 1ctl -f -n '__fish_1ctl_using_command machine' -a 'list' -d 'List owned machines'
+complete -c 1ctl -f -n '__fish_1ctl_using_command machine' -a 'available' -d 'List available machines'
+complete -c 1ctl -f -n '__fish_1ctl_using_command machine' -a 'vm' -d 'Manage Mac agent VM lifecycle'
+complete -c 1ctl -f -n '__fish_1ctl_using_command machine' -a 'usage' -d 'View machine usage'
+
+# Domain subcommands
+complete -c 1ctl -f -n '__fish_1ctl_using_command domain' -a 'list' -d 'List domains'
+complete -c 1ctl -f -n '__fish_1ctl_using_command domain' -a 'get' -d 'Get domain details'
+complete -c 1ctl -f -n '__fish_1ctl_using_command domain' -a 'create' -d 'Register a domain'
+complete -c 1ctl -f -n '__fish_1ctl_using_command domain' -a 'delete' -d 'Delete a domain'
+complete -c 1ctl -f -n '__fish_1ctl_using_command domain' -a 'verify' -d 'Verify domain ownership'
+complete -c 1ctl -f -n '__fish_1ctl_using_command domain' -a 'check' -d 'Check domain availability'
+complete -c 1ctl -f -n '__fish_1ctl_using_command domain' -a 'search' -d 'Search available domains'
+complete -c 1ctl -f -n '__fish_1ctl_using_command domain' -a 'purchase' -d 'Create purchase intent'
+complete -c 1ctl -f -n '__fish_1ctl_using_command domain' -a 'purchase-status' -d 'Check purchase status'
+complete -c 1ctl -f -n '__fish_1ctl_using_command domain' -a 'contact' -d 'Manage contact details'
+complete -c 1ctl -f -n '__fish_1ctl_using_command domain' -a 'dns' -d 'Manage DNS records'
+
+# Credits subcommands
+complete -c 1ctl -f -n '__fish_1ctl_using_command credits' -a 'balance' -d 'View credit balance'
+complete -c 1ctl -f -n '__fish_1ctl_using_command credits' -a 'transactions' -d 'View transactions'
+complete -c 1ctl -f -n '__fish_1ctl_using_command credits' -a 'usage' -d 'View usage history'
+complete -c 1ctl -f -n '__fish_1ctl_using_command credits' -a 'topup' -d 'Top up credits'
+complete -c 1ctl -f -n '__fish_1ctl_using_command credits' -a 'invoices' -d 'Manage invoices'
+complete -c 1ctl -f -n '__fish_1ctl_using_command credits' -a 'auto-topup' -d 'Manage auto top-up'
+complete -c 1ctl -f -n '__fish_1ctl_using_command credits' -a 'notifications' -d 'Manage billing notifications'
+
+# Storage subcommands
+complete -c 1ctl -f -n '__fish_1ctl_using_command storage' -a 'list' -d 'List storage configs'
+complete -c 1ctl -f -n '__fish_1ctl_using_command storage' -a 'get' -d 'Get storage details'
+complete -c 1ctl -f -n '__fish_1ctl_using_command storage' -a 'delete' -d 'Delete storage'
+complete -c 1ctl -f -n '__fish_1ctl_using_command storage' -a 'buckets' -d 'Manage buckets'
+complete -c 1ctl -f -n '__fish_1ctl_using_command storage' -a 'files' -d 'List files'
+complete -c 1ctl -f -n '__fish_1ctl_using_command storage' -a 'presign' -d 'Get presigned URL'
+complete -c 1ctl -f -n '__fish_1ctl_using_command storage' -a 'usage' -d 'View storage usage'
+
+# Logs subcommands
+complete -c 1ctl -f -n '__fish_1ctl_using_command logs' -a 'stream' -d 'Stream pod logs'
+complete -c 1ctl -f -n '__fish_1ctl_using_command logs' -a 'stats' -d 'Show log statistics'
+complete -c 1ctl -f -n '__fish_1ctl_using_command logs' -a 'delete' -d 'Delete stored logs'
 
 # Notifications subcommands
 complete -c 1ctl -f -n '__fish_1ctl_using_command notifications' -a 'list' -d 'List notifications'
 complete -c 1ctl -f -n '__fish_1ctl_using_command notifications' -a 'count' -d 'Get unread count'
 complete -c 1ctl -f -n '__fish_1ctl_using_command notifications' -a 'read' -d 'Mark as read'
 complete -c 1ctl -f -n '__fish_1ctl_using_command notifications' -a 'delete' -d 'Delete notification'
-complete -c 1ctl -f -n '__fish_1ctl_using_command notifications' -a 'watch' -d 'Watch notifications'
 
 # User subcommands
 complete -c 1ctl -f -n '__fish_1ctl_using_command user' -a 'me' -d 'View current user'
@@ -798,30 +954,15 @@ complete -c 1ctl -f -n '__fish_1ctl_using_command admin' -a 'namespaces' -d 'Lis
 complete -c 1ctl -f -n '__fish_1ctl_using_command admin' -a 'cluster-roles' -d 'List cluster roles'
 complete -c 1ctl -f -n '__fish_1ctl_using_command admin' -a 'cleanup' -d 'Cleanup resources'
 
-# Credits subcommands
-complete -c 1ctl -f -n '__fish_1ctl_using_command credits' -a 'balance' -d 'View credit balance'
-complete -c 1ctl -f -n '__fish_1ctl_using_command credits' -a 'transactions' -d 'View transactions'
-complete -c 1ctl -f -n '__fish_1ctl_using_command credits' -a 'usage' -d 'View usage history'
-complete -c 1ctl -f -n '__fish_1ctl_using_command credits' -a 'topup' -d 'Top up credits'
-complete -c 1ctl -f -n '__fish_1ctl_using_command credits' -a 'invoices' -d 'Manage invoices'
+# Pricing subcommands
+complete -c 1ctl -f -n '__fish_1ctl_using_command pricing' -a 'list' -d 'List pricing configs'
+complete -c 1ctl -f -n '__fish_1ctl_using_command pricing' -a 'get' -d 'Get pricing details'
+complete -c 1ctl -f -n '__fish_1ctl_using_command pricing' -a 'lookup' -d 'Lookup price'
+complete -c 1ctl -f -n '__fish_1ctl_using_command pricing' -a 'calculate' -d 'Calculate cost'
 
-# Storage subcommands
-complete -c 1ctl -f -n '__fish_1ctl_using_command storage' -a 'list' -d 'List storage configs'
-complete -c 1ctl -f -n '__fish_1ctl_using_command storage' -a 'get' -d 'Get storage details'
-complete -c 1ctl -f -n '__fish_1ctl_using_command storage' -a 'create' -d 'Create storage'
-complete -c 1ctl -f -n '__fish_1ctl_using_command storage' -a 'delete' -d 'Delete storage'
-complete -c 1ctl -f -n '__fish_1ctl_using_command storage' -a 'buckets' -d 'Manage buckets'
-complete -c 1ctl -f -n '__fish_1ctl_using_command storage' -a 'files' -d 'List files'
-complete -c 1ctl -f -n '__fish_1ctl_using_command storage' -a 'upload' -d 'Upload file'
-complete -c 1ctl -f -n '__fish_1ctl_using_command storage' -a 'download' -d 'Download file'
-complete -c 1ctl -f -n '__fish_1ctl_using_command storage' -a 'presign' -d 'Get presigned URL'
-complete -c 1ctl -f -n '__fish_1ctl_using_command storage' -a 'usage' -d 'View storage usage'
-
-# Logs flags
-complete -c 1ctl -f -n '__fish_1ctl_using_command logs' -s d -l deployment-id -d 'Deployment ID'
-complete -c 1ctl -f -n '__fish_1ctl_using_command logs' -s f -l follow -d 'Stream logs'
-complete -c 1ctl -f -n '__fish_1ctl_using_command logs' -l stats -d 'Show log statistics'
-complete -c 1ctl -f -n '__fish_1ctl_using_command logs' -l tail -d 'Number of lines'
+# Cluster subcommands
+complete -c 1ctl -f -n '__fish_1ctl_using_command cluster' -a 'zones' -d 'List available deployment zones'
+complete -c 1ctl -f -n '__fish_1ctl_using_command cluster' -a 'list' -d 'List enabled clusters'
 
 # Completion subcommands
 complete -c 1ctl -f -n '__fish_1ctl_using_command completion' -a 'bash' -d 'Generate bash completion'
@@ -858,15 +999,18 @@ Register-ArgumentCompleter -Native -CommandName 1ctl -ScriptBlock {
     $completions = @(switch ($command) {
         '1ctl' {
             [CompletionResult]::new('auth', 'auth', [CompletionResultType]::ParameterValue, 'Authentication commands')
-            [CompletionResult]::new('deploy', 'deploy', [CompletionResultType]::ParameterValue, 'Manage deployments')
+            [CompletionResult]::new('org', 'org', [CompletionResultType]::ParameterValue, 'Manage organizations')
+            [CompletionResult]::new('deploy', 'deploy', [CompletionResultType]::ParameterValue, 'Deploy applications')
             [CompletionResult]::new('service', 'service', [CompletionResultType]::ParameterValue, 'Manage services')
             [CompletionResult]::new('secret', 'secret', [CompletionResultType]::ParameterValue, 'Manage secrets')
             [CompletionResult]::new('ingress', 'ingress', [CompletionResultType]::ParameterValue, 'Manage ingresses')
             [CompletionResult]::new('issuer', 'issuer', [CompletionResultType]::ParameterValue, 'Manage certificate issuers')
             [CompletionResult]::new('environment', 'environment', [CompletionResultType]::ParameterValue, 'Manage environments')
             [CompletionResult]::new('machine', 'machine', [CompletionResultType]::ParameterValue, 'Manage machines')
-            [CompletionResult]::new('org', 'org', [CompletionResultType]::ParameterValue, 'Manage organizations')
-            [CompletionResult]::new('github', 'github', [CompletionResultType]::ParameterValue, 'GitHub integration')
+            [CompletionResult]::new('domain', 'domain', [CompletionResultType]::ParameterValue, 'Manage custom domains')
+            [CompletionResult]::new('credits', 'credits', [CompletionResultType]::ParameterValue, 'Manage credits and billing')
+            [CompletionResult]::new('storage', 'storage', [CompletionResultType]::ParameterValue, 'Manage S3/object storage')
+            [CompletionResult]::new('logs', 'logs', [CompletionResultType]::ParameterValue, 'View and stream pod logs')
             [CompletionResult]::new('notifications', 'notifications', [CompletionResultType]::ParameterValue, 'Manage notifications')
             [CompletionResult]::new('user', 'user', [CompletionResultType]::ParameterValue, 'Manage user profile')
             [CompletionResult]::new('token', 'token', [CompletionResultType]::ParameterValue, 'Manage API tokens')
@@ -874,9 +1018,8 @@ Register-ArgumentCompleter -Native -CommandName 1ctl -ScriptBlock {
             [CompletionResult]::new('audit', 'audit', [CompletionResultType]::ParameterValue, 'View audit logs')
             [CompletionResult]::new('talos', 'talos', [CompletionResultType]::ParameterValue, 'Talos Linux configuration')
             [CompletionResult]::new('admin', 'admin', [CompletionResultType]::ParameterValue, 'Admin operations')
-            [CompletionResult]::new('credits', 'credits', [CompletionResultType]::ParameterValue, 'Manage credits and billing')
-            [CompletionResult]::new('storage', 'storage', [CompletionResultType]::ParameterValue, 'Manage S3/object storage')
-            [CompletionResult]::new('logs', 'logs', [CompletionResultType]::ParameterValue, 'View and stream pod logs')
+            [CompletionResult]::new('pricing', 'pricing', [CompletionResultType]::ParameterValue, 'View machine pricing')
+            [CompletionResult]::new('cluster', 'cluster', [CompletionResultType]::ParameterValue, 'View cluster and zone information')
             [CompletionResult]::new('completion', 'completion', [CompletionResultType]::ParameterValue, 'Generate shell completion scripts')
             break
         }
@@ -884,25 +1027,6 @@ Register-ArgumentCompleter -Native -CommandName 1ctl -ScriptBlock {
             [CompletionResult]::new('login', 'login', [CompletionResultType]::ParameterValue, 'Authenticate with Satusky')
             [CompletionResult]::new('logout', 'logout', [CompletionResultType]::ParameterValue, 'Remove stored authentication')
             [CompletionResult]::new('status', 'status', [CompletionResultType]::ParameterValue, 'View authentication status')
-            break
-        }
-        '1ctl;deploy' {
-            [CompletionResult]::new('list', 'list', [CompletionResultType]::ParameterValue, 'List deployments')
-            [CompletionResult]::new('get', 'get', [CompletionResultType]::ParameterValue, 'Get deployment details')
-            [CompletionResult]::new('status', 'status', [CompletionResultType]::ParameterValue, 'Check deployment status')
-            [CompletionResult]::new('delete', 'delete', [CompletionResultType]::ParameterValue, 'Delete a deployment')
-            break
-        }
-        '1ctl;machine' {
-            [CompletionResult]::new('list', 'list', [CompletionResultType]::ParameterValue, 'List owned machines')
-            [CompletionResult]::new('available', 'available', [CompletionResultType]::ParameterValue, 'List available machines')
-            [CompletionResult]::new('get', 'get', [CompletionResultType]::ParameterValue, 'Get machine details')
-            [CompletionResult]::new('recommended', 'recommended', [CompletionResultType]::ParameterValue, 'List recommended machines')
-            [CompletionResult]::new('hardware', 'hardware', [CompletionResultType]::ParameterValue, 'View machine hardware')
-            [CompletionResult]::new('labels', 'labels', [CompletionResultType]::ParameterValue, 'Manage machine labels')
-            [CompletionResult]::new('iso', 'iso', [CompletionResultType]::ParameterValue, 'Generate/download ISO')
-            [CompletionResult]::new('siderolink', 'siderolink', [CompletionResultType]::ParameterValue, 'View siderolink connections')
-            [CompletionResult]::new('talos', 'talos', [CompletionResultType]::ParameterValue, 'View Talos status')
             break
         }
         '1ctl;org' {
@@ -921,13 +1045,95 @@ Register-ArgumentCompleter -Native -CommandName 1ctl -ScriptBlock {
             [CompletionResult]::new('remove', 'remove', [CompletionResultType]::ParameterValue, 'Remove team member')
             break
         }
-        '1ctl;github' {
-            [CompletionResult]::new('status', 'status', [CompletionResultType]::ParameterValue, 'Check GitHub connection')
-            [CompletionResult]::new('connect', 'connect', [CompletionResultType]::ParameterValue, 'Connect to GitHub')
-            [CompletionResult]::new('disconnect', 'disconnect', [CompletionResultType]::ParameterValue, 'Disconnect from GitHub')
-            [CompletionResult]::new('repos', 'repos', [CompletionResultType]::ParameterValue, 'Manage repositories')
-            [CompletionResult]::new('deploy', 'deploy', [CompletionResultType]::ParameterValue, 'Deploy from GitHub')
-            [CompletionResult]::new('installation', 'installation', [CompletionResultType]::ParameterValue, 'Manage installation')
+        '1ctl;deploy' {
+            [CompletionResult]::new('list', 'list', [CompletionResultType]::ParameterValue, 'List deployments')
+            [CompletionResult]::new('get', 'get', [CompletionResultType]::ParameterValue, 'Get deployment details')
+            [CompletionResult]::new('status', 'status', [CompletionResultType]::ParameterValue, 'Check deployment status')
+            break
+        }
+        '1ctl;service' {
+            [CompletionResult]::new('list', 'list', [CompletionResultType]::ParameterValue, 'List services')
+            [CompletionResult]::new('delete', 'delete', [CompletionResultType]::ParameterValue, 'Delete a service')
+            break
+        }
+        '1ctl;secret' {
+            [CompletionResult]::new('create', 'create', [CompletionResultType]::ParameterValue, 'Create a secret')
+            [CompletionResult]::new('list', 'list', [CompletionResultType]::ParameterValue, 'List secrets')
+            [CompletionResult]::new('delete', 'delete', [CompletionResultType]::ParameterValue, 'Delete a secret')
+            break
+        }
+        '1ctl;ingress' {
+            [CompletionResult]::new('list', 'list', [CompletionResultType]::ParameterValue, 'List ingresses')
+            [CompletionResult]::new('delete', 'delete', [CompletionResultType]::ParameterValue, 'Delete an ingress')
+            break
+        }
+        '1ctl;issuer' {
+            [CompletionResult]::new('create', 'create', [CompletionResultType]::ParameterValue, 'Create an issuer')
+            [CompletionResult]::new('list', 'list', [CompletionResultType]::ParameterValue, 'List issuers')
+            [CompletionResult]::new('delete', 'delete', [CompletionResultType]::ParameterValue, 'Delete an issuer')
+            break
+        }
+        '1ctl;environment' {
+            [CompletionResult]::new('create', 'create', [CompletionResultType]::ParameterValue, 'Create an environment')
+            [CompletionResult]::new('list', 'list', [CompletionResultType]::ParameterValue, 'List environments')
+            [CompletionResult]::new('delete', 'delete', [CompletionResultType]::ParameterValue, 'Delete an environment')
+            break
+        }
+        '1ctl;machine' {
+            [CompletionResult]::new('list', 'list', [CompletionResultType]::ParameterValue, 'List owned machines')
+            [CompletionResult]::new('available', 'available', [CompletionResultType]::ParameterValue, 'List available machines')
+            [CompletionResult]::new('vm', 'vm', [CompletionResultType]::ParameterValue, 'Manage Mac agent VM lifecycle')
+            [CompletionResult]::new('usage', 'usage', [CompletionResultType]::ParameterValue, 'View machine usage')
+            break
+        }
+        '1ctl;machine;vm' {
+            [CompletionResult]::new('status', 'status', [CompletionResultType]::ParameterValue, 'Show VM state')
+            [CompletionResult]::new('start', 'start', [CompletionResultType]::ParameterValue, 'Start a VM')
+            [CompletionResult]::new('stop', 'stop', [CompletionResultType]::ParameterValue, 'Stop a VM')
+            [CompletionResult]::new('reboot', 'reboot', [CompletionResultType]::ParameterValue, 'Reboot a VM')
+            [CompletionResult]::new('resize', 'resize', [CompletionResultType]::ParameterValue, 'Resize a VM')
+            [CompletionResult]::new('apply-config', 'apply-config', [CompletionResultType]::ParameterValue, 'Apply Talos config')
+            [CompletionResult]::new('console', 'console', [CompletionResultType]::ParameterValue, 'Enable/disable console streaming')
+            break
+        }
+        '1ctl;domain' {
+            [CompletionResult]::new('list', 'list', [CompletionResultType]::ParameterValue, 'List domains')
+            [CompletionResult]::new('get', 'get', [CompletionResultType]::ParameterValue, 'Get domain details')
+            [CompletionResult]::new('create', 'create', [CompletionResultType]::ParameterValue, 'Register a domain')
+            [CompletionResult]::new('delete', 'delete', [CompletionResultType]::ParameterValue, 'Delete a domain')
+            [CompletionResult]::new('verify', 'verify', [CompletionResultType]::ParameterValue, 'Verify domain ownership')
+            [CompletionResult]::new('check', 'check', [CompletionResultType]::ParameterValue, 'Check availability')
+            [CompletionResult]::new('search', 'search', [CompletionResultType]::ParameterValue, 'Search available domains')
+            [CompletionResult]::new('purchase', 'purchase', [CompletionResultType]::ParameterValue, 'Create purchase intent')
+            [CompletionResult]::new('purchase-status', 'purchase-status', [CompletionResultType]::ParameterValue, 'Check purchase status')
+            [CompletionResult]::new('contact', 'contact', [CompletionResultType]::ParameterValue, 'Manage contact details')
+            [CompletionResult]::new('dns', 'dns', [CompletionResultType]::ParameterValue, 'Manage DNS records')
+            break
+        }
+        '1ctl;credits' {
+            [CompletionResult]::new('balance', 'balance', [CompletionResultType]::ParameterValue, 'View credit balance')
+            [CompletionResult]::new('transactions', 'transactions', [CompletionResultType]::ParameterValue, 'View transactions')
+            [CompletionResult]::new('usage', 'usage', [CompletionResultType]::ParameterValue, 'View usage history')
+            [CompletionResult]::new('topup', 'topup', [CompletionResultType]::ParameterValue, 'Top up credits')
+            [CompletionResult]::new('invoices', 'invoices', [CompletionResultType]::ParameterValue, 'Manage invoices')
+            [CompletionResult]::new('auto-topup', 'auto-topup', [CompletionResultType]::ParameterValue, 'Manage auto top-up')
+            [CompletionResult]::new('notifications', 'notifications', [CompletionResultType]::ParameterValue, 'Manage billing notifications')
+            break
+        }
+        '1ctl;storage' {
+            [CompletionResult]::new('list', 'list', [CompletionResultType]::ParameterValue, 'List storage configs')
+            [CompletionResult]::new('get', 'get', [CompletionResultType]::ParameterValue, 'Get storage details')
+            [CompletionResult]::new('delete', 'delete', [CompletionResultType]::ParameterValue, 'Delete storage')
+            [CompletionResult]::new('buckets', 'buckets', [CompletionResultType]::ParameterValue, 'Manage buckets')
+            [CompletionResult]::new('files', 'files', [CompletionResultType]::ParameterValue, 'List files')
+            [CompletionResult]::new('presign', 'presign', [CompletionResultType]::ParameterValue, 'Get presigned URL')
+            [CompletionResult]::new('usage', 'usage', [CompletionResultType]::ParameterValue, 'View storage usage')
+            break
+        }
+        '1ctl;logs' {
+            [CompletionResult]::new('stream', 'stream', [CompletionResultType]::ParameterValue, 'Stream pod logs')
+            [CompletionResult]::new('stats', 'stats', [CompletionResultType]::ParameterValue, 'Show log statistics')
+            [CompletionResult]::new('delete', 'delete', [CompletionResultType]::ParameterValue, 'Delete stored logs')
             break
         }
         '1ctl;notifications' {
@@ -935,7 +1141,6 @@ Register-ArgumentCompleter -Native -CommandName 1ctl -ScriptBlock {
             [CompletionResult]::new('count', 'count', [CompletionResultType]::ParameterValue, 'Get unread count')
             [CompletionResult]::new('read', 'read', [CompletionResultType]::ParameterValue, 'Mark as read')
             [CompletionResult]::new('delete', 'delete', [CompletionResultType]::ParameterValue, 'Delete notification')
-            [CompletionResult]::new('watch', 'watch', [CompletionResultType]::ParameterValue, 'Watch notifications')
             break
         }
         '1ctl;user' {
@@ -982,25 +1187,16 @@ Register-ArgumentCompleter -Native -CommandName 1ctl -ScriptBlock {
             [CompletionResult]::new('cleanup', 'cleanup', [CompletionResultType]::ParameterValue, 'Cleanup resources')
             break
         }
-        '1ctl;credits' {
-            [CompletionResult]::new('balance', 'balance', [CompletionResultType]::ParameterValue, 'View credit balance')
-            [CompletionResult]::new('transactions', 'transactions', [CompletionResultType]::ParameterValue, 'View transactions')
-            [CompletionResult]::new('usage', 'usage', [CompletionResultType]::ParameterValue, 'View usage history')
-            [CompletionResult]::new('topup', 'topup', [CompletionResultType]::ParameterValue, 'Top up credits')
-            [CompletionResult]::new('invoices', 'invoices', [CompletionResultType]::ParameterValue, 'Manage invoices')
+        '1ctl;pricing' {
+            [CompletionResult]::new('list', 'list', [CompletionResultType]::ParameterValue, 'List pricing configs')
+            [CompletionResult]::new('get', 'get', [CompletionResultType]::ParameterValue, 'Get pricing details')
+            [CompletionResult]::new('lookup', 'lookup', [CompletionResultType]::ParameterValue, 'Lookup price')
+            [CompletionResult]::new('calculate', 'calculate', [CompletionResultType]::ParameterValue, 'Calculate cost')
             break
         }
-        '1ctl;storage' {
-            [CompletionResult]::new('list', 'list', [CompletionResultType]::ParameterValue, 'List storage configs')
-            [CompletionResult]::new('get', 'get', [CompletionResultType]::ParameterValue, 'Get storage details')
-            [CompletionResult]::new('create', 'create', [CompletionResultType]::ParameterValue, 'Create storage')
-            [CompletionResult]::new('delete', 'delete', [CompletionResultType]::ParameterValue, 'Delete storage')
-            [CompletionResult]::new('buckets', 'buckets', [CompletionResultType]::ParameterValue, 'Manage buckets')
-            [CompletionResult]::new('files', 'files', [CompletionResultType]::ParameterValue, 'List files')
-            [CompletionResult]::new('upload', 'upload', [CompletionResultType]::ParameterValue, 'Upload file')
-            [CompletionResult]::new('download', 'download', [CompletionResultType]::ParameterValue, 'Download file')
-            [CompletionResult]::new('presign', 'presign', [CompletionResultType]::ParameterValue, 'Get presigned URL')
-            [CompletionResult]::new('usage', 'usage', [CompletionResultType]::ParameterValue, 'View storage usage')
+        '1ctl;cluster' {
+            [CompletionResult]::new('zones', 'zones', [CompletionResultType]::ParameterValue, 'List available deployment zones')
+            [CompletionResult]::new('list', 'list', [CompletionResultType]::ParameterValue, 'List enabled clusters')
             break
         }
         '1ctl;completion' {

@@ -1,5 +1,27 @@
 # Release Notes
 
+## Version 0.7.1 (06-04-2026)
+
+### Bug Fixes
+
+- **Fix `1ctl cluster zones` and `1ctl cluster list`**: Both commands returned a JSON unmarshal error on v0.7.0 because the API client bypassed the shared `apiResponse` wrapper that the backend returns (`{"error": false, "data": [...]}`). Rewrote `internal/api/cluster.go` to follow the same pattern used by all other API calls.
+- **Fix `%!s(MISSING)` in cluster command error output**: `internal/commands/cluster.go` called `utils.NewError("...%s", err)` but `NewError(message, err)` takes a message string and an error, not format args. Fixed to use `fmt.Sprintf`.
+
+### Improvements
+
+- **Comprehensive shell completion refresh**: `1ctl completion {bash,zsh,fish,powershell}` now reflects the full, current command inventory:
+  - Added `cluster` command with `zones` and `list` subcommands
+  - Added `--zone` flag completion on `deploy` and `marketplace deploy` (pulls live zones from `1ctl cluster zones`)
+  - Added missing top-level commands: `domain`, `pricing`
+  - Added missing subcommand sets: `domain` (11 subs), `credits` (7 subs), `logs` (3 subs), `pricing` (4 subs), `machine vm` (7 subs)
+  - Added flag value completions: `--backup-schedule`, `--backup-retention`, `--pdb-type`, `--vpa-mode`, `--pricing-tier`
+  - Removed stale `github` command (removed in v0.5.3) and its stale subcommand completions
+  - Removed stale `get`/`create`/`upload`/`download` subcommand completions that no longer exist
+  - Fixed `machine` subcommands to match actual CLI (`list`, `available`, `vm`, `usage`)
+  - Added a maintenance note on `CompletionCommand` reminding contributors to update all four shell templates
+
+---
+
 ## Version 0.7.0 (05-04-2026)
 
 ### New Features
