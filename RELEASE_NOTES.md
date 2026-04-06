@@ -1,5 +1,16 @@
 # Release Notes
 
+## Version 0.7.2 (06-04-2026)
+
+### Bug Fixes
+
+- **Reject `--multicluster` combined with custom domains**: Combining `--multicluster` with a `--domain` value that doesn't end in `.satusky.com` is now rejected at the client side with a friendly error before any backend round trip. Previously the deployment would succeed superficially but the platform's satusky-operator silently blocked replication of the custom-domain ingress to the secondary cluster, leaving the user with broken HA expectations.
+  - The check is case-insensitive and tolerates a leading `*.` wildcard.
+  - 9 unit test cases added in `internal/commands/deploy_test.go`.
+  - Backend (satusky-core_backend v0.47.2) and frontend (satusky-cpanel_front v0.11.1) enforce the same constraint.
+
+---
+
 ## Version 0.7.1 (06-04-2026)
 
 ### Bug Fixes
