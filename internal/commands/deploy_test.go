@@ -103,3 +103,72 @@ func TestHandleDeploy(t *testing.T) {
 		})
 	}
 }
+
+// TestValidateInputs_MulticlusterCustomDomain ensures that combining
+// --multicluster with a custom (non-*.satusky.com) --domain is rejected
+// at the client side, before any backend round trip. This guards the
+// known operator limitation: zone-specific ingress classes are blocked
+// from multi-cluster replication so the user would silently get a
+// single-cluster deployment with broken HA expectations.
+func TestValidateInputs_MulticlusterCustomDomain(t *testing.T) {
+	tests := []struct {
+		name         string
+		multicluster bool
+		domain       string
+		wantErr      bool
+	}{
+		{"multicluster + custom domain", true, "app.example.com", true},
+		{"multicluster + custom apex", true, "example.com", true},
+		{"multicluster + custom wildcard", true, "*.example.com", true},
+		{"multicluster + managed subdomain", true, "myapp.satusky.com", false},
+		{"multicluster + managed wildcard", true, "*.satusky.com", false},
+		{"multicluster + managed apex", true, "satusky.com", false},
+		{"multicluster + no domain", true, "", false},
+		{"no multicluster + custom domain", false, "app.example.com", false},
+		{"no multicluster + managed domain", false, "myapp.satusky.com", false},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			app := cli.NewApp()
+			flags := flag.NewFlagSet("test", flag.ContinueOnError)
+			// Required flags so we don't trip the earlier validations.
+			flags.String("cpu", "1", "")
+			flags.String("memory", "512Mi", "")
+			flags.String("image", "registry.example.com/myapp:latest", "")
+			flags.Bool("multicluster", tt.multicluster, "")
+			if tt.domain != "" {
+				flags.String("domain", tt.domain, "")
+			}
+
+			ctx := cli.NewContext(app, flags, nil)
+			if err := ctx.Set("cpu", "1"); err != nil {
+				t.Fatalf("set cpu: %v", err)
+			}
+			if err := ctx.Set("memory", "512Mi", ); err != nil {
+				t.Fatalf("set memory: %v", err)
+			}
+			if err := ctx.Set("image", "registry.example.com/myapp:latest"); err != nil {
+				t.Fatalf("set image: %v", err)
+			}
+			if tt.multicluster {
+				if err := ctx.Set("multicluster", "true"); err != nil {
+					t.Fatalf("set multicluster: %v", err)
+				}
+			}
+			if tt.domain != "" {
+				if err := ctx.Set("domain", tt.domain); err != nil {
+					t.Fatalf("set domain: %v", err)
+				}
+			}
+
+			err := validateInputs(ctx)
+			if tt.wantErr && err == nil {
+				t.Errorf("validateInputs() expected error for multicluster=%v domain=%q, got nil", tt.multicluster, tt.domain)
+			}
+			if !tt.wantErr && err != nil {
+				t.Errorf("validateInputs() unexpected error for multicluster=%v domain=%q: %v", tt.multicluster, tt.domain, err)
+			}
+		})
+	}
+}

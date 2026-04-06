@@ -336,6 +336,23 @@ func validateInputs(c *cli.Context) error {
 		}
 	}
 
+	// Reject --multicluster combined with a custom domain. The platform's
+	// satusky-operator silently blocks replication of zone-specific ingress
+	// classes (the class used by custom-domain ingresses), so the user would
+	// get a deployment that "looks" multi-cluster but only routes traffic on
+	// KUL via the public LoadBalancer. Backend enforces the same rule; this
+	// client-side check just gives a friendlier error before the round trip.
+	// See backend .devs/docs/MULTICLUSTER_CONSTRAINTS.md.
+	if c.Bool("multicluster") && c.IsSet("domain") {
+		domain := strings.TrimSpace(strings.ToLower(c.String("domain")))
+		domain = strings.TrimPrefix(domain, "*.")
+		if domain != "" && domain != "satusky.com" && !strings.HasSuffix(domain, ".satusky.com") {
+			return utils.NewError(fmt.Sprintf(
+				"--multicluster is not supported with custom domains yet: %q is not a *.satusky.com hostname. "+
+					"Use a *.satusky.com hostname or drop --multicluster.", c.String("domain")), nil)
+		}
+	}
+
 	// Validate --wait-for entries
 	for _, v := range c.StringSlice("wait-for") {
 		if _, _, err := validator.ValidateWaitFor(v); err != nil {
