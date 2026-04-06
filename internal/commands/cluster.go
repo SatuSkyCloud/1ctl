@@ -50,12 +50,12 @@ func handleListZones(_ *cli.Context) error {
 	}
 
 	w := tabwriter.NewWriter(os.Stdout, 0, 0, 3, ' ', 0)
-	fmt.Fprintln(w, "ZONE\tLABEL\tCLUSTER")
-	fmt.Fprintln(w, "----\t-----\t-------")
+	_, _ = fmt.Fprintln(w, "ZONE\tLABEL\tCLUSTER")         //nolint:errcheck
+	_, _ = fmt.Fprintln(w, "----\t-----\t-------")         //nolint:errcheck
 	for _, z := range zones {
-		fmt.Fprintf(w, "%s\t%s\t%s\n", z.Value, z.Label, z.ClusterID)
+		_, _ = fmt.Fprintf(w, "%s\t%s\t%s\n", z.Value, z.Label, z.ClusterID) //nolint:errcheck
 	}
-	w.Flush()
+	_ = w.Flush() //nolint:errcheck
 
 	return nil
 }
@@ -72,8 +72,8 @@ func handleListClusters(_ *cli.Context) error {
 	}
 
 	w := tabwriter.NewWriter(os.Stdout, 0, 0, 3, ' ', 0)
-	fmt.Fprintln(w, "ID\tNAME\tZONE\tENDPOINT\tHEALTHY\tDEFAULT\tPRIORITY")
-	fmt.Fprintln(w, "--\t----\t----\t--------\t-------\t-------\t--------")
+	_, _ = fmt.Fprintln(w, "ID\tNAME\tZONE\tENDPOINT\tHEALTHY\tDEFAULT\tPRIORITY")     //nolint:errcheck
+	_, _ = fmt.Fprintln(w, "--\t----\t----\t--------\t-------\t-------\t--------")    //nolint:errcheck
 	for _, c := range clusters {
 		healthStr := "✓"
 		if !c.Healthy {
@@ -83,10 +83,10 @@ func handleListClusters(_ *cli.Context) error {
 		if c.IsDefault {
 			defaultStr = "★"
 		}
-		fmt.Fprintf(w, "%s\t%s\t%s\t%s\t%s\t%s\t%d\n",
+		_, _ = fmt.Fprintf(w, "%s\t%s\t%s\t%s\t%s\t%s\t%d\n", //nolint:errcheck
 			c.ID, c.Name, c.Zone, c.Endpoint, healthStr, defaultStr, c.Priority)
 	}
-	w.Flush()
+	_ = w.Flush() //nolint:errcheck
 
 	return nil
 }
