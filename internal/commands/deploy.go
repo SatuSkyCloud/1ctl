@@ -265,6 +265,41 @@ func DeployCommand() *cli.Command {
 				},
 				Action: handleDestroyDeployment,
 			},
+			{
+				Name:  "restart",
+				Usage: "Trigger a rolling restart without redeploying",
+				Flags: []cli.Flag{
+					&cli.StringFlag{
+						Name:  "deployment-id",
+						Usage: "Deployment ID to restart",
+					},
+					&cli.StringFlag{
+						Name:  "config",
+						Usage: "Config name or path. Default: satusky.toml",
+					},
+				},
+				Action: handleRestartDeployment,
+			},
+			{
+				Name:  "releases",
+				Usage: "List release history for a deployment",
+				Flags: []cli.Flag{
+					&cli.StringFlag{Name: "deployment-id", Usage: "Deployment ID"},
+					&cli.StringFlag{Name: "config", Usage: "Config name or path. Default: satusky.toml"},
+				},
+				Action: handleListReleases,
+			},
+			{
+				Name:  "rollback",
+				Usage: "Roll back to a previous release",
+				Flags: []cli.Flag{
+					&cli.StringFlag{Name: "deployment-id", Usage: "Deployment ID"},
+					&cli.StringFlag{Name: "config", Usage: "Config name or path. Default: satusky.toml"},
+					&cli.IntFlag{Name: "version", Usage: "Version number to roll back to (default: previous version)"},
+					&cli.BoolFlag{Name: "yes", Aliases: []string{"y"}, Usage: "Skip confirmation prompt"},
+				},
+				Action: handleRollback,
+			},
 		},
 		Action: func(c *cli.Context) error {
 			// If no subcommand is provided and no flags, show help
@@ -705,5 +740,78 @@ func handleDestroyDeployment(c *cli.Context) error {
 		return utils.NewError(fmt.Sprintf("failed to destroy deployment: %s", err.Error()), nil)
 	}
 	utils.PrintSuccess("Deployment %s destroyed successfully", deploymentID)
+	return nil
+}
+
+func handleRestartDeployment(c *cli.Context) error {
+	deploymentID, err := config.ResolveDeploymentID(c.String("deployment-id"), c.String("config"))
+	if err != nil {
+		return err
+	}
+	utils.PrintInfo("Initiating rolling restart for deployment %s...", deploymentID)
+	if err := api.RestartDeployment(deploymentID); err != nil {
+		return utils.NewError(fmt.Sprintf("failed to restart: %s", err.Error()), nil)
+	}
+	utils.PrintSuccess("Rolling restart initiated. Pods are being replaced one by one.")
+	utils.PrintInfo("Use '1ctl deploy status --deployment-id %s' to monitor progress.", deploymentID)
+	return nil
+}
+
+func handleListReleases(c *cli.Context) error {
+	deploymentID, err := config.ResolveDeploymentID(c.String("deployment-id"), c.String("config"))
+	if err != nil {
+		return err
+	}
+	versions, err := api.ListDeploymentVersions(deploymentID)
+	if err != nil {
+		return utils.NewError(fmt.Sprintf("failed to list releases: %s", err.Error()), nil)
+	}
+	if len(versions) == 0 {
+		utils.PrintInfo("No releases found")
+		return nil
+	}
+	headers := []string{"VERSION", "IMAGE", "STATUS", "DEPLOYED"}
+	rows := make([][]string, 0, len(versions))
+	for _, v := range versions {
+		rows = append(rows, []string{
+			fmt.Sprintf("%d", v.VersionNumber),
+			v.Image,
+			v.Status,
+			api.FormatTimeAgo(v.DeployedAt),
+		})
+	}
+	utils.PrintTable(headers, rows)
+	return nil
+}
+
+func handleRollback(c *cli.Context) error {
+	deploymentID, err := config.ResolveDeploymentID(c.String("deployment-id"), c.String("config"))
+	if err != nil {
+		return err
+	}
+	version := c.Int("version")
+
+	if version == 0 {
+		// Default: roll back to previous version (versions[0] is active, versions[1] is previous)
+		versions, err := api.ListDeploymentVersions(deploymentID)
+		if err != nil {
+			return utils.NewError(fmt.Sprintf("failed to fetch releases: %s", err.Error()), nil)
+		}
+		if len(versions) < 2 {
+			return utils.NewError("no previous release to roll back to", nil)
+		}
+		version = versions[1].VersionNumber
+	}
+
+	if !utils.Confirm(fmt.Sprintf("Roll back deployment %s to version %d? This cannot be undone.", deploymentID, version), c.Bool("yes")) {
+		fmt.Println("Aborted.")
+		return nil
+	}
+
+	if err := api.RollbackDeployment(deploymentID, version); err != nil {
+		return utils.NewError(fmt.Sprintf("rollback failed: %s", err.Error()), nil)
+	}
+	utils.PrintSuccess("Rollback to version %d initiated", version)
+	utils.PrintInfo("Use '1ctl deploy status --deployment-id %s' to monitor progress.", deploymentID)
 	return nil
 }
