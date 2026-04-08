@@ -57,6 +57,11 @@ func EnvironmentCommand() *cli.Command {
 						Usage:    "Environment ID to delete",
 						Required: true,
 					},
+					&cli.BoolFlag{
+						Name:    "yes",
+						Aliases: []string{"y"},
+						Usage:   "Skip confirmation prompt",
+					},
 				},
 				Action: handleDeleteEnvironment,
 			},
@@ -115,28 +120,27 @@ func handleListEnvironments(c *cli.Context) error {
 		return nil
 	}
 
-	utils.PrintHeader("Environments")
+	headers := []string{"NAME", "ENV ID", "DEPLOYMENT ID", "CREATED"}
+	rows := make([][]string, 0, len(environments))
 	for _, env := range environments {
-		utils.PrintStatusLine("Environment", env.EnvironmentID.String())
-		utils.PrintStatusLine("Deployment ID", env.DeploymentID.String())
-		utils.PrintStatusLine("App Label", env.AppLabel)
-		if len(env.KeyValues) > 0 {
-			utils.PrintInfo("Environment Variables:\n")
-			for _, kv := range env.KeyValues {
-				utils.PrintStatusLine(kv.Key, kv.Value)
-			}
-		}
-		utils.PrintStatusLine("Created", api.FormatTimeAgo(env.CreatedAt))
-		utils.PrintStatusLine("Last Updated", api.FormatTimeAgo(env.UpdatedAt))
-		utils.PrintDivider()
+		rows = append(rows, []string{
+			env.AppLabel,
+			env.EnvironmentID.String(),
+			env.DeploymentID.String(),
+			api.FormatTimeAgo(env.CreatedAt),
+		})
 	}
+	utils.PrintTable(headers, rows)
 	return nil
 }
 
-// TODO: get data by id first before deleting to pass in the payload
 func handleDeleteEnvironment(c *cli.Context) error {
 	envID := c.String("env-id")
-	if err := api.DeleteEnvironment(nil, envID); err != nil {
+	if !utils.Confirm(fmt.Sprintf("Delete environment %s? This cannot be undone.", envID), c.Bool("yes")) {
+		fmt.Println("Aborted.")
+		return nil
+	}
+	if err := api.DeleteEnvironment(envID); err != nil {
 		return utils.NewError(fmt.Sprintf("failed to delete environment: %s", err.Error()), nil)
 	}
 

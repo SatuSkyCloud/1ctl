@@ -239,6 +239,23 @@ func DeployCommand() *cli.Command {
 				},
 				Action: handleDeploymentStatus,
 			},
+			{
+				Name:  "destroy",
+				Usage: "Delete a deployment and all associated resources",
+				Flags: []cli.Flag{
+					&cli.StringFlag{
+						Name:     "deployment-id",
+						Usage:    "Deployment ID to destroy",
+						Required: true,
+					},
+					&cli.BoolFlag{
+						Name:    "yes",
+						Aliases: []string{"y"},
+						Usage:   "Skip confirmation prompt",
+					},
+				},
+				Action: handleDestroyDeployment,
+			},
 		},
 		Action: func(c *cli.Context) error {
 			// If no subcommand is provided and no flags, show help
@@ -630,14 +647,18 @@ func handleListDeployments(c *cli.Context) error {
 		return nil
 	}
 
-	utils.PrintHeader("Deployments")
+	headers := []string{"DEPLOYMENT ID", "HOSTNAMES", "TYPE", "STATUS", "CREATED"}
+	rows := make([][]string, 0, len(deployments))
 	for _, d := range deployments {
-		utils.PrintStatusLine("Deployment ID", d.DeploymentID.String())
-		utils.PrintStatusLine("Hostnames", strings.Join(d.Hostnames, ", "))
-		utils.PrintStatusLine("Type", d.Type)
-		utils.PrintStatusLine("Created", api.FormatTimeAgo(d.CreatedAt))
-		utils.PrintDivider()
+		rows = append(rows, []string{
+			d.DeploymentID.String(),
+			strings.Join(d.Hostnames, ", "),
+			d.Type,
+			d.Status,
+			api.FormatTimeAgo(d.CreatedAt),
+		})
 	}
+	utils.PrintTable(headers, rows)
 
 	return nil
 }
@@ -667,5 +688,22 @@ func handleGetDeployment(c *cli.Context) error {
 	utils.PrintStatusLine("Memory Limit", deployment.MemoryLimit)
 	utils.PrintStatusLine("Created", api.FormatTimeAgo(deployment.CreatedAt))
 	utils.PrintStatusLine("Last Updated", api.FormatTimeAgo(deployment.UpdatedAt))
+	return nil
+}
+
+func handleDestroyDeployment(c *cli.Context) error {
+	deploymentID := c.String("deployment-id")
+	if !utils.Confirm(
+		fmt.Sprintf("Destroy deployment %s? This will delete all associated services, ingresses, and volumes. This cannot be undone.", deploymentID),
+		c.Bool("yes"),
+	) {
+		fmt.Println("Aborted.")
+		return nil
+	}
+	utils.PrintInfo("Destroying deployment %s...", deploymentID)
+	if err := api.DeleteDeployment(deploymentID); err != nil {
+		return utils.NewError(fmt.Sprintf("failed to destroy deployment: %s", err.Error()), nil)
+	}
+	utils.PrintSuccess("Deployment %s destroyed successfully", deploymentID)
 	return nil
 }

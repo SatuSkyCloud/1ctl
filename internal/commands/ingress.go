@@ -66,6 +66,11 @@ func IngressCommand() *cli.Command {
 						Usage:    "Ingress ID to delete",
 						Required: true,
 					},
+					&cli.BoolFlag{
+						Name:    "yes",
+						Aliases: []string{"y"},
+						Usage:   "Skip confirmation prompt",
+					},
 				},
 				Action: handleDeleteIngress,
 			},
@@ -157,26 +162,28 @@ func handleListIngresses(c *cli.Context) error {
 		return nil
 	}
 
-	utils.PrintHeader("Ingresses")
+	headers := []string{"DOMAIN", "INGRESS ID", "DEPLOYMENT ID", "DNS CONFIG", "CREATED"}
+	rows := make([][]string, 0, len(ingresses))
 	for _, ing := range ingresses {
-		utils.PrintStatusLine("Ingress", ing.DomainName)
-		utils.PrintStatusLine("ID", ing.IngressID.String())
-		utils.PrintStatusLine("Deployment ID", ing.DeploymentID.String())
-		utils.PrintStatusLine("Service ID", ing.ServiceID.String())
-		utils.PrintStatusLine("Namespace", ing.Namespace)
-		utils.PrintStatusLine("DNS Config", string(ing.DnsConfig))
-		utils.PrintStatusLine("Port", fmt.Sprintf("%d", ing.Port))
-		utils.PrintStatusLine("Created", api.FormatTimeAgo(ing.CreatedAt))
-		utils.PrintStatusLine("Last Updated", api.FormatTimeAgo(ing.UpdatedAt))
-		utils.PrintDivider()
+		rows = append(rows, []string{
+			ing.DomainName,
+			ing.IngressID.String(),
+			ing.DeploymentID.String(),
+			string(ing.DnsConfig),
+			api.FormatTimeAgo(ing.CreatedAt),
+		})
 	}
+	utils.PrintTable(headers, rows)
 	return nil
 }
 
-// TODO: get data by id first before deleting to pass in the payload
 func handleDeleteIngress(c *cli.Context) error {
 	ingressID := c.String("ingress-id")
-	if err := api.DeleteIngress(nil, ingressID); err != nil {
+	if !utils.Confirm(fmt.Sprintf("Delete ingress %s? This cannot be undone.", ingressID), c.Bool("yes")) {
+		fmt.Println("Aborted.")
+		return nil
+	}
+	if err := api.DeleteIngress(ingressID); err != nil {
 		return utils.NewError(fmt.Sprintf("failed to delete ingress: %s", err.Error()), nil)
 	}
 

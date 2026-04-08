@@ -23,8 +23,8 @@ type apiResponse struct {
 }
 
 // DeleteDeployment deletes a deployment
-func DeleteDeployment(req interface{}, deploymentID string) error {
-	return makeRequest("POST", fmt.Sprintf("/deployments/delete/%s", deploymentID), req, nil)
+func DeleteDeployment(deploymentID string) error {
+	return makeRequest("POST", fmt.Sprintf("/deployments/delete/%s", deploymentID), nil, nil)
 }
 
 // ListDeployments lists all deployments for current namespace
@@ -107,9 +107,9 @@ func ListServices() ([]Service, error) {
 	return services, nil
 }
 
-func DeleteService(req interface{}, serviceID string) error {
+func DeleteService(serviceID string) error {
 	var resp apiResponse
-	return makeRequest("POST", fmt.Sprintf("/services/delete/%s", serviceID), req, &resp)
+	return makeRequest("POST", fmt.Sprintf("/services/delete/%s", serviceID), nil, &resp)
 }
 
 // Secret methods
@@ -185,9 +185,9 @@ func ListIngresses() ([]Ingress, error) {
 	return ingresses, nil
 }
 
-func DeleteIngress(req interface{}, ingressID string) error {
+func DeleteIngress(ingressID string) error {
 	var resp apiResponse
-	return makeRequest("POST", fmt.Sprintf("/ingresses/delete/%s", ingressID), req, &resp)
+	return makeRequest("POST", fmt.Sprintf("/ingresses/delete/%s", ingressID), nil, &resp)
 }
 
 // Environment methods
@@ -236,9 +236,9 @@ func ListEnvironments() ([]Environment, error) {
 	return environments, nil
 }
 
-func DeleteEnvironment(req interface{}, environmentID string) error {
+func DeleteEnvironment(environmentID string) error {
 	var resp apiResponse
-	return makeRequest("POST", fmt.Sprintf("/environments/delete/%s", environmentID), req, &resp)
+	return makeRequest("POST", fmt.Sprintf("/environments/delete/%s", environmentID), nil, &resp)
 }
 
 // LoginCLI logs in the CLI with the API token
@@ -374,7 +374,9 @@ func makeRequest(method, path string, body interface{}, response interface{}) er
 	req.Header.Set("Content-Type", "application/json")
 	req.Header.Set("x-satusky-api-key", token)
 	req.Header.Set("x-satusky-config", userConfigKey)
-	// TODO: configure x-satusky-user-email for custom domain lets' encrypt
+	if email := context.GetEmail(); email != "" {
+		req.Header.Set("x-satusky-user-email", email)
+	}
 
 	resp, err := http.DefaultClient.Do(req)
 	if err != nil {

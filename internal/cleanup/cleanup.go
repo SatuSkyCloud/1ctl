@@ -43,13 +43,13 @@ func (cm *CleanupManager) AddResource(resourceType ResourceType, id, name string
 }
 
 // TODO: proper cleanup upon error (resources) on orchestrator
-func (cm *CleanupManager) Cleanup(payload interface{}) []error {
+func (cm *CleanupManager) Cleanup() []error {
 	var errors []error
 
 	// Cleanup in reverse order to handle dependencies
 	for i := len(cm.resources) - 1; i >= 0; i-- {
 		resource := cm.resources[i]
-		if err := cm.cleanupResource(payload, resource); err != nil {
+		if err := cm.cleanupResource(resource); err != nil {
 			errors = append(errors, utils.NewError(fmt.Sprintf("failed to cleanup %s %s: %s", resource.Type, resource.Name, err.Error()), nil))
 		}
 	}
@@ -57,16 +57,16 @@ func (cm *CleanupManager) Cleanup(payload interface{}) []error {
 	return errors
 }
 
-func (cm *CleanupManager) cleanupResource(payload interface{}, resource Resource) error {
+func (cm *CleanupManager) cleanupResource(resource Resource) error {
 	utils.PrintWarning("Cleaning up %s: %s...\n", resource.Type, resource.Name)
 
 	switch resource.Type {
 	case ResourceDeployment:
-		return api.DeleteDeployment(payload, resource.ID)
+		return api.DeleteDeployment(resource.ID)
 	case ResourceService:
-		return api.DeleteService(payload, resource.ID)
+		return api.DeleteService(resource.ID)
 	case ResourceIngress:
-		return api.DeleteIngress(payload, resource.ID)
+		return api.DeleteIngress(resource.ID)
 	case ResourceVolume:
 		// TODO: Add volume deletion when API supports it
 		return nil
@@ -74,7 +74,7 @@ func (cm *CleanupManager) cleanupResource(payload interface{}, resource Resource
 		// TODO: Add secret deletion when API supports it
 		return nil
 	case ResourceEnv:
-		return api.DeleteEnvironment(payload, resource.ID)
+		return api.DeleteEnvironment(resource.ID)
 	default:
 		return utils.NewError(fmt.Sprintf("unknown resource type: %s", resource.Type), nil)
 	}

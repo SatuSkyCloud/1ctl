@@ -19,9 +19,10 @@ func TestDeployCommand(t *testing.T) {
 
 	// Check subcommands
 	expectedSubcommands := map[string]bool{
-		"list":   false,
-		"get":    false,
-		"status": false,
+		"list":    false,
+		"get":     false,
+		"status":  false,
+		"destroy": false,
 	}
 
 	for _, subcmd := range cmd.Subcommands {
