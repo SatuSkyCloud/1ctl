@@ -52,6 +52,11 @@ func SecretCommand() *cli.Command {
 						Usage:    "Secret ID to delete",
 						Required: true,
 					},
+					&cli.BoolFlag{
+						Name:    "yes",
+						Aliases: []string{"y"},
+						Usage:   "Skip confirmation prompt",
+					},
 				},
 				Action: handleDeleteSecret,
 			},
@@ -102,6 +107,10 @@ func handleCreateSecret(c *cli.Context) error {
 
 func handleDeleteSecret(c *cli.Context) error {
 	secretID := c.String("secret-id")
+	if !utils.Confirm(fmt.Sprintf("Delete secret %s? This cannot be undone.", secretID), c.Bool("yes")) {
+		fmt.Println("Aborted.")
+		return nil
+	}
 	if err := api.DeleteSecret(secretID); err != nil {
 		return utils.NewError(fmt.Sprintf("failed to delete secret: %s", err.Error()), nil)
 	}
@@ -120,21 +129,16 @@ func handleListSecrets(c *cli.Context) error {
 		return nil
 	}
 
-	utils.PrintHeader("Secrets")
+	headers := []string{"NAME", "SECRET ID", "DEPLOYMENT ID", "CREATED"}
+	rows := make([][]string, 0, len(secrets))
 	for _, secret := range secrets {
-		utils.PrintStatusLine("Secret", secret.SecretID.String())
-		utils.PrintStatusLine("Deployment ID", secret.DeploymentID.String())
-		utils.PrintStatusLine("Namespace", secret.Namespace)
-		utils.PrintStatusLine("App Label", secret.AppLabel)
-		if len(secret.KeyValues) > 0 {
-			utils.PrintInfo("Key-Value Pairs:\n")
-			for _, kv := range secret.KeyValues {
-				utils.PrintInfo("  %s: %s\n", kv.Key, kv.Value)
-			}
-		}
-		utils.PrintStatusLine("Created", api.FormatTimeAgo(secret.CreatedAt))
-		utils.PrintStatusLine("Last Updated", api.FormatTimeAgo(secret.UpdatedAt))
-		utils.PrintDivider()
+		rows = append(rows, []string{
+			secret.AppLabel,
+			secret.SecretID.String(),
+			secret.DeploymentID.String(),
+			api.FormatTimeAgo(secret.CreatedAt),
+		})
 	}
+	utils.PrintTable(headers, rows)
 	return nil
 }

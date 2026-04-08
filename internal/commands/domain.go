@@ -60,11 +60,17 @@ func domainListCommand() *cli.Command {
 				utils.PrintInfo("No domains found")
 				return nil
 			}
-			utils.PrintHeader("Domains (%d)", len(domains))
+			headers := []string{"DOMAIN", "DOMAIN ID", "STATUS", "CREATED"}
+			rows := make([][]string, 0, len(domains))
 			for _, d := range domains {
-				printDomainSummary(&d)
-				utils.PrintDivider()
+				rows = append(rows, []string{
+					d.Name,
+					d.DomainID,
+					d.Status,
+					api.FormatTimeAgo(d.CreatedAt),
+				})
 			}
+			utils.PrintTable(headers, rows)
 			return nil
 		},
 	}
@@ -462,11 +468,18 @@ func domainDNSListCommand() *cli.Command {
 				utils.PrintInfo("No DNS records found")
 				return nil
 			}
-			utils.PrintHeader("DNS Records (%d)", len(records))
+			headers := []string{"TYPE", "NAME", "DATA", "TTL", "RECORD ID"}
+			rows := make([][]string, 0, len(records))
 			for _, r := range records {
-				printDNSRecord(&r)
-				utils.PrintDivider()
+				rows = append(rows, []string{
+					r.Type,
+					r.Name,
+					r.Data,
+					fmt.Sprintf("%d", r.TTL),
+					r.RecordID,
+				})
 			}
+			utils.PrintTable(headers, rows)
 			return nil
 		},
 	}
@@ -604,13 +617,6 @@ func domainDNSDeleteCommand() *cli.Command {
 }
 
 // --- display helpers ---
-
-func printDomainSummary(d *api.Domain) {
-	utils.PrintStatusLine("ID", d.DomainID)
-	utils.PrintStatusLine("Name", d.Name)
-	utils.PrintStatusLine("Status", colorDomainStatus(d.Status))
-	utils.PrintStatusLine("TTL", fmt.Sprintf("%d", d.TTL))
-}
 
 func printDomainDetails(d *api.Domain) {
 	utils.PrintStatusLine("Domain ID", d.DomainID)

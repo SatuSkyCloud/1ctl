@@ -66,7 +66,7 @@ CMD ["./app"]`
 // cleanupDeployment helps clean up test deployments
 func cleanupDeployment(t *testing.T, deploymentID string) {
 	t.Helper()
-	if err := api.DeleteDeployment(nil, deploymentID); err != nil {
+	if err := api.DeleteDeployment(deploymentID); err != nil {
 		t.Logf("Warning: Failed to cleanup deployment %s: %v", deploymentID, err)
 	}
 }

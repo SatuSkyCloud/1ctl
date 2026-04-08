@@ -71,6 +71,11 @@ func handleLogin(c *cli.Context) error {
 		return utils.NewError(fmt.Sprintf("failed to store user ID: %s", err.Error()), nil)
 	}
 
+	// Store user email in context.json (used for x-satusky-user-email header)
+	if err := context.SetEmail(result.UserEmail); err != nil {
+		return utils.NewError(fmt.Sprintf("failed to store user email: %s", err.Error()), nil)
+	}
+
 	// Store organization info in context.json
 	namespace := result.Namespace
 	if namespace == "" {

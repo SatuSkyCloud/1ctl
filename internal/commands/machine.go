@@ -61,11 +61,20 @@ func handleListMachines(c *cli.Context) error {
 		return nil
 	}
 
-	utils.PrintHeader("Machines")
+	headers := []string{"NAME", "MACHINE ID", "REGION/ZONE", "STATUS", "CPU", "MEM(GB)", "HOURLY COST"}
+	rows := make([][]string, 0, len(machines))
 	for _, machine := range machines {
-		printMachineDetails(&machine)
-		utils.PrintDivider()
+		rows = append(rows, []string{
+			machine.MachineName,
+			machine.MachineID,
+			fmt.Sprintf("%s/%s", machine.MachineRegion, machine.MachineZone),
+			machine.Status,
+			fmt.Sprintf("%d", machine.CPUCores),
+			fmt.Sprintf("%d", machine.MemoryGB),
+			fmt.Sprintf("$%.4f", machine.HourlyCost),
+		})
 	}
+	utils.PrintTable(headers, rows)
 	return nil
 }
 
@@ -568,20 +577,19 @@ func handleMachineUsageList(c *cli.Context) error {
 		return nil
 	}
 
-	utils.PrintHeader("Machine Usage Records")
+	headers := []string{"USAGE ID", "MACHINE ID", "STATUS", "HOURLY RATE", "START", "BILLED"}
+	rows := make([][]string, 0, len(usages))
 	for _, u := range usages {
-		utils.PrintStatusLine("Usage ID", u.UsageID)
-		utils.PrintStatusLine("Machine", u.MachineID)
-		utils.PrintStatusLine("Deployment", u.DeploymentID)
-		utils.PrintStatusLine("Status", u.Status)
-		utils.PrintStatusLine("Hourly Rate", fmt.Sprintf("$%.4f/hr", u.HourlyRate))
-		utils.PrintStatusLine("Start", u.StartTime)
-		if u.EndTime != nil {
-			utils.PrintStatusLine("End", *u.EndTime)
-		}
-		utils.PrintStatusLine("Billed", fmt.Sprintf("%v", u.IsBilled))
-		utils.PrintDivider()
+		rows = append(rows, []string{
+			u.UsageID,
+			u.MachineID,
+			u.Status,
+			fmt.Sprintf("$%.4f/hr", u.HourlyRate),
+			u.StartTime,
+			fmt.Sprintf("%v", u.IsBilled),
+		})
 	}
+	utils.PrintTable(headers, rows)
 	return nil
 }
 

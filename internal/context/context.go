@@ -13,6 +13,7 @@ type CLIContext struct {
 	CurrentNamespace string `json:"organization"` // Keep for backwards compatibility (stores namespace)
 	CurrentOrgID     string `json:"current_org_id,omitempty"`
 	CurrentOrgName   string `json:"current_org_name,omitempty"`
+	Email            string `json:"email,omitempty"`
 	Token            string `json:"token"`
 	UserConfigKey    string `json:"user_config_key"`
 	UserID           string `json:"user_id"`
@@ -106,6 +107,29 @@ func GetUserID() string {
 func SetUserID(userID string) error {
 	return saveContext(func(ctx *CLIContext) {
 		ctx.UserID = userID
+	})
+}
+
+// GetEmail returns the user email from context.json
+func GetEmail() string {
+	contextFile := filepath.Join(configDir, "context.json")
+	data, err := os.ReadFile(contextFile) // #nosec G304 -- Path constructed from home directory
+	if err != nil {
+		return ""
+	}
+
+	var ctx CLIContext
+	if err := json.Unmarshal(data, &ctx); err != nil {
+		return ""
+	}
+
+	return ctx.Email
+}
+
+// SetEmail saves the user email to context.json
+func SetEmail(email string) error {
+	return saveContext(func(ctx *CLIContext) {
+		ctx.Email = email
 	})
 }
 
