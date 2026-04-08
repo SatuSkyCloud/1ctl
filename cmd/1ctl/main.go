@@ -26,6 +26,7 @@ func createApp() *cli.App {
 		Commands: []*cli.Command{
 			commands.AuthCommand(),
 			commands.OrgCommand(),
+			commands.InitCommand(),
 			commands.DeployCommand(),
 			commands.ServiceCommand(),
 			commands.SecretCommand(),
@@ -59,6 +60,7 @@ func createApp() *cli.App {
 			// Skip token validation for these cases
 			if cmdName == "auth" ||
 				cmdName == "org" ||
+				cmdName == "init" ||
 				cmdName == "completion" ||
 				cmdName == "help" ||
 				c.Bool("help") ||

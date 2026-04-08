@@ -2,6 +2,7 @@ package commands
 
 import (
 	"1ctl/internal/api"
+	"1ctl/internal/config"
 	"1ctl/internal/context"
 	"1ctl/internal/deploy"
 	"1ctl/internal/utils"
@@ -188,6 +189,10 @@ func DeployCommand() *cli.Command {
 			Usage: "Rolling update max unavailable. Pods or percentage, e.g. '0' or '25%'",
 			Value: "25%",
 		},
+		&cli.StringFlag{
+			Name:  "config",
+			Usage: "Config name or path (e.g. staging, satusky.staging.toml). Default: satusky.toml",
+		},
 	}
 
 	return &cli.Command{
@@ -211,9 +216,12 @@ func DeployCommand() *cli.Command {
 				Usage: "Get deployment details",
 				Flags: []cli.Flag{
 					&cli.StringFlag{
-						Name:     "deployment-id",
-						Usage:    "Deployment ID to get details for",
-						Required: true,
+						Name:  "deployment-id",
+						Usage: "Deployment ID to get details for",
+					},
+					&cli.StringFlag{
+						Name:  "config",
+						Usage: "Config name or path (e.g. staging, satusky.staging.toml). Default: satusky.toml",
 					},
 				},
 				Action: handleGetDeployment,
@@ -223,9 +231,12 @@ func DeployCommand() *cli.Command {
 				Usage: "Check deployment status",
 				Flags: []cli.Flag{
 					&cli.StringFlag{
-						Name:     "deployment-id",
-						Usage:    "Deployment ID to check",
-						Required: true,
+						Name:  "deployment-id",
+						Usage: "Deployment ID to check",
+					},
+					&cli.StringFlag{
+						Name:  "config",
+						Usage: "Config name or path (e.g. staging, satusky.staging.toml). Default: satusky.toml",
 					},
 					&cli.BoolFlag{
 						Name:  "watch",
@@ -239,9 +250,12 @@ func DeployCommand() *cli.Command {
 				Usage: "Delete a deployment and all associated resources",
 				Flags: []cli.Flag{
 					&cli.StringFlag{
-						Name:     "deployment-id",
-						Usage:    "Deployment ID to destroy",
-						Required: true,
+						Name:  "deployment-id",
+						Usage: "Deployment ID to destroy",
+					},
+					&cli.StringFlag{
+						Name:  "config",
+						Usage: "Config name or path (e.g. staging, satusky.staging.toml). Default: satusky.toml",
 					},
 					&cli.BoolFlag{
 						Name:    "yes",
@@ -301,6 +315,13 @@ func handleDeploy(c *cli.Context) error {
 
 	utils.PrintSuccess("🚀 Deployment for %s is successful! Your app is live at: https://%s", resp.AppLabel, resp.Domain)
 	utils.PrintStatusLine("Deployment ID", resp.DeploymentID.String())
+
+	// Best-effort: write deployment_id back to config file.
+	if cfg, err := config.FindConfig(c.String("config")); err == nil && cfg != nil {
+		cfg.App.DeploymentID = resp.DeploymentID.String()
+		_ = cfg.Save()
+	}
+
 	return nil
 }
 
@@ -546,7 +567,10 @@ func parseEnvVars(envVars []string) []api.KeyValuePair {
 }
 
 func handleDeploymentStatus(c *cli.Context) error {
-	deploymentID := c.String("deployment-id")
+	deploymentID, err := config.ResolveDeploymentID(c.String("deployment-id"), c.String("config"))
+	if err != nil {
+		return err
+	}
 	watch := c.Bool("watch")
 
 	if watch {
@@ -634,7 +658,10 @@ func handleListDeployments(c *cli.Context) error {
 }
 
 func handleGetDeployment(c *cli.Context) error {
-	deploymentID := c.String("deployment-id")
+	deploymentID, err := config.ResolveDeploymentID(c.String("deployment-id"), c.String("config"))
+	if err != nil {
+		return err
+	}
 	deployment, err := api.GetDeployment(deploymentID)
 	if err != nil {
 		return utils.NewError(fmt.Sprintf("failed to get deployment: %s", err.Error()), nil)
@@ -662,7 +689,10 @@ func handleGetDeployment(c *cli.Context) error {
 }
 
 func handleDestroyDeployment(c *cli.Context) error {
-	deploymentID := c.String("deployment-id")
+	deploymentID, err := config.ResolveDeploymentID(c.String("deployment-id"), c.String("config"))
+	if err != nil {
+		return err
+	}
 	if !utils.Confirm(
 		fmt.Sprintf("Destroy deployment %s? This will delete all associated services, ingresses, and volumes. This cannot be undone.", deploymentID),
 		c.Bool("yes"),

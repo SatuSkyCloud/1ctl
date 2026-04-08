@@ -2,6 +2,7 @@ package commands
 
 import (
 	"1ctl/internal/api"
+	"1ctl/internal/config"
 	"1ctl/internal/context"
 	"1ctl/internal/utils"
 	"fmt"
@@ -21,9 +22,12 @@ func SecretCommand() *cli.Command {
 				Usage: "Create a new secret",
 				Flags: []cli.Flag{
 					&cli.StringFlag{
-						Name:     "deployment-id",
-						Usage:    "Deployment ID",
-						Required: true,
+						Name:  "deployment-id",
+						Usage: "Deployment ID",
+					},
+					&cli.StringFlag{
+						Name:  "config",
+						Usage: "Config name or path (e.g. staging, satusky.staging.toml). Default: satusky.toml",
 					},
 					&cli.StringFlag{
 						Name:     "name",
@@ -65,9 +69,9 @@ func SecretCommand() *cli.Command {
 }
 
 func handleCreateSecret(c *cli.Context) error {
-	deploymentIDStr := c.String("deployment-id")
-	if deploymentIDStr == "" {
-		return utils.NewError("deployment-id is required", nil)
+	deploymentIDStr, err := config.ResolveDeploymentID(c.String("deployment-id"), c.String("config"))
+	if err != nil {
+		return err
 	}
 
 	deploymentID, err := uuid.Parse(deploymentIDStr)
