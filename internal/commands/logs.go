@@ -2,6 +2,7 @@ package commands
 
 import (
 	"1ctl/internal/api"
+	"1ctl/internal/config"
 	"1ctl/internal/context"
 	"1ctl/internal/utils"
 	"fmt"
@@ -20,6 +21,10 @@ func LogsCommand() *cli.Command {
 				Name:    "deployment-id",
 				Aliases: []string{"d"},
 				Usage:   "Deployment ID to view logs for",
+			},
+			&cli.StringFlag{
+				Name:  "config",
+				Usage: "Config name or path (e.g. staging, satusky.staging.toml). Default: satusky.toml",
 			},
 			&cli.IntFlag{
 				Name:    "tail",
@@ -47,10 +52,13 @@ func logsStatsCommand() *cli.Command {
 		Usage: "Show log statistics for a deployment",
 		Flags: []cli.Flag{
 			&cli.StringFlag{
-				Name:     "deployment-id",
-				Aliases:  []string{"d"},
-				Usage:    "Deployment ID",
-				Required: true,
+				Name:    "deployment-id",
+				Aliases: []string{"d"},
+				Usage:   "Deployment ID",
+			},
+			&cli.StringFlag{
+				Name:  "config",
+				Usage: "Config name or path (e.g. staging, satusky.staging.toml). Default: satusky.toml",
 			},
 		},
 		Action: handleLogsStats,
@@ -63,10 +71,13 @@ func logsDeleteCommand() *cli.Command {
 		Usage: "Delete logs for a deployment",
 		Flags: []cli.Flag{
 			&cli.StringFlag{
-				Name:     "deployment-id",
-				Aliases:  []string{"d"},
-				Usage:    "Deployment ID",
-				Required: true,
+				Name:    "deployment-id",
+				Aliases: []string{"d"},
+				Usage:   "Deployment ID",
+			},
+			&cli.StringFlag{
+				Name:  "config",
+				Usage: "Config name or path (e.g. staging, satusky.staging.toml). Default: satusky.toml",
 			},
 		},
 		Action: handleLogsDelete,
@@ -74,9 +85,9 @@ func logsDeleteCommand() *cli.Command {
 }
 
 func handleLogs(c *cli.Context) error {
-	deploymentID := c.String("deployment-id")
-	if deploymentID == "" {
-		return utils.NewError("--deployment-id is required", nil)
+	deploymentID, err := config.ResolveDeploymentID(c.String("deployment-id"), c.String("config"))
+	if err != nil {
+		return err
 	}
 
 	// If stats flag is set, show stats instead
@@ -113,9 +124,9 @@ func handleLogs(c *cli.Context) error {
 }
 
 func handleLogsStats(c *cli.Context) error {
-	deploymentID := c.String("deployment-id")
-	if deploymentID == "" {
-		return utils.NewError("--deployment-id is required", nil)
+	deploymentID, err := config.ResolveDeploymentID(c.String("deployment-id"), c.String("config"))
+	if err != nil {
+		return err
 	}
 
 	stats, err := api.GetLogStats(deploymentID)
@@ -146,9 +157,9 @@ func handleLogsStats(c *cli.Context) error {
 }
 
 func handleLogsDelete(c *cli.Context) error {
-	deploymentID := c.String("deployment-id")
-	if deploymentID == "" {
-		return utils.NewError("--deployment-id is required", nil)
+	deploymentID, err := config.ResolveDeploymentID(c.String("deployment-id"), c.String("config"))
+	if err != nil {
+		return err
 	}
 
 	if err := api.DeleteLogs(deploymentID); err != nil {
