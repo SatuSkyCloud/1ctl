@@ -27,6 +27,11 @@ func DeleteDeployment(deploymentID string) error {
 	return makeRequest("POST", fmt.Sprintf("/deployments/delete/%s", deploymentID), nil, nil)
 }
 
+// RestartDeployment triggers a rolling restart of a deployment
+func RestartDeployment(deploymentID string) error {
+	return makeRequest("POST", fmt.Sprintf("/deployments/%s/restart", deploymentID), nil, nil)
+}
+
 // ListDeployments lists all deployments for current namespace
 func ListDeployments() ([]Deployment, error) {
 	namespace := context.GetCurrentNamespace()
@@ -50,6 +55,24 @@ func ListDeployments() ([]Deployment, error) {
 		return nil, utils.NewError(fmt.Sprintf("failed to unmarshal deployments: %s", err.Error()), nil)
 	}
 	return deployments, nil
+}
+
+// ListDeploymentVersions returns the release history for a deployment.
+func ListDeploymentVersions(deploymentID string) ([]DeploymentVersion, error) {
+	var resp struct {
+		Error   bool                `json:"error"`
+		Message string              `json:"message"`
+		Data    []DeploymentVersion `json:"data"`
+	}
+	if err := makeRequest("GET", fmt.Sprintf("/deployments/%s/versions", deploymentID), nil, &resp); err != nil {
+		return nil, err
+	}
+	return resp.Data, nil
+}
+
+// RollbackDeployment initiates a rollback to the specified version number.
+func RollbackDeployment(deploymentID string, versionNumber int) error {
+	return makeRequest("POST", fmt.Sprintf("/deployments/%s/rollback/%d", deploymentID, versionNumber), nil, nil)
 }
 
 // ListDeploymentsByNamespace lists deployments in a specific namespace

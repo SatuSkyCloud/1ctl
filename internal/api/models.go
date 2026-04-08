@@ -146,6 +146,19 @@ type CreateDeploymentResponse struct {
 	Domain       string    `json:"domain"`
 }
 
+// DeploymentVersion represents a single release in the deployment version history.
+type DeploymentVersion struct {
+	VersionID     string    `json:"version_id"`
+	DeploymentID  string    `json:"deployment_id"`
+	VersionNumber int       `json:"version_number"`
+	Image         string    `json:"image"`
+	CPU           string    `json:"cpu"`
+	Memory        string    `json:"memory"`
+	Replicas      int       `json:"replicas"`
+	DeployedAt    time.Time `json:"deployed_at"`
+	Status        string    `json:"status"`
+}
+
 type Secret struct {
 	SecretID     uuid.UUID      `json:"secret_id"`
 	DeploymentID uuid.UUID      `json:"deployment_id"`
