@@ -2,11 +2,14 @@ package context
 
 import (
 	"1ctl/internal/utils"
+	"encoding/base64"
 	"encoding/json"
+	"fmt"
 	"log"
 	"os"
 	"path/filepath"
 	"strings"
+	"time"
 )
 
 type CLIContext struct {
@@ -227,6 +230,70 @@ func SetCurrentOrganization(orgID, orgName, namespace string) error {
 		ctx.CurrentOrgName = orgName
 		ctx.CurrentNamespace = namespace
 	})
+}
+
+// SaveLoginState writes all auth fields in a single atomic write to prevent
+// corrupted state from a crash between separate writes.
+func SaveLoginState(token, userID, email, orgID, orgName, namespace, userConfigKey string) error {
+	return saveContext(func(ctx *CLIContext) {
+		ctx.Token = token
+		ctx.UserID = userID
+		ctx.Email = email
+		ctx.CurrentOrgID = orgID
+		ctx.CurrentOrgName = orgName
+		ctx.CurrentNamespace = namespace
+		ctx.UserConfigKey = userConfigKey
+	})
+}
+
+// ClearAuthState removes all auth fields in a single atomic write.
+func ClearAuthState() error {
+	return saveContext(func(ctx *CLIContext) {
+		ctx.Token = ""
+		ctx.UserID = ""
+		ctx.Email = ""
+		ctx.CurrentOrgID = ""
+		ctx.CurrentOrgName = ""
+		ctx.CurrentNamespace = ""
+		ctx.UserConfigKey = ""
+	})
+}
+
+// CheckTokenExpiry parses the JWT exp claim from the stored token.
+// Returns an error with a clear message if the token is expired or malformed.
+func CheckTokenExpiry() error {
+	token := GetToken()
+	if token == "" {
+		return utils.NewError("not authenticated. Please run '1ctl auth login' to authenticate", nil)
+	}
+
+	parts := strings.Split(token, ".")
+	if len(parts) != 3 {
+		// Not a JWT — can't check expiry, let the backend decide
+		return nil
+	}
+
+	// Decode the payload (second part)
+	payload, err := base64.RawURLEncoding.DecodeString(parts[1])
+	if err != nil {
+		// Can't decode — let the backend decide
+		return nil
+	}
+
+	var claims struct {
+		Exp float64 `json:"exp"`
+	}
+	if err := json.Unmarshal(payload, &claims); err != nil || claims.Exp == 0 {
+		// No exp claim — let the backend decide
+		return nil
+	}
+
+	expiry := time.Unix(int64(claims.Exp), 0)
+	if time.Now().After(expiry) {
+		return utils.NewError(fmt.Sprintf("session expired at %s. Please run '1ctl auth login' to re-authenticate", expiry.Format("Jan 2, 2006 15:04 MST")), nil)
+	}
+
+	return nil
 }
 
 // saveContext writes profile data changes to the active profile file.

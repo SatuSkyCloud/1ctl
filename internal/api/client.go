@@ -11,8 +11,23 @@ import (
 	"net/http"
 	"time"
 
+	"strings"
+
 	"github.com/google/uuid"
 )
+
+// httpClient is a shared HTTP client with a reasonable timeout.
+// 30 seconds is sufficient for most API calls while preventing indefinite hangs.
+var httpClient = &http.Client{
+	Timeout: 30 * time.Second,
+}
+
+// isLocalhostURL returns true if the URL points to localhost or 127.0.0.1.
+func isLocalhostURL(rawURL string) bool {
+	return strings.HasPrefix(rawURL, "http://localhost") ||
+		strings.HasPrefix(rawURL, "http://127.0.0.1") ||
+		strings.HasPrefix(rawURL, "http://[::1]")
+}
 
 // Common response structure that matches backend
 type apiResponse struct {
@@ -283,8 +298,7 @@ func LoginCLI(token string) (*TokenValidate, error) {
 	request.Header.Set("Content-Type", "application/json")
 	request.Header.Set("x-satusky-api-key", token)
 
-	client := &http.Client{}
-	resp, err := client.Do(request)
+	resp, err := httpClient.Do(request)
 	if err != nil {
 		return nil, utils.NewError(fmt.Sprintf("failed to send request: %s", err.Error()), nil)
 	}
@@ -370,6 +384,11 @@ func makeRequest(method, path string, body interface{}, response interface{}) er
 	config := config.GetConfig()
 	url := fmt.Sprintf("%s%s", config.ApiURL, path)
 
+	// Enforce HTTPS for non-localhost API URLs to prevent token leakage over plaintext
+	if !isLocalhostURL(url) && !strings.HasPrefix(url, "https://") {
+		return utils.NewError(fmt.Sprintf("refusing to send auth token over insecure connection (%s). Use HTTPS or http://localhost for local development", config.ApiURL), nil)
+	}
+
 	var bodyReader io.Reader
 	if body != nil {
 		jsonData, err := json.Marshal(body)
@@ -390,9 +409,6 @@ func makeRequest(method, path string, body interface{}, response interface{}) er
 	}
 
 	userConfigKey := context.GetUserConfigKey()
-	// if userConfigKey == "" {
-	// 	return utils.NewError("not authenticated. Please run '1ctl auth login' to authenticate")
-	// }
 
 	req.Header.Set("Content-Type", "application/json")
 	req.Header.Set("x-satusky-api-key", token)
@@ -401,7 +417,7 @@ func makeRequest(method, path string, body interface{}, response interface{}) er
 		req.Header.Set("x-satusky-user-email", email)
 	}
 
-	resp, err := http.DefaultClient.Do(req)
+	resp, err := httpClient.Do(req)
 	if err != nil {
 		return utils.NewError(fmt.Sprintf("failed to make request: %s", err.Error()), nil)
 	}

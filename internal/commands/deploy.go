@@ -346,6 +346,11 @@ Subcommands manage existing deployments:
 }
 
 func handleDeploy(c *cli.Context) error {
+	// Check token expiry before any work begins to fail fast with a clear message
+	if err := context.CheckTokenExpiry(); err != nil {
+		return err
+	}
+
 	// Load satusky.toml defaults for flags not set on the CLI
 	if cfg, err := config.FindConfig(c.String("config")); err == nil && cfg != nil {
 		if !c.IsSet("cpu") && cfg.App.CPU != "" {
