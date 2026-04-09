@@ -2,6 +2,7 @@ package deploy
 
 import (
 	"1ctl/internal/api"
+	"1ctl/internal/cleanup"
 	"1ctl/internal/context"
 	"1ctl/internal/docker"
 	"1ctl/internal/utils"
@@ -30,6 +31,7 @@ func (dp *deploymentProgress) complete() {
 // Deploy handles the sequential deployment process
 func Deploy(opts DeploymentOptions) (*api.CreateDeploymentResponse, error) {
 	progress := &deploymentProgress{total: 5}
+	cmgr := cleanup.NewCleanupManager()
 
 	userID := context.GetUserID()
 	if userID == "" {
@@ -114,6 +116,7 @@ func Deploy(opts DeploymentOptions) (*api.CreateDeploymentResponse, error) {
 	if err != nil {
 		return nil, err
 	}
+	cmgr.AddResource(cleanup.ResourceDeployment, deploymentID, projectName)
 	progress.complete()
 
 	// Step 3: Configure services
@@ -125,8 +128,10 @@ func Deploy(opts DeploymentOptions) (*api.CreateDeploymentResponse, error) {
 
 	serviceID, err := upsertService(deploymentID, opts, projectName, opts.Organization)
 	if err != nil {
+		deployCleanup(cmgr)
 		return nil, utils.NewError(fmt.Sprintf("failed to create service: %s", err.Error()), nil)
 	}
+	cmgr.AddResource(cleanup.ResourceService, serviceID, projectName)
 	progress.complete()
 
 	// Step 4: Handle environment and volumes
@@ -137,6 +142,7 @@ func Deploy(opts DeploymentOptions) (*api.CreateDeploymentResponse, error) {
 	progress.print()
 
 	if err := handleEnvironmentAndVolumes(opts, deploymentID, projectName, opts.Organization); err != nil {
+		deployCleanup(cmgr)
 		return nil, utils.NewError(fmt.Sprintf("failed to setup environment and volumes: %s", err.Error()), nil)
 	}
 	progress.complete()
@@ -150,6 +156,7 @@ func Deploy(opts DeploymentOptions) (*api.CreateDeploymentResponse, error) {
 
 	domainName, err := handleIngressAndDependencies(opts, deploymentID, serviceID, userID, opts.Organization, projectName, opts.Hostnames)
 	if err != nil {
+		deployCleanup(cmgr)
 		return nil, utils.NewError(fmt.Sprintf("failed to configure ingress and dependencies: %s", err.Error()), nil)
 	}
 	progress.complete()
@@ -159,6 +166,16 @@ func Deploy(opts DeploymentOptions) (*api.CreateDeploymentResponse, error) {
 		AppLabel:     projectName,
 		Domain:       domainName,
 	}, nil
+}
+
+// deployCleanup runs best-effort cleanup on partial deployment failure.
+func deployCleanup(cmgr *cleanup.CleanupManager) {
+	utils.PrintWarning("Deployment failed, attempting cleanup of created resources...")
+	if errs := cmgr.Cleanup(); len(errs) > 0 {
+		utils.PrintWarning("Cleanup encountered errors:\n%s", cleanup.FormatCleanupErrors(errs))
+	} else {
+		utils.PrintSuccess("Successfully cleaned up partial deployment resources")
+	}
 }
 
 // submitRemoteBuild packages the local build context, uploads it to the backend,
@@ -459,11 +476,15 @@ func handleEnvironmentAndVolumes(opts DeploymentOptions, deploymentID, projectNa
 		errChan <- nil
 	}()
 
-	// Wait for both operations
+	// Drain both results, collecting all errors
+	var errs []error
 	for i := 0; i < 2; i++ {
 		if err := <-errChan; err != nil {
-			return err
+			errs = append(errs, err)
 		}
+	}
+	if len(errs) > 0 {
+		return errs[0]
 	}
 
 	return nil
@@ -495,7 +516,7 @@ func buildStrategyConfig(opts DeploymentOptions) *api.DeploymentStrategyConfig {
 
 func handleIngressAndDependencies(opts DeploymentOptions, deploymentID, serviceID, userID, organization, projectName string, hostnames []string) (string, error) {
 	errChan := make(chan error, 2)
-	var domain string
+	domainChan := make(chan string, 1)
 
 	// Handle ingress
 	go func() {
@@ -504,8 +525,8 @@ func handleIngressAndDependencies(opts DeploymentOptions, deploymentID, serviceI
 			errChan <- utils.NewError(fmt.Sprintf("failed to create ingress: %s", err.Error()), nil)
 			return
 		}
+		domainChan <- domainName
 		errChan <- nil
-		domain = domainName
 	}()
 
 	// Handle dependencies
@@ -519,12 +540,18 @@ func handleIngressAndDependencies(opts DeploymentOptions, deploymentID, serviceI
 		errChan <- nil
 	}()
 
-	// Wait for both operations
+	// Drain both results, collecting all errors
+	var errs []error
 	for i := 0; i < 2; i++ {
 		if err := <-errChan; err != nil {
-			return "", err
+			errs = append(errs, err)
 		}
 	}
+	if len(errs) > 0 {
+		return "", errs[0]
+	}
 
-	return domain, nil
+	// Only read domain if no errors — the ingress goroutine is guaranteed
+	// to have sent to domainChan before sending nil to errChan.
+	return <-domainChan, nil
 }
