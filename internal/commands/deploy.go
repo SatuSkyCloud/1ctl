@@ -662,6 +662,14 @@ func prepareDeploymentOptions(c *cli.Context) (deploy.DeploymentOptions, error) 
 	opts.RollingMaxSurge = c.String("rolling-max-surge")
 	opts.RollingMaxUnavailable = c.String("rolling-max-unavailable")
 
+	// Validate strategy value
+	switch opts.Strategy {
+	case "rolling", "recreate":
+		// valid
+	default:
+		return deploy.DeploymentOptions{}, utils.NewError(fmt.Sprintf("invalid --strategy %q: must be 'rolling' or 'recreate'", opts.Strategy), nil)
+	}
+
 	return opts, nil
 }
 
@@ -867,9 +875,10 @@ func handleRollback(c *cli.Context) error {
 	if err != nil {
 		return err
 	}
-	version := c.Int("version")
-
-	if version == 0 {
+	var version int
+	if c.IsSet("version") {
+		version = c.Int("version")
+	} else {
 		// Default: roll back to previous version (versions[0] is active, versions[1] is previous)
 		versions, err := api.ListDeploymentVersions(deploymentID)
 		if err != nil {

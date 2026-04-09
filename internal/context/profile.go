@@ -10,13 +10,6 @@ import (
 	"strings"
 )
 
-// isLocalhostURL returns true if the URL points to a local address.
-func isLocalhostURL(rawURL string) bool {
-	return strings.HasPrefix(rawURL, "http://localhost") ||
-		strings.HasPrefix(rawURL, "http://127.0.0.1") ||
-		strings.HasPrefix(rawURL, "http://[::1]")
-}
-
 // rootContext is the only thing stored in ~/.satusky/context.json.
 // It points at the active profile. All credentials and settings live in the profile file.
 type rootContext struct {
@@ -141,7 +134,7 @@ func CreateProfile(name, apiURL string) error {
 	}
 
 	// Enforce HTTPS for non-localhost API URLs
-	if apiURL != "" && !isLocalhostURL(apiURL) && !strings.HasPrefix(apiURL, "https://") {
+	if apiURL != "" && !utils.IsLocalhostURL(apiURL) && !strings.HasPrefix(apiURL, "https://") {
 		return utils.NewError("API URL must use HTTPS for non-localhost endpoints. Use http://localhost for local development", nil)
 	}
 

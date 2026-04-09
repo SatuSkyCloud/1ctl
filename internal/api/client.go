@@ -22,13 +22,6 @@ var httpClient = &http.Client{
 	Timeout: 30 * time.Second,
 }
 
-// isLocalhostURL returns true if the URL points to localhost or 127.0.0.1.
-func isLocalhostURL(rawURL string) bool {
-	return strings.HasPrefix(rawURL, "http://localhost") ||
-		strings.HasPrefix(rawURL, "http://127.0.0.1") ||
-		strings.HasPrefix(rawURL, "http://[::1]")
-}
-
 // Common response structure that matches backend
 type apiResponse struct {
 	Error   bool        `json:"error"`
@@ -385,7 +378,7 @@ func makeRequest(method, path string, body interface{}, response interface{}) er
 	url := fmt.Sprintf("%s%s", config.ApiURL, path)
 
 	// Enforce HTTPS for non-localhost API URLs to prevent token leakage over plaintext
-	if !isLocalhostURL(url) && !strings.HasPrefix(url, "https://") {
+	if !utils.IsLocalhostURL(url) && !strings.HasPrefix(url, "https://") {
 		return utils.NewError(fmt.Sprintf("refusing to send auth token over insecure connection (%s). Use HTTPS or http://localhost for local development", config.ApiURL), nil)
 	}
 

@@ -17,6 +17,13 @@ import (
 	"time"
 )
 
+// buildUploadClient is a dedicated client for build context uploads.
+// Uses a longer timeout than the shared API client because build archives
+// can be large and the upload may take time on slow connections.
+var buildUploadClient = &http.Client{
+	Timeout: 5 * time.Minute,
+}
+
 // BuildResponse is returned by POST /v1/cli/builds.
 type BuildResponse struct {
 	BuildID string `json:"build_id"`
@@ -76,7 +83,14 @@ func SubmitBuild(contextTarPath, projectName, dockerfilePath string, buildArgs m
 	}
 
 	cfg := config.GetConfig()
-	req, err := http.NewRequest("POST", cfg.ApiURL+"/builds", body)
+	apiURL := cfg.ApiURL + "/builds"
+
+	// Enforce HTTPS for non-localhost API URLs to prevent token leakage
+	if !utils.IsLocalhostURL(apiURL) && !strings.HasPrefix(apiURL, "https://") {
+		return "", utils.NewError(fmt.Sprintf("refusing to send auth token over insecure connection (%s). Use HTTPS or http://localhost for local development", cfg.ApiURL), nil)
+	}
+
+	req, err := http.NewRequest("POST", apiURL, body)
 	if err != nil {
 		return "", utils.NewError(fmt.Sprintf("failed to create request: %s", err.Error()), nil)
 	}
@@ -86,7 +100,7 @@ func SubmitBuild(contextTarPath, projectName, dockerfilePath string, buildArgs m
 		req.Header.Set("x-satusky-user-email", email)
 	}
 
-	resp, err := http.DefaultClient.Do(req)
+	resp, err := buildUploadClient.Do(req)
 	if err != nil {
 		return "", utils.NewError(fmt.Sprintf("failed to submit build: %s", err.Error()), nil)
 	}
