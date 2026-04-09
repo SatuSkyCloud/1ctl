@@ -241,6 +241,7 @@ type Issuer struct {
 type Organization struct {
 	OrganizationID   uuid.UUID `json:"organization_id"`
 	OrganizationName string    `json:"organization_name"`
+	Namespace        string    `json:"namespace,omitempty"`
 	Description      string    `json:"description,omitempty"`
 	CreatedAt        time.Time `json:"created_at"`
 	UpdatedAt        time.Time `json:"updated_at"`

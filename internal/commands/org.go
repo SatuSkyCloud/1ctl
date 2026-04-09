@@ -218,8 +218,12 @@ func handleOrgSwitch(c *cli.Context) error {
 		}
 	}
 
-	// Update context with new organization
-	if err := context.SetCurrentOrganization(org.OrganizationID.String(), org.OrganizationName, org.OrganizationName); err != nil {
+	// Update context with new organization (use namespace for K8s operations)
+	namespace := org.Namespace
+	if namespace == "" {
+		namespace = org.OrganizationName // fallback for older API responses
+	}
+	if err := context.SetCurrentOrganization(org.OrganizationID.String(), org.OrganizationName, namespace); err != nil {
 		return utils.NewError(fmt.Sprintf("failed to switch organization: %s", err.Error()), nil)
 	}
 
