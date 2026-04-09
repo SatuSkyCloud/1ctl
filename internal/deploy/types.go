@@ -20,6 +20,7 @@ type PDBConfig struct {
 }
 
 type DeploymentOptions struct {
+	Name           string // App name (from satusky.toml or git remote fallback)
 	CPU            string
 	Memory         string
 	Domain         string

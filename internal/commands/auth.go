@@ -13,7 +13,7 @@ import (
 func AuthCommand() *cli.Command {
 	return &cli.Command{
 		Name:  "auth",
-		Usage: "Display commands for authentication",
+		Usage: "Authenticate and manage credentials for SatuSky Cloud",
 		Subcommands: []*cli.Command{
 			{
 				Name:  "login",

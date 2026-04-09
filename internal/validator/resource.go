@@ -10,11 +10,27 @@ import (
 
 var memoryPattern = regexp.MustCompile(`^(\d+)(Mi|Gi)?$`)
 var cpuPattern = regexp.MustCompile(`^(\d+)(m)?$`)
+var cpuFloatPattern = regexp.MustCompile(`^\d+\.\d+$`)
 var domainPattern = regexp.MustCompile(`^(\*\.)?[a-zA-Z0-9][-a-zA-Z0-9]*(\.[a-zA-Z0-9][-a-zA-Z0-9]*)*\.[a-zA-Z]{2,}$`)
 
 func ValidateCPU(cpu string) error {
+	if cpuFloatPattern.MatchString(cpu) {
+		// Handle float CPU values like 0.5, 1.5
+		cpuValue, err := strconv.ParseFloat(cpu, 64)
+		if err != nil {
+			return utils.NewError("invalid CPU value", err)
+		}
+		if cpuValue <= 0 {
+			return utils.NewError("CPU must be greater than 0", nil)
+		}
+		if cpuValue < 0.01 {
+			return utils.NewError("CPU must be at least 0.01 cores (10m)", nil)
+		}
+		return nil
+	}
+
 	if !cpuPattern.MatchString(cpu) {
-		return utils.NewError("CPU must be in format: <number> or <number>m (e.g., 1 or 100m)", nil)
+		return utils.NewError("CPU must be in format: <number>, <decimal> or <number>m (e.g., 1, 0.5 or 500m)", nil)
 	}
 
 	if cpu[len(cpu)-1] == 'm' {

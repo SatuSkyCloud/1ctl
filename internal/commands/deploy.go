@@ -40,12 +40,12 @@ func DeployCommand() *cli.Command {
 		},
 		&cli.StringFlag{
 			Name:  "dockerfile",
-			Usage: "Path to Dockerfile (default: ./Dockerfile)",
+			Usage: "Dockerfile path for cloud build (default: Dockerfile)",
 			Value: "Dockerfile",
 		},
 		&cli.StringFlag{
 			Name:  "image",
-			Usage: "Pre-built image reference (skips local Docker build and upload, e.g. registry.satusky.com/satusky-container-registry/myapp:abc1234)",
+			Usage: "Pre-built image reference — skips cloud build entirely (e.g. registry.satusky.com/satusky-container-registry/myapp:abc1234)",
 		},
 		&cli.IntFlag{
 			Name:  "port",
@@ -202,7 +202,27 @@ func DeployCommand() *cli.Command {
 
 	return &cli.Command{
 		Name:  "deploy",
-		Usage: "Deploy your application to Satusky Cloud",
+		Usage: "Deploy your application to SatuSky Cloud",
+		Description: `Build and deploy your application to SatuSky Cloud.
+
+Images are built in the cloud via Kaniko — no local Docker installation required.
+Your source directory is packaged and sent to the build service, which builds
+and pushes the image directly to the registry.
+
+   1ctl deploy --cpu 1 --memory 512Mi --port 8080
+   1ctl deploy --cpu 2 --memory 1Gi --port 3000 --env KEY=VALUE
+   1ctl deploy --image registry.satusky.com/.../myapp:tag   # skip cloud build
+
+Config file (satusky.toml) can persist deploy settings across runs.
+Run '1ctl init' to create one.
+
+Subcommands manage existing deployments:
+   1ctl deploy list
+   1ctl deploy status --deployment-id <id>
+   1ctl deploy restart --deployment-id <id>
+   1ctl deploy releases --deployment-id <id>
+   1ctl deploy rollback --deployment-id <id>
+   1ctl deploy destroy --deployment-id <id>`,
 		Flags: deployFlags,
 		Subcommands: []*cli.Command{
 			{
@@ -307,14 +327,16 @@ func DeployCommand() *cli.Command {
 			},
 		},
 		Action: func(c *cli.Context) error {
-			// If no subcommand is provided and no flags, show help
-			if c.NArg() == 0 && !c.IsSet("cpu") && !c.IsSet("memory") {
-				return cli.ShowCommandHelp(c, "deploy")
-			}
-
 			// If subcommand is provided, let it handle
 			if c.NArg() > 0 {
 				return cli.ShowSubcommandHelp(c)
+			}
+
+			// If no flags and no satusky.toml with cpu/memory, show help
+			if !c.IsSet("cpu") && !c.IsSet("memory") && !c.IsSet("image") {
+				if cfg, err := config.FindConfig(c.String("config")); err != nil || cfg == nil || (cfg.App.CPU == "" && cfg.App.Memory == "") {
+					return cli.ShowSubcommandHelp(c)
+				}
 			}
 
 			// Otherwise, handle deploy
@@ -324,12 +346,28 @@ func DeployCommand() *cli.Command {
 }
 
 func handleDeploy(c *cli.Context) error {
+	// Load satusky.toml defaults for flags not set on the CLI
+	if cfg, err := config.FindConfig(c.String("config")); err == nil && cfg != nil {
+		if !c.IsSet("cpu") && cfg.App.CPU != "" {
+			_ = c.Set("cpu", cfg.App.CPU)
+		}
+		if !c.IsSet("memory") && cfg.App.Memory != "" {
+			_ = c.Set("memory", cfg.App.Memory)
+		}
+		if !c.IsSet("port") && cfg.App.Port != 0 {
+			_ = c.Set("port", fmt.Sprintf("%d", cfg.App.Port))
+		}
+		if !c.IsSet("domain") && cfg.App.Domain != "" {
+			_ = c.Set("domain", cfg.App.Domain)
+		}
+	}
+
 	// Check required flags for deploy
 	if c.String("cpu") == "" {
-		return utils.NewError("--cpu flag is required for deployment", nil)
+		return utils.NewError("--cpu flag is required for deployment (or set cpu in satusky.toml)", nil)
 	}
 	if c.String("memory") == "" {
-		return utils.NewError("--memory flag is required for deployment", nil)
+		return utils.NewError("--memory flag is required for deployment (or set memory in satusky.toml)", nil)
 	}
 
 	// Validate inputs first
@@ -461,6 +499,11 @@ func prepareDeploymentOptions(c *cli.Context) (deploy.DeploymentOptions, error) 
 		Port:           c.Int("port"),
 		DockerfilePath: c.String("dockerfile"),
 		PrebuiltImage:  c.String("image"),
+	}
+
+	// Load app name from satusky.toml if present
+	if cfg, err := config.FindConfig(c.String("config")); err == nil && cfg != nil && cfg.App.Name != "" {
+		opts.Name = cfg.App.Name
 	}
 
 	// Handle project organization for future use (multi-tenant)

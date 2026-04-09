@@ -16,9 +16,8 @@ import (
 
 func UserCommand() *cli.Command {
 	return &cli.Command{
-		Name:    "user",
-		Aliases: []string{"profile"},
-		Usage:   "Manage user profile",
+		Name:  "user",
+		Usage: "Manage user account",
 		Subcommands: []*cli.Command{
 			userMeCommand(),
 			userUpdateCommand(),

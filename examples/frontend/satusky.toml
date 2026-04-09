@@ -1,0 +1,10 @@
+[app]
+  name = "frontend"
+  org = ""
+  port = 80
+  dockerfile = ""
+  cpu = "0.25"
+  memory = "128Mi"
+  replicas = 0
+  domain = ""
+  deployment_id = "5806dc39-d630-4abb-b61f-1b90aa40186e"

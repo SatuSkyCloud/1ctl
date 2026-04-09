@@ -109,21 +109,15 @@ func TestDeploy(t *testing.T) {
 	}
 }
 
-func TestBuildAndUploadImage(t *testing.T) {
+func TestSubmitRemoteBuild(t *testing.T) {
 	tests := []struct {
 		name           string
 		dockerfilePath string
 		projectName    string
 		wantErr        bool
 	}{
-		// {
-		// 	name:           "valid dockerfile",
-		// 	dockerfilePath: "testdata/Dockerfile",
-		// 	projectName:    "test-project",
-		// 	wantErr:        false,
-		// },
 		{
-			name:           "missing dockerfile",
+			name:           "missing dockerfile is rejected before upload",
 			dockerfilePath: "testdata/nonexistent",
 			projectName:    "test-project",
 			wantErr:        true,
@@ -132,9 +126,9 @@ func TestBuildAndUploadImage(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			_, err := buildAndUploadImage(tt.dockerfilePath, tt.projectName)
+			_, err := submitRemoteBuild(tt.dockerfilePath, tt.projectName)
 			if (err != nil) != tt.wantErr {
-				t.Errorf("buildAndUploadImage() error = %v, wantErr %v", err, tt.wantErr)
+				t.Errorf("submitRemoteBuild() error = %v, wantErr %v", err, tt.wantErr)
 			}
 		})
 	}

@@ -4,8 +4,6 @@ import (
 	"flag"
 	"testing"
 
-	"1ctl/internal/docker"
-
 	"github.com/urfave/cli/v2"
 )
 
@@ -44,10 +42,9 @@ func TestDeployCommand(t *testing.T) {
 
 func TestHandleDeploy(t *testing.T) {
 	tests := []struct {
-		name      string
-		flags     map[string]string
-		mockBuild func(opts docker.BuildOptions) error
-		wantErr   bool
+		name    string
+		flags   map[string]string
+		wantErr bool
 	}{
 		{
 			name: "valid deployment",
@@ -56,9 +53,6 @@ func TestHandleDeploy(t *testing.T) {
 				"memory":     "512Mi",
 				"project":    "test-project",
 				"dockerfile": "testdata/Dockerfile",
-			},
-			mockBuild: func(opts docker.BuildOptions) error {
-				return nil
 			},
 			wantErr: true,
 		},
@@ -70,7 +64,6 @@ func TestHandleDeploy(t *testing.T) {
 				"project":    "test-project",
 				"dockerfile": "testdata/Dockerfile",
 			},
-			mockBuild: nil,
 			wantErr:   true,
 		},
 		{
@@ -81,7 +74,6 @@ func TestHandleDeploy(t *testing.T) {
 				"project":    "test-project",
 				"dockerfile": "testdata/Dockerfile",
 			},
-			mockBuild: nil,
 			wantErr:   true,
 		},
 	}

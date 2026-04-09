@@ -5,11 +5,9 @@ import (
 	"1ctl/internal/context"
 	"1ctl/internal/docker"
 	"1ctl/internal/utils"
+	"1ctl/internal/validator"
 	"fmt"
 	"os"
-	"path/filepath"
-	"strings"
-	"time"
 )
 
 type deploymentProgress struct {
@@ -74,24 +72,33 @@ func Deploy(opts DeploymentOptions) (*api.CreateDeploymentResponse, error) {
 		}
 	}
 
-	projectName, err := docker.GetProjectName()
-	if err != nil {
-		return nil, utils.NewError("Failed to determine project name", err)
+	var projectName string
+	if opts.Name != "" {
+		projectName = opts.Name
+	} else {
+		var err2 error
+		projectName, err2 = docker.GetProjectName()
+		if err2 != nil {
+			return nil, utils.NewError("Failed to determine project name", err2)
+		}
 	}
 
 	// Step 1: Build and push image (skipped when a pre-built image is provided)
-	var image string
+	var (
+		image string
+		err   error
+	)
 	if opts.PrebuiltImage != "" {
 		image = opts.PrebuiltImage
 		utils.PrintInfo("Using pre-built image: %s", image)
 	} else {
 		progress.step = 1
-		progress.message = "Building and pushing Docker image"
+		progress.message = "Building image (cloud)"
 		progress.print()
 
-		image, err = buildAndUploadImage(opts.DockerfilePath, projectName)
+		image, err = submitRemoteBuild(opts.DockerfilePath, projectName)
 		if err != nil {
-			return nil, utils.NewError("Failed to build and push image", err)
+			return nil, utils.NewError("Failed to build image", err)
 		}
 		progress.complete()
 	}
@@ -154,56 +161,38 @@ func Deploy(opts DeploymentOptions) (*api.CreateDeploymentResponse, error) {
 	}, nil
 }
 
-func buildAndUploadImage(dockerfilePath, projectName string) (string, error) {
-	// Build Docker image locally
-	if err := docker.Build(docker.BuildOptions{
-		DockerfilePath: dockerfilePath,
-		Tag:            projectName,
-	}); err != nil {
-		return "", utils.NewError(fmt.Sprintf("failed to build Docker image: %s", err.Error()), nil)
+// submitRemoteBuild packages the local build context, uploads it to the backend,
+// and waits for the Kaniko cloud build to complete. No local Docker daemon is required.
+func submitRemoteBuild(dockerfilePath, projectName string) (string, error) {
+	// Validate that the Dockerfile exists and is well-formed before shipping anything.
+	if err := validator.ValidateDockerfile(dockerfilePath); err != nil {
+		return "", utils.NewError(fmt.Sprintf("invalid Dockerfile: %s", err.Error()), nil)
 	}
 
-	// Save image to temporary file
-	tmpFile := filepath.Join(os.TempDir(), fmt.Sprintf("%s.tar", strings.ReplaceAll(projectName, "/", "_")))
-	defer func() { _ = os.Remove(tmpFile) }() //nolint:errcheck // Clean up temp file
+	// Package the build context into a gzipped tar, respecting .dockerignore.
+	utils.PrintInfo("Packaging build context...")
+	contextPath, err := docker.PackageContext(".")
+	if err != nil {
+		return "", utils.NewError(fmt.Sprintf("failed to package build context: %s", err.Error()), nil)
+	}
+	defer func() { _ = os.Remove(contextPath) }() //nolint:errcheck
 
-	if err := docker.SaveImage(projectName, tmpFile); err != nil {
-		return "", utils.NewError(fmt.Sprintf("failed to save Docker image: %s", err.Error()), nil)
+	// Submit the context to the backend; it returns a build ID immediately.
+	utils.PrintInfo("Submitting build to cloud...")
+	buildID, err := api.SubmitBuild(contextPath, projectName, dockerfilePath, nil)
+	if err != nil {
+		return "", utils.NewError(fmt.Sprintf("failed to submit build: %s", err.Error()), nil)
+	}
+	utils.PrintInfo("Build queued (ID: %s)", buildID)
+
+	// Poll until the Kaniko job finishes, streaming log output as it arrives.
+	imageRef, err := api.WaitForBuild(buildID, os.Stdout)
+	if err != nil {
+		return "", err
 	}
 
-	// Upload image to backend with retry logic
-	var version string
-	var uploadErr error
-	maxRetries := 3
-
-	for attempt := 1; attempt <= maxRetries; attempt++ {
-		utils.PrintInfo("Uploading Docker image (attempt %d/%d)...", attempt, maxRetries)
-
-		version, uploadErr = api.UploadDockerImage(tmpFile, projectName)
-		if uploadErr == nil {
-			utils.PrintSuccess("Docker image uploaded successfully")
-			break
-		}
-
-		if attempt < maxRetries {
-			// Exponential backoff: wait 2^attempt seconds
-			waitTime := 1 << attempt // 2, 4, 8 seconds
-			utils.PrintWarning("Upload failed (attempt %d/%d): %s. Retrying in %d seconds...",
-				attempt, maxRetries, uploadErr.Error(), waitTime)
-			time.Sleep(time.Duration(waitTime) * time.Second)
-		} else {
-			utils.PrintError("Upload failed after %d attempts: %s", maxRetries, uploadErr.Error())
-		}
-	}
-
-	if uploadErr != nil {
-		return "", utils.NewError(fmt.Sprintf("failed to deploy Docker image after %d attempts: %s", maxRetries, uploadErr.Error()), nil)
-	}
-
-	// generate full image tag
-	fullImage := fmt.Sprintf("%s/%s:%s", docker.RegistryURL, projectName, version)
-
-	return fullImage, nil
+	utils.PrintSuccess("Cloud build complete: %s", imageRef)
+	return imageRef, nil
 }
 
 func mainDeploy(opts DeploymentOptions, image, name, userID, organization string, hostnames []string) (string, error) {
