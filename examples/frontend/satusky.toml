@@ -7,4 +7,4 @@
   memory = "128Mi"
   replicas = 0
   domain = ""
-  deployment_id = "6013a4c9-4655-4d23-a8a6-2148f59019f0"
+  deployment_id = ""
