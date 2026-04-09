@@ -59,7 +59,9 @@ func GetActiveProfileName() string {
 	}
 
 	var root rootContext
-	_ = json.Unmarshal(data, &root)
+	if err := json.Unmarshal(data, &root); err != nil {
+		return ""
+	}
 	return root.ActiveProfile
 }
 
@@ -111,7 +113,9 @@ func ListProfiles() ([]ProfileInfo, error) {
 		}
 
 		var ctx CLIContext
-		_ = json.Unmarshal(data, &ctx)
+		if err := json.Unmarshal(data, &ctx); err != nil {
+			continue
+		}
 
 		profiles = append(profiles, ProfileInfo{
 			Name:     name,

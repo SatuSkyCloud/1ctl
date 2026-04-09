@@ -47,7 +47,10 @@ func handleInit(c *cli.Context) error {
 		}
 	}
 
-	dir, _ := os.Getwd()
+	dir, err := os.Getwd()
+	if err != nil {
+		return utils.NewError(fmt.Sprintf("failed to get working directory: %s", err.Error()), nil)
+	}
 	if base.App.Name == "" {
 		base.App.Name = filepath.Base(dir)
 	}

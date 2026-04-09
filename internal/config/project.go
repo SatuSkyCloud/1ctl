@@ -65,7 +65,7 @@ func (cfg *ProjectConfig) Save() error {
 	if err != nil {
 		return err
 	}
-	defer f.Close()
+	defer func() { _ = f.Close() }() //nolint:errcheck
 	return toml.NewEncoder(f).Encode(cfg)
 }
 

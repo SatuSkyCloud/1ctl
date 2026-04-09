@@ -38,7 +38,10 @@ func SetupTestProfile(t *testing.T, homeDir, profileName string) {
 	type rootCtx struct {
 		ActiveProfile string `json:"active_profile"`
 	}
-	data, _ := json.MarshalIndent(rootCtx{ActiveProfile: profileName}, "", "  ")
+	data, err := json.MarshalIndent(rootCtx{ActiveProfile: profileName}, "", "  ")
+	if err != nil {
+		t.Fatalf("failed to marshal context json: %v", err)
+	}
 	contextPath := filepath.Join(satuDir, "context.json")
 	if err := os.WriteFile(contextPath, data, 0600); err != nil {
 		t.Fatalf("failed to write context.json: %v", err)

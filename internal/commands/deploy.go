@@ -349,16 +349,24 @@ func handleDeploy(c *cli.Context) error {
 	// Load satusky.toml defaults for flags not set on the CLI
 	if cfg, err := config.FindConfig(c.String("config")); err == nil && cfg != nil {
 		if !c.IsSet("cpu") && cfg.App.CPU != "" {
-			_ = c.Set("cpu", cfg.App.CPU)
+			if err := c.Set("cpu", cfg.App.CPU); err != nil {
+				return utils.NewError(fmt.Sprintf("failed to set cpu from config: %s", err.Error()), nil)
+			}
 		}
 		if !c.IsSet("memory") && cfg.App.Memory != "" {
-			_ = c.Set("memory", cfg.App.Memory)
+			if err := c.Set("memory", cfg.App.Memory); err != nil {
+				return utils.NewError(fmt.Sprintf("failed to set memory from config: %s", err.Error()), nil)
+			}
 		}
 		if !c.IsSet("port") && cfg.App.Port != 0 {
-			_ = c.Set("port", fmt.Sprintf("%d", cfg.App.Port))
+			if err := c.Set("port", fmt.Sprintf("%d", cfg.App.Port)); err != nil {
+				return utils.NewError(fmt.Sprintf("failed to set port from config: %s", err.Error()), nil)
+			}
 		}
 		if !c.IsSet("domain") && cfg.App.Domain != "" {
-			_ = c.Set("domain", cfg.App.Domain)
+			if err := c.Set("domain", cfg.App.Domain); err != nil {
+				return utils.NewError(fmt.Sprintf("failed to set domain from config: %s", err.Error()), nil)
+			}
 		}
 	}
 
@@ -397,7 +405,9 @@ func handleDeploy(c *cli.Context) error {
 	// Best-effort: write deployment_id back to config file.
 	if cfg, err := config.FindConfig(c.String("config")); err == nil && cfg != nil {
 		cfg.App.DeploymentID = resp.DeploymentID.String()
-		_ = cfg.Save()
+		if err := cfg.Save(); err != nil {
+			utils.PrintWarning("failed to save deployment_id to config: %s", err.Error())
+		}
 	}
 
 	return nil
