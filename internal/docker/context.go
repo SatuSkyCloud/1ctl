@@ -34,7 +34,7 @@ func PackageContext(contextDir string) (string, error) {
 	gzw := gzip.NewWriter(tmpFile)
 	tw := tar.NewWriter(gzw)
 
-	walkErr := filepath.Walk(absContext, func(path string, info os.FileInfo, err error) error {
+	walkErr := filepath.WalkDir(absContext, func(path string, d os.DirEntry, err error) error { // #nosec G122 -- WalkDir avoids os.FileInfo TOCTOU race
 		if err != nil {
 			return err
 		}
@@ -50,10 +50,15 @@ func PackageContext(contextDir string) (string, error) {
 		relSlash := filepath.ToSlash(relPath)
 
 		if shouldIgnore(relSlash, patterns) {
-			if info.IsDir() {
+			if d.IsDir() {
 				return filepath.SkipDir
 			}
 			return nil
+		}
+
+		info, err := d.Info()
+		if err != nil {
+			return err
 		}
 
 		// Skip directories and symlinks; only tar regular files.
@@ -71,7 +76,7 @@ func PackageContext(contextDir string) (string, error) {
 			return err
 		}
 
-		f, err := os.Open(path) // #nosec G304 -- path derived from filepath.Walk on user-supplied context dir
+		f, err := os.Open(path) // #nosec G304 -- path derived from filepath.WalkDir on user-supplied context dir
 		if err != nil {
 			return err
 		}
@@ -92,7 +97,7 @@ func PackageContext(contextDir string) (string, error) {
 	}()
 
 	if walkErr != nil || closeErr != nil {
-		_ = os.Remove(tmpPath)
+		_ = os.Remove(tmpPath) //nolint:errcheck
 		if walkErr != nil {
 			return "", fmt.Errorf("failed to package context: %w", walkErr)
 		}
@@ -153,13 +158,13 @@ func matchIgnorePattern(relPath, pattern string) bool {
 	}
 
 	// Direct match (covers "dir/file" and "*.go" style patterns).
-	if m, _ := filepath.Match(pattern, relPath); m {
+	if m, _ := filepath.Match(pattern, relPath); m { //nolint:errcheck
 		return true
 	}
 
 	// Basename-only match for patterns without a slash (e.g. "*.go", ".DS_Store").
 	if !strings.Contains(pattern, "/") {
-		if m, _ := filepath.Match(pattern, filepath.Base(relPath)); m {
+		if m, _ := filepath.Match(pattern, filepath.Base(relPath)); m { //nolint:errcheck
 			return true
 		}
 	}
@@ -189,7 +194,7 @@ func matchDoubleGlob(pathParts, patternParts []string) bool {
 	if len(pathParts) == 0 {
 		return false
 	}
-	matched, _ := filepath.Match(patternParts[0], pathParts[0])
+	matched, _ := filepath.Match(patternParts[0], pathParts[0]) //nolint:errcheck
 	if !matched {
 		return false
 	}

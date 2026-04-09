@@ -106,7 +106,10 @@ func SubmitBuild(contextTarPath, projectName, dockerfilePath string, buildArgs m
 	}
 	defer func() { _ = resp.Body.Close() }() //nolint:errcheck
 
-	respBody, _ := io.ReadAll(resp.Body)
+	respBody, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return "", utils.NewError(fmt.Sprintf("failed to read build response: %s", err.Error()), nil)
+	}
 	if resp.StatusCode != http.StatusOK && resp.StatusCode != http.StatusCreated {
 		var apiErr APIError
 		if jsonErr := json.Unmarshal(respBody, &apiErr); jsonErr == nil && apiErr.Message != "" {
@@ -168,7 +171,9 @@ func WaitForBuild(buildID string, progressWriter io.Writer) (string, error) {
 			newLogs := status.Logs[logOffset:]
 			scanner := bufio.NewScanner(strings.NewReader(newLogs))
 			for scanner.Scan() {
-				fmt.Fprintf(progressWriter, "  %s\n", scanner.Text())
+				if _, err := fmt.Fprintf(progressWriter, "  %s\n", scanner.Text()); err != nil {
+					return "", utils.NewError(fmt.Sprintf("failed to write build log: %s", err.Error()), nil)
+				}
 			}
 			logOffset = len(status.Logs)
 		}
