@@ -1,0 +1,10 @@
+[app]
+  name = "backend-api"
+  org = ""
+  port = 8080
+  dockerfile = ""
+  cpu = "0.5"
+  memory = "256Mi"
+  replicas = 0
+  domain = ""
+  deployment_id = "5ac277f2-4e86-4474-8f6f-730284fd1ae2"

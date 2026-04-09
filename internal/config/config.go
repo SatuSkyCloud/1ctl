@@ -12,13 +12,11 @@ import (
 // These vars are intentionally overridable at build time via -ldflags
 // e.g. go build -ldflags "-X '1ctl/internal/config.defaultAPIURL=http://localhost:8080/v1/cli'"
 var (
-	defaultAPIURL          = "https://api.satusky.com/v1/cli"
-	defaultDockerUploadURL = "https://docker-upload.api.satusky.com"
+	defaultAPIURL = "https://api.satusky.com/v1/cli"
 )
 
 type Config struct {
-	ApiURL       string
-	DockerApiURL string
+	ApiURL string
 }
 
 func init() {
@@ -33,18 +31,17 @@ func init() {
 
 func GetConfig() *Config {
 	config := &Config{
-		ApiURL:       defaultAPIURL,
-		DockerApiURL: defaultDockerUploadURL,
+		ApiURL: defaultAPIURL,
 	}
 
-	// Override API URL if explicitly set
-	if apiURL := os.Getenv("SATUSKY_API_URL"); apiURL != "" {
+	// Active profile API URL overrides the compiled-in default
+	if apiURL := context.GetAPIURL(); apiURL != "" {
 		config.ApiURL = apiURL
 	}
 
-	// Override Docker API URL if explicitly set
-	if dockerURL := os.Getenv("SATUSKY_DOCKER_API_URL"); dockerURL != "" {
-		config.DockerApiURL = dockerURL
+	// Env var overrides profile (useful for one-off overrides without switching profiles)
+	if apiURL := os.Getenv("SATUSKY_API_URL"); apiURL != "" {
+		config.ApiURL = apiURL
 	}
 
 	return config

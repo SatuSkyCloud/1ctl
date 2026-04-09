@@ -5,6 +5,7 @@ import (
 
 	"1ctl/internal/commands"
 	"1ctl/internal/config"
+	"1ctl/internal/context"
 	"1ctl/internal/utils"
 	"1ctl/internal/version"
 
@@ -21,10 +22,43 @@ func run() error {
 func createApp() *cli.App {
 	app := &cli.App{
 		Name:    "1ctl",
-		Usage:   "1ctl is the command line tool for Satusky",
+		Usage:   "Deploy and manage applications on SatuSky Cloud",
 		Version: version.Version,
+		Description: `1ctl is the command-line interface for SatuSky Cloud.
+
+Quick start:
+   1ctl profile create --url https://api.satusky.com/v1/cli prod
+   1ctl profile use prod
+   1ctl auth login --token <your-api-token>
+   1ctl deploy --port 8080
+
+Build & deploy:
+   Images are built in the cloud via Kaniko — no local Docker required.
+   Run 'satusky.toml' or use --dockerfile to control the build.
+   Use --image <ref> to skip the build step with a pre-built image.
+
+Profiles (multi-environment):
+   1ctl profile create --url http://localhost:8080/v1/cli local
+   1ctl profile use local
+   1ctl --profile local deploy --port 8080   # one-shot override
+
+Docs:   https://docs.satusky.com/cli
+Tokens: https://app.satusky.com/settings/tokens`,
+		Flags: []cli.Flag{
+			&cli.StringFlag{
+				Name:    "profile",
+				Aliases: []string{"p"},
+				Usage:   "Profile to use for this command (e.g. --profile local)",
+				EnvVars: []string{"SATUSKY_PROFILE"},
+			},
+			&cli.StringFlag{
+				Name:  "api-url",
+				Usage: "API URL override for this command (highest priority, overrides profile and env var)",
+			},
+		},
 		Commands: []*cli.Command{
 			commands.AuthCommand(),
+			commands.ProfileCommand(),
 			commands.OrgCommand(),
 			commands.InitCommand(),
 			commands.DeployCommand(),
@@ -54,11 +88,24 @@ func createApp() *cli.App {
 			commands.PricingCommand(),
 		},
 		Before: func(c *cli.Context) error {
+			// Apply --profile flag: sets profile for this process invocation only (not persisted)
+			if profile := c.String("profile"); profile != "" {
+				context.SetProfileOverride(profile)
+			}
+
+			// Apply --api-url flag: highest-priority URL override, set via env var so GetConfig picks it up
+			if apiURL := c.String("api-url"); apiURL != "" {
+				if err := os.Setenv("SATUSKY_API_URL", apiURL); err != nil {
+					return utils.NewError("failed to set API URL", err)
+				}
+			}
+
 			// Get the command or first argument
 			cmdName := c.Args().First()
 
 			// Skip token validation for these cases
 			if cmdName == "auth" ||
+				cmdName == "profile" ||
 				cmdName == "org" ||
 				cmdName == "init" ||
 				cmdName == "completion" ||

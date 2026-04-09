@@ -10,7 +10,8 @@ import (
 )
 
 type CLIContext struct {
-	CurrentNamespace string `json:"organization"` // Keep for backwards compatibility (stores namespace)
+	APIURL           string `json:"api_url,omitempty"`
+	CurrentNamespace string `json:"organization"`
 	CurrentOrgID     string `json:"current_org_id,omitempty"`
 	CurrentOrgName   string `json:"current_org_name,omitempty"`
 	Email            string `json:"email,omitempty"`
@@ -60,14 +61,14 @@ func SetConfigDir(dir string) {
 	configDir = dir
 }
 
-// GetToken returns the token from context.json
+// GetToken returns the token from the active profile (or legacy context.json).
 func GetToken() string {
-	contextFile := filepath.Join(configDir, "context.json")
+	contextFile := getContextFilePath()
 	if err := validatePath(contextFile); err != nil {
 		return ""
 	}
 
-	data, err := os.ReadFile(contextFile) // #nosec G304 -- Path constructed from home directory
+	data, err := os.ReadFile(contextFile) // #nosec G304 -- Path validated above
 	if err != nil {
 		return ""
 	}
@@ -89,8 +90,7 @@ func SetToken(token string) error {
 
 // GetUserID returns the user ID from context.json
 func GetUserID() string {
-	contextFile := filepath.Join(configDir, "context.json")
-	data, err := os.ReadFile(contextFile) // #nosec G304 -- Path constructed from home directory
+	data, err := os.ReadFile(getContextFilePath()) // #nosec G304 -- Path resolved via getContextFilePath
 	if err != nil {
 		return ""
 	}
@@ -112,8 +112,7 @@ func SetUserID(userID string) error {
 
 // GetEmail returns the user email from context.json
 func GetEmail() string {
-	contextFile := filepath.Join(configDir, "context.json")
-	data, err := os.ReadFile(contextFile) // #nosec G304 -- Path constructed from home directory
+	data, err := os.ReadFile(getContextFilePath()) // #nosec G304 -- Path resolved via getContextFilePath
 	if err != nil {
 		return ""
 	}
@@ -135,8 +134,7 @@ func SetEmail(email string) error {
 
 // GetCurrentNamespace returns the current namespace from context.json
 func GetCurrentNamespace() string {
-	contextFile := filepath.Join(configDir, "context.json")
-	data, err := os.ReadFile(contextFile) // #nosec G304 -- Path constructed from home directory
+	data, err := os.ReadFile(getContextFilePath()) // #nosec G304 -- Path resolved via getContextFilePath
 	if err != nil {
 		return ""
 	}
@@ -158,8 +156,7 @@ func SetCurrentNamespace(namespace string) error {
 
 // GetUserConfigKey returns the user config key from context.json
 func GetUserConfigKey() string {
-	contextFile := filepath.Join(configDir, "context.json")
-	data, err := os.ReadFile(contextFile) // #nosec G304 -- Path constructed from home directory
+	data, err := os.ReadFile(getContextFilePath()) // #nosec G304 -- Path resolved via getContextFilePath
 	if err != nil {
 		return ""
 	}
@@ -181,8 +178,7 @@ func SetUserConfigKey(userConfigKey string) error {
 
 // GetCurrentOrgID returns the current organization ID from context.json
 func GetCurrentOrgID() string {
-	contextFile := filepath.Join(configDir, "context.json")
-	data, err := os.ReadFile(contextFile) // #nosec G304 -- Path constructed from home directory
+	data, err := os.ReadFile(getContextFilePath()) // #nosec G304 -- Path resolved via getContextFilePath
 	if err != nil {
 		return ""
 	}
@@ -204,8 +200,7 @@ func SetCurrentOrgID(orgID string) error {
 
 // GetCurrentOrgName returns the current organization name from context.json
 func GetCurrentOrgName() string {
-	contextFile := filepath.Join(configDir, "context.json")
-	data, err := os.ReadFile(contextFile) // #nosec G304 -- Path constructed from home directory
+	data, err := os.ReadFile(getContextFilePath()) // #nosec G304 -- Path resolved via getContextFilePath
 	if err != nil {
 		return ""
 	}
@@ -234,12 +229,22 @@ func SetCurrentOrganization(orgID, orgName, namespace string) error {
 	})
 }
 
-// saveContext is a helper function to save context changes
+// saveContext writes profile data changes to the active profile file.
+// Returns an error if no profile is currently active.
 func saveContext(modifier func(*CLIContext)) error {
-	contextFile := filepath.Join(configDir, "context.json")
+	if GetActiveProfileName() == "" && profileOverride == "" {
+		return utils.NewError("no profile is active. Create one with '1ctl profile create [--url <url>] <name>' then run '1ctl profile use <name>'", nil)
+	}
+
+	contextFile := getContextFilePath()
+
+	// Ensure ~/.satusky/profiles/ exists
+	if err := os.MkdirAll(filepath.Dir(contextFile), 0750); err != nil {
+		return err
+	}
 
 	var ctx CLIContext
-	data, err := os.ReadFile(contextFile) // #nosec G304 -- Path constructed from home directory
+	data, err := os.ReadFile(contextFile) // #nosec G304 -- Path resolved via getContextFilePath
 	if err == nil && len(data) > 0 {
 		if err := json.Unmarshal(data, &ctx); err != nil {
 			return err
@@ -255,3 +260,26 @@ func saveContext(modifier func(*CLIContext)) error {
 
 	return os.WriteFile(contextFile, data, 0600)
 }
+
+// GetAPIURL returns the API URL stored in the active profile, or "" if none is set.
+func GetAPIURL() string {
+	data, err := os.ReadFile(getContextFilePath()) // #nosec G304
+	if err != nil {
+		return ""
+	}
+
+	var ctx CLIContext
+	if err := json.Unmarshal(data, &ctx); err != nil {
+		return ""
+	}
+
+	return ctx.APIURL
+}
+
+// SetAPIURL saves an API URL override to the active profile.
+func SetAPIURL(apiURL string) error {
+	return saveContext(func(ctx *CLIContext) {
+		ctx.APIURL = apiURL
+	})
+}
+
