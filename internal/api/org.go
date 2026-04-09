@@ -22,7 +22,7 @@ type TeamMember struct {
 
 // CreateOrganizationRequest represents a request to create an organization
 type CreateOrganizationRequest struct {
-	Name        string `json:"name"`
+	Name        string `json:"organization_name"`
 	Description string `json:"description,omitempty"`
 }
 
