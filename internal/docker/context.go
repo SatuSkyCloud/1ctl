@@ -34,7 +34,7 @@ func PackageContext(contextDir string) (string, error) {
 	gzw := gzip.NewWriter(tmpFile)
 	tw := tar.NewWriter(gzw)
 
-	walkErr := filepath.WalkDir(absContext, func(path string, d os.DirEntry, err error) error { // #nosec G122 -- WalkDir avoids os.FileInfo TOCTOU race
+	walkErr := filepath.WalkDir(absContext, func(path string, d os.DirEntry, err error) error {
 		if err != nil {
 			return err
 		}
@@ -76,7 +76,7 @@ func PackageContext(contextDir string) (string, error) {
 			return err
 		}
 
-		f, err := os.Open(path) // #nosec G304 -- path derived from filepath.WalkDir on user-supplied context dir
+		f, err := os.Open(path) // #nosec G304 G122 -- path derived from filepath.WalkDir on user-supplied context dir
 		if err != nil {
 			return err
 		}
