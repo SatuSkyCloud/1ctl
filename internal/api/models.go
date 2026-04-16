@@ -105,39 +105,39 @@ type DeploymentStrategyConfig struct {
 }
 
 type Deployment struct {
-	DeploymentID       uuid.UUID           `json:"deployment_id,omitempty"`
-	UserID             uuid.UUID           `json:"user_id"`
-	Hostnames          []string            `json:"hostnames"`
-	Type               string              `json:"type"`
-	Zone               string              `json:"zone"`
-	Region             string              `json:"region"`
-	SSD                string              `json:"ssd"`
-	GPU                string              `json:"gpu"`
-	Namespace          string              `json:"namespace"`
-	Replicas           int32               `json:"replicas"`
-	Image              string              `json:"image"`
-	AppLabel           string              `json:"app_label"`
-	Port               int32               `json:"port"`
-	CpuRequest         string              `json:"cpu_request"`
-	MemoryRequest      string              `json:"memory_request"`
-	MemoryLimit        string              `json:"memory_limit"`
-	RepoURL            string              `json:"repo_url,omitempty"`
-	BranchName         string              `json:"branch_name,omitempty"`
-	DockerfilePath     string              `json:"dockerfile_path,omitempty"`
-	EnvEnabled         bool                `json:"env_enabled"`
-	SecretEnabled      bool                `json:"secret_enabled"`
-	VolumeEnabled      bool                `json:"volume_enabled"`
-	Status             string              `json:"status"`
-	Environment        string              `json:"environment"`
-	MarketplaceAppName string              `json:"marketplace_app_name"`
-	MulticlusterConfig *MulticlusterConfig `json:"multicluster_config,omitempty"`
-	PDBConfig          *PDBConfig          `json:"pdb_config,omitempty"`
-	HPAConfig          *HPAConfig          `json:"hpa_config,omitempty"`
+	DeploymentID       uuid.UUID                 `json:"deployment_id,omitempty"`
+	UserID             uuid.UUID                 `json:"user_id"`
+	Hostnames          []string                  `json:"hostnames"`
+	Type               string                    `json:"type"`
+	Zone               string                    `json:"zone"`
+	Region             string                    `json:"region"`
+	SSD                string                    `json:"ssd"`
+	GPU                string                    `json:"gpu"`
+	Namespace          string                    `json:"namespace"`
+	Replicas           int32                     `json:"replicas"`
+	Image              string                    `json:"image"`
+	AppLabel           string                    `json:"app_label"`
+	Port               int32                     `json:"port"`
+	CpuRequest         string                    `json:"cpu_request"`
+	MemoryRequest      string                    `json:"memory_request"`
+	MemoryLimit        string                    `json:"memory_limit"`
+	RepoURL            string                    `json:"repo_url,omitempty"`
+	BranchName         string                    `json:"branch_name,omitempty"`
+	DockerfilePath     string                    `json:"dockerfile_path,omitempty"`
+	EnvEnabled         bool                      `json:"env_enabled"`
+	SecretEnabled      bool                      `json:"secret_enabled"`
+	VolumeEnabled      bool                      `json:"volume_enabled"`
+	Status             string                    `json:"status"`
+	Environment        string                    `json:"environment"`
+	MarketplaceAppName string                    `json:"marketplace_app_name"`
+	MulticlusterConfig *MulticlusterConfig       `json:"multicluster_config,omitempty"`
+	PDBConfig          *PDBConfig                `json:"pdb_config,omitempty"`
+	HPAConfig          *HPAConfig                `json:"hpa_config,omitempty"`
 	VPAConfig          *VPAConfig                `json:"vpa_config,omitempty"`
 	StrategyConfig     *DeploymentStrategyConfig `json:"deployment_strategy,omitempty"`
 	WaitFor            []WaitFor                 `json:"wait_for,omitempty"`
-	CreatedAt          time.Time           `json:"created_at"`
-	UpdatedAt          time.Time           `json:"updated_at"`
+	CreatedAt          time.Time                 `json:"created_at"`
+	UpdatedAt          time.Time                 `json:"updated_at"`
 }
 
 type CreateDeploymentResponse struct {

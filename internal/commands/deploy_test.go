@@ -64,7 +64,7 @@ func TestHandleDeploy(t *testing.T) {
 				"project":    "test-project",
 				"dockerfile": "testdata/Dockerfile",
 			},
-			wantErr:   true,
+			wantErr: true,
 		},
 		{
 			name: "invalid memory",
@@ -74,7 +74,7 @@ func TestHandleDeploy(t *testing.T) {
 				"project":    "test-project",
 				"dockerfile": "testdata/Dockerfile",
 			},
-			wantErr:   true,
+			wantErr: true,
 		},
 	}
 
@@ -141,7 +141,7 @@ func TestValidateInputs_MulticlusterCustomDomain(t *testing.T) {
 			if err := ctx.Set("cpu", "1"); err != nil {
 				t.Fatalf("set cpu: %v", err)
 			}
-			if err := ctx.Set("memory", "512Mi", ); err != nil {
+			if err := ctx.Set("memory", "512Mi"); err != nil {
 				t.Fatalf("set memory: %v", err)
 			}
 			if err := ctx.Set("image", "registry.example.com/myapp:latest"); err != nil {
