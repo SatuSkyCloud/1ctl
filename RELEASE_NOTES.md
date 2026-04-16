@@ -1,5 +1,31 @@
 # Release Notes
 
+## Version 0.7.3 (16-04-2026)
+
+### New Features
+
+- **`1ctl-dev` build variant for dev-backend testing**: Every tagged release now ships a second binary — `1ctl-dev` — alongside `1ctl`. The dev binary bakes in `https://dev-core-api.satusky.com/v1/cli` via `-ldflags` at link time, so engineers can exercise CLI changes against the dev backend before a prod release with zero configuration. Installable side-by-side with `1ctl` via:
+  ```bash
+  curl -sSL https://raw.githubusercontent.com/SatuSkyCloud/1ctl/main/install-dev.sh | bash
+  ```
+  `--version` shows `[development]` to make the active binary obvious. Internal testing only — not published to Homebrew.
+- **Credential isolation between dev and prod**: Non-production builds use `~/.satusky-<env>/` (e.g. `~/.satusky-development/`) instead of `~/.satusky/`, so switching between `1ctl` and `1ctl-dev` no longer requires re-logging-in. Each binary maintains its own token, org context, and state.
+
+### Improvements
+
+- **Build-time URL overrides**: `defaultAPIURL` and `defaultDockerUploadURL` in `internal/config/config.go` are now `var` (not `const`) so GoReleaser can override them via `-ldflags`. Runtime `SATUSKY_API_URL` / `SATUSKY_DOCKER_API_URL` env vars still win for per-invocation overrides (e.g. pointing `1ctl-dev` at a local backend).
+- **`--version` output**: now routes through `GetVersionInfo()` so commit hash, build date, and environment tag all show consistently.
+
+### Bug Fixes
+
+- **README token URL**: fixed hallucinated `https://cloud.satusky.com/token` → correct path is `https://cloud.satusky.com/<org-id>/token`.
+
+### Known Issues
+
+- **Homebrew formula not refreshed for v0.7.3**: The `HOMEBREW_TAP_TOKEN` returned 401 during publish. Tarballs on the GitHub release are complete; brew users remain on v0.7.2 until the tap token is rotated and the formula re-published. Unrelated to the dev-binary work.
+
+---
+
 ## Version 0.7.2 (06-04-2026)
 
 ### Bug Fixes
