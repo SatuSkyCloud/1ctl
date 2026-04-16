@@ -11,11 +11,11 @@ import (
 
 // CLIUserProfile represents user profile information for CLI operations
 type CLIUserProfile struct {
-	UserID       string  `json:"user_id"`
-	Email        string  `json:"email"`
-	Name         *string `json:"name,omitempty"`
-	Organization string  `json:"organization,omitempty"`
-	Role         string  `json:"role,omitempty"`
+	UserID       string    `json:"user_id"`
+	Email        string    `json:"email"`
+	Name         *string   `json:"name,omitempty"`
+	Organization string    `json:"organization,omitempty"`
+	Role         string    `json:"role,omitempty"`
 	CreatedAt    time.Time `json:"created_at"`
 }
 
