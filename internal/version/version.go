@@ -24,5 +24,8 @@ func GetVersionInfo() string {
 	if BuildDate != "" {
 		version += fmt.Sprintf(" (built: %s)", BuildDate)
 	}
+	if Environment != "" && Environment != "production" {
+		version += fmt.Sprintf(" [%s]", Environment)
+	}
 	return version
 }

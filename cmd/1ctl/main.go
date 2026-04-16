@@ -22,7 +22,7 @@ func createApp() *cli.App {
 	app := &cli.App{
 		Name:    "1ctl",
 		Usage:   "1ctl is the command line tool for Satusky",
-		Version: version.Version,
+		Version: version.GetVersionInfo(),
 		Commands: []*cli.Command{
 			commands.AuthCommand(),
 			commands.OrgCommand(),
