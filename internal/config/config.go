@@ -9,10 +9,20 @@ import (
 	"github.com/joho/godotenv"
 )
 
-const (
+// These defaults are intentionally vars (not consts) so the 1ctl-dev build
+// can override them at link time via -ldflags "-X ...defaultAPIURL=...".
+// SATUSKY_API_URL / SATUSKY_DOCKER_API_URL env vars still override at runtime.
+var (
 	defaultAPIURL          = "https://api.satusky.com/v1/cli"
 	defaultDockerUploadURL = "http://docker-upload.api.satusky.com"
 )
+
+// DefaultAPIURL returns the compiled-in default API URL (prod for `1ctl`,
+// dev for `1ctl-dev`). Ignores both env vars — use GetConfig() for the
+// effective runtime URL.
+func DefaultAPIURL() string {
+	return defaultAPIURL
+}
 
 type Config struct {
 	ApiURL       string
