@@ -2,6 +2,7 @@ package context
 
 import (
 	"1ctl/internal/utils"
+	"1ctl/internal/version"
 	"encoding/base64"
 	"encoding/json"
 	"fmt"
@@ -53,7 +54,13 @@ func init() {
 		log.Fatal("Could not get home directory:", err)
 	}
 
-	configDir = filepath.Join(homeDir, ".satusky")
+	// Non-production builds (e.g. 1ctl-dev) use a separate config dir so
+	// dev credentials don't clobber prod credentials on the same machine.
+	dir := ".satusky"
+	if env := version.Environment; env != "" && env != "production" {
+		dir = ".satusky-" + env
+	}
+	configDir = filepath.Join(homeDir, dir)
 	if err := os.MkdirAll(configDir, 0750); err != nil {
 		log.Fatal("Could not create config directory:", err)
 	}
@@ -349,4 +356,3 @@ func SetAPIURL(apiURL string) error {
 		ctx.APIURL = apiURL
 	})
 }
-

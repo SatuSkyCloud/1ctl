@@ -78,7 +78,7 @@ steps:
 
 ## Quick Start
 
-1. Get your API token from [Satusky Control Panel](https://cloud.satusky.com/token)
+1. Get your API token from the SatuSky Control Panel at `https://cloud.satusky.com/<org-id>/token`
 
 2. Authenticate:
 

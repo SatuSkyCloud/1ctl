@@ -9,11 +9,22 @@ import (
 	"github.com/joho/godotenv"
 )
 
-// These vars are intentionally overridable at build time via -ldflags
-// e.g. go build -ldflags "-X '1ctl/internal/config.defaultAPIURL=http://localhost:8080/v1/cli'"
+// defaultAPIURL is intentionally overridable at build time via -ldflags:
+//
+//	go build -ldflags "-X '1ctl/internal/config.defaultAPIURL=https://dev-core-api.satusky.com/v1/cli'"
+//
+// Used by the 1ctl-dev build and for local-dev builds against localhost.
+// Active profile and SATUSKY_API_URL env var still override at runtime.
 var (
 	defaultAPIURL = "https://api.satusky.com/v1/cli"
 )
+
+// DefaultAPIURL returns the compiled-in default API URL (prod URL for `1ctl`,
+// dev URL for `1ctl-dev`). It ignores both the active profile and the
+// SATUSKY_API_URL env var — use GetConfig() for the effective runtime URL.
+func DefaultAPIURL() string {
+	return defaultAPIURL
+}
 
 type Config struct {
 	ApiURL string

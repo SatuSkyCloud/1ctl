@@ -23,7 +23,7 @@ func createApp() *cli.App {
 	app := &cli.App{
 		Name:    "1ctl",
 		Usage:   "Deploy and manage applications on SatuSky Cloud",
-		Version: version.Version,
+		Version: version.GetVersionInfo(),
 		Description: `1ctl is the command-line interface for SatuSky Cloud.
 
 Quick start:
@@ -43,7 +43,7 @@ Profiles (multi-environment):
    1ctl --profile local deploy --port 8080   # one-shot override
 
 Docs:   https://docs.satusky.com/cli
-Tokens: https://app.satusky.com/settings/tokens`,
+Tokens: https://cloud.satusky.com/<org-id>/token`,
 		Flags: []cli.Flag{
 			&cli.StringFlag{
 				Name:    "profile",

@@ -4,8 +4,8 @@ Deploy your first application to SatuSky Cloud in under 5 minutes.
 
 ## Prerequisites
 
-- `1ctl` installed (`curl -fsSL https://install.satusky.com | sh` or see [README](README.md))
-- A SatuSky Cloud account and API token ([app.satusky.com/settings/tokens](https://app.satusky.com/settings/tokens))
+- `1ctl` installed — see [README](README.md#installation) (Homebrew, `install.sh`, or build from source)
+- A SatuSky Cloud account and API token from `https://cloud.satusky.com/<org-id>/token`
 
 ---
 

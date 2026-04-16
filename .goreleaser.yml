@@ -4,6 +4,7 @@ version: 2
 
 builds:
   - id: 1ctl-linux
+    binary: 1ctl
     main: ./cmd/1ctl/main.go
     env:
       - CGO_ENABLED=0
@@ -18,6 +19,7 @@ builds:
       - -X 1ctl/internal/version.BuildDate={{.Date}}
 
   - id: 1ctl-windows-darwin
+    binary: 1ctl
     main: ./cmd/1ctl/main.go
     env:
       - CGO_ENABLED=0
@@ -35,8 +37,61 @@ builds:
       - -X 1ctl/internal/version.CommitHash={{.Commit}}
       - -X 1ctl/internal/version.BuildDate={{.Date}}
 
+  - id: 1ctl-dev-linux
+    binary: 1ctl-dev
+    main: ./cmd/1ctl/main.go
+    env:
+      - CGO_ENABLED=0
+    goos:
+      - linux
+    goarch:
+      - amd64
+      - arm64
+    ldflags:
+      - -X 1ctl/internal/version.Version={{.Version}}
+      - -X 1ctl/internal/version.CommitHash={{.Commit}}
+      - -X 1ctl/internal/version.BuildDate={{.Date}}
+      - -X 1ctl/internal/version.Environment=development
+      - -X 1ctl/internal/config.defaultAPIURL=https://dev-core-api.satusky.com/v1/cli
+
+  - id: 1ctl-dev-windows-darwin
+    binary: 1ctl-dev
+    main: ./cmd/1ctl/main.go
+    env:
+      - CGO_ENABLED=0
+    goos:
+      - windows
+      - darwin
+    goarch:
+      - amd64
+      - arm64
+    ignore:
+      - goos: darwin
+        goarch: "386"
+    ldflags:
+      - -X 1ctl/internal/version.Version={{.Version}}
+      - -X 1ctl/internal/version.CommitHash={{.Commit}}
+      - -X 1ctl/internal/version.BuildDate={{.Date}}
+      - -X 1ctl/internal/version.Environment=development
+      - -X 1ctl/internal/config.defaultAPIURL=https://dev-core-api.satusky.com/v1/cli
+
 archives:
-  - name_template: "1ctl-{{ .Version }}-{{ .Os }}-{{ .Arch }}"
+  - id: 1ctl
+    ids:
+      - 1ctl-linux
+      - 1ctl-windows-darwin
+    name_template: "1ctl-{{ .Version }}-{{ .Os }}-{{ .Arch }}"
+    format_overrides:
+      - goos: windows
+        format: zip
+    files: [a-workaround-to-include-only-the-binary*]
+    wrap_in_directory: false
+
+  - id: 1ctl-dev
+    ids:
+      - 1ctl-dev-linux
+      - 1ctl-dev-windows-darwin
+    name_template: "1ctl-dev-{{ .Version }}-{{ .Os }}-{{ .Arch }}"
     format_overrides:
       - goos: windows
         format: zip
@@ -60,6 +115,8 @@ changelog:
 
 brews:
   - name: satuctl
+    ids:
+      - 1ctl
     repository:
       owner: SatuSkyCloud
       name: homebrew-tap

@@ -1,12 +1,17 @@
 package commands
 
 import (
+	"1ctl/internal/config"
 	"1ctl/internal/context"
 	"1ctl/internal/utils"
 	"fmt"
 
 	"github.com/urfave/cli/v2"
 )
+
+func defaultAPIURLDisplay() string {
+	return fmt.Sprintf("(default: %s)", config.DefaultAPIURL())
+}
 
 func ProfileCommand() *cli.Command {
 	return &cli.Command{
@@ -92,7 +97,7 @@ func handleProfileList(c *cli.Context) error {
 
 		apiURL := p.APIURL
 		if apiURL == "" {
-			apiURL = "(default: https://api.satusky.com/v1/cli)"
+			apiURL = defaultAPIURLDisplay()
 		}
 
 		fmt.Printf("%s%s\n", marker, p.Name)
@@ -126,7 +131,7 @@ func handleProfileCreate(c *cli.Context) error {
 	if apiURL != "" {
 		utils.PrintStatusLine("API URL", apiURL)
 	} else {
-		utils.PrintStatusLine("API URL", "(default: https://api.satusky.com/v1/cli)")
+		utils.PrintStatusLine("API URL", defaultAPIURLDisplay())
 	}
 	utils.PrintInfo("Next steps:")
 	utils.PrintInfo("  1ctl profile use %s", name)
@@ -148,7 +153,7 @@ func handleProfileUse(c *cli.Context) error {
 	// Show the active profile's API URL for confirmation
 	apiURL := context.GetAPIURL()
 	if apiURL == "" {
-		apiURL = "(default: https://api.satusky.com/v1/cli)"
+		apiURL = defaultAPIURLDisplay()
 	}
 
 	utils.PrintSuccess("Switched to profile '%s'", name)
@@ -172,7 +177,7 @@ func handleProfileCurrent(c *cli.Context) error {
 
 	apiURL := context.GetAPIURL()
 	if apiURL == "" {
-		apiURL = "(default: https://api.satusky.com/v1/cli)"
+		apiURL = defaultAPIURLDisplay()
 	}
 
 	utils.PrintHeader("Active Profile")

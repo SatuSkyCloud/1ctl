@@ -58,6 +58,13 @@ git tag v0.X.Y && git push origin v0.X.Y
 
 Update `RELEASE_NOTES.md` and the GitHub release description after.
 
+Every tag produces **two** binary families on the same GitHub release:
+
+- `1ctl-*` — prod, defaults to `https://api.satusky.com/v1/cli`. Published to brew (`satuctl`).
+- `1ctl-dev-*` — dev build, default baked to `https://dev-core-api.satusky.com/v1/cli` via `-ldflags`. Tarballs only (no brew — internal testing only). Install via `install-dev.sh`.
+
+`defaultAPIURL` in `internal/config/config.go` is a `var` (not `const`) so `.goreleaser.yml` can override it with `-X 1ctl/internal/config.defaultAPIURL=…`. Resolution order at runtime (highest wins): `--api-url` flag → `SATUSKY_API_URL` env → active profile URL → baked-in default.
+
 ## Gotchas
 
 - `github` command was removed in v0.5.3 — don't re-add it
