@@ -35,6 +35,7 @@ type BuildStatusResponse struct {
 	BuildID      string `json:"build_id"`
 	Status       string `json:"status"`        // queued | building | completed | failed
 	ImageRef     string `json:"image_ref"`     // populated when Status == "completed"
+	ImageArch    string `json:"image_arch"`    // "amd64", "arm64", or "" if detection failed
 	Logs         string `json:"logs"`          // accumulated Kaniko stdout
 	ErrorMessage string `json:"error_message"` // populated when Status == "failed"
 }
@@ -192,4 +193,58 @@ func WaitForBuild(buildID string, progressWriter io.Writer) (string, error) {
 	}
 
 	return "", utils.NewError(fmt.Sprintf("cloud build timed out after %v", maxWait), nil)
+}
+
+// BuildResult holds the outcome of a completed cloud build.
+type BuildResult struct {
+	ImageRef  string
+	ImageArch string // "amd64", "arm64", or "" if detection failed
+}
+
+// WaitForBuildResult is like WaitForBuild but returns the full BuildResult,
+// including the detected image architecture.
+func WaitForBuildResult(buildID string, progressWriter io.Writer) (*BuildResult, error) {
+	const (
+		pollInterval = 3 * time.Second
+		maxWait      = 15 * time.Minute
+	)
+
+	deadline := time.Now().Add(maxWait)
+	ticker := time.NewTicker(pollInterval)
+	defer ticker.Stop()
+
+	var logOffset int
+
+	for time.Now().Before(deadline) {
+		<-ticker.C
+
+		status, err := GetBuildStatus(buildID)
+		if err != nil {
+			continue
+		}
+
+		if len(status.Logs) > logOffset {
+			newLogs := status.Logs[logOffset:]
+			scanner := bufio.NewScanner(strings.NewReader(newLogs))
+			for scanner.Scan() {
+				if _, err := fmt.Fprintf(progressWriter, "  %s\n", scanner.Text()); err != nil {
+					return nil, utils.NewError(fmt.Sprintf("failed to write build log: %s", err.Error()), nil)
+				}
+			}
+			logOffset = len(status.Logs)
+		}
+
+		switch status.Status {
+		case "completed":
+			return &BuildResult{ImageRef: status.ImageRef, ImageArch: status.ImageArch}, nil
+		case "failed":
+			msg := status.ErrorMessage
+			if msg == "" {
+				msg = "unknown error"
+			}
+			return nil, utils.NewError(fmt.Sprintf("cloud build failed: %s", msg), nil)
+		}
+	}
+
+	return nil, utils.NewError(fmt.Sprintf("cloud build timed out after %v", maxWait), nil)
 }

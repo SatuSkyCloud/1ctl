@@ -30,13 +30,13 @@ func SecretCommand() *cli.Command {
 						Usage: "Config name or path (e.g. staging, satusky.staging.toml). Default: satusky.toml",
 					},
 					&cli.StringFlag{
-						Name:     "name",
-						Usage:    "Secret name",
-						Required: true,
+						Name:  "name",
+						Usage: "App label (defaults to deployment name, auto-resolved from deployment-id)",
 					},
 					&cli.StringSliceFlag{
-						Name:  "env",
-						Usage: "Environment variables (format: KEY=VALUE)",
+						Name:    "kv",
+						Aliases: []string{"env"},
+						Usage:   "Secret key-value pairs (format: KEY=VALUE)",
 					},
 				},
 				Action: handleCreateSecret,
@@ -79,13 +79,13 @@ func handleCreateSecret(c *cli.Context) error {
 		return utils.NewError(fmt.Sprintf("invalid deployment-id: %s", err.Error()), nil)
 	}
 
-	envVars := c.StringSlice("env")
+	envVars := c.StringSlice("kv")
 	keyValues := make([]api.KeyValuePair, 0, len(envVars))
 
-	for _, env := range envVars {
-		parts := strings.SplitN(env, "=", 2)
+	for _, kv := range envVars {
+		parts := strings.SplitN(kv, "=", 2)
 		if len(parts) != 2 {
-			return utils.NewError("invalid environment variable format: %s", nil)
+			return utils.NewError("invalid key-value format (expected KEY=VALUE)", nil)
 		}
 		keyValues = append(keyValues, api.KeyValuePair{
 			Key:   parts[0],
@@ -93,9 +93,18 @@ func handleCreateSecret(c *cli.Context) error {
 		})
 	}
 
+	appLabel := c.String("name")
+	if appLabel == "" {
+		deployment, err := api.GetDeployment(deploymentIDStr)
+		if err != nil {
+			return utils.NewError(fmt.Sprintf("failed to resolve deployment name: %s", err.Error()), nil)
+		}
+		appLabel = deployment.AppLabel
+	}
+
 	secret := api.Secret{
 		DeploymentID: deploymentID,
-		AppLabel:     c.String("name"),
+		AppLabel:     appLabel,
 		Namespace:    context.GetCurrentNamespace(),
 		KeyValues:    keyValues,
 	}
@@ -105,7 +114,11 @@ func handleCreateSecret(c *cli.Context) error {
 		return utils.NewError(fmt.Sprintf("failed to create secret: %s", err.Error()), nil)
 	}
 
-	utils.PrintSuccess("Secret %s created successfully\n", secretResp.AppLabel)
+	displayName := secretResp.AppLabel
+	if displayName == "" {
+		displayName = appLabel
+	}
+	utils.PrintSuccess("Secret %s created successfully\n", displayName)
 	return nil
 }
 

@@ -51,6 +51,17 @@ func Deploy(opts DeploymentOptions) (*api.CreateDeploymentResponse, error) {
 			hostnameSet := make(map[string]bool)
 			var hostnames []string
 			for _, machine := range machines {
+				if machine.Status != "online" {
+					continue
+				}
+				if machine.CPUCores == 0 || machine.MemoryGB == 0 {
+					continue
+				}
+				// Skip machines whose arch doesn't match the image.
+				// Empty imageArch means multi-arch or unknown — no filtering.
+				if opts.TargetArch != "" && machine.CPUArch != "" && machine.CPUArch != opts.TargetArch {
+					continue
+				}
 				// Only add hostname if we haven't seen it before (using machine ID instead of machine name)
 				if !hostnameSet[machine.MachineID] {
 					hostnameSet[machine.MachineID] = true
@@ -61,6 +72,8 @@ func Deploy(opts DeploymentOptions) (*api.CreateDeploymentResponse, error) {
 			if len(hostnames) > 0 {
 				opts.Hostnames = hostnames
 				utils.PrintInfo("Using owner's machines: %v", hostnames)
+			} else if opts.TargetArch != "" {
+				utils.PrintWarning("No owner machines with arch %s are online — will use monetized machines", opts.TargetArch)
 			}
 		}
 
@@ -98,10 +111,12 @@ func Deploy(opts DeploymentOptions) (*api.CreateDeploymentResponse, error) {
 		progress.message = "Building image (cloud)"
 		progress.print()
 
-		image, err = submitRemoteBuild(opts.DockerfilePath, projectName)
+		var imageArch string
+		image, imageArch, err = submitRemoteBuild(opts.DockerfilePath, projectName)
 		if err != nil {
 			return nil, utils.NewError("Failed to build image", err)
 		}
+		opts.TargetArch = imageArch
 		progress.complete()
 	}
 
@@ -180,17 +195,18 @@ func deployCleanup(cmgr *cleanup.CleanupManager) {
 
 // submitRemoteBuild packages the local build context, uploads it to the backend,
 // and waits for the Kaniko cloud build to complete. No local Docker daemon is required.
-func submitRemoteBuild(dockerfilePath, projectName string) (string, error) {
+// Returns the image reference, image architecture, and any error.
+func submitRemoteBuild(dockerfilePath, projectName string) (imageRef, imageArch string, err error) {
 	// Validate that the Dockerfile exists and is well-formed before shipping anything.
-	if err := validator.ValidateDockerfile(dockerfilePath); err != nil {
-		return "", utils.NewError(fmt.Sprintf("invalid Dockerfile: %s", err.Error()), nil)
+	if err = validator.ValidateDockerfile(dockerfilePath); err != nil {
+		return "", "", utils.NewError(fmt.Sprintf("invalid Dockerfile: %s", err.Error()), nil)
 	}
 
 	// Package the build context into a gzipped tar, respecting .dockerignore.
 	utils.PrintInfo("Packaging build context...")
 	contextPath, err := docker.PackageContext(".")
 	if err != nil {
-		return "", utils.NewError(fmt.Sprintf("failed to package build context: %s", err.Error()), nil)
+		return "", "", utils.NewError(fmt.Sprintf("failed to package build context: %s", err.Error()), nil)
 	}
 	defer func() { _ = os.Remove(contextPath) }() //nolint:errcheck
 
@@ -198,18 +214,21 @@ func submitRemoteBuild(dockerfilePath, projectName string) (string, error) {
 	utils.PrintInfo("Submitting build to cloud...")
 	buildID, err := api.SubmitBuild(contextPath, projectName, dockerfilePath, nil)
 	if err != nil {
-		return "", utils.NewError(fmt.Sprintf("failed to submit build: %s", err.Error()), nil)
+		return "", "", utils.NewError(fmt.Sprintf("failed to submit build: %s", err.Error()), nil)
 	}
 	utils.PrintInfo("Build queued (ID: %s)", buildID)
 
 	// Poll until the Kaniko job finishes, streaming log output as it arrives.
-	imageRef, err := api.WaitForBuild(buildID, os.Stdout)
+	result, err := api.WaitForBuildResult(buildID, os.Stdout)
 	if err != nil {
-		return "", err
+		return "", "", err
 	}
 
-	utils.PrintSuccess("Cloud build complete: %s", imageRef)
-	return imageRef, nil
+	utils.PrintSuccess("Cloud build complete: %s", result.ImageRef)
+	if result.ImageArch != "" {
+		utils.PrintInfo("Image architecture: %s", result.ImageArch)
+	}
+	return result.ImageRef, result.ImageArch, nil
 }
 
 func mainDeploy(opts DeploymentOptions, image, name, userID, organization string, hostnames []string) (string, error) {
@@ -324,6 +343,9 @@ func mainDeploy(opts DeploymentOptions, image, name, userID, organization string
 
 	// Add deployment strategy configuration
 	deployment.StrategyConfig = buildStrategyConfig(opts)
+
+	// Pass image architecture so the backend sets the kubernetes.io/arch nodeSelector.
+	deployment.TargetArch = opts.TargetArch
 
 	var deploymentID string
 	if err := api.UpsertDeployment(deployment, &deploymentID); err != nil {

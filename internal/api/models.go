@@ -136,6 +136,7 @@ type Deployment struct {
 	VPAConfig          *VPAConfig                `json:"vpa_config,omitempty"`
 	StrategyConfig     *DeploymentStrategyConfig `json:"deployment_strategy,omitempty"`
 	WaitFor            []WaitFor                 `json:"wait_for,omitempty"`
+	TargetArch         string                    `json:"target_arch,omitempty"`
 	CreatedAt          time.Time                 `json:"created_at"`
 	UpdatedAt          time.Time                 `json:"updated_at"`
 }
@@ -344,6 +345,7 @@ type Machine struct {
 	HourlyCost          float64    `db:"hourly_cost" json:"hourly_cost"`
 	CreatedAt           time.Time  `db:"created_at" json:"created_at"`
 	UpdatedAt           time.Time  `db:"updated_at" json:"updated_at"`
+	CPUArch             string     `json:"cpu_arch"`
 }
 
 type MachineIDs struct {

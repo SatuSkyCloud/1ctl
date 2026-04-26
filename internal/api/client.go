@@ -432,6 +432,9 @@ func makeRequest(method, path string, body interface{}, response interface{}) er
 		if err := json.Unmarshal(respBody, &apiError); err != nil {
 			return utils.NewError(fmt.Sprintf("request failed with status %d: %s", resp.StatusCode, string(respBody)), nil)
 		}
+		if resp.StatusCode == 500 {
+			return utils.NewError(fmt.Sprintf("%s — check backend logs for details", apiError.Message), nil)
+		}
 		return utils.NewError(apiError.Message, nil)
 	}
 

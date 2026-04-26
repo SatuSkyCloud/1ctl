@@ -30,9 +30,8 @@ func EnvironmentCommand() *cli.Command {
 						Usage: "Config name or path (e.g. staging, satusky.staging.toml). Default: satusky.toml",
 					},
 					&cli.StringFlag{
-						Name:     "name",
-						Usage:    "Environment name",
-						Required: true,
+						Name:  "name",
+						Usage: "App label (defaults to deployment name, auto-resolved from deployment-id)",
 					},
 					&cli.StringSliceFlag{
 						Name:  "env",
@@ -98,9 +97,18 @@ func handleCreateEnvironment(c *cli.Context) error {
 		})
 	}
 
+	appLabel := c.String("name")
+	if appLabel == "" {
+		deployment, err := api.GetDeployment(deploymentIDStr)
+		if err != nil {
+			return utils.NewError(fmt.Sprintf("failed to resolve deployment name: %s", err.Error()), nil)
+		}
+		appLabel = deployment.AppLabel
+	}
+
 	env := api.Environment{
 		DeploymentID: deploymentID,
-		AppLabel:     c.String("name"),
+		AppLabel:     appLabel,
 		KeyValues:    keyValues,
 	}
 
@@ -109,7 +117,11 @@ func handleCreateEnvironment(c *cli.Context) error {
 		return utils.NewError(fmt.Sprintf("failed to upsert environment: %s", err.Error()), nil)
 	}
 
-	utils.PrintSuccess("Environment %s created successfully\n", envResp.AppLabel)
+	displayName := envResp.AppLabel
+	if displayName == "" {
+		displayName = appLabel
+	}
+	utils.PrintSuccess("Environment %s created successfully\n", displayName)
 	return nil
 }
 

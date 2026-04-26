@@ -59,4 +59,7 @@ type DeploymentOptions struct {
 	Strategy              string // "rolling" (default), "recreate"
 	RollingMaxSurge       string // Rolling update max surge (e.g. "25%" or "1")
 	RollingMaxUnavailable string // Rolling update max unavailable (e.g. "25%" or "0")
+	// TargetArch is the CPU architecture the image was built for ("amd64", "arm64", or "").
+	// Empty means multi-arch or unknown — no arch-based machine filtering is applied.
+	TargetArch string
 }
