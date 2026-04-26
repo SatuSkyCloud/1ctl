@@ -9,6 +9,7 @@ import (
 	"1ctl/internal/validator"
 	"fmt"
 	"os"
+	"regexp"
 )
 
 type deploymentProgress struct {
@@ -96,6 +97,12 @@ func Deploy(opts DeploymentOptions) (*api.CreateDeploymentResponse, error) {
 		if err2 != nil {
 			return nil, utils.NewError("Failed to determine project name", err2)
 		}
+		utils.PrintInfo("App name: %s (auto-detected — use --name to override)", projectName)
+	}
+
+	// K8s Services use DNS-1035: must start with a letter, only [a-z0-9-], end with alphanumeric.
+	if err := validateAppName(projectName); err != nil {
+		return nil, err
 	}
 
 	// Step 1: Build and push image (skipped when a pre-built image is provided)
@@ -576,4 +583,30 @@ func handleIngressAndDependencies(opts DeploymentOptions, deploymentID, serviceI
 	// Only read domain if no errors — the ingress goroutine is guaranteed
 	// to have sent to domainChan before sending nil to errChan.
 	return <-domainChan, nil
+}
+
+// dns1035 matches valid K8s Service names (DNS-1035): starts with a letter,
+// only lowercase alphanumeric and hyphens, ends with alphanumeric, max 63 chars.
+var dns1035 = regexp.MustCompile(`^[a-z]([-a-z0-9]*[a-z0-9])?$`)
+
+// validateAppName checks the name against DNS-1035 before the deploy pipeline
+// starts, so users get an actionable error before any K8s resources are created.
+func validateAppName(name string) error {
+	if len(name) > 63 {
+		return utils.NewError(fmt.Sprintf(
+			"app name %q is too long (%d chars, max 63). Use --name to set a shorter name.",
+			name, len(name)), nil)
+	}
+	if !dns1035.MatchString(name) {
+		hint := ""
+		if len(name) > 0 && (name[0] >= '0' && name[0] <= '9') {
+			hint = fmt.Sprintf(" (starts with a digit — try --name %s)", "app-"+name)
+		}
+		return utils.NewError(fmt.Sprintf(
+			"app name %q is not a valid K8s service name%s.\n"+
+				"  Names must start with a letter, contain only [a-z0-9-], and end with [a-z0-9].\n"+
+				"  Auto-detected from git remote — run from your project directory or use --name <name>.",
+			name, hint), nil)
+	}
+	return nil
 }
