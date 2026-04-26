@@ -20,24 +20,32 @@ Two sample applications for testing and demonstrating `1ctl` against a local or 
 
 ## 1. Authenticate
 
-> The installed `1ctl` (Homebrew v0.6.0) does **not** have `profile create`.
-> Use `SATUSKY_API_URL` to point at local — it works with any binary version.
+> **Returning user (profile already exists):** just activate it and you're done —
+> no `auth login` needed unless your token expired.
+>
+> **`profile` subcommands require the dev binary.** The Homebrew release (v0.6.0)
+> only has `profile` as an alias for `user`. Use `SATUSKY_API_URL` with the
+> Homebrew binary, or build/install `1ctl-dev` once.
 
 ```bash
-# Simplest — works with the Homebrew release binary
+# ── Returning user ──────────────────────────────────────────────────────────
 export SATUSKY_API_URL=http://localhost:8080/v1/cli
-1ctl auth login --token eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJleHAiOjE3ODM0ODM1NzUsImlhdCI6MTc3NTcwNzU3NSwianRpIjoiNjgyZTg4YWItY2VhZi00NjkwLWE0MjgtNWRlODQ0NTEwMzU1Iiwic3ViIjoiN2FlYjFjMjQtYjdmZC00NmQ0LWJlN2EtYTE4YjQzY2RkNWQyIiwidHlwZSI6ImFwaV9rZXkifQ.NxrE1ugYINXqhj-5rJgok79fUhX3T677iS2FBAjw-gc
-1ctl auth status
+1ctl-dev profile use local   # activates the existing profile (sets active_profile in context.json)
+1ctl-dev auth status         # confirms you're already logged in
 ```
 
 ```bash
-# Alternative — named profiles (requires dev binary: 1ctl-dev)
-# Build and install once:
-#   go build -ldflags "-X 1ctl/internal/config.defaultAPIURL=http://localhost:8080/v1/cli" \
-#     -o bin/1ctl-dev ./cmd/... && sudo cp bin/1ctl-dev /usr/local/bin/1ctl-dev
+# ── First time / fresh machine ───────────────────────────────────────────────
+# Build dev binary once:
+go build -ldflags "-X 1ctl/internal/config.defaultAPIURL=http://localhost:8080/v1/cli" \
+  -o bin/1ctl-dev ./cmd/...
+sudo cp bin/1ctl-dev /usr/local/bin/1ctl-dev
+
+# Create profile, activate it, then log in:
 1ctl-dev profile create --url http://localhost:8080/v1/cli local
 1ctl-dev profile use local
-1ctl-dev auth login --token <token>
+1ctl-dev auth login --token eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJleHAiOjE3ODM0ODM1NzUsImlhdCI6MTc3NTcwNzU3NSwianRpIjoiNjgyZTg4YWItY2VhZi00NjkwLWE0MjgtNWRlODQ0NTEwMzU1Iiwic3ViIjoiN2FlYjFjMjQtYjdmZC00NmQ0LWJlN2EtYTE4YjQzY2RkNWQyIiwidHlwZSI6ImFwaV9rZXkifQ.NxrE1ugYINXqhj-5rJgok79fUhX3T677iS2FBAjw-gc
+1ctl-dev auth status
 ```
 
 Expected:
