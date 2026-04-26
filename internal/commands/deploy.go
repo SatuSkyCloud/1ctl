@@ -407,14 +407,6 @@ func handleDeploy(c *cli.Context) error {
 	utils.PrintSuccess("🚀 Deployment for %s is successful! Your app is live at: https://%s", resp.AppLabel, resp.Domain)
 	utils.PrintStatusLine("Deployment ID", resp.DeploymentID.String())
 
-	// Best-effort: write deployment_id back to config file.
-	if cfg, err := config.FindConfig(c.String("config")); err == nil && cfg != nil {
-		cfg.App.DeploymentID = resp.DeploymentID.String()
-		if err := cfg.Save(); err != nil {
-			utils.PrintWarning("failed to save deployment_id to config: %s", err.Error())
-		}
-	}
-
 	return nil
 }
 
@@ -698,7 +690,7 @@ func parseEnvVars(envVars []string) []api.KeyValuePair {
 }
 
 func handleDeploymentStatus(c *cli.Context) error {
-	deploymentID, err := config.ResolveDeploymentID(c.String("deployment-id"), c.String("config"))
+	deploymentID, err := resolveDeploymentID(c.String("deployment-id"), c.String("config"))
 	if err != nil {
 		return err
 	}
@@ -789,7 +781,7 @@ func handleListDeployments(c *cli.Context) error {
 }
 
 func handleGetDeployment(c *cli.Context) error {
-	deploymentID, err := config.ResolveDeploymentID(c.String("deployment-id"), c.String("config"))
+	deploymentID, err := resolveDeploymentID(c.String("deployment-id"), c.String("config"))
 	if err != nil {
 		return err
 	}
@@ -820,7 +812,7 @@ func handleGetDeployment(c *cli.Context) error {
 }
 
 func handleDestroyDeployment(c *cli.Context) error {
-	deploymentID, err := config.ResolveDeploymentID(c.String("deployment-id"), c.String("config"))
+	deploymentID, err := resolveDeploymentID(c.String("deployment-id"), c.String("config"))
 	if err != nil {
 		return err
 	}
@@ -840,7 +832,7 @@ func handleDestroyDeployment(c *cli.Context) error {
 }
 
 func handleRestartDeployment(c *cli.Context) error {
-	deploymentID, err := config.ResolveDeploymentID(c.String("deployment-id"), c.String("config"))
+	deploymentID, err := resolveDeploymentID(c.String("deployment-id"), c.String("config"))
 	if err != nil {
 		return err
 	}
@@ -854,7 +846,7 @@ func handleRestartDeployment(c *cli.Context) error {
 }
 
 func handleListReleases(c *cli.Context) error {
-	deploymentID, err := config.ResolveDeploymentID(c.String("deployment-id"), c.String("config"))
+	deploymentID, err := resolveDeploymentID(c.String("deployment-id"), c.String("config"))
 	if err != nil {
 		return err
 	}
@@ -881,7 +873,7 @@ func handleListReleases(c *cli.Context) error {
 }
 
 func handleRollback(c *cli.Context) error {
-	deploymentID, err := config.ResolveDeploymentID(c.String("deployment-id"), c.String("config"))
+	deploymentID, err := resolveDeploymentID(c.String("deployment-id"), c.String("config"))
 	if err != nil {
 		return err
 	}

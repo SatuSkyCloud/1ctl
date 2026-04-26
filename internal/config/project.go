@@ -17,15 +17,14 @@ type ProjectConfig struct {
 }
 
 type AppConfig struct {
-	Name         string `toml:"name"`
-	Org          string `toml:"org"`
-	Port         int    `toml:"port"`
-	Dockerfile   string `toml:"dockerfile"`
-	CPU          string `toml:"cpu"`
-	Memory       string `toml:"memory"`
-	Replicas     int    `toml:"replicas"`
-	Domain       string `toml:"domain"`
-	DeploymentID string `toml:"deployment_id"`
+	Name       string `toml:"name"`
+	Org        string `toml:"org"`
+	Port       int    `toml:"port"`
+	Dockerfile string `toml:"dockerfile"`
+	CPU        string `toml:"cpu"`
+	Memory     string `toml:"memory"`
+	Replicas   int    `toml:"replicas"`
+	Domain     string `toml:"domain"`
 }
 
 // LoadConfig resolves and loads the config file. Returns an error if not found.
@@ -67,35 +66,6 @@ func (cfg *ProjectConfig) Save() error {
 	}
 	defer func() { _ = f.Close() }() //nolint:errcheck
 	return toml.NewEncoder(f).Encode(cfg)
-}
-
-// ResolveDeploymentID returns the deployment ID to use for a command.
-// Precedence: explicit --deployment-id flag > config file.
-func ResolveDeploymentID(flagValue string, configArg string) (string, error) {
-	if flagValue != "" {
-		return flagValue, nil
-	}
-	cfg, err := LoadConfig(configArg)
-	if err != nil {
-		if os.IsNotExist(err) {
-			return "", fmt.Errorf("no --deployment-id provided and no satusky.toml found\nRun '1ctl init' to create one")
-		}
-		return "", err
-	}
-	if cfg.App.DeploymentID == "" {
-		configName := "satusky.toml"
-		if configArg != "" && !strings.HasSuffix(configArg, ".toml") {
-			configName = fmt.Sprintf("satusky.%s.toml", configArg)
-		} else if configArg != "" {
-			configName = configArg
-		}
-		suffix := ""
-		if configArg != "" {
-			suffix = " --config " + configArg
-		}
-		return "", fmt.Errorf("no deployment_id in %s\nRun '1ctl deploy%s' first", configName, suffix)
-	}
-	return cfg.App.DeploymentID, nil
 }
 
 func resolveConfigPath(configArg string) (string, error) {

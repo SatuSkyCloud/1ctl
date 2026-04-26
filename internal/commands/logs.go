@@ -2,7 +2,6 @@ package commands
 
 import (
 	"1ctl/internal/api"
-	"1ctl/internal/config"
 	"1ctl/internal/context"
 	"1ctl/internal/utils"
 	"fmt"
@@ -85,7 +84,7 @@ func logsDeleteCommand() *cli.Command {
 }
 
 func handleLogs(c *cli.Context) error {
-	deploymentID, err := config.ResolveDeploymentID(c.String("deployment-id"), c.String("config"))
+	deploymentID, err := resolveDeploymentID(c.String("deployment-id"), c.String("config"))
 	if err != nil {
 		return err
 	}
@@ -124,7 +123,7 @@ func handleLogs(c *cli.Context) error {
 }
 
 func handleLogsStats(c *cli.Context) error {
-	deploymentID, err := config.ResolveDeploymentID(c.String("deployment-id"), c.String("config"))
+	deploymentID, err := resolveDeploymentID(c.String("deployment-id"), c.String("config"))
 	if err != nil {
 		return err
 	}
@@ -157,7 +156,7 @@ func handleLogsStats(c *cli.Context) error {
 }
 
 func handleLogsDelete(c *cli.Context) error {
-	deploymentID, err := config.ResolveDeploymentID(c.String("deployment-id"), c.String("config"))
+	deploymentID, err := resolveDeploymentID(c.String("deployment-id"), c.String("config"))
 	if err != nil {
 		return err
 	}

@@ -2,7 +2,6 @@ package commands
 
 import (
 	"1ctl/internal/api"
-	"1ctl/internal/config"
 	"1ctl/internal/context"
 	"1ctl/internal/utils"
 	"fmt"
@@ -69,7 +68,7 @@ func SecretCommand() *cli.Command {
 }
 
 func handleCreateSecret(c *cli.Context) error {
-	deploymentIDStr, err := config.ResolveDeploymentID(c.String("deployment-id"), c.String("config"))
+	deploymentIDStr, err := resolveDeploymentID(c.String("deployment-id"), c.String("config"))
 	if err != nil {
 		return err
 	}

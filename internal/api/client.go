@@ -95,6 +95,19 @@ func ListDeploymentsByNamespace(namespace string) ([]Deployment, error) {
 	return response.Data, err
 }
 
+// GetDeploymentByAppLabel looks up a deployment by its app label within a namespace.
+// This is the primary way the CLI resolves deployment IDs from satusky.toml.
+func GetDeploymentByAppLabel(namespace, appLabel string) (*Deployment, error) {
+	var resp struct {
+		Error bool       `json:"error"`
+		Data  Deployment `json:"data"`
+	}
+	if err := makeRequest("GET", fmt.Sprintf("/deployments/namespace/%s/app/%s", namespace, appLabel), nil, &resp); err != nil {
+		return nil, err
+	}
+	return &resp.Data, nil
+}
+
 // GetDeployment gets details for a specific deployment
 func GetDeployment(deploymentID string) (*Deployment, error) {
 	var resp apiResponse

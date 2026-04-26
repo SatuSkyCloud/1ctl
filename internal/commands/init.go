@@ -43,7 +43,6 @@ func handleInit(c *cli.Context) error {
 	if filename != config.DefaultConfigFile {
 		if existing, err := config.FindConfig(""); err == nil && existing != nil {
 			base = *existing
-			base.App.DeploymentID = ""
 		}
 	}
 
