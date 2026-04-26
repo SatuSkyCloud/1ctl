@@ -7,6 +7,30 @@
 **User**: mingerz.k@gmail.com
 **Org**: org3 (b322955e-6a86-4157-8bff-1bea605ef8ac)
 
+> **All commands below target the local backend.**
+>
+> The installed `1ctl` (Homebrew, v0.6.0) does **not** have `profile create`.
+> Use one of these approaches before any section:
+>
+> **Option A — env var (works with any binary):**
+> ```bash
+> export SATUSKY_API_URL=http://localhost:8080/v1/cli
+> 1ctl auth login --token <token>
+> ```
+>
+> **Option B — dev binary (profile subcommands available):**
+> ```bash
+> # Build once from repo root:
+> go build -ldflags "-X 1ctl/internal/config.defaultAPIURL=http://localhost:8080/v1/cli" \
+>   -o bin/1ctl-dev ./cmd/...
+> sudo cp bin/1ctl-dev /usr/local/bin/1ctl-dev
+> # Then use 1ctl-dev everywhere instead of 1ctl
+> ```
+>
+> Commands in this report use bare `1ctl` for readability. Prefix with
+> `SATUSKY_API_URL=http://localhost:8080/v1/cli` or use `1ctl-dev` if the
+> env var isn't already set in your shell.
+
 ---
 
 ## Test Summary
@@ -39,31 +63,39 @@
 
 ### 1. Auth & Profile
 
+> `profile create/list/use/current` require the dev binary (`1ctl-dev`).
+> The Homebrew release (v0.6.0) only understands `SATUSKY_API_URL`.
+
 ```bash
+export SATUSKY_API_URL=http://localhost:8080/v1/cli
+
 1ctl auth login --token eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...
 1ctl auth status
-1ctl profile create --url http://localhost:8080/v1/cli local
-1ctl profile list
-1ctl profile current
-1ctl profile use local
-1ctl --profile local auth status
-export SATUSKY_API_URL=http://localhost:8080/v1/cli
+
+# Profile subcommands — dev binary only:
+1ctl-dev profile create --url http://localhost:8080/v1/cli local
+1ctl-dev profile list
+1ctl-dev profile current
+1ctl-dev profile use local
+1ctl-dev --profile local auth status
 ```
 
-| Command | Result | Notes |
-|---------|--------|-------|
-| `1ctl auth login --token <JWT>` | PASS | Token stored; email, org, namespace returned |
-| `1ctl auth status` | PASS | email mingerz.k@gmail.com, org3, token 73d expiry |
-| `1ctl profile create --url http://localhost:8080/v1/cli local` | PASS | Already existed, correct error |
-| `1ctl profile list` | PASS | local (active) + prod profiles shown |
-| `1ctl profile current` | PASS | URL, auth, org confirmed |
-| `1ctl profile use local` | PASS | Profile switch confirmed |
-| `1ctl --profile local auth status` | PASS | One-shot override works |
-| `export SATUSKY_API_URL=...` | PASS | Env var override highest priority |
+| Command | Binary | Result | Notes |
+|---------|--------|--------|-------|
+| `export SATUSKY_API_URL=http://localhost:8080/v1/cli` | any | PASS | Highest priority; works with Homebrew release |
+| `1ctl auth login --token <JWT>` | any | PASS | Token stored; email, org, namespace returned |
+| `1ctl auth status` | any | PASS | email mingerz.k@gmail.com, org3, token 73d expiry |
+| `1ctl-dev profile create --url ... local` | dev | PASS | Creates local profile (not in Homebrew v0.6.0) |
+| `1ctl-dev profile list` | dev | PASS | local (active) + prod profiles shown |
+| `1ctl-dev profile current` | dev | PASS | URL, auth, org confirmed |
+| `1ctl-dev profile use local` | dev | PASS | Profile switch confirmed |
+| `1ctl-dev --profile local auth status` | dev | PASS | One-shot override works |
 
 ### 2. Organization
 
 ```bash
+export SATUSKY_API_URL=http://localhost:8080/v1/cli
+
 1ctl org list
 1ctl org current
 ```
@@ -80,6 +112,8 @@ Deployment IDs from this session:
 - frontend: `38ab5d6b-c3cc-45c4-b0ef-ceab41cc9207`
 
 ```bash
+export SATUSKY_API_URL=http://localhost:8080/v1/cli
+
 # Destroy existing deployments
 1ctl deploy destroy --deployment-id 982d638e-f518-4450-b637-832ef4663e72 -y
 1ctl deploy destroy --deployment-id c73e3fe4-4ebf-4dd8-bd45-59097ded3bc4 -y
@@ -111,6 +145,8 @@ cd examples/frontend
 ### 4. Deploy — Operational
 
 ```bash
+export SATUSKY_API_URL=http://localhost:8080/v1/cli
+
 1ctl deploy restart --deployment-id fe7b53a5-80d8-4ddd-81b0-4a530767c723
 1ctl deploy releases --deployment-id fe7b53a5-80d8-4ddd-81b0-4a530767c723
 1ctl deploy rollback --deployment-id fe7b53a5-80d8-4ddd-81b0-4a530767c723 --version 1 -y
@@ -125,6 +161,8 @@ cd examples/frontend
 ### 5. Service & Ingress
 
 ```bash
+export SATUSKY_API_URL=http://localhost:8080/v1/cli
+
 1ctl service list
 1ctl ingress list
 ```
@@ -139,6 +177,8 @@ cd examples/frontend
 Both commands now work on **fresh deployments** with no prior ConfigMap/Secret.
 
 ```bash
+export SATUSKY_API_URL=http://localhost:8080/v1/cli
+
 # Env: first-time create (no prior ConfigMap) — was BUG-2
 cd examples/backend
 1ctl env create --config satusky.toml --env APP_NAME=backend-api --env LOG_LEVEL=info
@@ -176,6 +216,8 @@ cd examples/backend
 ### 7. Logs
 
 ```bash
+export SATUSKY_API_URL=http://localhost:8080/v1/cli
+
 1ctl logs --deployment-id fe7b53a5-80d8-4ddd-81b0-4a530767c723
 ```
 
@@ -186,6 +228,8 @@ cd examples/backend
 ### 8. Observability & Admin
 
 ```bash
+export SATUSKY_API_URL=http://localhost:8080/v1/cli
+
 1ctl notifications list
 1ctl credits balance
 1ctl storage list
@@ -204,6 +248,8 @@ cd examples/backend
 ### 9. Infrastructure
 
 ```bash
+export SATUSKY_API_URL=http://localhost:8080/v1/cli
+
 1ctl cluster zones
 1ctl cluster list
 1ctl machine list
@@ -228,6 +274,8 @@ cd examples/backend
 Full end-to-end cloud build pipeline with architecture detection verified.
 
 ```bash
+export SATUSKY_API_URL=http://localhost:8080/v1/cli
+
 cd examples/frontend
 1ctl deploy --cpu 0.25 --memory 128Mi --port 80 --machine compute-main-01
 ```

@@ -20,16 +20,24 @@ Two sample applications for testing and demonstrating `1ctl` against a local or 
 
 ## 1. Authenticate
 
+> The installed `1ctl` (Homebrew v0.6.0) does **not** have `profile create`.
+> Use `SATUSKY_API_URL` to point at local — it works with any binary version.
+
 ```bash
-# Create and activate the local profile
-1ctl profile create --url http://localhost:8080/v1/cli local
-1ctl profile use local
-
-# Log in with your API token
+# Simplest — works with the Homebrew release binary
+export SATUSKY_API_URL=http://localhost:8080/v1/cli
 1ctl auth login --token eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJleHAiOjE3ODM0ODM1NzUsImlhdCI6MTc3NTcwNzU3NSwianRpIjoiNjgyZTg4YWItY2VhZi00NjkwLWE0MjgtNWRlODQ0NTEwMzU1Iiwic3ViIjoiN2FlYjFjMjQtYjdmZC00NmQ0LWJlN2EtYTE4YjQzY2RkNWQyIiwidHlwZSI6ImFwaV9rZXkifQ.NxrE1ugYINXqhj-5rJgok79fUhX3T677iS2FBAjw-gc
-
-# Confirm
 1ctl auth status
+```
+
+```bash
+# Alternative — named profiles (requires dev binary: 1ctl-dev)
+# Build and install once:
+#   go build -ldflags "-X 1ctl/internal/config.defaultAPIURL=http://localhost:8080/v1/cli" \
+#     -o bin/1ctl-dev ./cmd/... && sudo cp bin/1ctl-dev /usr/local/bin/1ctl-dev
+1ctl-dev profile create --url http://localhost:8080/v1/cli local
+1ctl-dev profile use local
+1ctl-dev auth login --token <token>
 ```
 
 Expected:
