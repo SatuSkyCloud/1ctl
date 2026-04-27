@@ -375,12 +375,16 @@ func handleDeploy(c *cli.Context) error {
 		}
 	}
 
-	// Check required flags for deploy
+	// Apply platform defaults when neither flag nor toml provides a value.
 	if c.String("cpu") == "" {
-		return utils.NewError("--cpu flag is required for deployment (or set cpu in satusky.toml)", nil)
+		if err := c.Set("cpu", "0.5"); err != nil {
+			return utils.NewError("failed to set default cpu", err)
+		}
 	}
 	if c.String("memory") == "" {
-		return utils.NewError("--memory flag is required for deployment (or set memory in satusky.toml)", nil)
+		if err := c.Set("memory", "256Mi"); err != nil {
+			return utils.NewError("failed to set default memory", err)
+		}
 	}
 
 	// Validate inputs first

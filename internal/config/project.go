@@ -18,7 +18,6 @@ type ProjectConfig struct {
 
 type AppConfig struct {
 	Name       string `toml:"name"`
-	Org        string `toml:"org"`
 	Port       int    `toml:"port"`
 	Dockerfile string `toml:"dockerfile"`
 	CPU        string `toml:"cpu"`
