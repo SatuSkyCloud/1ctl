@@ -137,6 +137,7 @@ type Deployment struct {
 	StrategyConfig     *DeploymentStrategyConfig `json:"deployment_strategy,omitempty"`
 	WaitFor            []WaitFor                 `json:"wait_for,omitempty"`
 	TargetArch         string                    `json:"target_arch,omitempty"`
+	Domain             string                    `json:"domain,omitempty"`
 	CreatedAt          time.Time                 `json:"created_at"`
 	UpdatedAt          time.Time                 `json:"updated_at"`
 }

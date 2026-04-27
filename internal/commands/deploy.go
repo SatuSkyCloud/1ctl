@@ -818,6 +818,11 @@ func handleGetDeployment(c *cli.Context) error {
 		return utils.NewError(fmt.Sprintf("failed to get deployment: %s", err.Error()), nil)
 	}
 
+	// Enrich with ingress domain — best-effort, don't fail if not yet created
+	if ingress, iErr := api.GetIngressByDeploymentID(deploymentID); iErr == nil && ingress != nil && ingress.DomainName != "" {
+		deployment.Domain = "https://" + ingress.DomainName
+	}
+
 	if utils.TryPrintJSON(deployment) {
 		return nil
 	}
@@ -829,6 +834,9 @@ func handleGetDeployment(c *cli.Context) error {
 	}
 	utils.PrintStatusLine("Deployment ID", deployment.DeploymentID.String())
 	utils.PrintStatusLine("Status", deployment.Status)
+	if deployment.Domain != "" {
+		utils.PrintStatusLine("URL", deployment.Domain)
+	}
 	utils.PrintStatusLine("Deployed to machines", strings.Join(deployment.Hostnames, ", "))
 	utils.PrintStatusLine("Type", deployment.Type)
 	utils.PrintStatusLine("Region", deployment.Region)

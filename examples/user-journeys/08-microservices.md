@@ -17,18 +17,14 @@
 > The JSON extraction pattern shown in this guide (`jq` on ingress list) will fall
 > back to table output.
 >
-> **Important**: SatuSky now assigns a backend-generated random domain (e.g.
-> `cleverpanda-a1b2c3d.satusky.com`) instead of `<app-name>.satusky.com`. You
-> **cannot** predict the domain from the app name. Capture it from deploy stdout:
+> **Domain is backend-assigned**: SatuSky generates a random name (e.g.
+> `cleverpanda-a1b2c3d.satusky.com`) — **not** `<app-name>.satusky.com`. Read it
+> programmatically from `deploy get -o json`:
 > ```bash
-> DEPLOY_OUT=$(1ctl-dev deploy --config services/user-service/satusky.toml --wait 2>&1)
-> USER_SERVICE_URL=$(echo "$DEPLOY_OUT" | grep -o 'https://[^ ]*satusky\.com' | head -1)
+> USER_SERVICE_URL=$(1ctl-dev -o json deploy get \
+>   --config services/user-service/satusky.toml | jq -r '.domain')
 > 1ctl-dev env create --config services/order-service/satusky.toml \
 >   --env USER_SERVICE_URL=$USER_SERVICE_URL
-> ```
-> Or read the domain from `1ctl-dev ingress list` (table output — grep by app name):
-> ```bash
-> USER_SERVICE_URL=$(1ctl-dev ingress list | awk '/user-service/{print "https://"$1}')
 > ```
 
 ---
@@ -96,19 +92,12 @@ Use `-o json` to extract the URL programmatically rather than eyeballing the out
 SatuSky assigns a backend-generated random domain (e.g. `cleverpanda-a1b2c3d.satusky.com`) — not a predictable `<app-name>.satusky.com`. Capture it from the deploy output:
 
 ```bash
-DEPLOY_OUT=$(1ctl-dev deploy --config services/user-service/satusky.toml --wait 2>&1)
-USER_SERVICE_URL=$(echo "$DEPLOY_OUT" | grep -o 'https://[^ ]*satusky\.com' | head -1)
+1ctl-dev deploy --config services/user-service/satusky.toml --wait
+USER_SERVICE_URL=$(1ctl-dev -o json deploy get \
+  --config services/user-service/satusky.toml | jq -r '.domain')
 echo "$USER_SERVICE_URL"
 # https://cleverpanda-a1b2c3d.satusky.com
 ```
-
-Alternatively, read the domain from `ingress list` by matching the app name:
-
-```bash
-USER_SERVICE_URL=$(1ctl-dev ingress list | awk '/user-service/{print "https://"$1}')
-```
-
-> **Note**: `-o json ingress list` is not yet wired (future sprint). The patterns above are the current workarounds.
 
 ---
 

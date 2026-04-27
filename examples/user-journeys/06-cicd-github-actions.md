@@ -104,8 +104,7 @@ jobs:
 
       - name: Capture staging info
         run: |
-          DEPLOY_OUT=$(1ctl-dev deploy --config satusky.staging.toml --wait 2>&1)
-          APP_URL=$(echo "$DEPLOY_OUT" | grep -o 'https://[^ ]*satusky\.com' | head -1)
+          APP_URL=$(1ctl-dev -o json deploy get --config satusky.staging.toml | jq -r '.domain')
           echo "Staging URL: $APP_URL"
           echo "staging_url=$APP_URL" >> $GITHUB_OUTPUT
 
@@ -129,8 +128,7 @@ jobs:
 
       - name: Capture production info
         run: |
-          DEPLOY_OUT=$(1ctl-dev deploy --config satusky.toml --wait 2>&1)
-          APP_URL=$(echo "$DEPLOY_OUT" | grep -o 'https://[^ ]*satusky\.com' | head -1)
+          APP_URL=$(1ctl-dev -o json deploy get --config satusky.toml | jq -r '.domain')
           echo "Production URL: $APP_URL"
           echo "app_url=$APP_URL" >> $GITHUB_OUTPUT
 
@@ -160,11 +158,11 @@ jobs:
 
 ## Step 4: Capture the Deployment URL for Downstream Steps
 
-SatuSky assigns a backend-generated random domain (e.g. `cleverpanda-a1b2c3d.satusky.com`) — **not** a predictable `<app-name>.satusky.com`. Capture the URL directly from the deploy command's stdout:
+After `deploy --wait` completes, use `deploy get -o json` to get the URL. The `domain` field contains the backend-assigned URL (e.g. `https://cleverpanda-a1b2c3d.satusky.com`):
 
 ```bash
-DEPLOY_OUT=$(1ctl-dev deploy --config satusky.toml --wait 2>&1)
-APP_URL=$(echo "$DEPLOY_OUT" | grep -o 'https://[^ ]*satusky\.com' | head -1)
+1ctl-dev deploy --config satusky.toml --wait
+APP_URL=$(1ctl-dev -o json deploy get --config satusky.toml | jq -r '.domain')
 echo "Live at: $APP_URL"
 ```
 

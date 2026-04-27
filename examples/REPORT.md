@@ -41,6 +41,7 @@
 | init | init (clean toml) | 1 | 0 | **Gap 2 fixed** |
 | deploy — core | list, get, status, deploy (toml+flags+defaults), --wait, --output json | 9 | 0 | **Gap 3+4 fixed** |
 | deploy — domain | backend-assigned random domain on deploy | 1 | 0 | **Gap 7 fixed** |
+| deploy — get URL | `deploy get -o json` includes `domain` field | 1 | 0 | **Gap 8 fixed** |
 | deploy — ops | restart, releases, rollback | 3 | 0 | |
 | service | list, delete | 2 | 0 | |
 | ingress | list, delete | 2 | 0 | |
@@ -59,7 +60,7 @@
 | machine | list (--output json), available, usage | 3 | 0 | |
 | issuer | list | 1 | 0 | |
 | completion | zsh, bash | 2 | 0 | |
-| **Total** | **71** | **71** | **0** | |
+| **Total** | **73** | **73** | **0** | |
 
 ---
 
@@ -238,6 +239,52 @@ ingress-test   nginx   sleepytiger-z8w02g4.satusky.com   10.110.153.235   80, 44
 | Command | Result |
 |---------|--------|
 | `deploy --config satusky.toml --image nginx:alpine --machine compute-main-01` | PASS — domain printed by CLI matches K8s ingress host |
+
+---
+
+### Gap 8: `deploy get -o json` includes `domain` field
+
+Previously `deploy get -o json` returned the backend `Deployment` model verbatim. The `hostnames` field contained machine UUIDs, not URLs. There was no way to get the assigned domain programmatically — breaking CI/CD URL capture.
+
+**CLI change** (`internal/commands/deploy.go`): after fetching the deployment, `handleGetDeployment` calls `GetIngressByDeploymentID` (best-effort, non-fatal) and populates `deployment.Domain = "https://" + ingress.DomainName`. The `Domain string json:"domain,omitempty"` field was added to the `Deployment` model (`internal/api/models.go`).
+
+The table output also gains a `URL` line directly beneath `Status`.
+
+```bash
+1ctl-dev -o json deploy get --config satusky.toml | jq '.domain'
+# "https://sleepytiger-z8w02g4.satusky.com"
+
+# CI/CD pattern (replaces the grep-stdout workaround):
+APP_URL=$(1ctl-dev -o json deploy get --config satusky.toml | jq -r '.domain')
+```
+
+| Command | Result |
+|---------|--------|
+| `-o json deploy get` — `domain` field present | PASS — `"domain": "https://backend-api.satusky.com"` |
+| `deploy get` (table) — `URL` line present | PASS — `URL: https://backend-api.satusky.com` |
+
+---
+
+### Gap 9: `updateDeploymentWithConfigmap` deduplication
+
+Calling `env create` N times with the same key left N identical `env[].valueFrom.configMapKeyRef` entries in the Deployment pod spec. The last value wins (standard Kubernetes behaviour) so pods didn't crash, but the spec accumulated garbage.
+
+**Root cause**: unlike `updateDeploymentWithSecret` (which correctly filters existing env before appending), `updateDeploymentWithConfigmap` `copy`-ed all existing env vars then appended, never filtering out keys being overwritten.
+
+**Backend fix** (`controllers/environment_controller.go`): mirrors the secrets pattern — builds a `newKeys` set, filters existing Deployment env to exclude those keys, then appends the current ConfigMap keys.
+
+```bash
+# Before fix (2x env create with same key):
+kubectl … get deployment backend-api -o jsonpath='…env'
+# [{"name":"DEDUP_TEST",…}, {"name":"DEDUP_TEST",…}]   ← duplicate
+
+# After fix:
+# [{"name":"DEDUP_TEST",…}]   ← single entry, correct value
+```
+
+| Test | Result |
+|------|--------|
+| `env create` same key twice → Deployment env | PASS — key appears once |
 
 ---
 
@@ -545,7 +592,7 @@ No unexpected 5xx errors in backend logs.
 | `logs stream` requires `-d` when not using `--config` and there are multiple deployments in namespace | Expected behaviour |
 | `--output json` not wired into every command (only list/get) | Medium: add to `service list`, `ingress list`, `audit list`, etc. |
 | Auto-select amd64 machine (no `--machine`) on amd64 images | Only 1 online owner machine (arm64); monetized amd64 fallback untested |
-| `updateDeploymentWithConfigmap` appends env vars without deduplication | If the same key is added twice via `env create`, the Deployment ends up with duplicate `env` entries — benign but wasteful; last value wins in kubelet |
+| `--output json` not wired into `ingress list`, `service list`, `audit list`, `notifications list` | Medium: the table is parseable with `awk`; `ingress list` workaround is documented |
 
 ---
 
