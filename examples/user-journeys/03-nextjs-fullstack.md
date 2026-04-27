@@ -6,6 +6,20 @@
 
 ---
 
+## CLI Coverage
+
+> ⚠️ **Mostly covered** — all commands work except one gap with build-time env vars.
+
+> **Gap: `--build-arg` flag not yet available**
+> `NEXT_PUBLIC_*` variables must be baked into the image at build time, which normally
+> requires passing them as Docker build arguments (`--build-arg`). The CLI does not
+> yet expose a `--build-arg` flag on `deploy`. **Workaround:** Set a hardcoded default
+> in your `Dockerfile` (`ARG NEXT_PUBLIC_API_URL=https://backend-api.satusky.com`) so
+> the cloud build uses it automatically, or move the value to a runtime env var and
+> fetch it server-side instead of using `NEXT_PUBLIC_`.
+
+---
+
 ## 1. Project structure
 
 ```

@@ -6,6 +6,15 @@
 
 ---
 
+## CLI Coverage
+
+> ✅ **Fully covered** — every command in this guide works with the current CLI.
+> The port-8080 requirement for worker deployments is a platform constraint
+> (all deployments need a port), not a CLI gap. A minimal health-check endpoint
+> is the correct workaround — see the Dockerfile in this guide.
+
+---
+
 ## Overview
 
 The system has two parts:

@@ -6,6 +6,30 @@
 
 ---
 
+## CLI Coverage
+
+> ⚠️ **Mostly covered** — deployment, env wiring, and independent updates all work.
+> One gap with JSON output on `ingress list`.
+
+> **Gap: `-o json ingress list` is not yet wired**
+> `--output json` is wired to `deploy list/get/status`, `env list`, `secret list`,
+> `machine list`, and `token list` — but **not** to `ingress list` or `service list`.
+> The JSON extraction pattern shown in this guide (`jq` on ingress list) will fall
+> back to table output. **Workaround:** derive the URL from the app name — SatuSky
+> always assigns `<app-name>.satusky.com` — so you can construct it directly:
+> ```bash
+> USER_SERVICE_URL="https://user-service.satusky.com"
+> 1ctl-dev env create --config services/order-service/satusky.toml \
+>   --env USER_SERVICE_URL=$USER_SERVICE_URL
+> ```
+> Or use `deploy get -o json` which IS wired:
+> ```bash
+> APP=$(1ctl-dev -o json deploy get --config services/user-service/satusky.toml)
+> DOMAIN=$(echo $APP | jq -r '.app_label').satusky.com
+> ```
+
+---
+
 ## Overview
 
 Each service is its own deployable unit with its own `satusky.toml`. They are deployed separately, scaled separately, and updated independently. The only coupling is a URL that order-service reads from its environment — which you set after user-service is live.

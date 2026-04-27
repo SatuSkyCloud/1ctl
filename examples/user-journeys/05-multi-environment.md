@@ -6,6 +6,14 @@
 
 ---
 
+## CLI Coverage
+
+> ✅ **Fully covered** — every command in this guide works with the current CLI.
+> Named config targets (`--config staging` → `satusky.staging.toml`) are fully
+> supported. No gaps.
+
+---
+
 ## Overview
 
 SatuSky uses named TOML files to represent environments. The default config file is `satusky.toml` (production). Passing `--config staging` resolves to `satusky.staging.toml` in the same directory. You never touch a shared file — each environment is fully independent.

@@ -6,6 +6,25 @@
 
 ---
 
+## CLI Coverage
+
+> ⚠️ **Mostly covered** — all database connection commands work. One gap with the
+> optional Postgres addon.
+
+> **Gap: `--postgres` addon flag does not exist**
+> The guide mentions `--postgres` as an optional built-in addon. That flag does not
+> exist in the current CLI. **Workaround:** use an external managed database
+> (Neon, Supabase, PlanetScale, Railway Postgres, etc.) and store the full
+> `DATABASE_URL` connection string as a secret:
+> ```bash
+> 1ctl-dev secret create --config satusky.toml \
+>   --kv DATABASE_URL=postgres://user:pass@host/db?sslmode=require
+> ```
+> All other commands in this guide — `deploy restart`, `env unset`, `logs stream`,
+> `deploy rollback` — work fully.
+
+---
+
 ## Overview
 
 Secrets (like `DATABASE_URL`) and environment variables (like pool tuning) are kept separate on purpose. Secrets are encrypted at rest and never appear in plain text in `deploy list` output. Env vars are visible and suitable for non-sensitive configuration. Both are injected into the container at runtime — the app sees them as ordinary environment variables.

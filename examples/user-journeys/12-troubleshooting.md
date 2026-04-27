@@ -6,6 +6,15 @@
 
 ---
 
+## CLI Coverage
+
+> ✅ **Fully covered** — every diagnostic command in this guide works with the
+> current CLI. The key behavioural note — that `env create` / `secret create`
+> changes require `deploy restart` to take effect — is a platform behaviour, not
+> a CLI gap, and is documented in Problem 4.
+
+---
+
 ## Quick Reference
 
 | Symptom | Problem | Jump to |

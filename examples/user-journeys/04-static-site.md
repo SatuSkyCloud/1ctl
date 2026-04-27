@@ -6,6 +6,13 @@
 
 ---
 
+## CLI Coverage
+
+> ✅ **Fully covered** — every command in this guide works with the current CLI.
+> No gaps.
+
+---
+
 ## 1. Project structure
 
 ```

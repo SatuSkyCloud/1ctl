@@ -6,6 +6,15 @@
 
 ---
 
+## CLI Coverage
+
+> ✅ **Fully covered** — every command in this guide works with the current CLI.
+> `cpu = "2"` and `memory = "2Gi"` in `satusky.toml` are respected, cloud build
+> handles the large Dockerfile, and `.dockerignore` is honoured by the build
+> context packager. No gaps.
+
+---
+
 ## Overview
 
 Large model weights mean the default resource limits won't cut it. This journey shows how to set `cpu = "2"` and `memory = "2Gi"` from the start, stream the slow cloud build, verify resource allocation via JSON output, and bump memory if the pod OOMKills.

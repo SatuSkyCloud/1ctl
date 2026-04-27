@@ -6,6 +6,24 @@
 
 ---
 
+## CLI Coverage
+
+> ⚠️ **Mostly covered** — the workflow logic is fully supported. One gap with the binary name.
+
+> **Gap: no released `1ctl-dev` binary for CI**
+> The dev binary (`1ctl-dev`) is not published to GitHub Releases — only the prod
+> `1ctl` binary is (via `install.sh`). In CI, install the prod binary and point it at
+> your backend using `SATUSKY_API_URL`:
+> ```bash
+> curl -sSL https://raw.githubusercontent.com/SatuSkyCloud/1ctl/main/install.sh | bash
+> export SATUSKY_API_URL=https://api.satusky.com/v1/cli
+> ```
+> No `profile create` is needed — `SATUSKY_API_URL` and the token are sufficient.
+> Every other command in this guide (`deploy --wait`, `-o json`, `rollback`) works
+> identically on the prod binary.
+
+---
+
 ## Overview
 
 `1ctl-dev` is a single static binary. In CI you install it in seconds, authenticate via an environment variable (`SATUSKY_API_KEY`), and use `-o json` to capture deployment metadata for downstream steps. No profile setup, no interactive login.

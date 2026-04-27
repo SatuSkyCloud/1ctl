@@ -6,6 +6,14 @@
 
 ---
 
+## CLI Coverage
+
+> ✅ **Fully covered** — every command in this guide works with the current CLI.
+> `profile create`, `profile use`, `--profile` one-shot flag, `org switch` with
+> positional arg, and `SATUSKY_PROFILE` env var all work. No gaps.
+
+---
+
 ## Overview
 
 Each SatuSky profile stores a backend URL and auth token. Profiles are named so you can switch with a single command or reference them inline with `--profile`. Three profiles cover the common freelance setup: two clients on the SatuSky cloud and one local dev server for personal projects.
