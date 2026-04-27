@@ -40,28 +40,50 @@ CLI flags always override toml values for a single invocation. The file is never
 ## Prerequisites
 
 - Backend running: `sudo task dev.debug > logs.txt 2>&1` in `satusky-core_backend`
-- Dev binary: `go build -ldflags "-X 1ctl/internal/config.defaultAPIURL=http://localhost:8080/v1/cli" -o bin/1ctl-dev ./cmd/...`
+- Build from source (see below)
+
+### Can I use the Homebrew `1ctl` instead of building from source?
+
+**No.** The Homebrew release (v0.6.0) is missing commands added in this development branch:
+`env unset`, `secret unset`, `--wait`, `--output json`, `logs stream --config`, `org switch <name>`, and all the bug fixes (env/secret first-time create, token lifecycle, delete handlers).
+
+You must build from source:
+
+```bash
+cd /path/to/1ctl
+go build -o bin/1ctl-dev ./cmd/...
+```
+
+No `-ldflags` needed. The binary defaults to the prod API URL, but `SATUSKY_API_URL` always overrides it at runtime (see below).
+
+Optional — install to PATH so you can call it without `./bin/`:
+```bash
+sudo cp bin/1ctl-dev /usr/local/bin/1ctl-dev
+```
 
 ---
 
 ## 1. Authenticate
 
 ```bash
+# Point at the local backend — required every session (or add to ~/.zshrc)
 export SATUSKY_API_URL=http://localhost:8080/v1/cli
 
-# Returning user — activate existing profile (no re-login needed)
+# Returning user — profile already exists, just activate and confirm
 1ctl-dev profile use local
 1ctl-dev auth status
 ```
 
 ```bash
-# First time on this machine — create profile then log in
+# First time on this machine — create the local profile, then log in
 1ctl-dev profile create --url http://localhost:8080/v1/cli local
 1ctl-dev profile use local
 1ctl-dev auth login --token <your-api-token>
 ```
 
-> `profile` subcommands require the dev binary. The Homebrew release (v0.6.0) only supports `SATUSKY_API_URL`.
+> **`SATUSKY_API_URL` is the master switch.** It overrides the active profile URL for every
+> command. Set it in your shell and forget about it. The `--api-url` flag does the same
+> thing per-command if you prefer not to export.
 
 ---
 
@@ -276,22 +298,27 @@ Use `--kv` for secrets (`--env` is a backward-compatible alias).
 1ctl-dev marketplace list
 ```
 
-All list/get commands accept `-o json` for machine-readable output.
-
 ---
 
 ## --output json
 
-Every list and get command supports `--output json` / `-o json`:
+`--output json` / `-o json` is wired into these commands:
+
+| Command | `-o json` |
+|---------|-----------|
+| `deploy list/get/status` | ✅ |
+| `env list` | ✅ |
+| `secret list` | ✅ |
+| `machine list` | ✅ |
+| `token list` | ✅ |
+| `service list`, `ingress list`, `audit list`, `notifications list` | ❌ (table only — future sprint) |
 
 ```bash
 # Pipe into jq
 1ctl-dev --output json deploy list | jq '.[].image'
 1ctl-dev -o json env list | jq '.[0].key_values'
 1ctl-dev -o json machine list | jq '.[] | select(.status == "online") | .machine_name'
-
-# Save to file
-1ctl-dev -o json audit list > audit.json
+1ctl-dev -o json token list | jq '.[] | {name, is_active}'
 ```
 
 ---

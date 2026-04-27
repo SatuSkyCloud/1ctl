@@ -6,14 +6,28 @@
 **Namespace**: org3-b322955e
 **User**: mingerz.k@gmail.com
 **Org**: org3 (b322955e-6a86-4157-8bff-1bea605ef8ac)
-**Binary**: `bin/1ctl-dev` (built from source, `defaultAPIURL=http://localhost:8080/v1/cli`)
+**Binary**: `bin/1ctl-dev` (built from source — see build instructions below)
 **CLI version**: `dev`
 
-> **Setup — run once:**
+> **Can I use the Homebrew `1ctl` instead?**
+> **No.** v0.6.0 is missing `env unset`, `secret unset`, `--wait`, `-o json`,
+> `logs stream --config`, `org switch <name>`, and all bug fixes made in this sprint.
+> You must build from source.
+
+> **Build (one-time):**
 > ```bash
-> export SATUSKY_API_URL=http://localhost:8080/v1/cli
-> 1ctl-dev profile use local
+> cd /path/to/1ctl
+> go build -o bin/1ctl-dev ./cmd/...        # no -ldflags needed
+> sudo cp bin/1ctl-dev /usr/local/bin/1ctl-dev   # optional: add to PATH
 > ```
+
+> **Setup — run once per shell session:**
+> ```bash
+> export SATUSKY_API_URL=http://localhost:8080/v1/cli   # points at local backend
+> 1ctl-dev profile use local                             # activates stored credentials
+> ```
+> `SATUSKY_API_URL` overrides the active profile URL. The `--api-url` flag does
+> the same per-command. Add the export to `~/.zshrc` to avoid repeating it.
 
 ---
 
@@ -122,8 +136,11 @@ for x in d: print(x['image'], x['deployment_id'][:8])"
 | `-o json machine list` | PASS — valid JSON array |
 | `-o json token list` | PASS — valid JSON array |
 
-**Commands with `--output json` wired in:**
+**Commands with `--output json` wired in (confirmed):**
 `deploy list/get/status`, `env list`, `secret list`, `machine list`, `token list`
+
+**Not yet wired (`-o json` silently falls back to table):**
+`service list`, `ingress list`, `audit list`, `notifications list`, `cluster list`
 
 ---
 
