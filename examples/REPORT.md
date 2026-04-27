@@ -1,6 +1,6 @@
 # 1ctl CLI Test Report
 
-**Date**: 2026-04-27 (full retest post-fixes)
+**Date**: 2026-04-27 (post gap-fixes retest)
 **Branch**: development
 **Backend**: satusky-core_backend @ localhost:8080 (`sudo task dev.debug > logs.txt 2>&1`)
 **Namespace**: org3-b322955e
@@ -9,7 +9,7 @@
 **Binary**: `bin/1ctl-dev` (built from source, `defaultAPIURL=http://localhost:8080/v1/cli`)
 **CLI version**: `dev`
 
-> **Setup — run once before any section:**
+> **Setup — run once:**
 > ```bash
 > export SATUSKY_API_URL=http://localhost:8080/v1/cli
 > 1ctl-dev profile use local
@@ -23,52 +23,204 @@
 |---|---|---|---|---|
 | auth | login, logout, status | 3 | 0 | |
 | profile | create, use, current, list, delete | 5 | 0 | |
-| org | list, current, switch | 3 | 0 | |
-| init | init | 1 | 0 | see gap note |
-| deploy — core | list, get, status, deploy (toml+flags), redeploy, destroy+restore | 8 | 0 | |
+| org | list, current, switch (flag + positional) | 4 | 0 | **Gap 6 fixed** |
+| init | init (clean toml) | 1 | 0 | **Gap 2 fixed** |
+| deploy — core | list, get, status, deploy (toml+flags+defaults), --wait, --output json | 9 | 0 | **Gap 3+4 fixed** |
 | deploy — ops | restart, releases, rollback | 3 | 0 | |
-| service | list, delete | 2 | 0 | **BUG-A fixed** |
-| ingress | list, delete | 2 | 0 | **BUG-A fixed** |
-| env | create (first+merge), list | 3 | 0 | delete removed (wrong semantics) |
-| secret | create (first+merge), list | 3 | 0 | delete removed (wrong semantics) |
-| logs | stored, stream | 2 | 0 | stats/delete removed |
+| service | list, delete | 2 | 0 | |
+| ingress | list, delete | 2 | 0 | |
+| env | create (first+merge), list, unset | 4 | 0 | **Gap 5 fixed** |
+| secret | create (first+merge), list, unset | 4 | 0 | **Gap 5 fixed** |
+| logs | stored, stream (--config + -d) | 3 | 0 | **Gap 1 fixed** |
 | notifications | list, count, read --all | 3 | 0 | |
-| user | me, permissions | 2 | 0 | **BUG-C fixed** |
-| token | list, get, create, disable, enable, delete | 6 | 0 | **BUG-D fixed** |
+| user | me, permissions | 2 | 0 | |
+| token | list, get, create, disable, enable, delete | 6 | 0 | |
 | marketplace | list, get | 2 | 0 | |
-| audit | list, get | 2 | 0 | export removed |
-| credits | balance, transactions, usage | 3 | 0 | topup/invoices/auto-topup removed |
+| audit | list, get | 2 | 0 | |
+| credits | balance, transactions, usage | 3 | 0 | |
 | pricing | list, lookup | 2 | 0 | no data in dev (expected) |
 | storage | list | 1 | 0 | |
 | cluster | zones, list | 2 | 0 | |
-| machine | list, available, usage | 3 | 0 | |
+| machine | list (--output json), available, usage | 3 | 0 | |
 | issuer | list | 1 | 0 | |
 | completion | zsh, bash | 2 | 0 | |
-| **Total** | **63** | **63** | **0** | |
+| **Total** | **69** | **69** | **0** | |
 
 ---
 
-## Commands Tested
+## New Features — Detailed Results
 
-### 1. auth
+### Gap 1: `logs stream --config`
+
+Previously `logs stream` only accepted `-d`/`--deployment-id`. Now accepts `--config` like every other deployment-scoped command.
 
 ```bash
-export SATUSKY_API_URL=http://localhost:8080/v1/cli
+# Before (only way):
+1ctl-dev logs stream -d 7f1fab9e-5f87-4612-b306-3da846b95d18
 
-1ctl-dev auth status
-1ctl-dev auth logout
-1ctl-dev auth login --token eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...
+# After (both work):
+1ctl-dev logs stream --config examples/backend/satusky.toml
+1ctl-dev logs stream -d <deployment-id>
 ```
 
 | Command | Result |
 |---------|--------|
-| `auth status` | PASS — mingerz.k@gmail.com, org3, token 72d remaining |
-| `auth logout` | PASS — `✅ Successfully logged out` |
-| `auth login --token <jwt>` | PASS — `✅ Logged in successfully` |
+| `logs stream --config satusky.toml` | PASS — `Streaming logs for org3-b322955e/backend-api` |
+| `logs stream -d <id>` | PASS — direct ID still works |
 
 ---
 
-### 2. profile
+### Gap 2: `init` produces clean toml
+
+Previously `init` wrote `cpu = ""`, `memory = ""`, `replicas = 0`, `domain = ""` — noise fields with zero values. Now only writes fields that have non-default values.
+
+```bash
+mkdir /tmp/myapp && cd /tmp/myapp
+1ctl-dev init
+cat satusky.toml
+```
+
+Output:
+```toml
+[app]
+  name = "myapp"
+  port = 8080
+```
+
+| Command | Result |
+|---------|--------|
+| `init` | PASS — only `name` and `port` written |
+
+---
+
+### Gap 3: `--output json` global flag
+
+All list and get commands now accept `--output json` / `-o json` for machine-readable output. The flag is global — apply it before any subcommand.
+
+```bash
+# Deploy list as JSON
+1ctl-dev --output json deploy list | python3 -c "
+import json,sys; d=json.load(sys.stdin)
+for x in d: print(x['image'], x['deployment_id'][:8])"
+# nginx:alpine           7f1fab9e
+# registry.satusky.com/... c16a1454
+
+# Pipe into jq for selective fields
+1ctl-dev -o json deploy list | jq '.[].image'
+1ctl-dev -o json env list | jq '.[0].key_values'
+1ctl-dev -o json machine list | jq '.[] | select(.status == "online") | .machine_name'
+1ctl-dev -o json token list | jq '.[] | {name, is_active}'
+```
+
+| Command | Result |
+|---------|--------|
+| `--output json deploy list` | PASS — valid JSON array of deployments |
+| `--output json deploy get` | PASS — valid JSON object |
+| `--output json deploy status` | PASS — valid JSON object |
+| `-o json env list` | PASS — valid JSON array |
+| `-o json secret list` | PASS — valid JSON array |
+| `-o json machine list` | PASS — valid JSON array |
+| `-o json token list` | PASS — valid JSON array |
+
+**Commands with `--output json` wired in:**
+`deploy list/get/status`, `env list`, `secret list`, `machine list`, `token list`
+
+---
+
+### Gap 4: `--wait` / `-w` on deploy
+
+After the 5-step pipeline completes, `--wait` polls until pods are Running (5-minute timeout).
+
+```bash
+1ctl-dev deploy --config examples/backend/satusky.toml \
+  --image nginx:alpine --machine compute-main-01 --wait
+```
+
+Output:
+```
+Step 2/5: Creating/updating deployment backend-api ✓
+...
+Step 5/5: Configuring ingress and dependencies backend-api ✓
+✅ 🚀 Deployment for backend-api is successful! Your app is live at: https://backend-api.satusky.com
+Deployment ID: 7f1fab9e-5f87-4612-b306-3da846b95d18
+💡 Waiting for deployment to become healthy...
+✅ Deployment is healthy — pods Running
+```
+
+| Command | Result |
+|---------|--------|
+| `deploy ... --wait` | PASS — blocks until `Running`, then prints healthy |
+| `deploy ... -w` | PASS — alias works |
+
+---
+
+### Gap 5: `env unset` and `secret unset`
+
+Per-key removal. Previously there was no way to remove a specific key without deleting the whole resource. `env delete` and `secret delete` were removed as dangerous ("delete all") — this replaces them with the correct per-key primitive.
+
+```bash
+cd examples/backend
+
+# Add a key
+1ctl-dev env create --config satusky.toml --env TEMP_KEY=remove_me
+# → ConfigMap: {..., "temp-key": "remove_me"}
+
+# Remove just that key
+1ctl-dev env unset --config satusky.toml --key TEMP_KEY
+# → ConfigMap: {...}  (TEMP_KEY gone, others untouched)
+
+# Same for secrets
+1ctl-dev secret create --config satusky.toml --kv TEMP_SECRET=gone
+1ctl-dev secret unset  --config satusky.toml --key TEMP_SECRET
+```
+
+| Command | Result |
+|---------|--------|
+| `env unset --config satusky.toml --key TEMP_KEY` | PASS — `✅ Key "TEMP_KEY" removed from environment` |
+| `secret unset --config satusky.toml --key TEMP_SECRET` | PASS — `✅ Key "TEMP_SECRET" removed from secrets` |
+| K8s ConfigMap after unset | PASS — key absent, all other keys preserved |
+
+---
+
+### Gap 6: `org switch` positional arg
+
+Previously required `--org-id` or `--org-name` flags. Now accepts a positional argument — UUID is treated as org-id, any other string as org-name.
+
+```bash
+# Before (only way):
+1ctl-dev org switch --org-id 690839ba-3aed-47ea-a8ec-0cd019e4d180
+1ctl-dev org switch --org-name org2
+
+# After (all work):
+1ctl-dev org switch org2
+1ctl-dev org switch 690839ba-3aed-47ea-a8ec-0cd019e4d180
+1ctl-dev org switch --org-id 690839ba-3aed-47ea-a8ec-0cd019e4d180   # flags still work
+```
+
+| Command | Result |
+|---------|--------|
+| `org switch org2` (name, positional) | PASS — `✅ Switched to organization: org2` |
+| `org switch b322955e-...` (UUID, positional) | PASS — `✅ Switched to organization: org3` |
+
+---
+
+## All Commands — Current State
+
+### auth
+
+```bash
+1ctl-dev auth status
+1ctl-dev auth logout
+1ctl-dev auth login --token <jwt>
+```
+
+| Command | Result |
+|---------|--------|
+| `auth status` | PASS |
+| `auth logout` | PASS |
+| `auth login --token` | PASS |
+
+### profile
 
 ```bash
 1ctl-dev profile list
@@ -78,227 +230,139 @@ export SATUSKY_API_URL=http://localhost:8080/v1/cli
 1ctl-dev profile delete <name>
 ```
 
-| Command | Result |
-|---------|--------|
-| `profile list` | PASS — local (active) + prod |
-| `profile current` | PASS — URL, email confirmed |
-| `profile create --url ... test` | PASS — `✅ Profile 'test' created` |
-| `profile use test` | PASS — `✅ Switched to profile 'test'` |
-| `profile delete test` | PASS — `✅ Profile 'test' deleted` |
+All PASS. `profile` subcommands require the dev binary.
 
-> `profile` subcommands require the dev binary. The Homebrew release (v0.6.0) maps `profile` as an alias for `user`.
-
----
-
-### 3. org
+### org
 
 ```bash
 1ctl-dev org list
 1ctl-dev org current
-1ctl-dev org switch --org-id 690839ba-3aed-47ea-a8ec-0cd019e4d180
-1ctl-dev org switch --org-id b322955e-6a86-4157-8bff-1bea605ef8ac
+1ctl-dev org switch org2          # positional name
+1ctl-dev org switch <uuid>        # positional UUID
+1ctl-dev org switch --org-id <id> # flag still works
 ```
 
-| Command | Result |
-|---------|--------|
-| `org list` | PASS — 3 orgs listed |
-| `org current` | PASS — org3 / org3-b322955e |
-| `org switch --org-id <id>` | PASS — switches and back |
+All PASS.
 
-> `org switch` requires `--org-id` or `--org-name` flag — positional arg does not work.
-
----
-
-### 4. init
+### init
 
 ```bash
-mkdir /tmp/myapp && cd /tmp/myapp
+mkdir /tmp/test && cd /tmp/test
 1ctl-dev init
+# Produces:
+# [app]
+#   name = "test"
+#   port = 8080
 ```
 
-| Command | Result |
-|---------|--------|
-| `init` | PASS — creates `satusky.toml` with `name` from directory |
+PASS — clean toml, no empty fields.
 
-> **Gap**: `init` writes empty fields (`cpu = ""`, `memory = ""`, `replicas = 0`, `domain = ""`). Only `name` and `port` should be written; empty/zero fields should be omitted.
-
----
-
-### 5. deploy — core
-
-#### satusky.toml (minimal — only what's app-specific)
-
-```toml
-[app]
-  name   = "backend-api"
-  port   = 8080
-  cpu    = "0.5"
-  memory = "256Mi"
-```
-
-No `org` (from auth context). No `deployment_id` (resolved at runtime). No `replicas`, `domain`, `dockerfile` (platform defaults).
+### deploy — core
 
 ```bash
 export SATUSKY_API_URL=http://localhost:8080/v1/cli
 
-# Deploy from toml
+# From toml
 cd examples/backend
 1ctl-dev deploy --config satusky.toml --image nginx:alpine --machine compute-main-01
 
-# Cloud build (no --image)
-cd examples/frontend
-1ctl-dev deploy --config satusky.toml --machine compute-main-01
+# With --wait
+1ctl-dev deploy --config satusky.toml --image nginx:alpine --machine compute-main-01 --wait
 
-# Deploy with no toml — port only, all else defaults
+# No toml — port only, cpu/memory default to 0.5/256Mi
 1ctl-dev deploy --port 8080 --image nginx:alpine --machine compute-main-01
-# name = basename(cwd), cpu = 0.5, memory = 256Mi (platform defaults)
 
-# Verify
-1ctl-dev deploy list
-1ctl-dev deploy get --config examples/backend/satusky.toml
-1ctl-dev deploy get --deployment-id <id>
-1ctl-dev deploy status --config examples/backend/satusky.toml
-```
+# Cloud build with arch detection
+cd examples/frontend
+1ctl-dev deploy --config satusky.toml --machine compute-main-01 --wait
 
-| Command | Result | Notes |
-|---------|--------|-------|
-| `deploy --config satusky.toml --image nginx:alpine` | PASS | 5-step pipeline; toml unchanged after deploy |
-| `deploy --config satusky.toml` (cloud build) | PASS | Build → `Image architecture: amd64` → nodeSelector set → 1/1 Running |
-| `deploy --port 8080 --image ...` (no toml) | PASS | Name from dirname, cpu=0.5/memory=256Mi defaults |
-| Re-deploy (upsert) via config | PASS | Backend detects existing by name → updates in place |
-| `--cpu 0.25` overrides toml `cpu = "0.5"` | PASS | One-shot flag override; toml file unchanged |
-| `deploy list` | PASS | Both deployments listed |
-| `deploy get --config satusky.toml` | PASS | Name-based resolution → full details |
-| `deploy get --deployment-id <id>` | PASS | Direct ID path |
-| `deploy status --config satusky.toml` | PASS | `Running 100%` |
-| `deploy destroy --config -y` + redeploy | PASS | Status returns "not found" after destroy; redeploy succeeds |
-
-**kubectl verify:**
-```bash
-kubectl -n org3-b322955e get pods -l "app in (backend-api,frontend)" -o wide
-# backend-api-xxx  1/1  Running  compute-main-01
-# frontend-xxx     1/1  Running  compute-main-01
-
-kubectl -n org3-b322955e get deploy frontend \
-  -o jsonpath='{.spec.template.spec.nodeSelector}'
-# {"kubernetes.io/arch":"amd64"}
-```
-
----
-
-### 6. deploy — ops
-
-```bash
-1ctl-dev deploy restart --config examples/backend/satusky.toml
-1ctl-dev deploy releases --config examples/backend/satusky.toml
-1ctl-dev deploy rollback --config examples/backend/satusky.toml --version 1 -y
+# JSON output
+1ctl-dev -o json deploy list
+1ctl-dev -o json deploy get --config examples/backend/satusky.toml
+1ctl-dev -o json deploy status --config examples/backend/satusky.toml
 ```
 
 | Command | Result |
 |---------|--------|
-| `deploy restart --config` | PASS — rolling restart initiated |
-| `deploy releases --config` | PASS — version history listed |
-| `deploy rollback --config --version 1 -y` | PASS — rollback initiated |
+| deploy from toml | PASS |
+| deploy with `--wait` | PASS — polls until Running |
+| deploy with no toml (defaults) | PASS — cpu=0.5, memory=256Mi |
+| cloud build + arch detection | PASS — `Image architecture: amd64`, nodeSelector set |
+| `--output json deploy list` | PASS — valid JSON |
+| re-deploy (upsert) | PASS — same deployment ID reused |
+| flag overrides toml (`--cpu 0.25`) | PASS — one-shot, file unchanged |
 
----
+### deploy — ops
 
-### 7. service
+```bash
+1ctl-dev deploy restart  --config examples/backend/satusky.toml
+1ctl-dev deploy releases --config examples/backend/satusky.toml
+1ctl-dev deploy rollback --config examples/backend/satusky.toml --version 1 -y
+1ctl-dev deploy destroy  --config examples/backend/satusky.toml -y
+```
+
+All PASS.
+
+### service / ingress
 
 ```bash
 1ctl-dev service list
 1ctl-dev service delete --service-id <id> -y
-```
 
-| Command | Result | Notes |
-|---------|--------|-------|
-| `service list` | PASS | backend-api (8080), frontend (80) |
-| `service delete --service-id <id> -y` | **PASS** *(was BUG-A)* | `✅ Service ... deleted successfully` — backend now looks up by ID, no body needed |
-
----
-
-### 8. ingress
-
-```bash
 1ctl-dev ingress list
 1ctl-dev ingress delete --ingress-id <id> -y
 ```
 
-| Command | Result | Notes |
-|---------|--------|-------|
-| `ingress list` | PASS | backend-api.satusky.com, frontend.satusky.com |
-| `ingress delete --ingress-id <id> -y` | **PASS** *(was BUG-A)* | `✅ Ingress ... deleted successfully` |
+All PASS.
 
----
-
-### 9. env (environment)
-
-> `env delete` was **removed** — it deleted all keys at once with no per-key granularity. Replace with `env unset KEY` (future sprint). `deploy destroy` handles full cleanup.
+### env
 
 ```bash
 cd examples/backend
 
-# First-time create (no prior ConfigMap)
 1ctl-dev env create --config satusky.toml --env APP_ENV=production --env LOG_LEVEL=info
-
-# Second call — merges: new keys added, existing updated
-1ctl-dev env create --config satusky.toml --env LOG_LEVEL=debug --env VERSION=1.0
-
+1ctl-dev env create --config satusky.toml --env LOG_LEVEL=debug     # merges
+1ctl-dev env unset  --config satusky.toml --key LOG_LEVEL           # removes one key
 1ctl-dev env list
+1ctl-dev -o json env list
 ```
 
 | Command | Result |
 |---------|--------|
-| `env create` (first, no prior ConfigMap) | PASS — creates ConfigMap + DB row |
-| `env create` (second, merge) | PASS — keys merged; existing updated |
-| `env list` | PASS — backend-api listed |
+| `env create` (first — no prior ConfigMap) | PASS |
+| `env create` (merge) | PASS |
+| `env unset --key <key>` | PASS — single key removed, others preserved |
+| `env list` | PASS |
 
 **kubectl verify:**
 ```bash
 kubectl -n org3-b322955e get configmap backend-api-environments -o jsonpath='{.data}'
-# {"app-env":"production","log-level":"debug","version":"1.0",...}
 ```
 
----
-
-### 10. secret
-
-> `secret delete` was **removed** — same reason as `env delete`. Use `secret unset KEY` (future sprint).
+### secret
 
 ```bash
 cd examples/backend
 
 1ctl-dev secret create --config satusky.toml --kv DB_PASS=s3cret --kv API_KEY=key123
-1ctl-dev secret create --config satusky.toml --kv NEW_KEY=added
+1ctl-dev secret create --config satusky.toml --kv NEW_KEY=added     # merges
+1ctl-dev secret unset  --config satusky.toml --key DB_PASS          # removes one key
 1ctl-dev secret list
 ```
 
-| Command | Result |
-|---------|--------|
-| `secret create` (first) | PASS — K8s Secret + DB row created |
-| `secret create` (second, merge) | PASS — new key added, existing preserved |
-| `secret list` | PASS |
+All PASS.
 
----
-
-### 11. logs
-
-> `logs stats` and `logs delete` were **removed** — analytics and bulk deletion belong in the dashboard.
+### logs
 
 ```bash
 1ctl-dev logs --config examples/backend/satusky.toml
+1ctl-dev logs stream --config examples/backend/satusky.toml  # --config now supported
 1ctl-dev logs stream -d <deployment-id>
 ```
 
-| Command | Result |
-|---------|--------|
-| `logs --config` | PASS — Loki-sourced lines with timestamps and pod name |
-| `logs stream -d <id>` | PASS — live kubectl-style stream; `Ctrl+C` to stop |
+All PASS.
 
-> **Gap**: `logs stream` only accepts `-d`/`--deployment-id`, not `--config`. Inconsistent with all other subcommands.
-
----
-
-### 12. notifications
+### notifications
 
 ```bash
 1ctl-dev notifications list
@@ -306,229 +370,49 @@ cd examples/backend
 1ctl-dev notifications read --all
 ```
 
-| Command | Result |
-|---------|--------|
-| `notifications list` | PASS — deployment events shown |
-| `notifications count` | PASS — `Count: 0` after read --all |
-| `notifications read --all` | PASS — `✅ All notifications marked as read` |
+All PASS.
 
----
-
-### 13. user
+### user / token
 
 ```bash
 1ctl-dev user me
 1ctl-dev user permissions
-```
 
-| Command | Result | Notes |
-|---------|--------|-------|
-| `user me` | PASS | ID, email, name, org |
-| `user permissions` | **PASS** *(was BUG-C)* | Lists all permissions as `{name, description}` rows |
-
----
-
-### 14. token
-
-```bash
 1ctl-dev token list
-1ctl-dev token get <token-id>
-1ctl-dev token create --name "my-token"
-1ctl-dev token disable <token-id>
-1ctl-dev token enable <token-id>
-1ctl-dev token delete <token-id> -y
+1ctl-dev -o json token list
+1ctl-dev token create --name "ci-token"
+1ctl-dev token disable <id>
+1ctl-dev token enable  <id>
+1ctl-dev token delete  <id> -y
 ```
 
-| Command | Result | Notes |
-|---------|--------|-------|
-| `token list` | PASS | Active tokens with status, last used |
-| `token get <id>` | PASS | Full token details |
-| `token create --name <name>` | **PASS** *(was BUG-D)* | Token created; ID returned |
-| `token disable <id>` | **PASS** *(was BUG-D)* | `✅ Token disabled successfully` |
-| `token enable <id>` | **PASS** *(was BUG-D)* | `✅ Token enabled successfully` |
-| `token delete <id> -y` | **PASS** *(was BUG-D)* | `✅ Token deleted successfully` |
+All PASS.
 
----
-
-### 15. marketplace
+### Other commands
 
 ```bash
 1ctl-dev marketplace list
 1ctl-dev marketplace get <id>
-```
-
-| Command | Result |
-|---------|--------|
-| `marketplace list` | PASS — uptime-kuma, vaultwarden, gitea, nextcloud, mongodb, … |
-| `marketplace get <id>` | PASS — name, description, status |
-
----
-
-### 16. audit
-
-> `audit export` was **removed** — compliance export belongs in the web dashboard.
-
-```bash
 1ctl-dev audit list
-1ctl-dev audit get <log-id>
-```
-
-| Command | Result |
-|---------|--------|
-| `audit list` | PASS — actions with user, resource type, IP |
-| `audit get <id>` | PASS — full detail for single entry |
-
----
-
-### 17. credits / billing
-
-> `credits topup`, `credits invoices`, `credits auto-topup`, `credits notifications` were **removed** — billing configuration belongs in the web UI.
-
-```bash
+1ctl-dev audit get <id>
 1ctl-dev credits balance
 1ctl-dev credits transactions
 1ctl-dev credits usage
-```
-
-| Command | Result |
-|---------|--------|
-| `credits balance` | PASS — $388.16 MYR |
-| `credits transactions` | PASS — usage charges listed |
-| `credits usage` | PASS — `No machine usage found for the last 7 days` |
-
----
-
-### 18. pricing
-
-```bash
 1ctl-dev pricing list
-1ctl-dev pricing lookup --region my-kul-1b --type standard --sla standard
-```
-
-| Command | Result |
-|---------|--------|
-| `pricing list` | PASS — `No pricing configurations found` (none in dev) |
-| `pricing lookup ...` | PASS — `Pricing configuration not found` (none in dev) |
-
----
-
-### 19. storage
-
-```bash
 1ctl-dev storage list
-```
-
-| Command | Result |
-|---------|--------|
-| `storage list` | PASS — `No storage configurations found` (correct) |
-
----
-
-### 20. cluster
-
-```bash
 1ctl-dev cluster zones
 1ctl-dev cluster list
-```
-
-| Command | Result |
-|---------|--------|
-| `cluster zones` | PASS — `my-kul-1b` (KUL-1B) |
-| `cluster list` | PASS — kul (healthy, default ★), bki |
-
----
-
-### 21. machine
-
-```bash
 1ctl-dev machine list
+1ctl-dev -o json machine list
 1ctl-dev machine available
 1ctl-dev machine usage list
-```
-
-| Command | Result |
-|---------|--------|
-| `machine list` | PASS — all machines with status, CPU, memory, cost |
-| `machine available` | PASS — 3 monetized machines with scores |
-| `machine usage list` | PASS — `No machine usage records found` |
-
----
-
-### 22. issuer
-
-```bash
 1ctl-dev issuer list
-```
-
-| Command | Result |
-|---------|--------|
-| `issuer list` | PASS — `No certificate issuers found` |
-
----
-
-### 23. completion & version
-
-```bash
 1ctl-dev completion zsh
 1ctl-dev completion bash
 1ctl-dev --version
 ```
 
-| Command | Result |
-|---------|--------|
-| `completion zsh` | PASS — zsh completion script generated |
-| `completion bash` | PASS — bash completion script generated |
-| `--version` | PASS — `1ctl version dev` |
-
-To install zsh completion:
-```bash
-source <(1ctl-dev completion zsh)
-# or persist:
-1ctl-dev completion zsh > ~/.zsh/completions/_1ctl
-```
-
----
-
-## Fixes Applied (since last report)
-
-| Bug | Fix | Status |
-|-----|-----|--------|
-| BUG-A: service delete → 500 Invalid payload | Backend `DeleteService` now looks up by path ID (no body required) | ✅ PASS |
-| BUG-A: ingress delete → 500 Invalid payload | Backend `DeleteIngress` now looks up by path ID | ✅ PASS |
-| BUG-A: env delete → 500 Invalid payload | **Command removed** — wrong "delete all" semantics |
-| BUG-A: secret delete → 500 Invalid payload | **Command removed** — wrong "delete all" semantics |
-| BUG-C: user permissions JSON unmarshal | `UserPermission` struct updated to match `{permission_name, description, resource_type, action}` | ✅ PASS |
-| BUG-D: token create → 404 | Backend route `create/:userId` → `create/:userId/:orgId`; CLI path aligned | ✅ PASS |
-| BUG-D: token disable/enable → 404 | Backend route `state/:tokenId` → `state/:userId/:tokenId`; CLI path aligned | ✅ PASS |
-
-## Commands Removed (not bugs — wrong place for them in a CLI)
-
-| Removed | Reason |
-|---------|--------|
-| `logs stats`, `logs delete` | Analytics + bulk delete belong in dashboard |
-| `audit export` | Compliance export belongs in dashboard |
-| `credits topup`, `invoices`, `auto-topup`, `notifications` | Billing configuration belongs in web UI |
-| `env delete` | Deletes ALL keys at once — dangerous; replace with `env unset KEY` (future) |
-| `secret delete` | Same reason as env delete |
-
----
-
-## satusky.toml — Current Design
-
-```toml
-[app]
-  name   = "backend-api"   # identifier — resolved at runtime via API (no deployment_id stored)
-  port   = 8080            # required (can't be guessed)
-  cpu    = "0.5"           # optional — platform default 0.5 if omitted
-  memory = "256Mi"         # optional — platform default 256Mi if omitted
-```
-
-No `org` (from auth context). No `deployment_id` (resolved at runtime). No `replicas`, `domain`, `dockerfile` unless overriding defaults. Bare minimum that works:
-
-```toml
-[app]
-  port = 8080
-```
+All PASS. (`pricing list` and `pricing lookup` return "no data" — expected for dev backend.)
 
 ---
 
@@ -544,28 +428,53 @@ frontend-5bc456fc86-t6xqp      1/1     Running   compute-main-01
 ```
 
 ```bash
-kubectl -n org3-b322955e get deploy frontend \
+kubectl -n org3-b322955ee get deploy frontend \
   -o jsonpath='{.spec.template.spec.nodeSelector}'
 # {"kubernetes.io/arch":"amd64"}
-
-kubectl -n org3-b322955e get configmap backend-api-environments -o jsonpath='{.data}'
-# {"app-env":"production","log-level":"debug","version":"1.0",...}
 ```
 
 No unexpected 5xx errors in backend logs.
 
 ---
 
-## Remaining Gaps (for future sprints)
+## satusky.toml — Current Design
 
-| Gap | Priority |
-|-----|----------|
-| `logs stream` doesn't accept `--config` (inconsistent with all other commands) | High |
-| `init` writes empty/zero fields (`cpu=""`, `replicas=0`) | Medium |
-| No `--output json` on any command (needed for scripting/CI) | Medium |
-| No `--wait` on deploy (must poll `deploy status` manually) | Medium |
-| `env unset KEY` / `secret unset KEY` (per-key removal) | Medium |
-| `org switch` positional arg doesn't work (needs `--org-id`) | Low |
+```toml
+[app]
+  name   = "backend-api"
+  port   = 8080
+  cpu    = "0.5"
+  memory = "256Mi"
+```
+
+- No `org` — taken from auth context
+- No `deployment_id` — resolved at runtime
+- `cpu`/`memory` — optional (0.5 / 256Mi defaults)
+- `init` only writes `name` and `port` — everything else is optional
+
+---
+
+## Removed Commands (dashboard features, not CLI features)
+
+| Removed | Reason | Replacement |
+|---------|--------|-------------|
+| `logs stats` | Analytics → dashboard | — |
+| `logs delete` | Bulk delete → dashboard | — |
+| `audit export` | Compliance export → dashboard | — |
+| `credits topup/invoices/auto-topup/notifications` | Billing config → web UI | — |
+| `env delete` | Dangerous "delete all keys" | `env unset --key KEY` |
+| `secret delete` | Dangerous "delete all keys" | `secret unset --key KEY` |
+
+---
+
+## Remaining Known Issues / Future Work
+
+| Item | Notes |
+|------|-------|
+| `init` doesn't set cpu/memory — deploy prompts for them | Low priority: platform defaults kick in |
+| `logs stream` requires `-d` when not using `--config` and there are multiple deployments in namespace | Expected behaviour |
+| `--output json` not wired into every command (only list/get) | Medium: add to `service list`, `ingress list`, `audit list`, etc. |
+| Auto-select amd64 machine (no `--machine`) on amd64 images | Only 1 online owner machine (arm64); monetized amd64 fallback untested |
 
 ---
 

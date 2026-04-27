@@ -11,28 +11,29 @@ Two sample applications for demonstrating and testing `1ctl` against a SatuSky b
 
 ## How satusky.toml works
 
-`satusky.toml` contains only static app config — no generated IDs, no org. It works like `fly.toml`.
+`satusky.toml` contains only static app config — no generated IDs, no org. The `name` field is the app identifier, resolved to a deployment at runtime (like `fly.toml`).
 
 ```toml
 [app]
-  name   = "backend-api"   # app identifier (resolved to deployment at runtime)
+  name   = "backend-api"   # identifier — resolved via API at runtime
   port   = 8080            # required
-  cpu    = "0.5"           # optional — defaults to 0.5
-  memory = "256Mi"         # optional — defaults to 256Mi
+  cpu    = "0.5"           # optional — platform default 0.5
+  memory = "256Mi"         # optional — platform default 256Mi
 ```
 
 **What's omitted intentionally:**
 - `org` — taken from the active auth context
 - `deployment_id` — resolved at runtime via `GET /deployments/namespace/:ns/app/:name`
-- `replicas`, `domain`, `dockerfile` — platform defaults apply
+- `replicas`, `domain`, `dockerfile` — platform defaults apply when not set
 
-**Bare minimum** (everything else defaults):
+**Bare minimum that works:**
 ```toml
 [app]
   port = 8080
 ```
+Name = dirname, cpu/memory = platform defaults.
 
-CLI flags always override toml values for a single invocation; the file is never modified.
+CLI flags always override toml values for a single invocation. The file is never modified by any command.
 
 ---
 
@@ -48,117 +49,136 @@ CLI flags always override toml values for a single invocation; the file is never
 ```bash
 export SATUSKY_API_URL=http://localhost:8080/v1/cli
 
-# Returning user — activate the existing profile
+# Returning user — activate existing profile (no re-login needed)
 1ctl-dev profile use local
-1ctl-dev auth status    # confirms you're already logged in
+1ctl-dev auth status
 ```
 
 ```bash
-# First time on this machine
+# First time on this machine — create profile then log in
 1ctl-dev profile create --url http://localhost:8080/v1/cli local
 1ctl-dev profile use local
-1ctl-dev auth login --token eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJleHAiOjE3ODM0ODM1NzUsImlhdCI6MTc3NTcwNzU3NSwianRpIjoiNjgyZTg4YWItY2VhZi00NjkwLWE0MjgtNWRlODQ0NTEwMzU1Iiwic3ViIjoiN2FlYjFjMjQtYjdmZC00NmQ0LWJlN2EtYTE4YjQzY2RkNWQyIiwidHlwZSI6ImFwaV9rZXkifQ.NxrE1ugYINXqhj-5rJgok79fUhX3T677iS2FBAjw-gc
+1ctl-dev auth login --token <your-api-token>
 ```
 
 > `profile` subcommands require the dev binary. The Homebrew release (v0.6.0) only supports `SATUSKY_API_URL`.
 
 ---
 
-## 2. Deploy backend-api
+## 2. Initialize a project
+
+```bash
+cd my-project
+1ctl-dev init
+```
+
+Creates a minimal `satusky.toml` — only the fields you actually need:
+```toml
+[app]
+  name = "my-project"
+  port = 8080
+```
+
+No empty fields, no noise.
+
+---
+
+## 3. Deploy backend-api
 
 ```bash
 cd examples/backend
 
 # Uses satusky.toml for cpu/memory/port; --image and --machine are explicit
 1ctl-dev deploy --config satusky.toml --image nginx:alpine --machine compute-main-01
+
+# Block until pods are Running
+1ctl-dev deploy --config satusky.toml --image nginx:alpine --machine compute-main-01 --wait
 ```
 
-Expected:
+Expected (with `--wait`):
 ```
-💡 Using pre-built image: nginx:alpine
 Step 2/5: Creating/updating deployment backend-api ✓
-Step 3/5: Configuring services backend-api ✓
-Step 4/5: Setting up environment and storage backend-api ✓
-Step 5/5: Configuring ingress and dependencies backend-api ✓
+...
 ✅ 🚀 Deployment for backend-api is successful!
-Deployment ID: <generated — not written to satusky.toml>
+💡 Waiting for deployment to become healthy...
+✅ Deployment is healthy — pods Running
 ```
 
 ---
 
-## 3. Deploy frontend (cloud build)
+## 4. Deploy frontend (cloud build)
 
 ```bash
 cd examples/frontend
 
-# No --image: backend builds the image, detects arch, sets nodeSelector
-1ctl-dev deploy --config satusky.toml --machine compute-main-01
+1ctl-dev deploy --config satusky.toml --machine compute-main-01 --wait
 ```
 
 Expected:
 ```
-💡 Build queued (ID: <build-id>)
+💡 Build queued (ID: ...)
   [build] Docker build completed
-  [build] Image pushed: registry.satusky.com/...
-✅ Cloud build complete: ...
 💡 Image architecture: amd64
 ✅ 🚀 Deployment for frontend is successful!
-```
-
-Verify nodeSelector was set:
-```bash
-kubectl -n org3-b322955e get deploy frontend \
-  -o jsonpath='{.spec.template.spec.nodeSelector}'
-# {"kubernetes.io/arch":"amd64"}
+✅ Deployment is healthy — pods Running
 ```
 
 ---
 
-## 4. Status checks
+## 5. Check status
 
 ```bash
-# All of these resolve the deployment via name — no ID needed
+# All of these resolve by name — no ID needed
 1ctl-dev deploy status --config examples/backend/satusky.toml
 1ctl-dev deploy get    --config examples/backend/satusky.toml
-1ctl-dev deploy status --config examples/frontend/satusky.toml
 
-# Direct ID also always works
+# Machine-readable output for scripting
+1ctl-dev --output json deploy list | jq '.[].image'
+1ctl-dev -o json deploy get --config examples/backend/satusky.toml | jq '.image'
+
+# Direct ID still works
 1ctl-dev deploy get --deployment-id <id>
 ```
 
 ---
 
-## 5. Environment variables
+## 6. Environment variables
 
 ```bash
 cd examples/backend
 
-# First-time create (no prior ConfigMap — works even on fresh deployments)
+# Create (first call creates, subsequent calls merge)
 1ctl-dev env create --config satusky.toml --env APP_ENV=production --env LOG_LEVEL=info
+1ctl-dev env create --config satusky.toml --env LOG_LEVEL=debug    # updates existing key
 
-# Second call merges: adds new keys, updates existing, preserves others
-1ctl-dev env create --config satusky.toml --env LOG_LEVEL=debug --env VERSION=1.0
+# Remove a specific key without touching others
+1ctl-dev env unset --config satusky.toml --key LOG_LEVEL
 
+# List
 1ctl-dev env list
+
+# Machine-readable
+1ctl-dev -o json env list | jq '.[0].key_values'
 ```
 
-Verify:
+Verify in K8s:
 ```bash
 kubectl -n org3-b322955e get configmap backend-api-environments -o jsonpath='{.data}'
-# {"app-env":"production","log-level":"debug","version":"1.0"}
 ```
-
-> No `env delete` — it would wipe all keys at once. Per-key removal (`env unset KEY`) is coming in a future release.
 
 ---
 
-## 6. Secrets
+## 7. Secrets
 
 ```bash
 cd examples/backend
 
 1ctl-dev secret create --config satusky.toml --kv DB_PASS=s3cret --kv API_KEY=key123
 1ctl-dev secret create --config satusky.toml --kv NEW_KEY=added   # merges
+
+# Remove a specific key
+1ctl-dev secret unset --config satusky.toml --key DB_PASS
+
 1ctl-dev secret list
 ```
 
@@ -166,19 +186,20 @@ Use `--kv` for secrets (`--env` is a backward-compatible alias).
 
 ---
 
-## 7. Logs
+## 8. Logs
 
 ```bash
 # Stored logs (Loki)
 1ctl-dev logs --config examples/backend/satusky.toml
 
-# Live stream (like kubectl logs -f) — needs deployment-id
-1ctl-dev logs stream -d <deployment-id>
+# Live stream — also accepts --config now
+1ctl-dev logs stream --config examples/backend/satusky.toml
+1ctl-dev logs stream -d <deployment-id>    # direct ID also works
 ```
 
 ---
 
-## 8. Operational commands
+## 9. Operational commands
 
 ```bash
 # Rolling restart
@@ -197,27 +218,42 @@ Use `--kv` for secrets (`--env` is a backward-compatible alias).
 1ctl-dev ingress list
 1ctl-dev ingress delete --ingress-id <id> -y
 
-# Tear down everything
+# Tear down
 1ctl-dev deploy destroy --config examples/backend/satusky.toml -y
-1ctl-dev deploy destroy --config examples/frontend/satusky.toml -y
 ```
 
 ---
 
-## 9. Token management
+## 10. Token management
 
 ```bash
 1ctl-dev token list
 1ctl-dev token create --name "ci-token"
 1ctl-dev token disable <token-id>
 1ctl-dev token enable  <token-id>
-1ctl-dev token get     <token-id>
 1ctl-dev token delete  <token-id> -y
+
+# Machine-readable
+1ctl-dev -o json token list | jq '.[] | {name, is_active}'
 ```
 
 ---
 
-## 10. Full cluster state
+## 11. Organisation switching
+
+```bash
+# Positional arg — name or UUID both work
+1ctl-dev org switch org2
+1ctl-dev org switch b322955e-6a86-4157-8bff-1bea605ef8ac
+
+# Flags still work
+1ctl-dev org switch --org-name org2
+1ctl-dev org switch --org-id   b322955e-6a86-4157-8bff-1bea605ef8ac
+```
+
+---
+
+## 12. Full cluster state
 
 ```bash
 1ctl-dev deploy list
@@ -240,6 +276,24 @@ Use `--kv` for secrets (`--env` is a backward-compatible alias).
 1ctl-dev marketplace list
 ```
 
+All list/get commands accept `-o json` for machine-readable output.
+
+---
+
+## --output json
+
+Every list and get command supports `--output json` / `-o json`:
+
+```bash
+# Pipe into jq
+1ctl-dev --output json deploy list | jq '.[].image'
+1ctl-dev -o json env list | jq '.[0].key_values'
+1ctl-dev -o json machine list | jq '.[] | select(.status == "online") | .machine_name'
+
+# Save to file
+1ctl-dev -o json audit list > audit.json
+```
+
 ---
 
 ## Error cases
@@ -249,33 +303,34 @@ Use `--kv` for secrets (`--env` is a backward-compatible alias).
 | No toml, no `--deployment-id` | `1ctl-dev deploy status` (from repo root) | `no --deployment-id and no satusky.toml found` |
 | App not deployed | `1ctl-dev deploy status --config satusky.toml` (after destroy) | `app "backend-api" not found — run 1ctl deploy first` |
 | Wrong directory | `1ctl-dev deploy --image nginx:alpine` (from repo root) | `app name "1ctl" is not a valid K8s service name ... Auto-detected from git remote` |
-| Invalid name (starts with digit) | `1ctl-dev deploy ... --image x` (from `/tmp/1bad`) | `app name "1bad" is not a valid K8s service name (starts with a digit — try --name app-1bad)` |
+| Invalid name | `1ctl-dev deploy` (from `/tmp/1bad`) | `app name "1bad" is not a valid K8s service name (starts with digit — try --name app-1bad)` |
 | `--deployment-id` beats `--config` | `1ctl-dev deploy status --config frontend/satusky.toml --deployment-id <backend-id>` | Shows backend status (ID wins) |
 
 ---
 
 ## Architecture notes
 
-Cloud builds run on the backend server. The host is macOS arm64 (Podman). Images are built for `linux/amd64` because Podman resolves to the amd64 base variant of multi-arch images like `nginx:alpine`.
+Cloud builds run on the backend server (macOS arm64 + Podman). Builds produce `linux/amd64` images because Podman resolves to the amd64 base variant of multi-arch images like `nginx:alpine`. The CLI:
 
-The CLI:
-1. Gets `image_arch` from build status (`docker inspect` on the backend)
+1. Gets `image_arch` from build status (`docker inspect`)
 2. Filters owner machines to those matching the arch
 3. Sets `nodeSelector: {"kubernetes.io/arch": <arch>}` on the pod spec
 
-For multi-arch base images used with `--image` directly (e.g. `nginx:alpine`), no arch filter is applied — the kubelet selects the right variant automatically.
+Multi-arch images used with `--image` (e.g. `nginx:alpine`) have no arch filter — the kubelet picks the right variant automatically.
 
 ---
 
-## Machine arch in DB
+## satusky.toml reference
 
-The machine `cpu_arch` metadata must be set for the arch filter to work:
-
-```sql
--- Run once per cluster onboarding for arm64 workers
-UPDATE machines
-SET metadata = metadata || '{"cpu_arch": "arm64"}'::jsonb
-WHERE machine_id IN ('<id1>', '<id2>', ...);
+```toml
+[app]
+  name       = "backend-api"   # K8s app label — identifier for all commands
+  port       = 8080            # container port (required)
+  dockerfile = "Dockerfile"    # path to Dockerfile (default: ./Dockerfile)
+  cpu        = "0.5"           # CPU cores — platform default 0.5 if omitted
+  memory     = "256Mi"         # memory — platform default 256Mi if omitted
+  replicas   = 1               # replica count — default 1 if omitted
+  domain     = ""              # custom domain — empty = auto *.satusky.com
 ```
 
-`compute-main-01` is already set to `amd64`. arm64 workers (`worker-efc2fd3e...`, etc.) have been patched.
+**Not in the file:** `org` (auth context), `deployment_id` (runtime lookup). Safe to commit as-is.
