@@ -4,11 +4,6 @@ import (
 	"1ctl/internal/utils"
 	"encoding/json"
 	"fmt"
-	"strings"
-	"time"
-
-	"github.com/google/uuid"
-	"k8s.io/apimachinery/pkg/util/rand"
 )
 
 // ListDomains lists all domains for an organization
@@ -249,39 +244,22 @@ func DeleteDNSRecord(userID, orgID, domainID, recordID string) error {
 
 const DOMAIN_SUFFIX = "satusky.com"
 
-func GenerateDomainName(projectName string) (string, error) {
-	// Clean project name: lowercase and replace invalid chars with hyphens
-	cleanName := strings.ToLower(projectName)
-	cleanName = strings.ReplaceAll(cleanName, "_", "-")
-	cleanName = strings.ReplaceAll(cleanName, ".", "-")
-
-	// First try without suffix
-	proposedDomain := fmt.Sprintf("%s.%s", cleanName, DOMAIN_SUFFIX)
-
-	// Keep trying until we find an available domain
-	for {
-		ingress, err := GetIngressByDomainName(proposedDomain)
-		if err != nil {
-			return "", utils.NewError(fmt.Sprintf("failed to check domain existence: %s", err.Error()), nil)
-		}
-
-		// If domain is available (not found), we can use it
-		if ingress.IngressID == uuid.Nil {
-			return proposedDomain, nil
-		}
-
-		// Domain exists, try with a new random suffix
-		suffix := generateShortID()
-		proposedDomain = fmt.Sprintf("%s-%s.%s", cleanName, suffix, DOMAIN_SUFFIX)
+// GenerateDomainName calls the backend's domain generator endpoint and returns
+// the auto-assigned domain name. The backend guarantees uniqueness and produces
+// human-readable random names (adjective+animal-suffix.satusky.com).
+// projectName is retained for the signature but the domain is no longer derived
+// from it — the backend owns domain assignment.
+func GenerateDomainName(_ string) (string, error) {
+	var resp struct {
+		Error bool   `json:"error"`
+		Data  string `json:"data"`
 	}
+	if err := makeRequest("GET", "/ingresses/domainNameGenerator", nil, &resp); err != nil {
+		return "", utils.NewError(fmt.Sprintf("failed to get auto-assigned domain: %s", err.Error()), nil)
+	}
+	if resp.Data == "" {
+		return "", utils.NewError("backend returned an empty domain name", nil)
+	}
+	return resp.Data, nil
 }
 
-func generateShortID() string {
-	const chars = "abcdefghijklmnopqrstuvwxyz0123456789"
-	rand.Seed(time.Now().UnixNano())
-	b := make([]byte, 6)
-	for i := range b {
-		b[i] = chars[rand.Intn(len(chars))]
-	}
-	return string(b)
-}

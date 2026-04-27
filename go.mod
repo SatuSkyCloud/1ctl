@@ -10,7 +10,6 @@ require (
 	github.com/joho/godotenv v1.5.1
 	github.com/urfave/cli/v2 v2.27.1
 	golang.org/x/term v0.38.0
-	k8s.io/apimachinery v0.32.0
 )
 
 require (
