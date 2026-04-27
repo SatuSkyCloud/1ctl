@@ -31,67 +31,19 @@ func LogsCommand() *cli.Command {
 				Usage:   "Number of lines to show (default: 100)",
 				Value:   100,
 			},
-			&cli.BoolFlag{
-				Name:  "stats",
-				Usage: "Show log statistics instead of logs",
-			},
 		},
 		Subcommands: []*cli.Command{
 			logsStreamCommand(),
-			logsStatsCommand(),
-			logsDeleteCommand(),
 		},
 		Action: handleLogs,
 	}
 }
 
-func logsStatsCommand() *cli.Command {
-	return &cli.Command{
-		Name:  "stats",
-		Usage: "Show log statistics for a deployment",
-		Flags: []cli.Flag{
-			&cli.StringFlag{
-				Name:    "deployment-id",
-				Aliases: []string{"d"},
-				Usage:   "Deployment ID",
-			},
-			&cli.StringFlag{
-				Name:  "config",
-				Usage: "Config name or path (e.g. staging, satusky.staging.toml). Default: satusky.toml",
-			},
-		},
-		Action: handleLogsStats,
-	}
-}
-
-func logsDeleteCommand() *cli.Command {
-	return &cli.Command{
-		Name:  "delete",
-		Usage: "Delete logs for a deployment",
-		Flags: []cli.Flag{
-			&cli.StringFlag{
-				Name:    "deployment-id",
-				Aliases: []string{"d"},
-				Usage:   "Deployment ID",
-			},
-			&cli.StringFlag{
-				Name:  "config",
-				Usage: "Config name or path (e.g. staging, satusky.staging.toml). Default: satusky.toml",
-			},
-		},
-		Action: handleLogsDelete,
-	}
-}
 
 func handleLogs(c *cli.Context) error {
 	deploymentID, err := resolveDeploymentID(c.String("deployment-id"), c.String("config"))
 	if err != nil {
 		return err
-	}
-
-	// If stats flag is set, show stats instead
-	if c.Bool("stats") {
-		return handleLogsStats(c)
 	}
 
 	tail := c.Int("tail")
@@ -119,53 +71,6 @@ func handleLogs(c *cli.Context) error {
 	}
 	utils.PrintDivider()
 	fmt.Printf("Showing last %d lines\n", len(logs))
-	return nil
-}
-
-func handleLogsStats(c *cli.Context) error {
-	deploymentID, err := resolveDeploymentID(c.String("deployment-id"), c.String("config"))
-	if err != nil {
-		return err
-	}
-
-	stats, err := api.GetLogStats(deploymentID)
-	if err != nil {
-		return utils.NewError(fmt.Sprintf("failed to get log stats: %s", err.Error()), nil)
-	}
-
-	utils.PrintHeader("Log Statistics")
-	utils.PrintStatusLine("Deployment ID", stats.DeploymentID.String())
-	utils.PrintStatusLine("Total Lines", fmt.Sprintf("%d", stats.TotalLines))
-	utils.PrintStatusLine("Total Size", api.FormatBytes(stats.TotalSize))
-	if !stats.OldestLog.IsZero() {
-		utils.PrintStatusLine("Oldest Log", stats.OldestLog.Format("2006-01-02 15:04:05"))
-	}
-	if !stats.NewestLog.IsZero() {
-		utils.PrintStatusLine("Newest Log", stats.NewestLog.Format("2006-01-02 15:04:05"))
-	}
-
-	// Calculate log rate if we have time range
-	if !stats.OldestLog.IsZero() && !stats.NewestLog.IsZero() {
-		duration := stats.NewestLog.Sub(stats.OldestLog)
-		if duration.Hours() > 0 {
-			rate := float64(stats.TotalLines) / duration.Hours()
-			utils.PrintStatusLine("Log Rate", fmt.Sprintf("~%.0f lines/hour", rate))
-		}
-	}
-	return nil
-}
-
-func handleLogsDelete(c *cli.Context) error {
-	deploymentID, err := resolveDeploymentID(c.String("deployment-id"), c.String("config"))
-	if err != nil {
-		return err
-	}
-
-	if err := api.DeleteLogs(deploymentID); err != nil {
-		return utils.NewError(fmt.Sprintf("failed to delete logs: %s", err.Error()), nil)
-	}
-
-	utils.PrintSuccess("Logs for deployment %s deleted successfully", deploymentID)
 	return nil
 }
 

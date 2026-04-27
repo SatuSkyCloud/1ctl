@@ -50,23 +50,6 @@ func EnvironmentCommand() *cli.Command {
 				},
 				Action: handleListEnvironments,
 			},
-			{
-				Name:  "delete",
-				Usage: "Delete an environment",
-				Flags: []cli.Flag{
-					&cli.StringFlag{
-						Name:     "env-id",
-						Usage:    "Environment ID to delete",
-						Required: true,
-					},
-					&cli.BoolFlag{
-						Name:    "yes",
-						Aliases: []string{"y"},
-						Usage:   "Skip confirmation prompt",
-					},
-				},
-				Action: handleDeleteEnvironment,
-			},
 		},
 	}
 }
@@ -149,16 +132,3 @@ func handleListEnvironments(c *cli.Context) error {
 	return nil
 }
 
-func handleDeleteEnvironment(c *cli.Context) error {
-	envID := c.String("env-id")
-	if !utils.Confirm(fmt.Sprintf("Delete environment %s? This cannot be undone.", envID), c.Bool("yes")) {
-		fmt.Println("Aborted.")
-		return nil
-	}
-	if err := api.DeleteEnvironment(envID); err != nil {
-		return utils.NewError(fmt.Sprintf("failed to delete environment: %s", err.Error()), nil)
-	}
-
-	utils.PrintSuccess("Environment %s deleted successfully\n", envID)
-	return nil
-}
