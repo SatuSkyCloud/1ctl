@@ -143,7 +143,7 @@ Trigger a redeploy to apply the new vars:
   "memory": "512Mi",
   "replicas": 1,
   "machine": "compute-main-01",
-  "url": "https://my-fastapi.satusky.com",
+  "url": "https://silentfox-b7r4n1.satusky.com",
   "deployed_at": "2026-04-26T09:14:22Z"
 }
 ```

@@ -160,13 +160,15 @@ Press `Ctrl+C` to stop the stream.
 
 ## 8. Verify with curl
 
+> The URL in the deploy output (e.g. `https://happyotter-x3k9m2.satusky.com`) is the actual domain — substitute it below.
+
 ```bash
 # Health check
-curl https://my-api.satusky.com/health
+curl https://happyotter-x3k9m2.satusky.com/health
 # {"status":"ok","db":"connected"}
 
 # Auth endpoint
-curl -X POST https://my-api.satusky.com/api/auth/login \
+curl -X POST https://happyotter-x3k9m2.satusky.com/api/auth/login \
   -H "Content-Type: application/json" \
   -d '{"email":"alice@example.com","password":"hunter2"}'
 # {"token":"eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9..."}

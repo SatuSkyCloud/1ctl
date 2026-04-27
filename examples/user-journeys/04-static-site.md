@@ -136,13 +136,13 @@ Deploy complete. App is live.
 ## 7. Verify
 
 ```bash
-curl -I https://my-static-site.satusky.com
+curl -I https://quickowl-7gszjvk.satusky.com
 # HTTP/2 200
 # content-type: text/html
 # content-encoding: gzip
 
 # Check that SPA routing works (should return 200, not 404)
-curl -I https://my-static-site.satusky.com/about
+curl -I https://quickowl-7gszjvk.satusky.com/about
 # HTTP/2 200
 ```
 

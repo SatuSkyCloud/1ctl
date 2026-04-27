@@ -1,6 +1,6 @@
 # 1ctl CLI Test Report
 
-**Date**: 2026-04-27 (post gap-fixes retest)
+**Date**: 2026-04-27 (post gap-fixes + domain fix + env/secret unset crash fix)
 **Branch**: development
 **Backend**: satusky-core_backend @ localhost:8080 (`sudo task dev.debug > logs.txt 2>&1`)
 **Namespace**: org3-b322955e
@@ -40,11 +40,12 @@
 | org | list, current, switch (flag + positional) | 4 | 0 | **Gap 6 fixed** |
 | init | init (clean toml) | 1 | 0 | **Gap 2 fixed** |
 | deploy — core | list, get, status, deploy (toml+flags+defaults), --wait, --output json | 9 | 0 | **Gap 3+4 fixed** |
+| deploy — domain | backend-assigned random domain on deploy | 1 | 0 | **Gap 7 fixed** |
 | deploy — ops | restart, releases, rollback | 3 | 0 | |
 | service | list, delete | 2 | 0 | |
 | ingress | list, delete | 2 | 0 | |
-| env | create (first+merge), list, unset | 4 | 0 | **Gap 5 fixed** |
-| secret | create (first+merge), list, unset | 4 | 0 | **Gap 5 fixed** |
+| env | create (first+merge), list, unset | 4 | 0 | **Gap 5 fixed + crash fix** |
+| secret | create (first+merge), list, unset | 4 | 0 | **Gap 5 fixed + crash fix** |
 | logs | stored, stream (--config + -d) | 3 | 0 | **Gap 1 fixed** |
 | notifications | list, count, read --all | 3 | 0 | |
 | user | me, permissions | 2 | 0 | |
@@ -58,7 +59,7 @@
 | machine | list (--output json), available, usage | 3 | 0 | |
 | issuer | list | 1 | 0 | |
 | completion | zsh, bash | 2 | 0 | |
-| **Total** | **69** | **69** | **0** | |
+| **Total** | **71** | **71** | **0** | |
 
 ---
 
@@ -158,7 +159,8 @@ Output:
 Step 2/5: Creating/updating deployment backend-api ✓
 ...
 Step 5/5: Configuring ingress and dependencies backend-api ✓
-✅ 🚀 Deployment for backend-api is successful! Your app is live at: https://backend-api.satusky.com
+💡 Generated new domain: sleepytiger-z8w02g4.satusky.com
+✅ 🚀 Deployment for backend-api is successful! Your app is live at: https://sleepytiger-z8w02g4.satusky.com
 Deployment ID: 7f1fab9e-5f87-4612-b306-3da846b95d18
 💡 Waiting for deployment to become healthy...
 ✅ Deployment is healthy — pods Running
@@ -196,6 +198,46 @@ cd examples/backend
 | `env unset --config satusky.toml --key TEMP_KEY` | PASS — `✅ Key "TEMP_KEY" removed from environment` |
 | `secret unset --config satusky.toml --key TEMP_SECRET` | PASS — `✅ Key "TEMP_SECRET" removed from secrets` |
 | K8s ConfigMap after unset | PASS — key absent, all other keys preserved |
+| K8s Deployment env after unset | PASS — `valueFrom.configMapKeyRef/secretKeyRef` entry removed, pod stays Running |
+
+**Crash bug fixed (backend `f03f913`):** The original `UnsetConfigmapKey` and `UnsetSecretKey` handlers removed the key from the ConfigMap/Secret and DB but left the corresponding `env[].valueFrom.configMapKeyRef` / `env[].valueFrom.secretKeyRef` entry in the Deployment pod spec. On the next pod restart kubelet could not find the key and the pod entered `CreateContainerConfigError` indefinitely.
+
+Fix: added `removeEnvVarFromDeployment()` (shared helper in `environment_controller.go`) called at the end of both unset handlers. It patches the Deployment under `RetryOnConflict` and the rolling update clears the stale reference.
+
+```bash
+# Confirmed via kubectl after env/secret unset:
+kubectl -n org3-b322955e get deployment backend-api \
+  -o jsonpath='{.spec.template.spec.containers[0].env}'
+# (empty — no stale refs remain)
+```
+
+---
+
+### Gap 7: Domain name assigned by backend, not derived from app name
+
+Previously the CLI computed the domain locally as `<appname>.satusky.com` (e.g. `test.satusky.com`). This bypassed the backend's canonical generator and produced names that did not match what the web dashboard creates. After the fix the CLI calls `GET /ingresses/domainNameGenerator` on the backend, which returns a unique human-readable name in the format `adjective+animal-XXXXXXX.satusky.com` (same as web frontend deployments).
+
+**Backend change**: `GET /ingresses/domainNameGenerator` added to the CLI route group (`routes/cli_route.go`).
+
+**CLI change**: `GenerateDomainName()` in `internal/api/domain.go` replaced with a single call to that endpoint. The local name-derivation logic and `generateShortID()` helper were removed entirely.
+
+```bash
+# Before fix — printed the wrong domain:
+✅ 🚀 Deployment for test is successful! Your app is live at: https://test.satusky.com
+
+# After fix — backend-assigned random domain:
+💡 Generated new domain: sleepytiger-z8w02g4.satusky.com
+✅ 🚀 Deployment for test is successful! Your app is live at: https://sleepytiger-z8w02g4.satusky.com
+```
+
+**kubectl verify** — K8s ingress host matches CLI output exactly:
+```
+ingress-test   nginx   sleepytiger-z8w02g4.satusky.com   10.110.153.235   80, 443
+```
+
+| Command | Result |
+|---------|--------|
+| `deploy --config satusky.toml --image nginx:alpine --machine compute-main-01` | PASS — domain printed by CLI matches K8s ingress host |
 
 ---
 
@@ -440,14 +482,25 @@ kubectl -n org3-b322955e get pods -l "app in (backend-api,frontend)" -o wide
 ```
 ```
 NAME                           READY   STATUS    NODE
-backend-api-7f96c4986b-ktplk   1/1     Running   compute-main-01
+backend-api-79b96d7d56-nvxwn   1/1     Running   compute-main-01
 frontend-5bc456fc86-t6xqp      1/1     Running   compute-main-01
 ```
 
 ```bash
-kubectl -n org3-b322955ee get deploy frontend \
+kubectl -n org3-b322955e get deploy frontend \
   -o jsonpath='{.spec.template.spec.nodeSelector}'
 # {"kubernetes.io/arch":"amd64"}
+
+# Deployment env is clean — no stale env refs after env/secret unset:
+kubectl -n org3-b322955e get deployment backend-api \
+  -o jsonpath='{.spec.template.spec.containers[0].env}'
+# (empty)
+```
+
+```bash
+kubectl -n org3-b322955e get ingress ingress-test \
+  -o jsonpath='{.spec.rules[0].host}'
+# sleepytiger-z8w02g4.satusky.com  ← backend-assigned random domain, matches CLI output
 ```
 
 No unexpected 5xx errors in backend logs.
@@ -492,6 +545,7 @@ No unexpected 5xx errors in backend logs.
 | `logs stream` requires `-d` when not using `--config` and there are multiple deployments in namespace | Expected behaviour |
 | `--output json` not wired into every command (only list/get) | Medium: add to `service list`, `ingress list`, `audit list`, etc. |
 | Auto-select amd64 machine (no `--machine`) on amd64 images | Only 1 online owner machine (arm64); monetized amd64 fallback untested |
+| `updateDeploymentWithConfigmap` appends env vars without deduplication | If the same key is added twice via `env create`, the Deployment ends up with duplicate `env` entries — benign but wasteful; last value wins in kubelet |
 
 ---
 

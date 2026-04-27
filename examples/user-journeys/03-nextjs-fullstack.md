@@ -1,7 +1,7 @@
 # Deploying a Next.js Fullstack App to SatuSky
 
 **Who this is for**: Frontend developers shipping a Next.js app with SSR and API routes. Your backend API is already running on SatuSky as `backend-api`.  
-**What we're building**: A Next.js app that communicates with `backend-api.satusky.com` via an env var, deployed with cloud build.  
+**What we're building**: A Next.js app that communicates with a backend service via an env var, deployed with cloud build. The backend's URL is backend-assigned (e.g. `cleverbear-xmqs6l.satusky.com`) — capture it from the backend's deploy output.  
 **What you'll learn**: Multi-stage Next.js Docker builds, passing build-time env vars, linking to an existing deployed service, and scripting with `-o json`.
 
 ---
@@ -14,9 +14,10 @@
 > `NEXT_PUBLIC_*` variables must be baked into the image at build time, which normally
 > requires passing them as Docker build arguments (`--build-arg`). The CLI does not
 > yet expose a `--build-arg` flag on `deploy`. **Workaround:** Set a hardcoded default
-> in your `Dockerfile` (`ARG NEXT_PUBLIC_API_URL=https://backend-api.satusky.com`) so
-> the cloud build uses it automatically, or move the value to a runtime env var and
-> fetch it server-side instead of using `NEXT_PUBLIC_`.
+> in your `Dockerfile` (`ARG NEXT_PUBLIC_API_URL=https://cleverbear-xmqs6l.satusky.com`) so
+> the cloud build uses it automatically (substitute your backend's actual domain from its
+> deploy output), or move the value to a runtime env var and fetch it server-side instead
+> of using `NEXT_PUBLIC_`.
 
 ---
 
@@ -118,10 +119,15 @@ Next.js builds take longer than other frameworks because `next build` runs durin
 
 `NEXT_PUBLIC_API_URL` needs to be available **at build time** (it's embedded in the client bundle) and **at runtime** (for server-side fetch calls). Set it as an env var before deploying so the cloud build context picks it up:
 
+First capture the backend's assigned domain from its own deploy output, then set it:
+
 ```bash
+# Get the domain your backend was assigned
+BACKEND_URL=$(1ctl-dev ingress list | awk '/backend-api/{print "https://"$1}')
+
 1ctl-dev env create \
   --config satusky.toml \
-  --env NEXT_PUBLIC_API_URL=https://backend-api.satusky.com
+  --env NEXT_PUBLIC_API_URL="$BACKEND_URL"
 ```
 
 Because `NEXT_PUBLIC_API_URL` is baked into the bundle during `next build`, you need to redeploy for the change to take effect:
@@ -142,13 +148,13 @@ Now your client-side code can reference `process.env.NEXT_PUBLIC_API_URL` and se
 
 ```
 NAME              STATUS    VERSION   REPLICAS   URL
-my-nextjs-app     running   2         1          https://my-nextjs-app.satusky.com
+my-nextjs-app     running   2         1          https://bravehawk-f2j8l5.satusky.com
 ```
 
 Do a quick smoke test:
 
 ```bash
-curl -I https://my-nextjs-app.satusky.com
+curl -I https://bravehawk-f2j8l5.satusky.com
 # HTTP/2 200
 # content-type: text/html; charset=utf-8
 ```
@@ -171,7 +177,7 @@ You have both the frontend and backend running. List them together:
     "version": 7,
     "cpu": "0.5",
     "memory": "512Mi",
-    "url": "https://backend-api.satusky.com",
+    "url": "https://cleverbear-xmqs6l.satusky.com",
     "deployed_at": "2026-04-25T18:44:01Z"
   },
   {
@@ -180,16 +186,16 @@ You have both the frontend and backend running. List them together:
     "version": 2,
     "cpu": "0.5",
     "memory": "512Mi",
-    "url": "https://my-nextjs-app.satusky.com",
+    "url": "https://bravehawk-f2j8l5.satusky.com",
     "deployed_at": "2026-04-26T10:15:33Z"
   }
 ]
 ```
 
-Extract just the frontend URL in a script:
+Capture the frontend's domain from `ingress list` (the URL is backend-assigned, not derived from the app name):
 
 ```bash
-FRONTEND_URL=$(1ctl-dev deploy list -o json | jq -r '.[] | select(.name=="my-nextjs-app") | .url')
+FRONTEND_URL=$(1ctl-dev ingress list | awk '/my-nextjs-app/{print "https://"$1}')
 echo "Frontend live at $FRONTEND_URL"
 ```
 

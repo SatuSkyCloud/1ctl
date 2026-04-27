@@ -121,10 +121,13 @@ Expected (with `--wait`):
 ```
 Step 2/5: Creating/updating deployment backend-api ✓
 ...
-✅ 🚀 Deployment for backend-api is successful!
+💡 Generated new domain: sleepytiger-z8w02g4.satusky.com
+✅ 🚀 Deployment for backend-api is successful! Your app is live at: https://sleepytiger-z8w02g4.satusky.com
 💡 Waiting for deployment to become healthy...
 ✅ Deployment is healthy — pods Running
 ```
+
+> **Auto-assigned domain**: the backend generates a unique `adjective+animal-XXXXXXX.satusky.com` name (same format as web-dashboard deployments). The domain shown in the CLI output is what K8s ingress actually uses — there is no mismatch.
 
 ---
 
@@ -141,7 +144,8 @@ Expected:
 💡 Build queued (ID: ...)
   [build] Docker build completed
 💡 Image architecture: amd64
-✅ 🚀 Deployment for frontend is successful!
+💡 Generated new domain: fastfalcon-bf2xkd9.satusky.com
+✅ 🚀 Deployment for frontend is successful! Your app is live at: https://fastfalcon-bf2xkd9.satusky.com
 ✅ Deployment is healthy — pods Running
 ```
 
@@ -183,9 +187,14 @@ cd examples/backend
 1ctl-dev -o json env list | jq '.[0].key_values'
 ```
 
+`env unset` removes the key from both the ConfigMap and the Deployment pod spec. Pods stay Running — no `CreateContainerConfigError` on next restart.
+
 Verify in K8s:
 ```bash
 kubectl -n org3-b322955e get configmap backend-api-environments -o jsonpath='{.data}'
+# Deployment env is also clean:
+kubectl -n org3-b322955e get deployment backend-api \
+  -o jsonpath='{.spec.template.spec.containers[0].env}'
 ```
 
 ---
@@ -204,7 +213,7 @@ cd examples/backend
 1ctl-dev secret list
 ```
 
-Use `--kv` for secrets (`--env` is a backward-compatible alias).
+Use `--kv` for secrets (`--env` is a backward-compatible alias). Like `env unset`, `secret unset` also removes the `valueFrom.secretKeyRef` entry from the Deployment pod spec so pods don't crash on the next restart.
 
 ---
 
@@ -357,7 +366,7 @@ Multi-arch images used with `--image` (e.g. `nginx:alpine`) have no arch filter 
   cpu        = "0.5"           # CPU cores — platform default 0.5 if omitted
   memory     = "256Mi"         # memory — platform default 256Mi if omitted
   replicas   = 1               # replica count — default 1 if omitted
-  domain     = ""              # custom domain — empty = auto *.satusky.com
+  domain     = ""              # custom domain — empty = auto backend-assigned random name (adjective+animal-XXXXXXX.satusky.com)
 ```
 
 **Not in the file:** `org` (auth context), `deployment_id` (runtime lookup). Safe to commit as-is.

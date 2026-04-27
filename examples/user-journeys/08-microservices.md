@@ -15,17 +15,20 @@
 > `--output json` is wired to `deploy list/get/status`, `env list`, `secret list`,
 > `machine list`, and `token list` — but **not** to `ingress list` or `service list`.
 > The JSON extraction pattern shown in this guide (`jq` on ingress list) will fall
-> back to table output. **Workaround:** derive the URL from the app name — SatuSky
-> always assigns `<app-name>.satusky.com` — so you can construct it directly:
+> back to table output.
+>
+> **Important**: SatuSky now assigns a backend-generated random domain (e.g.
+> `cleverpanda-a1b2c3d.satusky.com`) instead of `<app-name>.satusky.com`. You
+> **cannot** predict the domain from the app name. Capture it from deploy stdout:
 > ```bash
-> USER_SERVICE_URL="https://user-service.satusky.com"
+> DEPLOY_OUT=$(1ctl-dev deploy --config services/user-service/satusky.toml --wait 2>&1)
+> USER_SERVICE_URL=$(echo "$DEPLOY_OUT" | grep -o 'https://[^ ]*satusky\.com' | head -1)
 > 1ctl-dev env create --config services/order-service/satusky.toml \
 >   --env USER_SERVICE_URL=$USER_SERVICE_URL
 > ```
-> Or use `deploy get -o json` which IS wired:
+> Or read the domain from `1ctl-dev ingress list` (table output — grep by app name):
 > ```bash
-> APP=$(1ctl-dev -o json deploy get --config services/user-service/satusky.toml)
-> DOMAIN=$(echo $APP | jq -r '.app_label').satusky.com
+> USER_SERVICE_URL=$(1ctl-dev ingress list | awk '/user-service/{print "https://"$1}')
 > ```
 
 ---
@@ -90,31 +93,22 @@ Always deploy the dependency before the dependent service.
 
 Use `-o json` to extract the URL programmatically rather than eyeballing the output:
 
-```bash
-1ctl-dev -o json ingress list | jq '.[] | select(.service == "user-service")'
-```
-
-Example output:
-
-```json
-{
-  "service": "user-service",
-  "host": "user-service.satusky.com",
-  "tls": true,
-  "port": 443
-}
-```
-
-The public (and internal) URL is `https://user-service.satusky.com`.
-
-You can extract just the URL in one line for scripting:
+SatuSky assigns a backend-generated random domain (e.g. `cleverpanda-a1b2c3d.satusky.com`) — not a predictable `<app-name>.satusky.com`. Capture it from the deploy output:
 
 ```bash
-USER_SERVICE_URL=$(1ctl-dev -o json ingress list \
-  | jq -r '.[] | select(.service == "user-service") | "https://" + .host')
+DEPLOY_OUT=$(1ctl-dev deploy --config services/user-service/satusky.toml --wait 2>&1)
+USER_SERVICE_URL=$(echo "$DEPLOY_OUT" | grep -o 'https://[^ ]*satusky\.com' | head -1)
 echo "$USER_SERVICE_URL"
-# https://user-service.satusky.com
+# https://cleverpanda-a1b2c3d.satusky.com
 ```
+
+Alternatively, read the domain from `ingress list` by matching the app name:
+
+```bash
+USER_SERVICE_URL=$(1ctl-dev ingress list | awk '/user-service/{print "https://"$1}')
+```
+
+> **Note**: `-o json ingress list` is not yet wired (future sprint). The patterns above are the current workarounds.
 
 ---
 
@@ -125,10 +119,10 @@ Set the URL as an env var in order-service. Use the variable you captured above:
 ```bash
 1ctl-dev env create \
   --config services/order-service/satusky.toml \
-  --env USER_SERVICE_URL=https://user-service.satusky.com
+  --env USER_SERVICE_URL="$USER_SERVICE_URL"   # captured from deploy output above
 ```
 
-Or, using the shell variable:
+Or, if you already know the domain from a previous deploy:
 
 ```bash
 1ctl-dev env create \
@@ -203,7 +197,7 @@ This is the core benefit of independent deployments. Push a new version of user-
 1ctl-dev deploy --config services/user-service/satusky.toml --wait
 ```
 
-order-service keeps running uninterrupted. The URL stays the same — `user-service.satusky.com` — so no reconfiguration of order-service is needed.
+order-service keeps running uninterrupted. The domain assigned to user-service does not change across redeploys of the same deployment — so no reconfiguration of order-service is needed.
 
 ---
 
@@ -231,7 +225,7 @@ If user-service moves to a new domain, update order-service:
 # Overwrite the existing value (env create merges)
 1ctl-dev env create \
   --config services/order-service/satusky.toml \
-  --env USER_SERVICE_URL=https://auth.satusky.com
+  --env USER_SERVICE_URL=https://cleverpanda-a1b2c3d.satusky.com   # new domain from deploy output
 
 1ctl-dev deploy restart --config services/order-service/satusky.toml
 ```
