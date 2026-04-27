@@ -113,6 +113,10 @@ func handleTokenList(c *cli.Context) error {
 		return nil
 	}
 
+	if utils.TryPrintJSON(tokens) {
+		return nil
+	}
+
 	utils.PrintHeader("API Tokens")
 	for _, token := range tokens {
 		status := "Enabled"

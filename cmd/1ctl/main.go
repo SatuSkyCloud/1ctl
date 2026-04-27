@@ -55,6 +55,12 @@ Tokens: https://cloud.satusky.com/<org-id>/token`,
 				Name:  "api-url",
 				Usage: "API URL override for this command (highest priority, overrides profile and env var)",
 			},
+			&cli.StringFlag{
+				Name:    "output",
+				Aliases: []string{"o"},
+				Usage:   "Output format: table (default) or json",
+				Value:   "table",
+			},
 		},
 		Commands: []*cli.Command{
 			commands.AuthCommand(),
@@ -99,6 +105,11 @@ Tokens: https://cloud.satusky.com/<org-id>/token`,
 				if err := os.Setenv("SATUSKY_API_URL", apiURL); err != nil {
 					return utils.NewError("failed to set API URL", err)
 				}
+			}
+
+			// Apply --output flag: sets global output format for this process invocation
+			if format := c.String("output"); format != "" {
+				utils.SetOutputFormat(format)
 			}
 
 			// Get the command or first argument

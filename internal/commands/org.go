@@ -6,6 +6,7 @@ import (
 	"1ctl/internal/utils"
 	"fmt"
 
+	"github.com/google/uuid"
 	"github.com/urfave/cli/v2"
 )
 
@@ -187,8 +188,20 @@ func handleOrgSwitch(c *cli.Context) error {
 	orgID := c.String("org-id")
 	orgName := c.String("org-name")
 
+	// Accept positional arg as org-id or org-name
 	if orgID == "" && orgName == "" {
-		return utils.NewError("either --org-id or --org-name is required", nil)
+		if arg := c.Args().First(); arg != "" {
+			// Try as UUID first, fall back to name
+			if _, err := uuid.Parse(arg); err == nil {
+				orgID = arg
+			} else {
+				orgName = arg
+			}
+		}
+	}
+
+	if orgID == "" && orgName == "" {
+		return utils.NewError("provide --org-id, --org-name, or a positional org name/id", nil)
 	}
 
 	// Get the organization details

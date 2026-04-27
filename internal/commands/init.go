@@ -61,7 +61,28 @@ func handleInit(c *cli.Context) error {
 	}
 
 	base.Path = filename
-	if err := base.Save(); err != nil {
+	lines := []string{"[app]"}
+	lines = append(lines, fmt.Sprintf("  name = %q", base.App.Name))
+	if base.App.Port != 0 {
+		lines = append(lines, fmt.Sprintf("  port = %d", base.App.Port))
+	}
+	if base.App.Dockerfile != "" && base.App.Dockerfile != "Dockerfile" {
+		lines = append(lines, fmt.Sprintf("  dockerfile = %q", base.App.Dockerfile))
+	}
+	if base.App.CPU != "" {
+		lines = append(lines, fmt.Sprintf("  cpu = %q", base.App.CPU))
+	}
+	if base.App.Memory != "" {
+		lines = append(lines, fmt.Sprintf("  memory = %q", base.App.Memory))
+	}
+	if base.App.Replicas > 0 && base.App.Replicas != 1 {
+		lines = append(lines, fmt.Sprintf("  replicas = %d", base.App.Replicas))
+	}
+	if base.App.Domain != "" {
+		lines = append(lines, fmt.Sprintf("  domain = %q", base.App.Domain))
+	}
+	content := strings.Join(lines, "\n") + "\n"
+	if err := os.WriteFile(filename, []byte(content), 0600); err != nil {
 		return utils.NewError(fmt.Sprintf("failed to write %s: %s", filename, err.Error()), nil)
 	}
 

@@ -50,6 +50,16 @@ func EnvironmentCommand() *cli.Command {
 				},
 				Action: handleListEnvironments,
 			},
+			{
+				Name:  "unset",
+				Usage: "Remove a specific key from an environment",
+				Flags: []cli.Flag{
+					&cli.StringFlag{Name: "config", Usage: "Config name or path"},
+					&cli.StringFlag{Name: "deployment-id", Aliases: []string{"d"}, Usage: "Deployment ID"},
+					&cli.StringFlag{Name: "key", Aliases: []string{"k"}, Usage: "Key to remove", Required: true},
+				},
+				Action: handleEnvUnset,
+			},
 		},
 	}
 }
@@ -118,6 +128,10 @@ func handleListEnvironments(c *cli.Context) error {
 		return nil
 	}
 
+	if utils.TryPrintJSON(environments) {
+		return nil
+	}
+
 	headers := []string{"NAME", "ENV ID", "DEPLOYMENT ID", "CREATED"}
 	rows := make([][]string, 0, len(environments))
 	for _, env := range environments {
@@ -129,6 +143,27 @@ func handleListEnvironments(c *cli.Context) error {
 		})
 	}
 	utils.PrintTable(headers, rows)
+	return nil
+}
+
+func handleEnvUnset(c *cli.Context) error {
+	key := c.String("key")
+
+	deploymentID, err := resolveDeploymentID(c.String("deployment-id"), c.String("config"))
+	if err != nil {
+		return utils.NewError(fmt.Sprintf("failed to resolve deployment: %s", err.Error()), nil)
+	}
+
+	envs, err := api.GetEnvironmentsByDeploymentID(deploymentID)
+	if err != nil || len(envs) == 0 {
+		return utils.NewError("no environment found for this deployment", nil)
+	}
+
+	if err := api.UnsetEnvironmentKey(envs[0].EnvironmentID.String(), key); err != nil {
+		return utils.NewError(fmt.Sprintf("failed to unset key: %s", err.Error()), nil)
+	}
+
+	utils.PrintSuccess("Key %q removed from environment", key)
 	return nil
 }
 

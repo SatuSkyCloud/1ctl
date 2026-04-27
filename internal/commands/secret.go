@@ -45,6 +45,16 @@ func SecretCommand() *cli.Command {
 				Usage:  "List all secrets",
 				Action: handleListSecrets,
 			},
+			{
+				Name:  "unset",
+				Usage: "Remove a specific key from a secret",
+				Flags: []cli.Flag{
+					&cli.StringFlag{Name: "config", Usage: "Config name or path"},
+					&cli.StringFlag{Name: "deployment-id", Aliases: []string{"d"}, Usage: "Deployment ID"},
+					&cli.StringFlag{Name: "key", Aliases: []string{"k"}, Usage: "Key to remove", Required: true},
+				},
+				Action: handleSecretUnset,
+			},
 		},
 	}
 }
@@ -115,6 +125,10 @@ func handleListSecrets(c *cli.Context) error {
 		return nil
 	}
 
+	if utils.TryPrintJSON(secrets) {
+		return nil
+	}
+
 	headers := []string{"NAME", "SECRET ID", "DEPLOYMENT ID", "CREATED"}
 	rows := make([][]string, 0, len(secrets))
 	for _, secret := range secrets {
@@ -126,5 +140,26 @@ func handleListSecrets(c *cli.Context) error {
 		})
 	}
 	utils.PrintTable(headers, rows)
+	return nil
+}
+
+func handleSecretUnset(c *cli.Context) error {
+	key := c.String("key")
+
+	deploymentID, err := resolveDeploymentID(c.String("deployment-id"), c.String("config"))
+	if err != nil {
+		return utils.NewError(fmt.Sprintf("failed to resolve deployment: %s", err.Error()), nil)
+	}
+
+	secrets, err := api.GetSecretsByDeploymentID(deploymentID)
+	if err != nil || len(secrets) == 0 {
+		return utils.NewError("no secret found for this deployment", nil)
+	}
+
+	if err := api.UnsetSecretKey(secrets[0].SecretID.String(), key); err != nil {
+		return utils.NewError(fmt.Sprintf("failed to unset key: %s", err.Error()), nil)
+	}
+
+	utils.PrintSuccess("Key %q removed from secrets", key)
 	return nil
 }

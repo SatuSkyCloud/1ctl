@@ -198,6 +198,11 @@ func DeployCommand() *cli.Command {
 			Name:  "config",
 			Usage: "Config name or path (e.g. staging, satusky.staging.toml). Default: satusky.toml",
 		},
+		&cli.BoolFlag{
+			Name:    "wait",
+			Aliases: []string{"w"},
+			Usage:   "Wait until pods are Running before returning (default timeout: 5m)",
+		},
 	}
 
 	return &cli.Command{
@@ -410,6 +415,16 @@ func handleDeploy(c *cli.Context) error {
 
 	utils.PrintSuccess("🚀 Deployment for %s is successful! Your app is live at: https://%s", resp.AppLabel, resp.Domain)
 	utils.PrintStatusLine("Deployment ID", resp.DeploymentID.String())
+
+	if opts.Wait {
+		utils.PrintInfo("Waiting for deployment to become healthy...")
+		status, err := api.WaitForDeployment(resp.DeploymentID.String(), 5*time.Minute)
+		if err != nil {
+			utils.PrintWarning("Timed out waiting for deployment: %s", err.Error())
+		} else if status != nil && status.Status == "Running" {
+			utils.PrintSuccess("Deployment is healthy — pods Running")
+		}
+	}
 
 	return nil
 }
@@ -667,6 +682,7 @@ func prepareDeploymentOptions(c *cli.Context) (deploy.DeploymentOptions, error) 
 	opts.Strategy = c.String("strategy")
 	opts.RollingMaxSurge = c.String("rolling-max-surge")
 	opts.RollingMaxUnavailable = c.String("rolling-max-unavailable")
+	opts.Wait = c.Bool("wait")
 
 	// Validate strategy value
 	switch opts.Strategy {
@@ -715,6 +731,10 @@ func handleDeploymentStatus(c *cli.Context) error {
 	status, err := api.GetDeploymentStatus(deploymentID)
 	if err != nil {
 		return utils.NewError(fmt.Sprintf("failed to get deployment status: %s", err.Error()), nil)
+	}
+
+	if utils.TryPrintJSON(status) {
+		return nil
 	}
 
 	utils.PrintStatusLine("Status", status.Status)
@@ -768,6 +788,10 @@ func handleListDeployments(c *cli.Context) error {
 		return nil
 	}
 
+	if utils.TryPrintJSON(deployments) {
+		return nil
+	}
+
 	headers := []string{"DEPLOYMENT ID", "HOSTNAMES", "TYPE", "STATUS", "CREATED"}
 	rows := make([][]string, 0, len(deployments))
 	for _, d := range deployments {
@@ -792,6 +816,10 @@ func handleGetDeployment(c *cli.Context) error {
 	deployment, err := api.GetDeployment(deploymentID)
 	if err != nil {
 		return utils.NewError(fmt.Sprintf("failed to get deployment: %s", err.Error()), nil)
+	}
+
+	if utils.TryPrintJSON(deployment) {
+		return nil
 	}
 
 	// Print detailed deployment information

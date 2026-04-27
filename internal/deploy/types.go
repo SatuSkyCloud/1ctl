@@ -62,4 +62,6 @@ type DeploymentOptions struct {
 	// TargetArch is the CPU architecture the image was built for ("amd64", "arm64", or "").
 	// Empty means multi-arch or unknown — no arch-based machine filtering is applied.
 	TargetArch string
+	// Wait blocks after deploy until pods are Running or timeout is reached.
+	Wait bool
 }

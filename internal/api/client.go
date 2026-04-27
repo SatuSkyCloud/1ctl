@@ -206,6 +206,33 @@ func DeleteSecret(secretID string) error {
 	return makeRequest("POST", fmt.Sprintf("/secrets/delete/%s", secretID), nil, &resp)
 }
 
+// GetSecretsByDeploymentID returns secrets for a given deployment ID.
+func GetSecretsByDeploymentID(deploymentID string) ([]Secret, error) {
+	var resp apiResponse
+	err := makeRequest("GET", fmt.Sprintf("/secrets/deploymentId/%s", deploymentID), nil, &resp)
+	if err != nil {
+		return nil, err
+	}
+
+	data, err := json.Marshal(resp.Data)
+	if err != nil {
+		return nil, utils.NewError(fmt.Sprintf("failed to marshal response data: %s", err.Error()), nil)
+	}
+
+	var secrets []Secret
+	if err := json.Unmarshal(data, &secrets); err != nil {
+		return nil, utils.NewError(fmt.Sprintf("failed to unmarshal secrets: %s", err.Error()), nil)
+	}
+	return secrets, nil
+}
+
+// UnsetSecretKey removes a single key from a secret.
+func UnsetSecretKey(secretID, key string) error {
+	body := map[string]string{"key": key}
+	var resp struct{}
+	return makeRequest("POST", fmt.Sprintf("/secrets/unset/%s", secretID), body, &resp)
+}
+
 // Ingress methods
 
 // ListIngresses lists all ingresses for current namespace
@@ -283,6 +310,33 @@ func ListEnvironments() ([]Environment, error) {
 func DeleteEnvironment(environmentID string) error {
 	var resp apiResponse
 	return makeRequest("POST", fmt.Sprintf("/environments/delete/%s", environmentID), nil, &resp)
+}
+
+// GetEnvironmentsByDeploymentID returns environments for a given deployment ID.
+func GetEnvironmentsByDeploymentID(deploymentID string) ([]Environment, error) {
+	var resp apiResponse
+	err := makeRequest("GET", fmt.Sprintf("/environments/deploymentId/%s", deploymentID), nil, &resp)
+	if err != nil {
+		return nil, err
+	}
+
+	data, err := json.Marshal(resp.Data)
+	if err != nil {
+		return nil, utils.NewError(fmt.Sprintf("failed to marshal response data: %s", err.Error()), nil)
+	}
+
+	var environments []Environment
+	if err := json.Unmarshal(data, &environments); err != nil {
+		return nil, utils.NewError(fmt.Sprintf("failed to unmarshal environments: %s", err.Error()), nil)
+	}
+	return environments, nil
+}
+
+// UnsetEnvironmentKey removes a single key from an environment's ConfigMap.
+func UnsetEnvironmentKey(environmentID, key string) error {
+	body := map[string]string{"key": key}
+	var resp struct{}
+	return makeRequest("POST", fmt.Sprintf("/environments/unset/%s", environmentID), body, &resp)
 }
 
 // LoginCLI logs in the CLI with the API token
@@ -376,7 +430,7 @@ func WaitForDeployment(deploymentID string, timeout time.Duration) (*DeploymentS
 		case StatusFailed, StatusFailedK8s:
 			return status, utils.NewError(fmt.Sprintf("deployment failed: %s", status.Message), nil)
 		case StatusPending, StatusCreating, StatusRunning, StatusNotReady, StatusProgressing, StatusUnknown:
-			utils.PrintInfo("Deployment status: %s (%d%%)\n", status.Status, status.Progress)
+			utils.PrintInfo("Deployment status: %s (%d pct)", status.Status, status.Progress)
 		default:
 			return nil, utils.NewError(fmt.Sprintf("unknown deployment status: %s", status.Status), nil)
 		}

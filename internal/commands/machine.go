@@ -61,6 +61,10 @@ func handleListMachines(c *cli.Context) error {
 		return nil
 	}
 
+	if utils.TryPrintJSON(machines) {
+		return nil
+	}
+
 	headers := []string{"NAME", "MACHINE ID", "REGION/ZONE", "STATUS", "CPU", "MEM(GB)", "HOURLY COST"}
 	rows := make([][]string, 0, len(machines))
 	for _, machine := range machines {

@@ -88,6 +88,16 @@ func handleLogsStream(c *cli.Context) error {
 	appLabel := c.String("app")
 	batchSize := c.Int("batch-size")
 
+	// Resolve deployment-id from --config if not provided directly
+	if c.String("deployment-id") == "" && c.String("namespace") == "" {
+		id, err := resolveDeploymentID("", c.String("config"))
+		if err == nil && id != "" {
+			if err := c.Set("deployment-id", id); err != nil {
+				return utils.NewError(fmt.Sprintf("failed to set deployment-id: %s", err.Error()), nil)
+			}
+		}
+	}
+
 	// Resolve via deployment ID if explicit flags not given
 	if deploymentID := c.String("deployment-id"); deploymentID != "" {
 		deployment, err := api.GetDeployment(deploymentID)
@@ -158,6 +168,10 @@ func logsStreamCommand() *cli.Command {
 				Name:  "batch-size",
 				Usage: "Log lines per batch sent by the server",
 				Value: 100,
+			},
+			&cli.StringFlag{
+				Name:  "config",
+				Usage: "Config name or path (e.g. staging, satusky.staging.toml). Default: satusky.toml",
 			},
 		},
 		Action: handleLogsStream,
