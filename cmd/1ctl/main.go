@@ -74,22 +74,18 @@ Tokens: https://cloud.satusky.com/<org-id>/token`,
 			commands.IssuerCommand(),
 			commands.EnvironmentCommand(),
 			commands.MachineCommand(),
-			commands.DomainCommand(),
 			commands.CompletionCommand(),
-			// Phase 1: Credits, Storage, Logs
+			// Phase 1: Credits, Logs
 			commands.CreditsCommand(),
-			commands.StorageCommand(),
 			commands.LogsCommand(),
 			// Phase 2: Notifications
 			commands.NotificationsCommand(),
 			// Phase 3: User, Token
 			commands.UserCommand(),
 			commands.TokenCommand(),
-			// Phase 5: Marketplace, Audit, Talos, Admin
+			// Phase 5: Marketplace, Audit
 			commands.MarketplaceCommand(),
 			commands.AuditCommand(),
-			commands.TalosCommand(),
-			commands.AdminCommand(),
 			// Phase 3+4: Pricing
 			commands.PricingCommand(),
 			commands.ClusterCommand(),

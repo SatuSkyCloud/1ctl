@@ -71,3 +71,20 @@ func SafeInt32(n int) (int32, error) {
 	}
 	return int32(n), nil
 }
+
+// GenerateDomainName calls the backend's domain generator endpoint and returns
+// the auto-assigned domain name (adjective+animal-suffix.satusky.com).
+// projectName is unused — the backend owns domain assignment.
+func GenerateDomainName(_ string) (string, error) {
+	var resp struct {
+		Error bool   `json:"error"`
+		Data  string `json:"data"`
+	}
+	if err := makeRequest("GET", "/ingresses/domainNameGenerator", nil, &resp); err != nil {
+		return "", fmt.Errorf("failed to get auto-assigned domain: %w", err)
+	}
+	if resp.Data == "" {
+		return "", fmt.Errorf("backend returned an empty domain name")
+	}
+	return resp.Data, nil
+}
