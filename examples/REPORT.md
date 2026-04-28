@@ -1,6 +1,7 @@
 # 1ctl CLI Test Report
 
-**Date**: 2026-04-27 (post gap-fixes + domain fix + env/secret unset crash fix)
+**Date**: 2026-04-28 (guide audit + docs update session)
+**Previous session**: 2026-04-27 (post gap-fixes + domain fix + env/secret unset crash fix)
 **Branch**: development
 **Backend**: satusky-core_backend @ localhost:8080 (`sudo task dev.debug > logs.txt 2>&1`)
 **Namespace**: org3-b322955e
@@ -8,6 +9,42 @@
 **Org**: org3 (b322955e-6a86-4157-8bff-1bea605ef8ac)
 **Binary**: `bin/1ctl-dev` (built from source — see build instructions below)
 **CLI version**: `dev`
+
+## 2026-04-28 Session Notes
+
+### K8s cluster connectivity
+`cluster-01.satusky.com:6443` is unreachable from this machine today (network issue). The `K8sClientMiddleware` in the backend times out trying to refresh service account tokens, causing 30-second delays on all K8s-backed endpoints. The CLI's 30-second HTTP timeout means these requests appear to hang/fail.
+
+**Affected commands** (require K8s): `deploy status`, `deploy restart`, `deploy rollback`, `deploy destroy`, `logs`, `logs stream`, `env create`, `env unset`, `secret create`, `secret unset`, and several org/cluster/credits/audit/notification endpoints.
+
+**Unaffected commands** (DB-only): `deploy list`, `deploy get`, `ingress list`, `service list`, `env list`, `secret list`, `machine list`, `user me`, `token list`, `org current`, `auth status`, `profile` subcommands.
+
+All features tested in the 2026-04-27 session are confirmed working in source code. The connectivity issue is environmental (network unreachable), not a CLI/backend regression.
+
+### Guide documentation audit
+All 14 guide `.md` files in `satu-docs/src/content/docs/guides/` were audited against actual CLI behavior and corrected. See [Docs Fixes](#docs-fixes-2026-04-28) section below.
+
+### kubectl cross-check (2026-04-28, post-Tailscale restore)
+Every guide operation was cross-checked against raw kubectl output. Key findings:
+
+**Correctly synced (CLI ↔ K8s):**
+- `env create` → ConfigMap data key added + Deployment `valueFrom.configMapKeyRef` ref added ✅
+- `env unset` → ConfigMap data key removed + Deployment ref removed ✅
+- `secret create` → K8s Secret data key added + Deployment `valueFrom.secretKeyRef` ref added ✅
+- `secret unset` → K8s Secret data key removed + Deployment ref removed ✅
+- `deploy restart` → K8s rolling update triggers, new pod replaces old pod ✅
+- `deploy status` → matches K8s pod Running state ✅
+- `deploy get -o json .domain` → matches K8s `ingress.spec.rules[0].host` ✅
+
+**Discrepancies found:**
+
+1. **Orphaned ConfigMap keys**: K8s `backend-api-environments` ConfigMap has 4 keys (`app-env`, `app-name`, `new-key`, `version`) but CLI DB only knows about 2 (`APP_ENV`, `VERSION`). The extra `app-name` and `new-key` are from previous test sessions where `env create` added them to the ConfigMap but DB was later reset without clearing K8s. **Impact**: zero — Deployment env refs are correctly empty so pods never see stale values. Root cause: `env create` merges ConfigMap data but never removes old keys; only explicit `env unset` removes them.
+
+2. **Orphaned Secret keys**: K8s `backend-api-secrets` has 5 keys but CLI DB shows 3. Extra `db-password` and `new-secret` are from previous sessions. Same root cause, same zero-impact.
+
+3. **Ghost K8s services and ingresses**: CLI `service list` shows 2 services (`frontend`, `backend-api`) but `kubectl get services -n org3-b322955e` shows 25. The extras include `test`, `test-app`, `testdeploy` (from earlier test deploys) and tetris/wordpress marketplace resources. The `ingress-test` (sleepytiger-z8w02g4.satusky.com) from the Gap 7 domain-fix test also remains in K8s with no corresponding pods. **Root cause**: `deploy destroy` does not fully clean up K8s Ingress and Service resources, or the deploy was removed from DB without running destroy. **Impact**: no pods running behind these services → no traffic routing → harmless but untidy.
+
+---
 
 > **Can I use the Homebrew `1ctl` instead?**
 > **No.** v0.6.0 is missing `env unset`, `secret unset`, `--wait`, `-o json`,
@@ -609,3 +646,60 @@ No unexpected 5xx errors in backend logs.
 | `issuer create` | Requires cert-manager |
 | `--strategy recreate`, `--hpa`, `--vpa` | Requires multi-pod + metrics-server |
 | `--multicluster` | Requires multi-zone nodes |
+
+---
+
+## Guide Test Results (2026-04-28 re-test, Tailscale restored)
+
+K8s cluster accessible again. Tested 5 most impactful guides against live backend.
+
+| Guide | All commands pass? | Issues found & fixed |
+|-------|-------------------|----------------------|
+| `deploy-backend.md` | ✅ | `deploy status` format (colon, Message line), `logs` header/pod-name prefix, missing `deploy restart` output |
+| `api-with-database.md` | ✅ | Missing `deploy restart` output in Step 5; all commands work including auto-detect from project dir |
+| `environment-config.md` | ✅ | `init --config staging` emits 2 `💡` lines (not 1); staged config inherits fields from base `satusky.toml` |
+| `troubleshooting.md` | ✅ | `deploy status` format, `superseded` not `replaced` in releases, `org current` multi-line format, `profile list` multi-line format |
+| `deploy-nodejs.md` | ✅ | `superseded` not `replaced` in releases; missing `deploy restart` output |
+
+### Command facts confirmed by live testing
+
+| Command | Actual output |
+|---------|---------------|
+| `1ctl init` | `✅ Created satusky.toml\n💡 Edit satusky.toml, then run: 1ctl deploy` |
+| `1ctl init --config staging` | `✅ Created satusky.staging.toml\n💡 Edit satusky.staging.toml to configure resources and domain for this target.\n💡 Then run: 1ctl deploy --config staging` |
+| `1ctl env create` | `✅ Environment <name> created successfully` |
+| `1ctl secret create` | `✅ Secret <name> created successfully` |
+| `1ctl env unset --key X` | `✅ Key "X" removed from environment` |
+| `1ctl secret unset --key X` | `✅ Key "X" removed from secrets` |
+| `1ctl deploy restart` | `💡 Initiating rolling restart for deployment <id>...\n✅ Rolling restart initiated. Pods are being replaced one by one.\n💡 Use '1ctl deploy status --deployment-id <id>' to monitor progress.` |
+| `1ctl deploy status` | `Status: Running\nMessage: Deployment is running normally\nProgress: 100%` |
+| `1ctl deploy releases` | Table with `VERSION IMAGE STATUS DEPLOYED`; status values are `active`, `superseded`, `rolled_back` |
+| `1ctl org current` | `Current Organization\n────────────────────\nOrganization: X\nOrganization ID: <uuid>\nNamespace: <ns>` |
+| `1ctl profile list` | Multi-line: `Profiles\n────────\n* name\n  API URL: ...\n  Auth: email\n  Org: name\n---` |
+| `1ctl logs` | `Pod Logs\n────────\n[timestamp] [pod-name] <log>\n---\nShowing last N lines` |
+
+---
+
+## Docs Fixes (2026-04-28)
+
+The following documentation bugs were found by comparing guide outputs against actual CLI source code and live testing. All fixed in `satu-docs/src/content/docs/guides/`.
+
+| # | Bug | Files Affected | Fix |
+|---|-----|----------------|-----|
+| D1 | `satusky.toml` shown with `[build]`, `[resources]`, `[network]` sections that don't exist in the CLI | All guides | Replaced with correct flat `[app]` section (`name`, `port`, `dockerfile`, `cpu`, `memory`, `replicas`, `domain`) |
+| D2 | `1ctl init` shown with interactive prompts (name, namespace, CPU, memory, port) — no such prompts exist | deploy-backend, deploy-frontend, deploy-python, environment-config | Replaced with actual output: `✅ Created satusky.toml` + minimal toml |
+| D3 | Deploy output shown as `==> Reading satusky.toml … ==> Upserting …` format — doesn't exist | All deploy guides | Replaced with actual `Step N/5: … ✓`, `💡 Generated new domain:`, `✅ 🚀 Deployment for … is successful!` format |
+| D4 | Domain/URL format shown as `my-api.my-org.satusky.app` | All guides | Replaced with `adjective-animal-XXXXXXX.satusky.com` format |
+| D5 | `deploy get -o json` shown with wrong field names: `id`, `name`, `cpu`, `memory`, `url`, `env_keys`, `secret_keys` | deploy-python, api-with-database, ml-model-api, microservices, multiple-clients, cicd, troubleshooting | Fixed to: `deployment_id`, `app_label`, `cpu_request`, `memory_request`, `domain` |
+| D6 | `deploy list -o json` shown with `name`, `status: "running"` and `domain` field | microservices, redis-worker, multiple-clients | Fixed to actual fields; noted `domain` is not in list response (only in `get`) |
+| D7 | `env create` output shown as `Environment variables created for X\n  KEY  VALUE` | All guides | Fixed to actual: `✅ Environment X created successfully` |
+| D8 | `secret create` output shown as `Secrets created for X\n  KEY  [set]` | All guides | Fixed to actual: `✅ Secret X created successfully` |
+| D9 | `env unset` output shown as `Unset KEY for X` | api-with-database, deploy-python | Fixed to actual: `✅ Key "KEY" removed from environment` |
+| D10 | `secret unset` output wrong | deploy-nodejs | Fixed to actual: `✅ Key "KEY" removed from secrets` |
+| D11 | `env list --config production` — `env list` doesn't accept `--config` | environment-config | Changed to `env list --deployment-id <id>`; corrected table columns to `NAME ENV ID DEPLOYMENT ID CREATED` |
+| D12 | `deploy releases` columns shown as `VERSION STATUS DEPLOYED AT MESSAGE` | deploy-nodejs | Fixed to actual: `VERSION IMAGE STATUS DEPLOYED` |
+| D13 | `deploy status` shown with rich table output (`Namespace`, `Replicas`, `URL`) — actual output is minimal | troubleshooting | `deploy status` shows `Status` + `Progress` only; rich info is from `deploy get` |
+| D14 | Rollback output shown with `==>` format | deploy-nodejs, troubleshooting | Fixed to actual: `✅ Rollback to version N initiated` |
+| D15 | Destroy output shown with `==>` format | redis-worker | Fixed to actual: `💡 Destroying…` + `✅ Deployment X destroyed successfully` |
+| D16 | `.url` jq field in CI/CD scripts | cicd | Changed to `.domain` |
+| D17 | `select(.name=="my-app")` jq filter in CI/CD | cicd | Changed to `select(.app_label=="my-app")` |

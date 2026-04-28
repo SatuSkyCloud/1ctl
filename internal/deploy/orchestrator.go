@@ -226,6 +226,7 @@ func submitRemoteBuild(dockerfilePath, projectName string) (imageRef, imageArch 
 	utils.PrintInfo("Build queued (ID: %s)", buildID)
 
 	// Poll until the Kaniko job finishes, streaming log output as it arrives.
+	// TODO: Should we be polling? is there a better way other than polling?
 	result, err := api.WaitForBuildResult(buildID, os.Stdout)
 	if err != nil {
 		return "", "", err
@@ -264,6 +265,7 @@ func mainDeploy(opts DeploymentOptions, image, name, userID, organization string
 		replicas = 1
 	}
 
+	// TODO: Shoudl we be hardcoding any of the values here? Make it strict and require to pass in params.
 	deployment := api.Deployment{
 		UserID:        api.ToUUID(userID),
 		Type:          "production", // Default to production (cluster env)
