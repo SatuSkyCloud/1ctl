@@ -59,6 +59,17 @@ task build
 task run -- <command>
 ```
 
+## Testing against the dev backend
+
+For changes you want to exercise against the live dev backend before cutting a prod release, install the `1ctl-dev` variant — it's the same codebase as `1ctl` but points at `https://dev-core-api.satusky.com/v1/cli` via `-ldflags`. Safe to keep installed alongside the prod `1ctl`:
+
+```bash
+curl -sSL https://raw.githubusercontent.com/SatuSkyCloud/1ctl/main/install-dev.sh | bash
+1ctl-dev --version   # shows [development]
+```
+
+The dev binary uses `~/.satusky-development/` for its config, so dev credentials don't clobber your prod `~/.satusky/` state. Runtime `SATUSKY_API_URL` still overrides the baked-in default, useful for pointing `1ctl-dev` at a local backend.
+
 ## Code Style
 
 - Follow standard Go code style and conventions
@@ -105,15 +116,19 @@ git rebase upstream/main
 
 ## Release Process
 
-1. Update version in `internal/version/version.go`
+1. Update `RELEASE_NOTES.md` with changes for the new version
 
-2. Update RELEASE_NOTES.md with changes
-
-3. Create and push a new tag:
+2. Create and push a new tag (version string is injected at build time via `-ldflags`, no source edit needed):
 ```bash
-git tag v0.1.0
-git push origin v0.1.0
+git tag v0.X.Y
+git push origin v0.X.Y
 ```
+
+3. GoReleaser (triggered by the tag) produces two binary families on the same GitHub release:
+   - `1ctl-*` — prod, defaults to `https://api.satusky.com/v1/cli`. Published to Homebrew (`satuctl`).
+   - `1ctl-dev-*` — dev, defaults baked to `https://dev-core-api.satusky.com/v1/cli`. Tarballs only. Installed via `install-dev.sh`.
+
+4. Update the GitHub release description with the relevant `RELEASE_NOTES.md` entry.
 
 ## Getting Help
 
