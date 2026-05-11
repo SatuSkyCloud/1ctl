@@ -11,24 +11,17 @@ on:
 jobs:
   run:
     name: Spell Check with Typos
-    runs-on: ${{ vars.USE_SELF_HOSTED == 'true' && vars.SELF_HOSTED_RUNNER_LABEL || 'ubuntu-latest' }}
+    # Skipped on self-hosted runners. The crate-ci/typos action downloads its
+    # binary via wget at action runtime, and the self-hosted runner image is
+    # locked down (no_new_privs + cap-drop ALL per the project's container
+    # security model) so we can't apt-install wget on demand. Falls back to
+    # GitHub-hosted ubuntu-latest when USE_SELF_HOSTED is off, which is when
+    # we'd want the typos check anyway (manual review path / pre-release).
+    if: ${{ vars.USE_SELF_HOSTED != 'true' }}
+    runs-on: ubuntu-latest
     steps:
     - name: Checkout Actions Repository
       uses: actions/checkout@v4
-
-    # crate-ci/typos@v1.x downloads the binary with wget at action runtime.
-    # The self-hosted runner image is minimal and doesn't bundle wget, so
-    # install it on demand. No-op on GitHub-hosted runners (already present).
-    - name: Ensure wget is available
-      run: |
-        if ! command -v wget >/dev/null 2>&1; then
-          if command -v apt-get >/dev/null 2>&1; then
-            sudo apt-get update -qq && sudo apt-get install -y -qq wget
-          else
-            echo "wget not found and apt-get not available; aborting" >&2
-            exit 1
-          fi
-        fi
 
     - name: Check spelling
       uses: crate-ci/typos@v1.23.2
