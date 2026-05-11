@@ -61,13 +61,14 @@ func handleLogin(c *cli.Context) error {
 		return utils.NewError(fmt.Sprintf("failed to login: %s", err.Error()), nil)
 	}
 
-	// Write all auth fields in a single atomic write
-	namespace := result.Namespace
-	if namespace == "" {
-		namespace = result.OrganizationName
+	// Fail-fast: a token unassociated with an organization is unusable. Writing
+	// an empty namespace to context.json poisons every subsequent command with
+	// cryptic "not found" errors. Surface the cause at login instead.
+	if result.OrganizationID == "" || result.Namespace == "" {
+		return utils.NewError("token is not associated with an organization — ensure the token has an organization scope", nil)
 	}
 
-	if err := context.SaveLoginState(token, result.UserID, result.UserEmail, result.OrganizationID, result.OrganizationName, namespace, result.UserConfigKey); err != nil {
+	if err := context.SaveLoginState(token, result.UserID, result.UserEmail, result.OrganizationID, result.OrganizationName, result.Namespace, result.UserConfigKey); err != nil {
 		return utils.NewError(fmt.Sprintf("failed to store login state: %s", err.Error()), nil)
 	}
 

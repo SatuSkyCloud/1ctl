@@ -424,6 +424,10 @@ func WaitForDeployment(deploymentID string, timeout time.Duration) (*DeploymentS
 			return nil, err
 		}
 
+		// Two distinct "running" tokens coexist intentionally:
+		//   StatusRunning    ("running") — backend lifecycle: in-progress, not yet healthy
+		//   StatusRunningK8s ("Running") — K8s pod phase: healthy, terminal-success
+		// Same casing distinction for Failed/failed.
 		switch status.Status {
 		case StatusCompleted, StatusRunningK8s:
 			return status, nil
@@ -432,7 +436,10 @@ func WaitForDeployment(deploymentID string, timeout time.Duration) (*DeploymentS
 		case StatusPending, StatusCreating, StatusRunning, StatusNotReady, StatusProgressing, StatusUnknown:
 			utils.PrintInfo("Deployment status: %s (%d pct)", status.Status, status.Progress)
 		default:
-			return nil, utils.NewError(fmt.Sprintf("unknown deployment status: %s", status.Status), nil)
+			// Forward-compatibility: a new status string added on the backend
+			// must not break --wait on older CLI versions. Treat unknown
+			// values as non-terminal and keep polling.
+			utils.PrintInfo("Deployment status: %s (waiting...)", status.Status)
 		}
 
 		<-ticker.C

@@ -17,14 +17,14 @@ import (
 func DeployCommand() *cli.Command {
 	deployFlags := []cli.Flag{
 		&cli.StringFlag{
-			Name:     "cpu",
-			Usage:    "CPU cores allocation (e.g., '2')",
-			Required: false,
+			Name:  "cpu",
+			Usage: "CPU cores allocation (e.g., '2')",
+			Value: "0.5",
 		},
 		&cli.StringFlag{
-			Name:     "memory",
-			Usage:    "Memory allocation (e.g., '512Mi', '2Gi')",
-			Required: false,
+			Name:  "memory",
+			Usage: "Memory allocation (e.g., '512Mi', '2Gi')",
+			Value: "256Mi",
 		},
 		&cli.StringSliceFlag{
 			Name:  "machine",
@@ -377,18 +377,6 @@ func handleDeploy(c *cli.Context) error {
 			if err := c.Set("domain", cfg.App.Domain); err != nil {
 				return utils.NewError(fmt.Sprintf("failed to set domain from config: %s", err.Error()), nil)
 			}
-		}
-	}
-
-	// Apply platform defaults when neither flag nor toml provides a value.
-	if c.String("cpu") == "" {
-		if err := c.Set("cpu", "0.5"); err != nil {
-			return utils.NewError("failed to set default cpu", err)
-		}
-	}
-	if c.String("memory") == "" {
-		if err := c.Set("memory", "256Mi"); err != nil {
-			return utils.NewError("failed to set default memory", err)
 		}
 	}
 
