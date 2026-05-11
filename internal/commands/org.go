@@ -171,7 +171,6 @@ func handleOrgList(c *cli.Context) error {
 func handleOrgCurrent(c *cli.Context) error {
 	orgName := context.GetCurrentOrgName()
 	orgID := context.GetCurrentOrgID()
-	namespace := context.GetCurrentNamespace()
 
 	if orgName == "" {
 		return utils.NewError("no organization set. Please run '1ctl auth login' first", nil)
@@ -180,7 +179,6 @@ func handleOrgCurrent(c *cli.Context) error {
 	utils.PrintHeader("Current Organization")
 	utils.PrintStatusLine("Organization", orgName)
 	utils.PrintStatusLine("Organization ID", orgID)
-	utils.PrintStatusLine("Namespace", namespace)
 	return nil
 }
 
@@ -231,12 +229,14 @@ func handleOrgSwitch(c *cli.Context) error {
 		}
 	}
 
-	// Update context with new organization (use namespace for K8s operations)
-	namespace := org.Namespace
-	if namespace == "" {
-		namespace = org.OrganizationName // fallback for older API responses
+	// The organizations table enforces NOT NULL on namespace, so a successful
+	// org lookup always returns a non-empty namespace. An empty value means the
+	// API response is malformed; falling back to OrganizationName would produce
+	// an invalid k8s namespace (org names allow spaces/uppercase/etc).
+	if org.Namespace == "" {
+		return utils.NewError(fmt.Sprintf("organization '%s' has no namespace assigned — contact support", org.OrganizationName), nil)
 	}
-	if err := context.SetCurrentOrganization(org.OrganizationID.String(), org.OrganizationName, namespace); err != nil {
+	if err := context.SetCurrentOrganization(org.OrganizationID.String(), org.OrganizationName, org.Namespace); err != nil {
 		return utils.NewError(fmt.Sprintf("failed to switch organization: %s", err.Error()), nil)
 	}
 

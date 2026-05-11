@@ -52,7 +52,6 @@ func auditGetCommand() *cli.Command {
 	}
 }
 
-
 func handleAuditList(c *cli.Context) error {
 	orgID := context.GetCurrentOrgID()
 	if orgID == "" {
@@ -137,4 +136,3 @@ func handleAuditGet(c *cli.Context) error {
 
 	return nil
 }
-

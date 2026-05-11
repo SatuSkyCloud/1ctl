@@ -39,7 +39,7 @@ CLI flags always override toml values for a single invocation. The file is never
 
 ## Prerequisites
 
-- Backend running: `sudo task dev.debug > logs.txt 2>&1` in `satusky-core_backend`
+- A local API server reachable on `http://localhost:8080` (or whichever endpoint your `local` profile points at)
 - Build from source (see below)
 
 ### Can I use the Homebrew `1ctl` instead of building from source?
@@ -51,14 +51,14 @@ You must build from source:
 
 ```bash
 cd /path/to/1ctl
-go build -o bin/1ctl-dev ./cmd/...
+go build -o bin/1ctl ./cmd/...
 ```
 
 No `-ldflags` needed. The binary defaults to the prod API URL, but `SATUSKY_API_URL` always overrides it at runtime (see below).
 
 Optional — install to PATH so you can call it without `./bin/`:
 ```bash
-sudo cp bin/1ctl-dev /usr/local/bin/1ctl-dev
+sudo cp bin/1ctl /usr/local/bin/1ctl
 ```
 
 ---
@@ -70,15 +70,15 @@ sudo cp bin/1ctl-dev /usr/local/bin/1ctl-dev
 export SATUSKY_API_URL=http://localhost:8080/v1/cli
 
 # Returning user — profile already exists, just activate and confirm
-1ctl-dev profile use local
-1ctl-dev auth status
+1ctl profile use local
+1ctl auth status
 ```
 
 ```bash
 # First time on this machine — create the local profile, then log in
-1ctl-dev profile create --url http://localhost:8080/v1/cli local
-1ctl-dev profile use local
-1ctl-dev auth login --token <your-api-token>
+1ctl profile create --url http://localhost:8080/v1/cli local
+1ctl profile use local
+1ctl auth login --token <your-api-token>
 ```
 
 > **`SATUSKY_API_URL` is the master switch.** It overrides the active profile URL for every
@@ -91,7 +91,7 @@ export SATUSKY_API_URL=http://localhost:8080/v1/cli
 
 ```bash
 cd my-project
-1ctl-dev init
+1ctl init
 ```
 
 Creates a minimal `satusky.toml` — only the fields you actually need:
@@ -111,10 +111,10 @@ No empty fields, no noise.
 cd examples/backend
 
 # Uses satusky.toml for cpu/memory/port; --image and --machine are explicit
-1ctl-dev deploy --config satusky.toml --image nginx:alpine --machine compute-main-01
+1ctl deploy --config satusky.toml --image nginx:alpine --machine compute-main-01
 
 # Block until pods are Running
-1ctl-dev deploy --config satusky.toml --image nginx:alpine --machine compute-main-01 --wait
+1ctl deploy --config satusky.toml --image nginx:alpine --machine compute-main-01 --wait
 ```
 
 Expected (with `--wait`):
@@ -136,7 +136,7 @@ Step 2/5: Creating/updating deployment backend-api ✓
 ```bash
 cd examples/frontend
 
-1ctl-dev deploy --config satusky.toml --machine compute-main-01 --wait
+1ctl deploy --config satusky.toml --machine compute-main-01 --wait
 ```
 
 Expected:
@@ -155,15 +155,15 @@ Expected:
 
 ```bash
 # All of these resolve by name — no ID needed
-1ctl-dev deploy status --config examples/backend/satusky.toml
-1ctl-dev deploy get    --config examples/backend/satusky.toml
+1ctl deploy status --config examples/backend/satusky.toml
+1ctl deploy get    --config examples/backend/satusky.toml
 
 # Machine-readable output for scripting
-1ctl-dev --output json deploy list | jq '.[].image'
-1ctl-dev -o json deploy get --config examples/backend/satusky.toml | jq '.image'
+1ctl --output json deploy list | jq '.[].image'
+1ctl -o json deploy get --config examples/backend/satusky.toml | jq '.image'
 
 # Direct ID still works
-1ctl-dev deploy get --deployment-id <id>
+1ctl deploy get --deployment-id <id>
 ```
 
 ---
@@ -174,17 +174,17 @@ Expected:
 cd examples/backend
 
 # Create (first call creates, subsequent calls merge)
-1ctl-dev env create --config satusky.toml --env APP_ENV=production --env LOG_LEVEL=info
-1ctl-dev env create --config satusky.toml --env LOG_LEVEL=debug    # updates existing key
+1ctl env create --config satusky.toml --env APP_ENV=production --env LOG_LEVEL=info
+1ctl env create --config satusky.toml --env LOG_LEVEL=debug    # updates existing key
 
 # Remove a specific key without touching others
-1ctl-dev env unset --config satusky.toml --key LOG_LEVEL
+1ctl env unset --config satusky.toml --key LOG_LEVEL
 
 # List
-1ctl-dev env list
+1ctl env list
 
 # Machine-readable
-1ctl-dev -o json env list | jq '.[0].key_values'
+1ctl -o json env list | jq '.[0].key_values'
 ```
 
 `env unset` removes the key from both the ConfigMap and the Deployment pod spec. Pods stay Running — no `CreateContainerConfigError` on next restart.
@@ -204,13 +204,13 @@ kubectl -n org3-b322955e get deployment backend-api \
 ```bash
 cd examples/backend
 
-1ctl-dev secret create --config satusky.toml --kv DB_PASS=s3cret --kv API_KEY=key123
-1ctl-dev secret create --config satusky.toml --kv NEW_KEY=added   # merges
+1ctl secret create --config satusky.toml --kv DB_PASS=s3cret --kv API_KEY=key123
+1ctl secret create --config satusky.toml --kv NEW_KEY=added   # merges
 
 # Remove a specific key
-1ctl-dev secret unset --config satusky.toml --key DB_PASS
+1ctl secret unset --config satusky.toml --key DB_PASS
 
-1ctl-dev secret list
+1ctl secret list
 ```
 
 Use `--kv` for secrets (`--env` is a backward-compatible alias). Like `env unset`, `secret unset` also removes the `valueFrom.secretKeyRef` entry from the Deployment pod spec so pods don't crash on the next restart.
@@ -221,11 +221,11 @@ Use `--kv` for secrets (`--env` is a backward-compatible alias). Like `env unset
 
 ```bash
 # Stored logs (Loki)
-1ctl-dev logs --config examples/backend/satusky.toml
+1ctl logs --config examples/backend/satusky.toml
 
 # Live stream — also accepts --config now
-1ctl-dev logs stream --config examples/backend/satusky.toml
-1ctl-dev logs stream -d <deployment-id>    # direct ID also works
+1ctl logs stream --config examples/backend/satusky.toml
+1ctl logs stream -d <deployment-id>    # direct ID also works
 ```
 
 ---
@@ -234,23 +234,23 @@ Use `--kv` for secrets (`--env` is a backward-compatible alias). Like `env unset
 
 ```bash
 # Rolling restart
-1ctl-dev deploy restart --config examples/backend/satusky.toml
+1ctl deploy restart --config examples/backend/satusky.toml
 
 # Release history
-1ctl-dev deploy releases --config examples/backend/satusky.toml
+1ctl deploy releases --config examples/backend/satusky.toml
 
 # Roll back
-1ctl-dev deploy rollback --config examples/backend/satusky.toml --version 1 -y
+1ctl deploy rollback --config examples/backend/satusky.toml --version 1 -y
 
 # Service and ingress management
-1ctl-dev service list
-1ctl-dev service delete --service-id <id> -y
+1ctl service list
+1ctl service delete --service-id <id> -y
 
-1ctl-dev ingress list
-1ctl-dev ingress delete --ingress-id <id> -y
+1ctl ingress list
+1ctl ingress delete --ingress-id <id> -y
 
 # Tear down
-1ctl-dev deploy destroy --config examples/backend/satusky.toml -y
+1ctl deploy destroy --config examples/backend/satusky.toml -y
 ```
 
 ---
@@ -258,14 +258,14 @@ Use `--kv` for secrets (`--env` is a backward-compatible alias). Like `env unset
 ## 10. Token management
 
 ```bash
-1ctl-dev token list
-1ctl-dev token create --name "ci-token"
-1ctl-dev token disable <token-id>
-1ctl-dev token enable  <token-id>
-1ctl-dev token delete  <token-id> -y
+1ctl token list
+1ctl token create --name "ci-token"
+1ctl token disable <token-id>
+1ctl token enable  <token-id>
+1ctl token delete  <token-id> -y
 
 # Machine-readable
-1ctl-dev -o json token list | jq '.[] | {name, is_active}'
+1ctl -o json token list | jq '.[] | {name, is_active}'
 ```
 
 ---
@@ -274,12 +274,12 @@ Use `--kv` for secrets (`--env` is a backward-compatible alias). Like `env unset
 
 ```bash
 # Positional arg — name or UUID both work
-1ctl-dev org switch org2
-1ctl-dev org switch b322955e-6a86-4157-8bff-1bea605ef8ac
+1ctl org switch org2
+1ctl org switch b322955e-6a86-4157-8bff-1bea605ef8ac
 
 # Flags still work
-1ctl-dev org switch --org-name org2
-1ctl-dev org switch --org-id   b322955e-6a86-4157-8bff-1bea605ef8ac
+1ctl org switch --org-name org2
+1ctl org switch --org-id   b322955e-6a86-4157-8bff-1bea605ef8ac
 ```
 
 ---
@@ -287,24 +287,24 @@ Use `--kv` for secrets (`--env` is a backward-compatible alias). Like `env unset
 ## 12. Full cluster state
 
 ```bash
-1ctl-dev deploy list
-1ctl-dev service list
-1ctl-dev ingress list
-1ctl-dev env list
-1ctl-dev secret list
-1ctl-dev notifications list
-1ctl-dev notifications read --all
-1ctl-dev credits balance
-1ctl-dev credits transactions
-1ctl-dev audit list
-1ctl-dev cluster list
-1ctl-dev cluster zones
-1ctl-dev machine list
-1ctl-dev machine available
-1ctl-dev user me
-1ctl-dev user permissions
-1ctl-dev token list
-1ctl-dev marketplace list
+1ctl deploy list
+1ctl service list
+1ctl ingress list
+1ctl env list
+1ctl secret list
+1ctl notifications list
+1ctl notifications read --all
+1ctl credits balance
+1ctl credits transactions
+1ctl audit list
+1ctl cluster list
+1ctl cluster zones
+1ctl machine list
+1ctl machine available
+1ctl user me
+1ctl user permissions
+1ctl token list
+1ctl marketplace list
 ```
 
 ---
@@ -324,10 +324,10 @@ Use `--kv` for secrets (`--env` is a backward-compatible alias). Like `env unset
 
 ```bash
 # Pipe into jq
-1ctl-dev --output json deploy list | jq '.[].image'
-1ctl-dev -o json env list | jq '.[0].key_values'
-1ctl-dev -o json machine list | jq '.[] | select(.status == "online") | .machine_name'
-1ctl-dev -o json token list | jq '.[] | {name, is_active}'
+1ctl --output json deploy list | jq '.[].image'
+1ctl -o json env list | jq '.[0].key_values'
+1ctl -o json machine list | jq '.[] | select(.status == "online") | .machine_name'
+1ctl -o json token list | jq '.[] | {name, is_active}'
 ```
 
 ---
@@ -336,11 +336,11 @@ Use `--kv` for secrets (`--env` is a backward-compatible alias). Like `env unset
 
 | Situation | Command | Error |
 |---|---|---|
-| No toml, no `--deployment-id` | `1ctl-dev deploy status` (from repo root) | `no --deployment-id and no satusky.toml found` |
-| App not deployed | `1ctl-dev deploy status --config satusky.toml` (after destroy) | `app "backend-api" not found — run 1ctl deploy first` |
-| Wrong directory | `1ctl-dev deploy --image nginx:alpine` (from repo root) | `app name "1ctl" is not a valid K8s service name ... Auto-detected from git remote` |
-| Invalid name | `1ctl-dev deploy` (from `/tmp/1bad`) | `app name "1bad" is not a valid K8s service name (starts with digit — try --name app-1bad)` |
-| `--deployment-id` beats `--config` | `1ctl-dev deploy status --config frontend/satusky.toml --deployment-id <backend-id>` | Shows backend status (ID wins) |
+| No toml, no `--deployment-id` | `1ctl deploy status` (from repo root) | `no --deployment-id and no satusky.toml found` |
+| App not deployed | `1ctl deploy status --config satusky.toml` (after destroy) | `app "backend-api" not found — run 1ctl deploy first` |
+| Wrong directory | `1ctl deploy --image nginx:alpine` (from repo root) | `app name "1ctl" is not a valid K8s service name ... Auto-detected from git remote` |
+| Invalid name | `1ctl deploy` (from `/tmp/1bad`) | `app name "1bad" is not a valid K8s service name (starts with digit — try --name app-1bad)` |
+| `--deployment-id` beats `--config` | `1ctl deploy status --config frontend/satusky.toml --deployment-id <backend-id>` | Shows backend status (ID wins) |
 
 ---
 

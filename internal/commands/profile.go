@@ -150,14 +150,10 @@ func handleProfileUse(c *cli.Context) error {
 		return utils.NewError(fmt.Sprintf("failed to switch profile: %s", err.Error()), nil)
 	}
 
-	// Show the active profile's API URL for confirmation
-	apiURL := context.GetAPIURL()
-	if apiURL == "" {
-		apiURL = defaultAPIURLDisplay()
-	}
-
+	// Show the resolved URL that commands will actually hit (runs the full
+	// precedence chain: --api-url flag > SATUSKY_API_URL > profile > default).
 	utils.PrintSuccess("Switched to profile '%s'", name)
-	utils.PrintStatusLine("API URL", apiURL)
+	utils.PrintStatusLine("API URL", config.GetConfig().ApiURL)
 
 	// Let user know if they haven't authenticated this profile yet
 	if context.GetToken() == "" {
@@ -175,14 +171,9 @@ func handleProfileCurrent(c *cli.Context) error {
 		return nil
 	}
 
-	apiURL := context.GetAPIURL()
-	if apiURL == "" {
-		apiURL = defaultAPIURLDisplay()
-	}
-
 	utils.PrintHeader("Active Profile")
 	utils.PrintStatusLine("Profile", name)
-	utils.PrintStatusLine("API URL", apiURL)
+	utils.PrintStatusLine("API URL", config.GetConfig().ApiURL)
 
 	if email := context.GetEmail(); email != "" {
 		utils.PrintStatusLine("Auth", email)

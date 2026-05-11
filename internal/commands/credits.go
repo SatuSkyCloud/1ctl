@@ -66,7 +66,6 @@ func creditsUsageCommand() *cli.Command {
 	}
 }
 
-
 func handleCreditsBalance(c *cli.Context) error {
 	orgID := context.GetCurrentOrgID()
 	if orgID == "" {

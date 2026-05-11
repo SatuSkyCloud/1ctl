@@ -49,7 +49,6 @@ func TestContextOperations(t *testing.T) {
 	testToken := "test-token-123"
 	testNamespace := "test-org"
 	testUserID := "user-123"
-	testConfigKey := "config-key-123"
 
 	t.Run("token operations", func(t *testing.T) {
 		if err := SetToken(testToken); err != nil {
@@ -75,15 +74,6 @@ func TestContextOperations(t *testing.T) {
 		}
 		if got := GetUserID(); got != testUserID {
 			t.Errorf("GetUserID() = %v, want %v", got, testUserID)
-		}
-	})
-
-	t.Run("config key operations", func(t *testing.T) {
-		if err := SetUserConfigKey(testConfigKey); err != nil {
-			t.Fatalf("SetUserConfigKey() error = %v", err)
-		}
-		if got := GetUserConfigKey(); got != testConfigKey {
-			t.Errorf("GetUserConfigKey() = %v, want %v", got, testConfigKey)
 		}
 	})
 
@@ -154,8 +144,25 @@ func TestContextOperations(t *testing.T) {
 		if ctx.UserID != testUserID {
 			t.Errorf("Persisted user ID = %v, want %v", ctx.UserID, testUserID)
 		}
-		if ctx.UserConfigKey != testConfigKey {
-			t.Errorf("Persisted config key = %v, want %v", ctx.UserConfigKey, testConfigKey)
+	})
+
+	t.Run("namespace error variant", func(t *testing.T) {
+		// Empty namespace must surface as an error (issue #17).
+		if err := SetCurrentNamespace(""); err != nil {
+			t.Fatalf("SetCurrentNamespace() error = %v", err)
+		}
+		if _, err := GetCurrentNamespaceOrError(); err == nil {
+			t.Errorf("GetCurrentNamespaceOrError() with empty namespace should return error")
+		}
+		if err := SetCurrentNamespace("ns-from-test"); err != nil {
+			t.Fatalf("SetCurrentNamespace() error = %v", err)
+		}
+		ns, err := GetCurrentNamespaceOrError()
+		if err != nil {
+			t.Errorf("GetCurrentNamespaceOrError() with set namespace returned err = %v", err)
+		}
+		if ns != "ns-from-test" {
+			t.Errorf("GetCurrentNamespaceOrError() = %q, want %q", ns, "ns-from-test")
 		}
 	})
 

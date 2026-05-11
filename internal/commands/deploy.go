@@ -17,18 +17,26 @@ import (
 func DeployCommand() *cli.Command {
 	deployFlags := []cli.Flag{
 		&cli.StringFlag{
-			Name:     "cpu",
-			Usage:    "CPU cores allocation (e.g., '2')",
-			Required: false,
+			Name:  "name",
+			Usage: "Application name (default: auto-detected from satusky.toml or git remote)",
 		},
 		&cli.StringFlag{
-			Name:     "memory",
-			Usage:    "Memory allocation (e.g., '512Mi', '2Gi')",
-			Required: false,
+			Name:  "cpu",
+			Usage: "CPU cores allocation (e.g., '2')",
+			Value: "0.5",
+		},
+		&cli.StringFlag{
+			Name:  "memory",
+			Usage: "Memory allocation (e.g., '512Mi', '2Gi')",
+			Value: "256Mi",
 		},
 		&cli.StringSliceFlag{
 			Name:  "machine",
-			Usage: "Machine name to deploy to (e.g., 'machine1, machine2')",
+			Usage: "Explicit machine name (BYOA). Repeatable for multi-machine.",
+		},
+		&cli.StringFlag{
+			Name:  "machine-tag",
+			Usage: "Deploy to your machines labelled with this tag (BYOA). Set the satusky.com/<tag> label via the labels API.",
 		},
 		&cli.StringFlag{
 			Name:  "domain",
@@ -330,21 +338,31 @@ Subcommands manage existing deployments:
 				},
 				Action: handleRollback,
 			},
+			{
+				Name:  "open",
+				Usage: "Open a deployment's URL in the default browser",
+				Flags: []cli.Flag{
+					&cli.StringFlag{Name: "deployment-id", Usage: "Deployment ID"},
+					&cli.StringFlag{Name: "config", Usage: "Config name or path. Default: satusky.toml"},
+				},
+				Action: handleOpenDeployment,
+			},
+			{
+				Name:  "scale",
+				Usage: "Set the replica count for a deployment without redeploying",
+				Flags: []cli.Flag{
+					&cli.StringFlag{Name: "deployment-id", Usage: "Deployment ID"},
+					&cli.StringFlag{Name: "config", Usage: "Config name or path. Default: satusky.toml"},
+					&cli.IntFlag{Name: "replicas", Usage: "Target replica count", Required: true},
+				},
+				Action: handleScaleDeployment,
+			},
 		},
 		Action: func(c *cli.Context) error {
 			// If subcommand is provided, let it handle
 			if c.NArg() > 0 {
 				return cli.ShowSubcommandHelp(c)
 			}
-
-			// If no flags and no satusky.toml with cpu/memory, show help
-			if !c.IsSet("cpu") && !c.IsSet("memory") && !c.IsSet("image") {
-				if cfg, err := config.FindConfig(c.String("config")); err != nil || cfg == nil || (cfg.App.CPU == "" && cfg.App.Memory == "") {
-					return cli.ShowSubcommandHelp(c)
-				}
-			}
-
-			// Otherwise, handle deploy
 			return handleDeploy(c)
 		},
 	}
@@ -356,39 +374,85 @@ func handleDeploy(c *cli.Context) error {
 		return err
 	}
 
-	// Load satusky.toml defaults for flags not set on the CLI
-	if cfg, err := config.FindConfig(c.String("config")); err == nil && cfg != nil {
-		if !c.IsSet("cpu") && cfg.App.CPU != "" {
-			if err := c.Set("cpu", cfg.App.CPU); err != nil {
-				return utils.NewError(fmt.Sprintf("failed to set cpu from config: %s", err.Error()), nil)
-			}
-		}
-		if !c.IsSet("memory") && cfg.App.Memory != "" {
-			if err := c.Set("memory", cfg.App.Memory); err != nil {
-				return utils.NewError(fmt.Sprintf("failed to set memory from config: %s", err.Error()), nil)
-			}
-		}
-		if !c.IsSet("port") && cfg.App.Port != 0 {
-			if err := c.Set("port", fmt.Sprintf("%d", cfg.App.Port)); err != nil {
-				return utils.NewError(fmt.Sprintf("failed to set port from config: %s", err.Error()), nil)
-			}
-		}
-		if !c.IsSet("domain") && cfg.App.Domain != "" {
-			if err := c.Set("domain", cfg.App.Domain); err != nil {
-				return utils.NewError(fmt.Sprintf("failed to set domain from config: %s", err.Error()), nil)
-			}
+	// Load satusky.toml once and use it for both the help-guard and the merge.
+	// Previously this file was parsed three separate times per deploy.
+	cfg, err := config.FindConfig(c.String("config"))
+	if err != nil {
+		return utils.NewError(fmt.Sprintf("failed to load config: %s", err.Error()), nil)
+	}
+
+	// Show help when neither flags nor toml provide enough to deploy.
+	if !c.IsSet("cpu") && !c.IsSet("memory") && !c.IsSet("image") {
+		if cfg == nil || (cfg.App.CPU == "" && cfg.App.Memory == "") {
+			return cli.ShowSubcommandHelp(c)
 		}
 	}
 
-	// Apply platform defaults when neither flag nor toml provides a value.
-	if c.String("cpu") == "" {
-		if err := c.Set("cpu", "0.5"); err != nil {
-			return utils.NewError("failed to set default cpu", err)
+	// Snapshot user-typed flags BEFORE the toml merge. applyConfigScalar uses
+	// cli.Set, which flips c.IsSet(...) to true — so any downstream check that
+	// needs "did the *user* set this" must use this snapshot, not c.IsSet.
+	// (Discovered during review: RollingFlagsExplicit was tripping for
+	// toml-provided defaults, forcing strategy config onto requests that
+	// would otherwise have been omitted.)
+	userSet := captureUserSetFlags(c, "rolling-max-surge", "rolling-max-unavailable", "domain", "multicluster")
+
+	// Apply satusky.toml scalar fields to flags the user didn't explicitly set.
+	// Precedence overall: CLI flag (c.IsSet) > satusky.toml > flag Value: default.
+	// Structured sections ([volume], [hpa], [vpa], [pdb], [multicluster]) are
+	// merged in prepareDeploymentOptions where they map to nested option structs.
+	if cfg != nil {
+		if err := applyConfigScalar(c, "cpu", cfg.App.CPU); err != nil {
+			return err
 		}
-	}
-	if c.String("memory") == "" {
-		if err := c.Set("memory", "256Mi"); err != nil {
-			return utils.NewError("failed to set default memory", err)
+		if err := applyConfigScalar(c, "memory", cfg.App.Memory); err != nil {
+			return err
+		}
+		if cfg.App.Port != 0 {
+			if err := applyConfigScalar(c, "port", fmt.Sprintf("%d", cfg.App.Port)); err != nil {
+				return err
+			}
+		}
+		if err := applyConfigScalar(c, "domain", cfg.App.Domain); err != nil {
+			return err
+		}
+		if err := applyConfigScalar(c, "dockerfile", cfg.App.Dockerfile); err != nil {
+			return err
+		}
+		if cfg.App.Replicas > 0 {
+			if err := applyConfigScalar(c, "replicas", fmt.Sprintf("%d", cfg.App.Replicas)); err != nil {
+				return err
+			}
+		}
+		if err := applyConfigScalar(c, "zone", cfg.App.Zone); err != nil {
+			return err
+		}
+		if err := applyConfigScalar(c, "organization", cfg.App.Organization); err != nil {
+			return err
+		}
+		if err := applyConfigScalar(c, "strategy", cfg.App.Strategy); err != nil {
+			return err
+		}
+		if err := applyConfigScalar(c, "rolling-max-surge", cfg.App.RollingMaxSurge); err != nil {
+			return err
+		}
+		if err := applyConfigScalar(c, "rolling-max-unavailable", cfg.App.RollingMaxUnavailable); err != nil {
+			return err
+		}
+		// Volume scalars wire through the existing --volume-size / --volume-mount
+		// flags so validateInputs / prepareDeploymentOptions see them uniformly.
+		if err := applyConfigScalar(c, "volume-size", cfg.Volume.Size); err != nil {
+			return err
+		}
+		if err := applyConfigScalar(c, "volume-mount", cfg.Volume.Mount); err != nil {
+			return err
+		}
+		// wait-for is a StringSliceFlag, merged below.
+		if len(cfg.App.WaitFor) > 0 && !c.IsSet("wait-for") {
+			for _, v := range cfg.App.WaitFor {
+				if err := c.Set("wait-for", v); err != nil {
+					return utils.NewError(fmt.Sprintf("failed to set wait-for from config: %s", err.Error()), nil)
+				}
+			}
 		}
 	}
 
@@ -398,7 +462,7 @@ func handleDeploy(c *cli.Context) error {
 	}
 
 	// Prepare deployment options
-	opts, err := prepareDeploymentOptions(c)
+	opts, err := prepareDeploymentOptions(c, cfg, userSet)
 	if err != nil {
 		return utils.NewError(fmt.Sprintf("deployment preparation failed: %s", err.Error()), nil)
 	}
@@ -429,22 +493,32 @@ func handleDeploy(c *cli.Context) error {
 	return nil
 }
 
+// resolveDockerfilePath returns the Dockerfile path actually used by the
+// deploy, falling back from the --dockerfile flag value to FindDockerfile's
+// common-location search. Empty result means a pre-built --image was given
+// and no Dockerfile is required.
+func resolveDockerfilePath(c *cli.Context) (string, error) {
+	if c.IsSet("image") {
+		return "", nil
+	}
+	dockerfilePath := c.String("dockerfile")
+	if err := validator.ValidateDockerfile(dockerfilePath); err == nil {
+		return dockerfilePath, nil
+	}
+	found, err := validator.FindDockerfile(".")
+	if err != nil {
+		return "", utils.NewError("no valid Dockerfile found: please ensure a Dockerfile exists in your project", err)
+	}
+	return found, nil
+}
+
+// validateInputs validates flag-driven inputs in place. It does NOT mutate
+// cli.Context — Dockerfile resolution is the caller's responsibility via
+// resolveDockerfilePath.
 func validateInputs(c *cli.Context) error {
 	// Validate Dockerfile only when not using a pre-built image
-	if !c.IsSet("image") {
-		dockerfilePath := c.String("dockerfile")
-		if err := validator.ValidateDockerfile(dockerfilePath); err != nil {
-			// Try to find Dockerfile in common locations
-			var err error
-			dockerfilePath, err = validator.FindDockerfile(".")
-			if err != nil {
-				return utils.NewError("no valid Dockerfile found: please ensure a Dockerfile exists in your project", err)
-			}
-			// Update the context with the found Dockerfile path
-			if err := c.Set("dockerfile", dockerfilePath); err != nil {
-				return utils.NewError(fmt.Sprintf("failed to set dockerfile path: %s", err.Error()), nil)
-			}
-		}
+	if _, err := resolveDockerfilePath(c); err != nil {
+		return err
 	}
 
 	// Validate CPU and Memory
@@ -496,7 +570,10 @@ func validateInputs(c *cli.Context) error {
 	// KUL via the public LoadBalancer. Backend enforces the same rule; this
 	// client-side check just gives a friendlier error before the round trip.
 	// See backend .devs/docs/MULTICLUSTER_CONSTRAINTS.md.
-	if c.Bool("multicluster") && c.IsSet("domain") {
+	// Validator checks the resolved domain value, not c.IsSet — so toml-only
+	// domains are validated too. (Pre-fix this was implicitly skipped when
+	// the domain came from satusky.toml.)
+	if c.Bool("multicluster") {
 		domain := strings.TrimSpace(strings.ToLower(c.String("domain")))
 		domain = strings.TrimPrefix(domain, "*.")
 		if domain != "" && domain != "satusky.com" && !strings.HasSuffix(domain, ".satusky.com") {
@@ -516,23 +593,29 @@ func validateInputs(c *cli.Context) error {
 	return nil
 }
 
-func prepareDeploymentOptions(c *cli.Context) (deploy.DeploymentOptions, error) {
+func prepareDeploymentOptions(c *cli.Context, cfg *config.ProjectConfig, userSet map[string]bool) (deploy.DeploymentOptions, error) {
+	dockerfilePath, err := resolveDockerfilePath(c)
+	if err != nil {
+		return deploy.DeploymentOptions{}, err
+	}
 	opts := deploy.DeploymentOptions{
 		CPU:            c.String("cpu"),
 		Memory:         c.String("memory"),
 		Domain:         c.String("domain"),
-		Organization:   c.String("organization"),
 		Port:           c.Int("port"),
-		DockerfilePath: c.String("dockerfile"),
+		DockerfilePath: dockerfilePath,
 		PrebuiltImage:  c.String("image"),
 	}
 
-	// Load app name from satusky.toml if present
-	if cfg, err := config.FindConfig(c.String("config")); err == nil && cfg != nil && cfg.App.Name != "" {
+	// App name precedence: --name flag > satusky.toml > git remote auto-detect.
+	switch {
+	case c.String("name") != "":
+		opts.Name = c.String("name")
+	case cfg != nil && cfg.App.Name != "":
 		opts.Name = cfg.App.Name
 	}
 
-	// Handle project organization for future use (multi-tenant)
+	// Organization precedence: --organization flag > current context namespace.
 	if c.IsSet("organization") {
 		opts.Organization = c.String("organization")
 	} else {
@@ -581,12 +664,26 @@ func prepareDeploymentOptions(c *cli.Context) (deploy.DeploymentOptions, error) 
 		opts.Volume = vol
 	}
 
-	// Handle zone targeting
+	// Handle zone targeting. The legacy "also set Region to the zone value"
+	// fallback is gone (issue #24) — the backend now reads Zone directly.
 	if c.IsSet("zone") {
 		opts.Zone = c.String("zone")
-		// For backward compatibility, also set Region to the zone value
-		// The backend uses Region for machine filtering when Zone is not explicitly handled
-		opts.Region = c.String("zone")
+	}
+
+	// Handle --machine-tag: BYOA targeting by label. Resolves to a list of
+	// owned, online machine IDs matching satusky.com/<tag>. Precedence:
+	// --machine-tag flag > satusky.toml [app].machine_tag.
+	tag := c.String("machine-tag")
+	if tag == "" && cfg != nil {
+		tag = cfg.App.MachineTag
+	}
+	if tag != "" && !c.IsSet("machine") {
+		hostnames, err := resolveMachineTag(tag)
+		if err != nil {
+			return deploy.DeploymentOptions{}, err
+		}
+		opts.Hostnames = hostnames
+		utils.PrintInfo("Resolved --machine-tag %q to %d owned machine(s)", tag, len(hostnames))
 	}
 
 	// Handle multicluster configuration
@@ -682,6 +779,10 @@ func prepareDeploymentOptions(c *cli.Context) (deploy.DeploymentOptions, error) 
 	opts.Strategy = c.String("strategy")
 	opts.RollingMaxSurge = c.String("rolling-max-surge")
 	opts.RollingMaxUnavailable = c.String("rolling-max-unavailable")
+	// Record explicit-user-set so buildStrategyConfig doesn't drop a value
+	// the user typed deliberately (e.g. --rolling-max-surge=25% to assert
+	// the default in an audit log). Snapshot taken BEFORE the toml merge.
+	opts.RollingFlagsExplicit = userSet["rolling-max-surge"] || userSet["rolling-max-unavailable"]
 	opts.Wait = c.Bool("wait")
 
 	// Validate strategy value
@@ -692,7 +793,178 @@ func prepareDeploymentOptions(c *cli.Context) (deploy.DeploymentOptions, error) 
 		return deploy.DeploymentOptions{}, utils.NewError(fmt.Sprintf("invalid --strategy %q: must be 'rolling' or 'recreate'", opts.Strategy), nil)
 	}
 
+	// Fall back to satusky.toml structured sections when the user didn't
+	// pass the corresponding CLI flag. CLI-set values win; nothing is
+	// overwritten here.
+	if cfg != nil {
+		applyConfigHPA(&opts, c, cfg.HPA)
+		applyConfigVPA(&opts, c, cfg.VPA)
+		applyConfigPDB(&opts, c, cfg.PDB)
+		applyConfigMulticluster(&opts, c, cfg.Multicluster)
+	}
+
 	return opts, nil
+}
+
+// resolveMachineTag fetches the current user's owned machines, then filters
+// them client-side to those tagged with satusky.com/<tag>. Returns the list
+// of online machine IDs to send as hostnames. Errors clearly if no machines
+// are online or tagged.
+//
+// Implementation note: this does N+1 round trips (one to list, one per
+// machine for labels). Acceptable for the small-N owner-machine case;
+// migrate to a server-side filter endpoint if the cost becomes meaningful.
+func resolveMachineTag(tag string) ([]string, error) {
+	userID := context.GetUserID()
+	if userID == "" {
+		return nil, utils.NewError("not authenticated — run '1ctl auth login' first", nil)
+	}
+	userUUID, err := api.ParseUUID(userID)
+	if err != nil {
+		return nil, utils.NewError(fmt.Sprintf("invalid user ID in context: %s", err.Error()), nil)
+	}
+	machines, err := api.GetMachinesByOwnerID(userUUID)
+	if err != nil {
+		return nil, utils.NewError(fmt.Sprintf("failed to list owned machines: %s", err.Error()), nil)
+	}
+	if len(machines) == 0 {
+		return nil, utils.NewError("no owned machines found — register a machine before using --machine-tag", nil)
+	}
+
+	var hostnames []string
+	for _, m := range machines {
+		if m.Status != "online" {
+			continue
+		}
+		labels, err := api.GetMachineLabels(m.MachineID)
+		if err != nil {
+			utils.PrintWarning("Could not read labels for machine %s: %s", m.MachineID, err.Error())
+			continue
+		}
+		if api.MachineHasTag(labels, tag) {
+			hostnames = append(hostnames, m.MachineID)
+		}
+	}
+	if len(hostnames) == 0 {
+		return nil, utils.NewError(fmt.Sprintf("no machines tagged %q are online — apply the satusky.com/%s label to at least one machine first", tag, tag), nil)
+	}
+	return hostnames, nil
+}
+
+// captureUserSetFlags records which of the named flags the user explicitly
+// passed BEFORE any toml merge runs. applyConfigScalar later calls c.Set
+// for toml-provided values, which would make c.IsSet return true and hide
+// the user-vs-toml distinction from downstream code.
+func captureUserSetFlags(c *cli.Context, names ...string) map[string]bool {
+	out := make(map[string]bool, len(names))
+	for _, n := range names {
+		out[n] = c.IsSet(n)
+	}
+	return out
+}
+
+// applyConfigScalar sets a CLI flag from a non-empty satusky.toml value when
+// the user didn't explicitly pass the flag. Keeps the legacy c.Set merge model
+// while the broader prepareDeploymentOptions refactor lands.
+func applyConfigScalar(c *cli.Context, flagName, cfgValue string) error {
+	if cfgValue == "" {
+		return nil
+	}
+	if c.IsSet(flagName) {
+		return nil
+	}
+	if err := c.Set(flagName, cfgValue); err != nil {
+		return utils.NewError(fmt.Sprintf("failed to set %s from config: %s", flagName, err.Error()), nil)
+	}
+	return nil
+}
+
+// applyConfigHPA merges [hpa] section into deploy options when --hpa wasn't
+// set on the CLI. Flag-set HPA wins entirely; we don't merge piecewise to
+// avoid surprising fallback values.
+func applyConfigHPA(opts *deploy.DeploymentOptions, c *cli.Context, hpa config.HPAConfig) {
+	if c.IsSet("hpa") || !hpa.Enabled {
+		return
+	}
+	cfg := &api.HPAConfig{
+		Enabled:     true,
+		MinReplicas: defaultInt32(hpa.MinReplicas, 1),
+		MaxReplicas: defaultInt32(hpa.MaxReplicas, 10),
+	}
+	cpu := defaultInt32(hpa.CPUTarget, 80)
+	cfg.CPUTarget = &cpu
+	if hpa.MemoryTarget > 0 {
+		mem := hpa.MemoryTarget
+		cfg.MemoryTarget = &mem
+	}
+	opts.HPAConfig = cfg
+}
+
+// applyConfigVPA merges [vpa] section into deploy options when --vpa wasn't set.
+func applyConfigVPA(opts *deploy.DeploymentOptions, c *cli.Context, vpa config.VPAConfig) {
+	if c.IsSet("vpa") || !vpa.Enabled {
+		return
+	}
+	mode := vpa.Mode
+	if mode == "" {
+		mode = "Off"
+	}
+	opts.VPAConfig = &api.VPAConfig{
+		Enabled:    true,
+		UpdateMode: mode,
+		MinCPU:     vpa.MinCPU,
+		MaxCPU:     vpa.MaxCPU,
+		MinMemory:  vpa.MinMemory,
+		MaxMemory:  vpa.MaxMemory,
+	}
+}
+
+// applyConfigPDB merges [pdb] section into deploy options when --pdb wasn't set.
+func applyConfigPDB(opts *deploy.DeploymentOptions, c *cli.Context, pdb config.PDBConfig) {
+	if c.IsSet("pdb") || !pdb.Enabled {
+		return
+	}
+	typ := pdb.Type
+	if typ == "" {
+		typ = "auto"
+	}
+	cfg := &deploy.PDBConfig{Enabled: true, Type: deploy.PDBConfigType(typ)}
+	if pdb.MinAvailable > 0 {
+		v := pdb.MinAvailable
+		cfg.MinAvailable = &v
+	}
+	if pdb.Percent > 0 {
+		v := pdb.Percent
+		cfg.Percent = &v
+	}
+	opts.PDBConfig = cfg
+}
+
+// applyConfigMulticluster merges [multicluster] section into deploy options
+// when --multicluster wasn't set.
+func applyConfigMulticluster(opts *deploy.DeploymentOptions, c *cli.Context, mc config.MulticlusterConfig) {
+	if c.IsSet("multicluster") || !mc.Enabled {
+		return
+	}
+	opts.MulticlusterEnabled = true
+	opts.MulticlusterMode = mc.Mode
+	if opts.MulticlusterMode == "" {
+		opts.MulticlusterMode = "active-passive"
+	}
+	opts.BackupEnabled = mc.BackupEnabled
+	opts.BackupSchedule = mc.BackupSchedule
+	opts.BackupRetention = mc.BackupRetention
+	opts.BackupPriorityCluster = mc.BackupPriorityCluster
+	if opts.BackupPriorityCluster == 0 {
+		opts.BackupPriorityCluster = 1
+	}
+}
+
+func defaultInt32(v, fallback int32) int32 {
+	if v == 0 {
+		return fallback
+	}
+	return v
 }
 
 func parseEnvVars(envVars []string) []api.KeyValuePair {
@@ -746,39 +1018,16 @@ func handleDeploymentStatus(c *cli.Context) error {
 	return nil
 }
 
-// TODO: deployment logs is still WIP on the backend... (/ws)
-// func handleDeploymentLogs(c *cli.Context) error {
-// 	deploymentID := c.String("deployment-id")
-// 	follow := c.Bool("follow")
-
-// 	if follow {
-// 		utils.PrintInfo("Streaming logs for deployment %s...\n", deploymentID)
-// 		return api.StreamDeploymentLogs(deploymentID, true)
-// 	}
-
-// 	logs, err := api.GetDeploymentLogs(deploymentID)
-// 	if err != nil {
-// 		utils.PrintError(fmt.Sprintf("failed to get deployment logs: %s", err.Error()), nil)
-// 		return nil
-// 	}
-
-// 	for _, line := range logs {
-// 		utils.PrintInfo(line)
-// 	}
-// 	return nil
-// }
+// Note: deployment log streaming is implemented in `1ctl logs` for now;
+// `1ctl deploy logs` will land alongside the backend WS endpoint in a
+// follow-up (#3 G-01).
 
 func handleListDeployments(c *cli.Context) error {
-	var deployments []api.Deployment
-	var err error
-	namespace := context.GetCurrentNamespace()
-
-	if namespace != "" {
-		deployments, err = api.ListDeploymentsByNamespace(namespace)
-	} else {
-		deployments, err = api.ListDeployments()
+	namespace, err := context.GetCurrentNamespaceOrError()
+	if err != nil {
+		return err
 	}
-
+	deployments, err := api.ListDeploymentsByNamespace(namespace)
 	if err != nil {
 		return utils.NewError(fmt.Sprintf("failed to list deployments: %s", err.Error()), nil)
 	}
@@ -792,13 +1041,19 @@ func handleListDeployments(c *cli.Context) error {
 		return nil
 	}
 
-	headers := []string{"DEPLOYMENT ID", "HOSTNAMES", "TYPE", "STATUS", "CREATED"}
+	// NAME column added (issue #29). Falls back to "-" for legacy
+	// deployments that pre-date the app_label field.
+	headers := []string{"NAME", "DEPLOYMENT ID", "HOSTNAMES", "STATUS", "CREATED"}
 	rows := make([][]string, 0, len(deployments))
 	for _, d := range deployments {
+		name := d.AppLabel
+		if name == "" {
+			name = "-"
+		}
 		rows = append(rows, []string{
+			name,
 			d.DeploymentID.String(),
 			strings.Join(d.Hostnames, ", "),
-			d.Type,
 			d.Status,
 			api.FormatTimeAgo(d.CreatedAt),
 		})
@@ -839,9 +1094,14 @@ func handleGetDeployment(c *cli.Context) error {
 	}
 	utils.PrintStatusLine("Deployed to machines", strings.Join(deployment.Hostnames, ", "))
 	utils.PrintStatusLine("Type", deployment.Type)
-	utils.PrintStatusLine("Region", deployment.Region)
 	utils.PrintStatusLine("Zone", deployment.Zone)
-	utils.PrintStatusLine("Version", strings.Split(deployment.Image, ":")[1])
+	// Image refs without a ":tag" (e.g., "nginx", "registry.example.com/app")
+	// are legal; show "untagged" rather than indexing into a 1-element slice.
+	version := "untagged"
+	if parts := strings.SplitN(deployment.Image, ":", 2); len(parts) == 2 {
+		version = parts[1]
+	}
+	utils.PrintStatusLine("Version", version)
 	utils.PrintStatusLine("Port", fmt.Sprintf("%d", deployment.Port))
 	utils.PrintStatusLine("CPU Request", deployment.CpuRequest)
 	utils.PrintStatusLine("Memory Request", deployment.MemoryRequest)
@@ -942,5 +1202,72 @@ func handleRollback(c *cli.Context) error {
 	}
 	utils.PrintSuccess("Rollback to version %d initiated", version)
 	utils.PrintInfo("Use '1ctl deploy status --deployment-id %s' to monitor progress.", deploymentID)
+	return nil
+}
+
+// handleOpenDeployment opens the deployment's primary URL in the user's
+// default browser. Resolves the URL from the ingress record, falling back
+// to a clear error when no ingress is attached yet.
+func handleOpenDeployment(c *cli.Context) error {
+	deploymentID, err := resolveDeploymentID(c.String("deployment-id"), c.String("config"))
+	if err != nil {
+		return err
+	}
+	ing, err := api.GetIngressByDeploymentID(deploymentID)
+	if err != nil || ing == nil || ing.DomainName == "" {
+		return utils.NewError(fmt.Sprintf("no domain attached to deployment %s — use '1ctl domains add' first", deploymentID), nil)
+	}
+	url := "https://" + ing.DomainName
+	utils.PrintInfo("Opening %s", url)
+	if err := openBrowser(url); err != nil {
+		// Don't fail the command — print the URL so the user can copy it.
+		utils.PrintWarning("Could not open browser: %s", err.Error())
+		utils.PrintInfo("URL: %s", url)
+	}
+	return nil
+}
+
+// handleScaleDeployment sets the replica count on an existing deployment
+// without rebuilding the image. Uses UpsertDeployment after fetching the
+// current state so all other fields are preserved.
+func handleScaleDeployment(c *cli.Context) error {
+	deploymentID, err := resolveDeploymentID(c.String("deployment-id"), c.String("config"))
+	if err != nil {
+		return err
+	}
+	replicas, err := api.SafeInt32(c.Int("replicas"))
+	if err != nil {
+		return utils.NewError("invalid --replicas value", err)
+	}
+	if replicas < 1 {
+		return utils.NewError("--replicas must be >= 1", nil)
+	}
+
+	current, err := api.GetDeployment(deploymentID)
+	if err != nil {
+		return utils.NewError(fmt.Sprintf("failed to fetch deployment: %s", err.Error()), nil)
+	}
+	// Refuse to scale autoscaler-managed deployments: HPA/VPA take over
+	// replica counts, so a manual `scale` would race the controller and
+	// the user should disable/adjust the autoscaler instead. Also a guard
+	// against the GetDeployment-then-UpsertDeployment round trip silently
+	// dropping nested config if the backend GET ever flattens fields.
+	if current.HPAConfig != nil && current.HPAConfig.Enabled {
+		return utils.NewError(fmt.Sprintf("deployment %s is managed by HPA — adjust --hpa-min-replicas / --hpa-max-replicas via `1ctl deploy` instead", deploymentID), nil)
+	}
+	if current.VPAConfig != nil && current.VPAConfig.Enabled {
+		return utils.NewError(fmt.Sprintf("deployment %s is managed by VPA — adjust VPA config via `1ctl deploy` instead", deploymentID), nil)
+	}
+	if current.Replicas == replicas {
+		utils.PrintInfo("Deployment %s already at %d replicas — no change.", deploymentID, replicas)
+		return nil
+	}
+	current.Replicas = replicas
+
+	var resp string
+	if err := api.UpsertDeployment(*current, &resp); err != nil {
+		return utils.NewError(fmt.Sprintf("failed to scale deployment: %s", err.Error()), nil)
+	}
+	utils.PrintSuccess("Scaled deployment %s to %d replicas", deploymentID, replicas)
 	return nil
 }

@@ -33,7 +33,7 @@
 ### How to spot it
 
 ```bash
-1ctl-dev deploy status --config satusky.toml
+1ctl deploy status --config satusky.toml
 ```
 
 ```
@@ -48,7 +48,7 @@ my-api   Pending    0/1     4          3m
 Stream the logs to see what the process prints before it dies:
 
 ```bash
-1ctl-dev logs stream --config satusky.toml
+1ctl logs stream --config satusky.toml
 ```
 
 ```
@@ -70,25 +70,25 @@ The crash message tells you exactly what's wrong. Common causes:
 Add the missing variable. If it's a credential, use a secret:
 
 ```bash
-1ctl-dev secret create --config satusky.toml --kv DATABASE_URL=postgres://user:pass@host/db
+1ctl secret create --config satusky.toml --kv DATABASE_URL=postgres://user:pass@host/db
 ```
 
 If it's non-sensitive config, use an env var:
 
 ```bash
-1ctl-dev env create --config satusky.toml --env DATABASE_URL=postgres://user:pass@host/db
+1ctl env create --config satusky.toml --env DATABASE_URL=postgres://user:pass@host/db
 ```
 
 Redeploy to pick up the new value:
 
 ```bash
-1ctl-dev deploy --config satusky.toml --wait
+1ctl deploy --config satusky.toml --wait
 ```
 
 Stream logs again to confirm a clean startup:
 
 ```bash
-1ctl-dev logs stream --config satusky.toml
+1ctl logs stream --config satusky.toml
 ```
 
 ```
@@ -115,7 +115,7 @@ curl https://my-api.satusky.com/health
 The app is running but the platform's load balancer can't reach it. Stream the logs to see what address the app bound to:
 
 ```bash
-1ctl-dev logs stream --config satusky.toml
+1ctl logs stream --config satusky.toml
 ```
 
 ```
@@ -139,19 +139,19 @@ app.listen(8080, '0.0.0.0')
 For frameworks that default to loopback in production mode, the fix is usually an environment variable:
 
 ```bash
-1ctl-dev env create --config satusky.toml --env HOST=0.0.0.0
+1ctl env create --config satusky.toml --env HOST=0.0.0.0
 ```
 
 Redeploy:
 
 ```bash
-1ctl-dev deploy --config satusky.toml --wait
+1ctl deploy --config satusky.toml --wait
 ```
 
 Confirm the bind address in the logs:
 
 ```bash
-1ctl-dev logs stream --config satusky.toml
+1ctl logs stream --config satusky.toml
 ```
 
 ```
@@ -172,7 +172,7 @@ curl https://my-api.satusky.com/health
 The deploy command streams build output and then stops with a non-zero exit:
 
 ```bash
-1ctl-dev deploy --config satusky.toml --wait
+1ctl deploy --config satusky.toml --wait
 ```
 
 ```
@@ -209,7 +209,7 @@ torch==2.3.0
 Re-deploy once the fix is in place:
 
 ```bash
-1ctl-dev deploy --config satusky.toml --wait
+1ctl deploy --config satusky.toml --wait
 ```
 
 The build streams again from the top. Docker layer caching means unchanged layers are skipped — if only `requirements.txt` changed, only the `pip install` layer and everything after it is rebuilt.
@@ -231,7 +231,7 @@ You added a secret or env var and the app still logs "env var not set" or uses a
 First confirm the key actually exists:
 
 ```bash
-1ctl-dev env list --config satusky.toml
+1ctl env list --config satusky.toml
 ```
 
 ```
@@ -240,7 +240,7 @@ LOG_LEVEL    info
 ```
 
 ```bash
-1ctl-dev secret list --config satusky.toml
+1ctl secret list --config satusky.toml
 ```
 
 ```
@@ -255,13 +255,13 @@ The key is there. The problem is that env vars and secrets are injected at pod s
 Restart the deployment so a fresh pod starts with the updated environment:
 
 ```bash
-1ctl-dev deploy restart --config satusky.toml
+1ctl deploy restart --config satusky.toml
 ```
 
 Stream the logs to confirm the app now sees the value:
 
 ```bash
-1ctl-dev logs stream --config satusky.toml
+1ctl logs stream --config satusky.toml
 ```
 
 ```
@@ -280,7 +280,7 @@ Note: `deploy restart` replaces pods without rebuilding the image. Use it whenev
 You deployed but the wrong app changed. You're in `client-b-shop/` and accidentally ran with the `client-a-dashboard/satusky.toml` path.
 
 ```bash
-1ctl-dev -o json deploy list | jq '.[] | {name, status}'
+1ctl -o json deploy list | jq '.[] | {name, status}'
 ```
 
 ```json
@@ -295,7 +295,7 @@ Both look running, but you notice `dashboard` just got a fresh deploy timestamp 
 Check the release history of the deployment you suspect was touched:
 
 ```bash
-1ctl-dev deploy releases --config ~/projects/client-a-dashboard/satusky.toml
+1ctl deploy releases --config ~/projects/client-a-dashboard/satusky.toml
 ```
 
 ```
@@ -311,7 +311,7 @@ Version 5 was just deployed moments ago. That was the accidental deploy.
 Roll back to the last known-good version:
 
 ```bash
-1ctl-dev deploy rollback \
+1ctl deploy rollback \
   --config ~/projects/client-a-dashboard/satusky.toml \
   --version 4 -y
 ```
@@ -332,7 +332,7 @@ No image rebuild — the platform reruns the version 4 image immediately.
 ### How to spot it
 
 ```bash
-1ctl-dev deploy status --config satusky.toml
+1ctl deploy status --config satusky.toml
 ```
 
 ```
@@ -346,7 +346,7 @@ Work through three checks in order.
 **Check 1 — Does the app exist at all?**
 
 ```bash
-1ctl-dev deploy list
+1ctl deploy list
 ```
 
 ```
@@ -359,7 +359,7 @@ shop-api     running   3d
 **Check 2 — Are you in the right org?**
 
 ```bash
-1ctl-dev org current
+1ctl org current
 ```
 
 ```
@@ -371,7 +371,7 @@ Wrong org. You're looking in `client-b-prod` but `my-api` belongs to `client-a-p
 **Check 3 — Are you using the right profile?**
 
 ```bash
-1ctl-dev profile list
+1ctl profile list
 ```
 
 ```
@@ -384,9 +384,9 @@ local      http://localhost:8081/v1/cli            no
 `client-b` is active. Switch to `client-a`:
 
 ```bash
-1ctl-dev profile use client-a
-1ctl-dev org switch client-a-prod
-1ctl-dev deploy list
+1ctl profile use client-a
+1ctl org switch client-a-prod
+1ctl deploy list
 ```
 
 ```
@@ -401,7 +401,7 @@ There it is.
 If the app genuinely does not exist — never deployed, or previously destroyed — create it by deploying:
 
 ```bash
-1ctl-dev deploy --config satusky.toml --wait
+1ctl deploy --config satusky.toml --wait
 ```
 
 This creates the deployment from scratch and blocks until it is Running.
@@ -414,24 +414,24 @@ When something is wrong and you're not sure where to start:
 
 ```bash
 # 1. Confirm you're in the right profile and org
-1ctl-dev profile list
-1ctl-dev org current
+1ctl profile list
+1ctl org current
 
 # 2. Confirm the app exists
-1ctl-dev deploy list
+1ctl deploy list
 
 # 3. Check pod status
-1ctl-dev deploy status --config satusky.toml
+1ctl deploy status --config satusky.toml
 
 # 4. Stream live logs
-1ctl-dev logs stream --config satusky.toml
+1ctl logs stream --config satusky.toml
 
 # 5. Verify env vars and secrets are set
-1ctl-dev env list --config satusky.toml
-1ctl-dev secret list --config satusky.toml
+1ctl env list --config satusky.toml
+1ctl secret list --config satusky.toml
 
 # 6. Check release history
-1ctl-dev deploy releases --config satusky.toml
+1ctl deploy releases --config satusky.toml
 ```
 
 Most problems are visible in step 4. If the logs look fine but the app is still unreachable, the bind address (Problem 2) is the most common culprit.

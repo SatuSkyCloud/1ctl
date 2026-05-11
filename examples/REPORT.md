@@ -3,11 +3,11 @@
 **Date**: 2026-04-28 (guide audit + docs update session)
 **Previous session**: 2026-04-27 (post gap-fixes + domain fix + env/secret unset crash fix)
 **Branch**: development
-**Backend**: satusky-core_backend @ localhost:8080 (`sudo task dev.debug > logs.txt 2>&1`)
+**Server**: local API server @ `http://localhost:8080`
 **Namespace**: org3-b322955e
 **User**: mingerz.k@gmail.com
 **Org**: org3 (b322955e-6a86-4157-8bff-1bea605ef8ac)
-**Binary**: `bin/1ctl-dev` (built from source — see build instructions below)
+**Binary**: `bin/1ctl` (built from source — see build instructions below)
 **CLI version**: `dev`
 
 ## 2026-04-28 Session Notes
@@ -54,14 +54,14 @@ Every guide operation was cross-checked against raw kubectl output. Key findings
 > **Build (one-time):**
 > ```bash
 > cd /path/to/1ctl
-> go build -o bin/1ctl-dev ./cmd/...        # no -ldflags needed
-> sudo cp bin/1ctl-dev /usr/local/bin/1ctl-dev   # optional: add to PATH
+> go build -o bin/1ctl ./cmd/...        # no -ldflags needed
+> sudo cp bin/1ctl /usr/local/bin/1ctl   # optional: add to PATH
 > ```
 
 > **Setup — run once per shell session:**
 > ```bash
 > export SATUSKY_API_URL=http://localhost:8080/v1/cli   # points at local backend
-> 1ctl-dev profile use local                             # activates stored credentials
+> 1ctl profile use local                             # activates stored credentials
 > ```
 > `SATUSKY_API_URL` overrides the active profile URL. The `--api-url` flag does
 > the same per-command. Add the export to `~/.zshrc` to avoid repeating it.
@@ -109,11 +109,11 @@ Previously `logs stream` only accepted `-d`/`--deployment-id`. Now accepts `--co
 
 ```bash
 # Before (only way):
-1ctl-dev logs stream -d 7f1fab9e-5f87-4612-b306-3da846b95d18
+1ctl logs stream -d 7f1fab9e-5f87-4612-b306-3da846b95d18
 
 # After (both work):
-1ctl-dev logs stream --config examples/backend/satusky.toml
-1ctl-dev logs stream -d <deployment-id>
+1ctl logs stream --config examples/backend/satusky.toml
+1ctl logs stream -d <deployment-id>
 ```
 
 | Command | Result |
@@ -129,7 +129,7 @@ Previously `init` wrote `cpu = ""`, `memory = ""`, `replicas = 0`, `domain = ""`
 
 ```bash
 mkdir /tmp/myapp && cd /tmp/myapp
-1ctl-dev init
+1ctl init
 cat satusky.toml
 ```
 
@@ -152,17 +152,17 @@ All list and get commands now accept `--output json` / `-o json` for machine-rea
 
 ```bash
 # Deploy list as JSON
-1ctl-dev --output json deploy list | python3 -c "
+1ctl --output json deploy list | python3 -c "
 import json,sys; d=json.load(sys.stdin)
 for x in d: print(x['image'], x['deployment_id'][:8])"
 # nginx:alpine           7f1fab9e
 # registry.satusky.com/... c16a1454
 
 # Pipe into jq for selective fields
-1ctl-dev -o json deploy list | jq '.[].image'
-1ctl-dev -o json env list | jq '.[0].key_values'
-1ctl-dev -o json machine list | jq '.[] | select(.status == "online") | .machine_name'
-1ctl-dev -o json token list | jq '.[] | {name, is_active}'
+1ctl -o json deploy list | jq '.[].image'
+1ctl -o json env list | jq '.[0].key_values'
+1ctl -o json machine list | jq '.[] | select(.status == "online") | .machine_name'
+1ctl -o json token list | jq '.[] | {name, is_active}'
 ```
 
 | Command | Result |
@@ -188,7 +188,7 @@ for x in d: print(x['image'], x['deployment_id'][:8])"
 After the 5-step pipeline completes, `--wait` polls until pods are Running (5-minute timeout).
 
 ```bash
-1ctl-dev deploy --config examples/backend/satusky.toml \
+1ctl deploy --config examples/backend/satusky.toml \
   --image nginx:alpine --machine compute-main-01 --wait
 ```
 
@@ -219,16 +219,16 @@ Per-key removal. Previously there was no way to remove a specific key without de
 cd examples/backend
 
 # Add a key
-1ctl-dev env create --config satusky.toml --env TEMP_KEY=remove_me
+1ctl env create --config satusky.toml --env TEMP_KEY=remove_me
 # → ConfigMap: {..., "temp-key": "remove_me"}
 
 # Remove just that key
-1ctl-dev env unset --config satusky.toml --key TEMP_KEY
+1ctl env unset --config satusky.toml --key TEMP_KEY
 # → ConfigMap: {...}  (TEMP_KEY gone, others untouched)
 
 # Same for secrets
-1ctl-dev secret create --config satusky.toml --kv TEMP_SECRET=gone
-1ctl-dev secret unset  --config satusky.toml --key TEMP_SECRET
+1ctl secret create --config satusky.toml --kv TEMP_SECRET=gone
+1ctl secret unset  --config satusky.toml --key TEMP_SECRET
 ```
 
 | Command | Result |
@@ -288,11 +288,11 @@ Previously `deploy get -o json` returned the backend `Deployment` model verbatim
 The table output also gains a `URL` line directly beneath `Status`.
 
 ```bash
-1ctl-dev -o json deploy get --config satusky.toml | jq '.domain'
+1ctl -o json deploy get --config satusky.toml | jq '.domain'
 # "https://sleepytiger-z8w02g4.satusky.com"
 
 # CI/CD pattern (replaces the grep-stdout workaround):
-APP_URL=$(1ctl-dev -o json deploy get --config satusky.toml | jq -r '.domain')
+APP_URL=$(1ctl -o json deploy get --config satusky.toml | jq -r '.domain')
 ```
 
 | Command | Result |
@@ -331,13 +331,13 @@ Previously required `--org-id` or `--org-name` flags. Now accepts a positional a
 
 ```bash
 # Before (only way):
-1ctl-dev org switch --org-id 690839ba-3aed-47ea-a8ec-0cd019e4d180
-1ctl-dev org switch --org-name org2
+1ctl org switch --org-id 690839ba-3aed-47ea-a8ec-0cd019e4d180
+1ctl org switch --org-name org2
 
 # After (all work):
-1ctl-dev org switch org2
-1ctl-dev org switch 690839ba-3aed-47ea-a8ec-0cd019e4d180
-1ctl-dev org switch --org-id 690839ba-3aed-47ea-a8ec-0cd019e4d180   # flags still work
+1ctl org switch org2
+1ctl org switch 690839ba-3aed-47ea-a8ec-0cd019e4d180
+1ctl org switch --org-id 690839ba-3aed-47ea-a8ec-0cd019e4d180   # flags still work
 ```
 
 | Command | Result |
@@ -352,9 +352,9 @@ Previously required `--org-id` or `--org-name` flags. Now accepts a positional a
 ### auth
 
 ```bash
-1ctl-dev auth status
-1ctl-dev auth logout
-1ctl-dev auth login --token <jwt>
+1ctl auth status
+1ctl auth logout
+1ctl auth login --token <jwt>
 ```
 
 | Command | Result |
@@ -366,11 +366,11 @@ Previously required `--org-id` or `--org-name` flags. Now accepts a positional a
 ### profile
 
 ```bash
-1ctl-dev profile list
-1ctl-dev profile current
-1ctl-dev profile create --url http://localhost:8080/v1/cli local
-1ctl-dev profile use local
-1ctl-dev profile delete <name>
+1ctl profile list
+1ctl profile current
+1ctl profile create --url http://localhost:8080/v1/cli local
+1ctl profile use local
+1ctl profile delete <name>
 ```
 
 All PASS. `profile` subcommands require the dev binary.
@@ -378,11 +378,11 @@ All PASS. `profile` subcommands require the dev binary.
 ### org
 
 ```bash
-1ctl-dev org list
-1ctl-dev org current
-1ctl-dev org switch org2          # positional name
-1ctl-dev org switch <uuid>        # positional UUID
-1ctl-dev org switch --org-id <id> # flag still works
+1ctl org list
+1ctl org current
+1ctl org switch org2          # positional name
+1ctl org switch <uuid>        # positional UUID
+1ctl org switch --org-id <id> # flag still works
 ```
 
 All PASS.
@@ -391,7 +391,7 @@ All PASS.
 
 ```bash
 mkdir /tmp/test && cd /tmp/test
-1ctl-dev init
+1ctl init
 # Produces:
 # [app]
 #   name = "test"
@@ -407,22 +407,22 @@ export SATUSKY_API_URL=http://localhost:8080/v1/cli
 
 # From toml
 cd examples/backend
-1ctl-dev deploy --config satusky.toml --image nginx:alpine --machine compute-main-01
+1ctl deploy --config satusky.toml --image nginx:alpine --machine compute-main-01
 
 # With --wait
-1ctl-dev deploy --config satusky.toml --image nginx:alpine --machine compute-main-01 --wait
+1ctl deploy --config satusky.toml --image nginx:alpine --machine compute-main-01 --wait
 
 # No toml — port only, cpu/memory default to 0.5/256Mi
-1ctl-dev deploy --port 8080 --image nginx:alpine --machine compute-main-01
+1ctl deploy --port 8080 --image nginx:alpine --machine compute-main-01
 
 # Cloud build with arch detection
 cd examples/frontend
-1ctl-dev deploy --config satusky.toml --machine compute-main-01 --wait
+1ctl deploy --config satusky.toml --machine compute-main-01 --wait
 
 # JSON output
-1ctl-dev -o json deploy list
-1ctl-dev -o json deploy get --config examples/backend/satusky.toml
-1ctl-dev -o json deploy status --config examples/backend/satusky.toml
+1ctl -o json deploy list
+1ctl -o json deploy get --config examples/backend/satusky.toml
+1ctl -o json deploy status --config examples/backend/satusky.toml
 ```
 
 | Command | Result |
@@ -438,10 +438,10 @@ cd examples/frontend
 ### deploy — ops
 
 ```bash
-1ctl-dev deploy restart  --config examples/backend/satusky.toml
-1ctl-dev deploy releases --config examples/backend/satusky.toml
-1ctl-dev deploy rollback --config examples/backend/satusky.toml --version 1 -y
-1ctl-dev deploy destroy  --config examples/backend/satusky.toml -y
+1ctl deploy restart  --config examples/backend/satusky.toml
+1ctl deploy releases --config examples/backend/satusky.toml
+1ctl deploy rollback --config examples/backend/satusky.toml --version 1 -y
+1ctl deploy destroy  --config examples/backend/satusky.toml -y
 ```
 
 All PASS.
@@ -449,11 +449,11 @@ All PASS.
 ### service / ingress
 
 ```bash
-1ctl-dev service list
-1ctl-dev service delete --service-id <id> -y
+1ctl service list
+1ctl service delete --service-id <id> -y
 
-1ctl-dev ingress list
-1ctl-dev ingress delete --ingress-id <id> -y
+1ctl ingress list
+1ctl ingress delete --ingress-id <id> -y
 ```
 
 All PASS.
@@ -463,11 +463,11 @@ All PASS.
 ```bash
 cd examples/backend
 
-1ctl-dev env create --config satusky.toml --env APP_ENV=production --env LOG_LEVEL=info
-1ctl-dev env create --config satusky.toml --env LOG_LEVEL=debug     # merges
-1ctl-dev env unset  --config satusky.toml --key LOG_LEVEL           # removes one key
-1ctl-dev env list
-1ctl-dev -o json env list
+1ctl env create --config satusky.toml --env APP_ENV=production --env LOG_LEVEL=info
+1ctl env create --config satusky.toml --env LOG_LEVEL=debug     # merges
+1ctl env unset  --config satusky.toml --key LOG_LEVEL           # removes one key
+1ctl env list
+1ctl -o json env list
 ```
 
 | Command | Result |
@@ -487,10 +487,10 @@ kubectl -n org3-b322955e get configmap backend-api-environments -o jsonpath='{.d
 ```bash
 cd examples/backend
 
-1ctl-dev secret create --config satusky.toml --kv DB_PASS=s3cret --kv API_KEY=key123
-1ctl-dev secret create --config satusky.toml --kv NEW_KEY=added     # merges
-1ctl-dev secret unset  --config satusky.toml --key DB_PASS          # removes one key
-1ctl-dev secret list
+1ctl secret create --config satusky.toml --kv DB_PASS=s3cret --kv API_KEY=key123
+1ctl secret create --config satusky.toml --kv NEW_KEY=added     # merges
+1ctl secret unset  --config satusky.toml --key DB_PASS          # removes one key
+1ctl secret list
 ```
 
 All PASS.
@@ -498,9 +498,9 @@ All PASS.
 ### logs
 
 ```bash
-1ctl-dev logs --config examples/backend/satusky.toml
-1ctl-dev logs stream --config examples/backend/satusky.toml  # --config now supported
-1ctl-dev logs stream -d <deployment-id>
+1ctl logs --config examples/backend/satusky.toml
+1ctl logs stream --config examples/backend/satusky.toml  # --config now supported
+1ctl logs stream -d <deployment-id>
 ```
 
 All PASS.
@@ -508,9 +508,9 @@ All PASS.
 ### notifications
 
 ```bash
-1ctl-dev notifications list
-1ctl-dev notifications count
-1ctl-dev notifications read --all
+1ctl notifications list
+1ctl notifications count
+1ctl notifications read --all
 ```
 
 All PASS.
@@ -518,15 +518,15 @@ All PASS.
 ### user / token
 
 ```bash
-1ctl-dev user me
-1ctl-dev user permissions
+1ctl user me
+1ctl user permissions
 
-1ctl-dev token list
-1ctl-dev -o json token list
-1ctl-dev token create --name "ci-token"
-1ctl-dev token disable <id>
-1ctl-dev token enable  <id>
-1ctl-dev token delete  <id> -y
+1ctl token list
+1ctl -o json token list
+1ctl token create --name "ci-token"
+1ctl token disable <id>
+1ctl token enable  <id>
+1ctl token delete  <id> -y
 ```
 
 All PASS.
@@ -534,25 +534,25 @@ All PASS.
 ### Other commands
 
 ```bash
-1ctl-dev marketplace list
-1ctl-dev marketplace get <id>
-1ctl-dev audit list
-1ctl-dev audit get <id>
-1ctl-dev credits balance
-1ctl-dev credits transactions
-1ctl-dev credits usage
-1ctl-dev pricing list
-1ctl-dev storage list
-1ctl-dev cluster zones
-1ctl-dev cluster list
-1ctl-dev machine list
-1ctl-dev -o json machine list
-1ctl-dev machine available
-1ctl-dev machine usage list
-1ctl-dev issuer list
-1ctl-dev completion zsh
-1ctl-dev completion bash
-1ctl-dev --version
+1ctl marketplace list
+1ctl marketplace get <id>
+1ctl audit list
+1ctl audit get <id>
+1ctl credits balance
+1ctl credits transactions
+1ctl credits usage
+1ctl pricing list
+1ctl storage list
+1ctl cluster zones
+1ctl cluster list
+1ctl machine list
+1ctl -o json machine list
+1ctl machine available
+1ctl machine usage list
+1ctl issuer list
+1ctl completion zsh
+1ctl completion bash
+1ctl --version
 ```
 
 All PASS. (`pricing list` and `pricing lookup` return "no data" — expected for dev backend.)

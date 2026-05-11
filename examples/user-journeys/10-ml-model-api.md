@@ -121,7 +121,7 @@ The cloud build downloads torch and transformers, which takes longer than a typi
 
 ```bash
 cd ml-api
-1ctl-dev deploy --config satusky.toml --wait
+1ctl deploy --config satusky.toml --wait
 ```
 
 You'll see the build stream directly to your terminal:
@@ -153,7 +153,7 @@ The next deploy will be faster because Docker layer caching skips the `pip insta
 Protect the endpoint with an API key injected as a secret:
 
 ```bash
-1ctl-dev secret create \
+1ctl secret create \
   --config satusky.toml \
   --kv MODEL_API_KEY=sk-ml-prod-f83a91bc2e4d5071
 ```
@@ -161,7 +161,7 @@ Protect the endpoint with an API key injected as a secret:
 Secrets take effect on the next pod start. Trigger a fresh deploy:
 
 ```bash
-1ctl-dev deploy --config satusky.toml --wait
+1ctl deploy --config satusky.toml --wait
 ```
 
 ---
@@ -186,7 +186,7 @@ curl -X POST https://ml-api.satusky.com/predict \
 Confirm the platform actually scheduled the deployment with the requested CPU and memory:
 
 ```bash
-1ctl-dev -o json deploy get --config satusky.toml
+1ctl -o json deploy get --config satusky.toml
 ```
 
 ```json
@@ -208,7 +208,7 @@ Confirm the platform actually scheduled the deployment with the requested CPU an
 Stream the logs right after deploy to confirm the model loads correctly:
 
 ```bash
-1ctl-dev logs stream --config satusky.toml
+1ctl logs stream --config satusky.toml
 ```
 
 ```
@@ -228,7 +228,7 @@ A slow startup here (14 seconds) is normal. The platform waits for the health ch
 If the model is larger than expected, the pod gets killed by the OS. You'll see it in the logs:
 
 ```bash
-1ctl-dev logs stream --config satusky.toml
+1ctl logs stream --config satusky.toml
 ```
 
 ```
@@ -251,7 +251,7 @@ memory = "4Gi"
 Then redeploy — no image rebuild needed because the code and weights haven't changed, but the platform still runs a fresh deploy with the new resource spec:
 
 ```bash
-1ctl-dev deploy --config satusky.toml --wait
+1ctl deploy --config satusky.toml --wait
 ```
 
 ```
@@ -265,7 +265,7 @@ Deploy complete. App is live.
 Stream the logs again to confirm a clean startup:
 
 ```bash
-1ctl-dev logs stream --config satusky.toml
+1ctl logs stream --config satusky.toml
 ```
 
 ```
@@ -279,7 +279,7 @@ Stream the logs again to confirm a clean startup:
 ## Step 10: Tear Down
 
 ```bash
-1ctl-dev deploy destroy --config satusky.toml -y
+1ctl deploy destroy --config satusky.toml -y
 ```
 
 ---
@@ -288,9 +288,9 @@ Stream the logs again to confirm a clean startup:
 
 | Task | Command |
 |---|---|
-| First deploy (slow build, streaming logs) | `1ctl-dev deploy --config satusky.toml --wait` |
-| Add API key secret | `1ctl-dev secret create --config satusky.toml --kv MODEL_API_KEY=...` |
-| Verify CPU/memory allocation | `1ctl-dev -o json deploy get --config satusky.toml` |
-| Watch model load at startup | `1ctl-dev logs stream --config satusky.toml` |
+| First deploy (slow build, streaming logs) | `1ctl deploy --config satusky.toml --wait` |
+| Add API key secret | `1ctl secret create --config satusky.toml --kv MODEL_API_KEY=...` |
+| Verify CPU/memory allocation | `1ctl -o json deploy get --config satusky.toml` |
+| Watch model load at startup | `1ctl logs stream --config satusky.toml` |
 | Bump memory after OOMKill | Edit `memory = "4Gi"` in satusky.toml, then redeploy |
-| Destroy | `1ctl-dev deploy destroy --config satusky.toml -y` |
+| Destroy | `1ctl deploy destroy --config satusky.toml -y` |

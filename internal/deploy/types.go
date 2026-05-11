@@ -45,9 +45,10 @@ type DeploymentOptions struct {
 	PDBConfig *PDBConfig     `json:"pdb_config,omitempty"`
 	HPAConfig *api.HPAConfig `json:"hpa_config,omitempty"`
 	VPAConfig *api.VPAConfig `json:"vpa_config,omitempty"`
-	// Zone targeting
-	Zone   string // Target zone (e.g., "my-kul-1b", "my-bki-1a")
-	Region string // Backward compat: zone value sent as region to backend
+	// Zone targeting. Region is intentionally not on the struct: the
+	// legacy "zone-in-region" backward-compat shim was retired with
+	// issue #24's backend-coordinated change.
+	Zone string // Target zone (e.g., "my-kul-1b", "my-bki-1a")
 	// PrebuiltImage, when non-empty, skips local Docker build and upload.
 	// The image must already exist in the registry and be pullable by the cluster.
 	PrebuiltImage string
@@ -59,6 +60,12 @@ type DeploymentOptions struct {
 	Strategy              string // "rolling" (default), "recreate"
 	RollingMaxSurge       string // Rolling update max surge (e.g. "25%" or "1")
 	RollingMaxUnavailable string // Rolling update max unavailable (e.g. "25%" or "0")
+	// RollingFlagsExplicit is true when the user explicitly set either of the
+	// rolling-* flags on the CLI. Used by buildStrategyConfig to decide whether
+	// to omit the strategy config (default-suppression optimisation) or send
+	// it through unchanged (so audit logs / version history capture the
+	// user-specified value).
+	RollingFlagsExplicit bool
 	// TargetArch is the CPU architecture the image was built for ("amd64", "arm64", or "").
 	// Empty means multi-arch or unknown — no arch-based machine filtering is applied.
 	TargetArch string

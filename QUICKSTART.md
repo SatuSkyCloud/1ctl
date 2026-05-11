@@ -273,15 +273,14 @@ No local Docker installation required.
 
 ## Local end-to-end test (verified 2026-04-09)
 
-The following steps were run against a local backend (`http://localhost:8080`) to verify the full flow:
+The following steps were run against a local API server (`http://localhost:8080`) to verify the full flow:
 
 ```bash
 # 1. Build CLI from source
 go build -o 1ctl ./cmd/...
 
-# 2. Start the local backend
-cd /path/to/satusky-core_backend
-sudo task dev > logs.txt
+# 2. Start the local API server in another terminal
+#    (refer to the server's own README for the exact command)
 
 # 3. Switch to local profile and authenticate
 ./1ctl profile use local
