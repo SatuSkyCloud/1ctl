@@ -3,7 +3,7 @@
 **Date**: 2026-04-28 (guide audit + docs update session)
 **Previous session**: 2026-04-27 (post gap-fixes + domain fix + env/secret unset crash fix)
 **Branch**: development
-**Backend**: satusky-core_backend @ localhost:8080 (`sudo task dev.debug > logs.txt 2>&1`)
+**Server**: local API server @ `http://localhost:8080`
 **Namespace**: org3-b322955e
 **User**: mingerz.k@gmail.com
 **Org**: org3 (b322955e-6a86-4157-8bff-1bea605ef8ac)

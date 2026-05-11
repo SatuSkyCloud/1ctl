@@ -66,8 +66,8 @@ func init() {
 	}
 
 	// Single config dir for all environments. Per-environment isolation
-	// (prod, dev, local) is handled by named profiles, not by binary variant.
-	// Internal devs configure a dev profile via internal onboarding docs.
+	// (prod, staging, local, etc.) is handled by named profiles, not by
+	// a separate binary variant.
 	configDir = filepath.Join(homeDir, ".satusky")
 	if err := os.MkdirAll(configDir, 0750); err != nil {
 		log.Fatal("Could not create config directory:", err)

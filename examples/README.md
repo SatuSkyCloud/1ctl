@@ -39,7 +39,7 @@ CLI flags always override toml values for a single invocation. The file is never
 
 ## Prerequisites
 
-- Backend running: `sudo task dev.debug > logs.txt 2>&1` in `satusky-core_backend`
+- A local API server reachable on `http://localhost:8080` (or whichever endpoint your `local` profile points at)
 - Build from source (see below)
 
 ### Can I use the Homebrew `1ctl` instead of building from source?

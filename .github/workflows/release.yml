@@ -5,9 +5,9 @@ on:
     tags:
       - "v*"
 
-# Self-hosted toggle — see ci.yaml for the convention. Goreleaser
-# cross-compiles all platforms from a single Linux runner, so the
-# self-hosted Linux fleet is sufficient.
+# Self-hosted runner toggle — see ci.yaml for the convention.
+# Goreleaser cross-compiles all platforms from a single Linux runner,
+# so a Linux-only self-hosted fleet is sufficient.
 
 jobs:
   goreleaser:

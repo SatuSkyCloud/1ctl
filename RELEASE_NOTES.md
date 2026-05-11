@@ -2,9 +2,9 @@
 
 ## Version 0.8.0 (11-05-2026)
 
-Closes 21 of 23 open issues on the repo (#10–#30) plus the in-scope subset of #3. See PR #31 for the full diff and SatuSkyCloud/satusky-infra#42 for the design doc.
+Closes 21 of 23 open issues on the repo (#10–#30) plus the in-scope subset of #3. See PR #31 for the full diff.
 
-**Backend dependency:** this release pairs with backend [PR #323](https://github.com/SatuSkyCloud/satusky-core_backend/pull/323) (`v0.66.0`). The CLI is backward-compatible with older backend versions — the only thing the new backend unlocks is the `Region`-as-zone cleanup and the `ALLOW_PUBLIC_SIGNUP` gate (only relevant if you target the dev stack).
+**Server compatibility:** this release is backward-compatible with the previous API server version. A coordinated server release (`v0.66.0`) ships alongside; the new server is only required to take advantage of the `--zone` wire-format cleanup and admin-controlled signup gating on alternate deployments.
 
 ### Breaking Changes
 
@@ -51,7 +51,7 @@ Resolution precedence per field: **CLI flag (explicit) > `satusky.toml` > flag `
 - **`UpsertEnvironment` / `CreateSecret`** stop overriding caller-supplied namespace — `--organization` finally routes resources to the right place.
 - **Context loads cached** with `sync.Once`; a typical deploy now reads `~/.satusky/...` once instead of ~30 times.
 - **`x-satusky-config` header dropped** from API requests; backend `K8sClientMiddleware` already had a DB fallback in production.
-- **Public command surface scrubbed for OSS-readiness**: dev-backend URLs removed from `.goreleaser.yml`, `CLAUDE.md`, `CONTRIBUTING.md`, and the 12 user-journey example docs. Internal devs configure dev access via the internal onboarding doc (URL stays out of public source).
+- **Repo cleaned up for open-source release**: alternate-deployment URLs removed from `.goreleaser.yml`, `CLAUDE.md`, `CONTRIBUTING.md`, and the user-journey example docs. Anyone running their own SatuSky deployment configures access via a named profile pointing at their server.
 
 ### Tests
 
@@ -65,7 +65,7 @@ Resolution precedence per field: **CLI flag (explicit) > `satusky.toml` > flag `
 
 ### Migration
 
-1. Drop `1ctl-dev`. Use a single `1ctl` binary. For dev-stack access, internal devs run `1ctl profile create --url <dev-url> dev` once (URL is in the internal onboarding doc).
+1. Drop `1ctl-dev`. A single `1ctl` binary covers every environment. To target a non-production server, configure a profile once: `1ctl profile create --url <server-url> <name>` then `1ctl profile use <name>`.
 2. Run `1ctl deploy` with `--memory <N>Mi` not bare numbers.
 3. If you relied on implicit owner-machine selection: pass `--machine-tag <tag>` or `--machine <name>`, or add `machine_tag = "..."` to `satusky.toml`.
 4. Existing `~/.satusky/context.json` files load unchanged (the deprecated `user_config_key` field is silently dropped).
@@ -131,7 +131,7 @@ These commits live in the `development` branch already and will arrive in `main`
 - **Reject `--multicluster` combined with custom domains**: Combining `--multicluster` with a `--domain` value that doesn't end in `.satusky.com` is now rejected at the client side with a friendly error before any backend round trip. Previously the deployment would succeed superficially but the platform's satusky-operator silently blocked replication of the custom-domain ingress to the secondary cluster, leaving the user with broken HA expectations.
   - The check is case-insensitive and tolerates a leading `*.` wildcard.
   - 9 unit test cases added in `internal/commands/deploy_test.go`.
-  - Backend (satusky-core_backend v0.47.2) and frontend (satusky-cpanel_front v0.11.1) enforce the same constraint.
+  - The server (v0.47.2) and Control Panel (v0.11.1) enforce the same constraint.
 
 ---
 
