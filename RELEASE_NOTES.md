@@ -1,6 +1,6 @@
 # Release Notes
 
-## Version 0.8.1 (11-05-2026)
+## Version 0.8.1 (12-05-2026)
 
 Internal refactor. No user-visible behaviour change; CLI surface, on-disk file layout, and command exit codes are all identical to v0.8.0.
 
