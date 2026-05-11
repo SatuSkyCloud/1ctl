@@ -14,19 +14,18 @@ on:
 #   USE_SELF_HOSTED=true                 to opt in
 #   SELF_HOSTED_RUNNER_LABEL=<label>     the runner-group label
 # Falls back to GitHub-hosted ubuntu-latest when the flag is off or the
-# variables are unset. The cross-OS matrix (macOS / Windows) always
-# runs on GitHub-hosted since self-hosted Linux runners can't execute
-# those OS-specific jobs.
+# variables are unset.
+#
+# Tests run on Linux only by default — Go's stdlib handles filepath/env
+# portability and the `build` job below cross-compiles all 5 OS/arch
+# combinations as a smoke test. To exercise the full mac/windows test
+# matrix (e.g. before a release), trigger this workflow via
+# workflow_dispatch with run_cross_os=true.
 
 jobs:
   test:
-    name: Test (cross-OS)
-    strategy:
-      fail-fast: false
-      matrix:
-        go-version: [1.21.x]
-        os: [ubuntu-latest, macos-latest, windows-latest]
-    runs-on: ${{ matrix.os }}
+    name: Test
+    runs-on: ${{ vars.USE_SELF_HOSTED == 'true' && vars.SELF_HOSTED_RUNNER_LABEL || 'ubuntu-latest' }}
 
     steps:
       - uses: actions/checkout@v4
