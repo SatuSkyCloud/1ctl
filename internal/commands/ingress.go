@@ -49,8 +49,12 @@ func IngressCommand() *cli.Command {
 
 	return &cli.Command{
 		Name:  "ingress",
-		Usage: "Create or update an ingress for a deployment",
-		Flags: ingressFlags,
+		Usage: "Create or update an ingress for a deployment (low-level — prefer `1ctl domains`)",
+		// Hidden from --help and shell completion: ingress is a deploy-time
+		// implementation detail. `1ctl domains` is the canonical surface.
+		// The command still works for scripts that depend on it.
+		Hidden: true,
+		Flags:  ingressFlags,
 		Subcommands: []*cli.Command{
 			{
 				Name:   "list",

@@ -34,8 +34,13 @@ func ServiceCommand() *cli.Command {
 
 	return &cli.Command{
 		Name:  "service",
-		Usage: "Create or update a service",
-		Flags: serviceFlags,
+		Usage: "Create or update a Kubernetes Service (low-level — deploy creates services automatically)",
+		// Hidden from --help and shell completion: Kubernetes Service is a
+		// deploy implementation detail. `1ctl deploy` already creates/updates
+		// services as part of the orchestration. The command still works for
+		// scripts that depend on it.
+		Hidden: true,
+		Flags:  serviceFlags,
 		Subcommands: []*cli.Command{
 			{
 				Name:   "list",

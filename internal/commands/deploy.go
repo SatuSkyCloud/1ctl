@@ -954,13 +954,19 @@ func handleListDeployments(c *cli.Context) error {
 		return nil
 	}
 
-	headers := []string{"DEPLOYMENT ID", "HOSTNAMES", "TYPE", "STATUS", "CREATED"}
+	// NAME column added (issue #29). Falls back to "-" for legacy
+	// deployments that pre-date the app_label field.
+	headers := []string{"NAME", "DEPLOYMENT ID", "HOSTNAMES", "STATUS", "CREATED"}
 	rows := make([][]string, 0, len(deployments))
 	for _, d := range deployments {
+		name := d.AppLabel
+		if name == "" {
+			name = "-"
+		}
 		rows = append(rows, []string{
+			name,
 			d.DeploymentID.String(),
 			strings.Join(d.Hostnames, ", "),
-			d.Type,
 			d.Status,
 			api.FormatTimeAgo(d.CreatedAt),
 		})
