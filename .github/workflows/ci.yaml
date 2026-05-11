@@ -26,6 +26,11 @@ jobs:
   test:
     name: Test
     runs-on: ${{ vars.USE_SELF_HOSTED == 'true' && vars.SELF_HOSTED_RUNNER_LABEL || 'ubuntu-latest' }}
+    # `task test` invokes `go test -race -covermode=atomic`, which requires
+    # cgo. Self-hosted runners default to CGO_ENABLED=0; enable it here so
+    # the race detector can compile and run.
+    env:
+      CGO_ENABLED: "1"
 
     steps:
       - uses: actions/checkout@v4
