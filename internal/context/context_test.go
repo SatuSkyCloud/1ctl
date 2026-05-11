@@ -8,8 +8,10 @@ import (
 	"testing"
 )
 
-// setupTestContext creates a temp config dir with a "test" profile already active.
-// All getters/setters operate on the profile file, not context.json.
+// setupTestContext creates a temp config dir with a "test" profile already
+// active and swaps in a Store rooted at that dir. Returns the dir path so
+// individual subtests can build paths under it. Restores the previous
+// Default Store on cleanup so subtests don't leak into each other.
 func setupTestContext(t *testing.T) string {
 	t.Helper()
 	dir := t.TempDir()
@@ -19,7 +21,6 @@ func setupTestContext(t *testing.T) string {
 		t.Fatalf("Failed to create config dir: %v", err)
 	}
 
-	// Create profiles directory and an empty "test" profile
 	profilesDir := filepath.Join(testConfigDir, "profiles")
 	if err := os.MkdirAll(profilesDir, 0750); err != nil {
 		t.Fatalf("Failed to create profiles dir: %v", err)
@@ -29,7 +30,6 @@ func setupTestContext(t *testing.T) string {
 		t.Fatalf("Failed to create test profile: %v", err)
 	}
 
-	// Point context.json at the "test" profile
 	contextFile := filepath.Join(testConfigDir, "context.json")
 	if err := os.WriteFile(contextFile, []byte(`{"active_profile":"test"}`), 0600); err != nil {
 		t.Fatalf("Failed to write context.json: %v", err)
@@ -39,12 +39,19 @@ func setupTestContext(t *testing.T) string {
 	if runtime.GOOS == "windows" {
 		t.Setenv("USERPROFILE", dir)
 	}
-	return dir
+
+	// Swap the package default Store to one rooted at this temp dir.
+	// Restore on cleanup so subsequent tests in the same package see the
+	// original (init-time) Store.
+	original := Default()
+	SetDefault(NewTestStore(testConfigDir))
+	t.Cleanup(func() { SetDefault(original) })
+
+	return testConfigDir
 }
 
 func TestContextOperations(t *testing.T) {
-	homeDir := setupTestContext(t)
-	configDir = filepath.Join(homeDir, ".satusky")
+	testConfigDir := setupTestContext(t)
 
 	testToken := "test-token-123"
 	testNamespace := "test-org"
@@ -116,9 +123,8 @@ func TestContextOperations(t *testing.T) {
 		}
 	})
 
-	// Data is written to the profile file, not context.json
 	t.Run("profile file persistence", func(t *testing.T) {
-		profileFile := filepath.Join(configDir, "profiles", "test.json")
+		profileFile := filepath.Join(testConfigDir, "profiles", "test.json")
 		data, err := os.ReadFile(profileFile)
 		if err != nil {
 			t.Fatalf("Failed to read profile file: %v", err)
@@ -147,7 +153,6 @@ func TestContextOperations(t *testing.T) {
 	})
 
 	t.Run("namespace error variant", func(t *testing.T) {
-		// Empty namespace must surface as an error (issue #17).
 		if err := SetCurrentNamespace(""); err != nil {
 			t.Fatalf("SetCurrentNamespace() error = %v", err)
 		}
@@ -182,18 +187,18 @@ func TestContextOperations(t *testing.T) {
 	})
 
 	t.Run("no profile returns empty", func(t *testing.T) {
-		// Temporarily clear the active profile
-		orig := configDir
+		// Swap in a Store rooted at an empty temp dir with no active profile.
+		// t.Cleanup restores whatever Default was before this subtest.
 		emptyDir := t.TempDir()
-		configDir = emptyDir
 		if err := os.MkdirAll(emptyDir, 0750); err != nil {
 			t.Fatal(err)
 		}
-		// Write context.json with no active_profile
 		if err := os.WriteFile(filepath.Join(emptyDir, "context.json"), []byte(`{}`), 0600); err != nil {
 			t.Fatal(err)
 		}
-		defer func() { configDir = orig }()
+		prevStore := Default()
+		SetDefault(NewTestStore(emptyDir))
+		t.Cleanup(func() { SetDefault(prevStore) })
 
 		if got := GetToken(); got != "" {
 			t.Errorf("GetToken() with no profile = %v, want empty", got)
@@ -206,13 +211,9 @@ func TestContextFilePermissions(t *testing.T) {
 		t.Skip("Skipping file permissions test on Windows")
 	}
 
-	originalConfigDir := configDir
-	defer func() { configDir = originalConfigDir }()
-
 	tempDir := t.TempDir()
-	configDir = tempDir
 
-	// Set up a "test" profile so saveContext has somewhere to write
+	// Set up a "test" profile so save has somewhere to write.
 	profilesDir := filepath.Join(tempDir, "profiles")
 	if err := os.MkdirAll(profilesDir, 0750); err != nil {
 		t.Fatalf("Failed to create profiles dir: %v", err)
@@ -224,11 +225,16 @@ func TestContextFilePermissions(t *testing.T) {
 		t.Fatalf("Failed to write context.json: %v", err)
 	}
 
+	// Swap default Store to one rooted here.
+	original := Default()
+	SetDefault(NewTestStore(tempDir))
+	t.Cleanup(func() { SetDefault(original) })
+
 	if err := SetToken("test-token"); err != nil {
 		t.Fatalf("SetToken() error = %v", err)
 	}
 
-	profileFile := filepath.Join(configDir, "profiles", "test.json")
+	profileFile := filepath.Join(tempDir, "profiles", "test.json")
 	info, err := os.Stat(profileFile)
 	if err != nil {
 		t.Fatalf("Failed to stat profile file: %v", err)
