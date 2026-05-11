@@ -40,53 +40,12 @@ func Deploy(opts DeploymentOptions) (*api.CreateDeploymentResponse, error) {
 		return nil, utils.NewError("Failed to get user ID", nil)
 	}
 
-	// First try to use owner's machines if no hostnames provided
+	// BYOA targeting is now explicit: the user must pass --machine or
+	// --machine-tag to deploy to owned hardware. Default behaviour deploys
+	// to managed cloud — issue #24 retires the implicit owner-machine
+	// auto-selection that bypassed quota enforcement and confused new users.
 	if len(opts.Hostnames) == 0 {
-		// Try owner's machines first
-		machines, err := api.GetMachinesByOwnerID(api.ToUUID(userID))
-		if err != nil {
-			// Don't return error here, we'll fall back to monetized machines
-			// log.Info("Failed to get owner's machines: %v", err)
-			utils.PrintWarning("Failed to get owner's machines: %v", err)
-		} else {
-			// Check if owner has any machines and deduplicate hostnames
-			hostnameSet := make(map[string]bool)
-			var hostnames []string
-			for _, machine := range machines {
-				if machine.Status != "online" {
-					continue
-				}
-				if machine.CPUCores == 0 || machine.MemoryGB == 0 {
-					continue
-				}
-				// Skip machines whose arch doesn't match the image.
-				// Empty imageArch means multi-arch or unknown — no filtering.
-				if opts.TargetArch != "" && machine.CPUArch != "" && machine.CPUArch != opts.TargetArch {
-					continue
-				}
-				// Only add hostname if we haven't seen it before (using machine ID instead of machine name)
-				if !hostnameSet[machine.MachineID] {
-					hostnameSet[machine.MachineID] = true
-					hostnames = append(hostnames, machine.MachineID)
-				}
-			}
-
-			if len(hostnames) > 0 {
-				opts.Hostnames = hostnames
-				utils.PrintInfo("Using owner's machines: %v", hostnames)
-			} else if opts.TargetArch != "" {
-				utils.PrintWarning("No owner machines with arch %s are online — will use monetized machines", opts.TargetArch)
-			}
-		}
-
-		// If still no hostnames (no owner machines or error), let backend handle monetized machine selection
-		if len(opts.Hostnames) == 0 {
-			utils.PrintWarning("No owner machines available, will use monetized machines")
-			// The backend will:
-			// 1. Find cheapest machine with sufficient resources
-			// 2. Check user's credit balance
-			// 3. Create usage records if using monetized machines
-		}
+		utils.PrintInfo("Deploying to managed cloud — backend will select the cheapest suitable machine.")
 	}
 
 	var projectName string

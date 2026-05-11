@@ -707,6 +707,37 @@ func GetEnvironmentsByNamespace(namespace string) ([]Environment, error) {
 }
 
 // Machine methods
+
+// MachineTagLabelPrefix is the namespaced label key prefix used to record
+// user-defined machine tags. A machine tagged "production" has the K8s node
+// label `satusky.com/production` set on it.
+const MachineTagLabelPrefix = "satusky.com/"
+
+// GetMachineLabels returns the satusky.com/* labels for a machine. Used by
+// the deploy `--machine-tag` resolver to filter owned machines client-side
+// without a new backend endpoint.
+func GetMachineLabels(machineID string) (map[string]string, error) {
+	var resp struct {
+		Error bool `json:"error"`
+		Data  struct {
+			Labels map[string]string `json:"labels"`
+		} `json:"data"`
+	}
+	if err := makeRequest("GET", fmt.Sprintf("/machines/%s/labels", machineID), nil, &resp); err != nil {
+		return nil, err
+	}
+	return resp.Data.Labels, nil
+}
+
+// MachineHasTag reports whether the given label set contains the satusky.com/<tag> key.
+func MachineHasTag(labels map[string]string, tag string) bool {
+	if tag == "" || labels == nil {
+		return false
+	}
+	_, ok := labels[MachineTagLabelPrefix+tag]
+	return ok
+}
+
 func GetMachinesByOwnerID(ownerID uuid.UUID) ([]Machine, error) {
 	var resp apiResponse
 	err := makeRequest("GET", fmt.Sprintf("/machines/ownerId/%s", ownerID), nil, &resp)

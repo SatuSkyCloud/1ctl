@@ -32,7 +32,11 @@ func DeployCommand() *cli.Command {
 		},
 		&cli.StringSliceFlag{
 			Name:  "machine",
-			Usage: "Machine name to deploy to (e.g., 'machine1, machine2')",
+			Usage: "Explicit machine name (BYOA). Repeatable for multi-machine.",
+		},
+		&cli.StringFlag{
+			Name:  "machine-tag",
+			Usage: "Deploy to your machines labelled with this tag (BYOA). Set the satusky.com/<tag> label via the labels API.",
 		},
 		&cli.StringFlag{
 			Name:  "domain",
@@ -630,12 +634,26 @@ func prepareDeploymentOptions(c *cli.Context, cfg *config.ProjectConfig) (deploy
 		opts.Volume = vol
 	}
 
-	// Handle zone targeting
+	// Handle zone targeting. The legacy "also set Region to the zone value"
+	// fallback is gone (issue #24) — the backend now reads Zone directly.
 	if c.IsSet("zone") {
 		opts.Zone = c.String("zone")
-		// For backward compatibility, also set Region to the zone value
-		// The backend uses Region for machine filtering when Zone is not explicitly handled
-		opts.Region = c.String("zone")
+	}
+
+	// Handle --machine-tag: BYOA targeting by label. Resolves to a list of
+	// owned, online machine IDs matching satusky.com/<tag>. Precedence:
+	// --machine-tag flag > satusky.toml [app].machine_tag.
+	tag := c.String("machine-tag")
+	if tag == "" && cfg != nil {
+		tag = cfg.App.MachineTag
+	}
+	if tag != "" && !c.IsSet("machine") {
+		hostnames, err := resolveMachineTag(tag)
+		if err != nil {
+			return deploy.DeploymentOptions{}, err
+		}
+		opts.Hostnames = hostnames
+		utils.PrintInfo("Resolved --machine-tag %q to %d owned machine(s)", tag, len(hostnames))
 	}
 
 	// Handle multicluster configuration
@@ -756,6 +774,51 @@ func prepareDeploymentOptions(c *cli.Context, cfg *config.ProjectConfig) (deploy
 	}
 
 	return opts, nil
+}
+
+// resolveMachineTag fetches the current user's owned machines, then filters
+// them client-side to those tagged with satusky.com/<tag>. Returns the list
+// of online machine IDs to send as hostnames. Errors clearly if no machines
+// are online or tagged.
+//
+// Implementation note: this does N+1 round trips (one to list, one per
+// machine for labels). Acceptable for the small-N owner-machine case;
+// migrate to a server-side filter endpoint if the cost becomes meaningful.
+func resolveMachineTag(tag string) ([]string, error) {
+	userID := context.GetUserID()
+	if userID == "" {
+		return nil, utils.NewError("not authenticated — run '1ctl auth login' first", nil)
+	}
+	userUUID, err := api.ParseUUID(userID)
+	if err != nil {
+		return nil, utils.NewError(fmt.Sprintf("invalid user ID in context: %s", err.Error()), nil)
+	}
+	machines, err := api.GetMachinesByOwnerID(userUUID)
+	if err != nil {
+		return nil, utils.NewError(fmt.Sprintf("failed to list owned machines: %s", err.Error()), nil)
+	}
+	if len(machines) == 0 {
+		return nil, utils.NewError(fmt.Sprintf("no owned machines found — register a machine before using --machine-tag"), nil)
+	}
+
+	var hostnames []string
+	for _, m := range machines {
+		if m.Status != "online" {
+			continue
+		}
+		labels, err := api.GetMachineLabels(m.MachineID)
+		if err != nil {
+			utils.PrintWarning("Could not read labels for machine %s: %s", m.MachineID, err.Error())
+			continue
+		}
+		if api.MachineHasTag(labels, tag) {
+			hostnames = append(hostnames, m.MachineID)
+		}
+	}
+	if len(hostnames) == 0 {
+		return nil, utils.NewError(fmt.Sprintf("no machines tagged %q are online — apply the satusky.com/%s label to at least one machine first", tag, tag), nil)
+	}
+	return hostnames, nil
 }
 
 // applyConfigScalar sets a CLI flag from a non-empty satusky.toml value when
