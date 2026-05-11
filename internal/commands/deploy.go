@@ -365,26 +365,62 @@ func handleDeploy(c *cli.Context) error {
 		}
 	}
 
-	// Load satusky.toml defaults for flags not set on the CLI
+	// Apply satusky.toml scalar fields to flags the user didn't explicitly set.
+	// Precedence overall: CLI flag (c.IsSet) > satusky.toml > flag Value: default.
+	// Structured sections ([volume], [hpa], [vpa], [pdb], [multicluster]) are
+	// merged in prepareDeploymentOptions where they map to nested option structs.
 	if cfg != nil {
-		if !c.IsSet("cpu") && cfg.App.CPU != "" {
-			if err := c.Set("cpu", cfg.App.CPU); err != nil {
-				return utils.NewError(fmt.Sprintf("failed to set cpu from config: %s", err.Error()), nil)
+		if err := applyConfigScalar(c, "cpu", cfg.App.CPU); err != nil {
+			return err
+		}
+		if err := applyConfigScalar(c, "memory", cfg.App.Memory); err != nil {
+			return err
+		}
+		if cfg.App.Port != 0 {
+			if err := applyConfigScalar(c, "port", fmt.Sprintf("%d", cfg.App.Port)); err != nil {
+				return err
 			}
 		}
-		if !c.IsSet("memory") && cfg.App.Memory != "" {
-			if err := c.Set("memory", cfg.App.Memory); err != nil {
-				return utils.NewError(fmt.Sprintf("failed to set memory from config: %s", err.Error()), nil)
+		if err := applyConfigScalar(c, "domain", cfg.App.Domain); err != nil {
+			return err
+		}
+		if err := applyConfigScalar(c, "dockerfile", cfg.App.Dockerfile); err != nil {
+			return err
+		}
+		if cfg.App.Replicas > 0 {
+			if err := applyConfigScalar(c, "replicas", fmt.Sprintf("%d", cfg.App.Replicas)); err != nil {
+				return err
 			}
 		}
-		if !c.IsSet("port") && cfg.App.Port != 0 {
-			if err := c.Set("port", fmt.Sprintf("%d", cfg.App.Port)); err != nil {
-				return utils.NewError(fmt.Sprintf("failed to set port from config: %s", err.Error()), nil)
-			}
+		if err := applyConfigScalar(c, "zone", cfg.App.Zone); err != nil {
+			return err
 		}
-		if !c.IsSet("domain") && cfg.App.Domain != "" {
-			if err := c.Set("domain", cfg.App.Domain); err != nil {
-				return utils.NewError(fmt.Sprintf("failed to set domain from config: %s", err.Error()), nil)
+		if err := applyConfigScalar(c, "organization", cfg.App.Organization); err != nil {
+			return err
+		}
+		if err := applyConfigScalar(c, "strategy", cfg.App.Strategy); err != nil {
+			return err
+		}
+		if err := applyConfigScalar(c, "rolling-max-surge", cfg.App.RollingMaxSurge); err != nil {
+			return err
+		}
+		if err := applyConfigScalar(c, "rolling-max-unavailable", cfg.App.RollingMaxUnavailable); err != nil {
+			return err
+		}
+		// Volume scalars wire through the existing --volume-size / --volume-mount
+		// flags so validateInputs / prepareDeploymentOptions see them uniformly.
+		if err := applyConfigScalar(c, "volume-size", cfg.Volume.Size); err != nil {
+			return err
+		}
+		if err := applyConfigScalar(c, "volume-mount", cfg.Volume.Mount); err != nil {
+			return err
+		}
+		// wait-for is a StringSliceFlag, merged below.
+		if len(cfg.App.WaitFor) > 0 && !c.IsSet("wait-for") {
+			for _, v := range cfg.App.WaitFor {
+				if err := c.Set("wait-for", v); err != nil {
+					return utils.NewError(fmt.Sprintf("failed to set wait-for from config: %s", err.Error()), nil)
+				}
 			}
 		}
 	}
@@ -691,7 +727,121 @@ func prepareDeploymentOptions(c *cli.Context, cfg *config.ProjectConfig) (deploy
 		return deploy.DeploymentOptions{}, utils.NewError(fmt.Sprintf("invalid --strategy %q: must be 'rolling' or 'recreate'", opts.Strategy), nil)
 	}
 
+	// Fall back to satusky.toml structured sections when the user didn't
+	// pass the corresponding CLI flag. CLI-set values win; nothing is
+	// overwritten here.
+	if cfg != nil {
+		applyConfigHPA(&opts, c, cfg.HPA)
+		applyConfigVPA(&opts, c, cfg.VPA)
+		applyConfigPDB(&opts, c, cfg.PDB)
+		applyConfigMulticluster(&opts, c, cfg.Multicluster)
+	}
+
 	return opts, nil
+}
+
+// applyConfigScalar sets a CLI flag from a non-empty satusky.toml value when
+// the user didn't explicitly pass the flag. Keeps the legacy c.Set merge model
+// while the broader prepareDeploymentOptions refactor lands.
+func applyConfigScalar(c *cli.Context, flagName, cfgValue string) error {
+	if cfgValue == "" {
+		return nil
+	}
+	if c.IsSet(flagName) {
+		return nil
+	}
+	if err := c.Set(flagName, cfgValue); err != nil {
+		return utils.NewError(fmt.Sprintf("failed to set %s from config: %s", flagName, err.Error()), nil)
+	}
+	return nil
+}
+
+// applyConfigHPA merges [hpa] section into deploy options when --hpa wasn't
+// set on the CLI. Flag-set HPA wins entirely; we don't merge piecewise to
+// avoid surprising fallback values.
+func applyConfigHPA(opts *deploy.DeploymentOptions, c *cli.Context, hpa config.HPAConfig) {
+	if c.IsSet("hpa") || !hpa.Enabled {
+		return
+	}
+	cfg := &api.HPAConfig{
+		Enabled:     true,
+		MinReplicas: defaultInt32(hpa.MinReplicas, 1),
+		MaxReplicas: defaultInt32(hpa.MaxReplicas, 10),
+	}
+	cpu := defaultInt32(hpa.CPUTarget, 80)
+	cfg.CPUTarget = &cpu
+	if hpa.MemoryTarget > 0 {
+		mem := hpa.MemoryTarget
+		cfg.MemoryTarget = &mem
+	}
+	opts.HPAConfig = cfg
+}
+
+// applyConfigVPA merges [vpa] section into deploy options when --vpa wasn't set.
+func applyConfigVPA(opts *deploy.DeploymentOptions, c *cli.Context, vpa config.VPAConfig) {
+	if c.IsSet("vpa") || !vpa.Enabled {
+		return
+	}
+	mode := vpa.Mode
+	if mode == "" {
+		mode = "Off"
+	}
+	opts.VPAConfig = &api.VPAConfig{
+		Enabled:    true,
+		UpdateMode: mode,
+		MinCPU:     vpa.MinCPU,
+		MaxCPU:     vpa.MaxCPU,
+		MinMemory:  vpa.MinMemory,
+		MaxMemory:  vpa.MaxMemory,
+	}
+}
+
+// applyConfigPDB merges [pdb] section into deploy options when --pdb wasn't set.
+func applyConfigPDB(opts *deploy.DeploymentOptions, c *cli.Context, pdb config.PDBConfig) {
+	if c.IsSet("pdb") || !pdb.Enabled {
+		return
+	}
+	typ := pdb.Type
+	if typ == "" {
+		typ = "auto"
+	}
+	cfg := &deploy.PDBConfig{Enabled: true, Type: deploy.PDBConfigType(typ)}
+	if pdb.MinAvailable > 0 {
+		v := pdb.MinAvailable
+		cfg.MinAvailable = &v
+	}
+	if pdb.Percent > 0 {
+		v := pdb.Percent
+		cfg.Percent = &v
+	}
+	opts.PDBConfig = cfg
+}
+
+// applyConfigMulticluster merges [multicluster] section into deploy options
+// when --multicluster wasn't set.
+func applyConfigMulticluster(opts *deploy.DeploymentOptions, c *cli.Context, mc config.MulticlusterConfig) {
+	if c.IsSet("multicluster") || !mc.Enabled {
+		return
+	}
+	opts.MulticlusterEnabled = true
+	opts.MulticlusterMode = mc.Mode
+	if opts.MulticlusterMode == "" {
+		opts.MulticlusterMode = "active-passive"
+	}
+	opts.BackupEnabled = mc.BackupEnabled
+	opts.BackupSchedule = mc.BackupSchedule
+	opts.BackupRetention = mc.BackupRetention
+	opts.BackupPriorityCluster = mc.BackupPriorityCluster
+	if opts.BackupPriorityCluster == 0 {
+		opts.BackupPriorityCluster = 1
+	}
+}
+
+func defaultInt32(v, fallback int32) int32 {
+	if v == 0 {
+		return fallback
+	}
+	return v
 }
 
 func parseEnvVars(envVars []string) []api.KeyValuePair {

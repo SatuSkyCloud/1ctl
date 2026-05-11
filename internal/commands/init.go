@@ -81,6 +81,47 @@ func handleInit(c *cli.Context) error {
 	if base.App.Domain != "" {
 		lines = append(lines, fmt.Sprintf("  domain = %q", base.App.Domain))
 	}
+
+	// Commented examples for the v2 schema. Uncomment to use.
+	lines = append(lines, "",
+		"  # cpu = \"0.5\"            # platform default 0.5",
+		"  # memory = \"256Mi\"       # platform default 256Mi",
+		"  # zone = \"my-kul-1b\"     # target marketplace zone",
+		"  # strategy = \"rolling\"   # rolling | recreate",
+		"  # rolling_max_surge = \"25%\"",
+		"  # rolling_max_unavailable = \"25%\"",
+		"  # machine_tag = \"production\"  # BYOA: deploy to your labelled machines",
+		"  # wait_for = [\"postgres:5432\"]",
+		"",
+		"# [volume]",
+		"#   size = \"10Gi\"",
+		"#   mount = \"/data\"",
+		"",
+		"# [hpa]",
+		"#   enabled = true",
+		"#   min_replicas = 2",
+		"#   max_replicas = 10",
+		"#   cpu_target = 80",
+		"#   memory_target = 0",
+		"",
+		"# [vpa]",
+		"#   enabled = false",
+		"#   mode = \"Off\"  # Off | Initial | Auto",
+		"",
+		"# [pdb]",
+		"#   enabled = false",
+		"#   type = \"auto\"  # auto | fixed | percent",
+		"#   min_available = 1",
+		"#   percent = 50",
+		"",
+		"# [multicluster]",
+		"#   enabled = false",
+		"#   mode = \"active-passive\"  # active-active | active-passive",
+		"#   backup_enabled = true",
+		"#   backup_schedule = \"daily\"",
+		"#   backup_retention = \"168h\"",
+		"#   backup_priority_cluster = 1",
+	)
 	content := strings.Join(lines, "\n") + "\n"
 	if err := os.WriteFile(filename, []byte(content), 0600); err != nil {
 		return utils.NewError(fmt.Sprintf("failed to write %s: %s", filename, err.Error()), nil)
