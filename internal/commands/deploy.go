@@ -17,6 +17,10 @@ import (
 func DeployCommand() *cli.Command {
 	deployFlags := []cli.Flag{
 		&cli.StringFlag{
+			Name:  "name",
+			Usage: "Application name (default: auto-detected from satusky.toml or git remote)",
+		},
+		&cli.StringFlag{
 			Name:  "cpu",
 			Usage: "CPU cores allocation (e.g., '2')",
 			Value: "0.5",
@@ -336,15 +340,6 @@ Subcommands manage existing deployments:
 			if c.NArg() > 0 {
 				return cli.ShowSubcommandHelp(c)
 			}
-
-			// If no flags and no satusky.toml with cpu/memory, show help
-			if !c.IsSet("cpu") && !c.IsSet("memory") && !c.IsSet("image") {
-				if cfg, err := config.FindConfig(c.String("config")); err != nil || cfg == nil || (cfg.App.CPU == "" && cfg.App.Memory == "") {
-					return cli.ShowSubcommandHelp(c)
-				}
-			}
-
-			// Otherwise, handle deploy
 			return handleDeploy(c)
 		},
 	}
@@ -356,8 +351,22 @@ func handleDeploy(c *cli.Context) error {
 		return err
 	}
 
+	// Load satusky.toml once and use it for both the help-guard and the merge.
+	// Previously this file was parsed three separate times per deploy.
+	cfg, err := config.FindConfig(c.String("config"))
+	if err != nil {
+		return utils.NewError(fmt.Sprintf("failed to load config: %s", err.Error()), nil)
+	}
+
+	// Show help when neither flags nor toml provide enough to deploy.
+	if !c.IsSet("cpu") && !c.IsSet("memory") && !c.IsSet("image") {
+		if cfg == nil || (cfg.App.CPU == "" && cfg.App.Memory == "") {
+			return cli.ShowSubcommandHelp(c)
+		}
+	}
+
 	// Load satusky.toml defaults for flags not set on the CLI
-	if cfg, err := config.FindConfig(c.String("config")); err == nil && cfg != nil {
+	if cfg != nil {
 		if !c.IsSet("cpu") && cfg.App.CPU != "" {
 			if err := c.Set("cpu", cfg.App.CPU); err != nil {
 				return utils.NewError(fmt.Sprintf("failed to set cpu from config: %s", err.Error()), nil)
@@ -386,7 +395,7 @@ func handleDeploy(c *cli.Context) error {
 	}
 
 	// Prepare deployment options
-	opts, err := prepareDeploymentOptions(c)
+	opts, err := prepareDeploymentOptions(c, cfg)
 	if err != nil {
 		return utils.NewError(fmt.Sprintf("deployment preparation failed: %s", err.Error()), nil)
 	}
@@ -504,23 +513,25 @@ func validateInputs(c *cli.Context) error {
 	return nil
 }
 
-func prepareDeploymentOptions(c *cli.Context) (deploy.DeploymentOptions, error) {
+func prepareDeploymentOptions(c *cli.Context, cfg *config.ProjectConfig) (deploy.DeploymentOptions, error) {
 	opts := deploy.DeploymentOptions{
 		CPU:            c.String("cpu"),
 		Memory:         c.String("memory"),
 		Domain:         c.String("domain"),
-		Organization:   c.String("organization"),
 		Port:           c.Int("port"),
 		DockerfilePath: c.String("dockerfile"),
 		PrebuiltImage:  c.String("image"),
 	}
 
-	// Load app name from satusky.toml if present
-	if cfg, err := config.FindConfig(c.String("config")); err == nil && cfg != nil && cfg.App.Name != "" {
+	// App name precedence: --name flag > satusky.toml > git remote auto-detect.
+	switch {
+	case c.String("name") != "":
+		opts.Name = c.String("name")
+	case cfg != nil && cfg.App.Name != "":
 		opts.Name = cfg.App.Name
 	}
 
-	// Handle project organization for future use (multi-tenant)
+	// Organization precedence: --organization flag > current context namespace.
 	if c.IsSet("organization") {
 		opts.Organization = c.String("organization")
 	} else {
@@ -829,7 +840,13 @@ func handleGetDeployment(c *cli.Context) error {
 	utils.PrintStatusLine("Type", deployment.Type)
 	utils.PrintStatusLine("Region", deployment.Region)
 	utils.PrintStatusLine("Zone", deployment.Zone)
-	utils.PrintStatusLine("Version", strings.Split(deployment.Image, ":")[1])
+	// Image refs without a ":tag" (e.g., "nginx", "registry.example.com/app")
+	// are legal; show "untagged" rather than indexing into a 1-element slice.
+	version := "untagged"
+	if parts := strings.SplitN(deployment.Image, ":", 2); len(parts) == 2 {
+		version = parts[1]
+	}
+	utils.PrintStatusLine("Version", version)
 	utils.PrintStatusLine("Port", fmt.Sprintf("%d", deployment.Port))
 	utils.PrintStatusLine("CPU Request", deployment.CpuRequest)
 	utils.PrintStatusLine("Memory Request", deployment.MemoryRequest)

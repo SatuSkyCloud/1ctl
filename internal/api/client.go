@@ -162,8 +162,12 @@ func CreateSecret(secret Secret) (*Secret, error) {
 	var secretResp Secret
 	resp.Data = &secretResp
 
-	// Always use the current namespace
-	secret.Namespace = context.GetCurrentNamespace()
+	// Only fall back to context namespace if caller didn't set one. Overriding
+	// a non-empty value silently routes resources to the wrong namespace when
+	// the deploy was scoped via --organization.
+	if secret.Namespace == "" {
+		secret.Namespace = context.GetCurrentNamespace()
+	}
 
 	err := makeRequest("POST", "/secrets/upsert", secret, &resp)
 	if err != nil {
@@ -267,8 +271,12 @@ func UpsertEnvironment(env Environment) (*Environment, error) {
 	var envResp Environment
 	resp.Data = &envResp
 
-	// Always use the current namespace
-	env.Namespace = context.GetCurrentNamespace()
+	// Only fall back to context namespace if caller didn't set one. Overriding
+	// a non-empty value silently routes resources to the wrong namespace when
+	// the deploy was scoped via --organization.
+	if env.Namespace == "" {
+		env.Namespace = context.GetCurrentNamespace()
+	}
 
 	err := makeRequest("POST", "/environments/upsert", env, &resp)
 	if err != nil {

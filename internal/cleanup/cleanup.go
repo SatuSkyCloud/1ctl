@@ -68,7 +68,11 @@ func (cm *CleanupManager) cleanupResource(resource Resource) error {
 	case ResourceIngress:
 		return api.DeleteIngress(resource.ID)
 	case ResourceVolume:
-		// TODO: Add volume deletion when API supports it
+		// The backend's POST /volumes/create has no DELETE counterpart yet.
+		// We still register volumes with the manager so they appear in cleanup
+		// logs (operators can manually clean up the PVC), but the actual delete
+		// is a no-op until the backend ships volume deletion.
+		utils.PrintWarning("Volume %s (%s) cannot be deleted via CLI — manual PVC cleanup required.", resource.Name, resource.ID)
 		return nil
 	case ResourceSecret:
 		// TODO: Add secret deletion when API supports it

@@ -7,6 +7,7 @@ import (
 	"1ctl/internal/docker"
 	"1ctl/internal/utils"
 	"1ctl/internal/validator"
+	"errors"
 	"fmt"
 	"os"
 	"regexp"
@@ -163,9 +164,16 @@ func Deploy(opts DeploymentOptions) (*api.CreateDeploymentResponse, error) {
 	progress.done = false
 	progress.print()
 
-	if err := handleEnvironmentAndVolumes(opts, deploymentID, projectName, opts.Organization); err != nil {
+	envID, volumeName, err := handleEnvironmentAndVolumes(opts, deploymentID, projectName, opts.Organization)
+	if err != nil {
 		deployCleanup(cmgr)
 		return nil, utils.NewError(fmt.Sprintf("failed to setup environment and volumes: %s", err.Error()), nil)
+	}
+	if envID != "" {
+		cmgr.AddResource(cleanup.ResourceEnv, envID, projectName)
+	}
+	if volumeName != "" {
+		cmgr.AddResource(cleanup.ResourceVolume, volumeName, projectName)
 	}
 	progress.complete()
 
@@ -176,10 +184,13 @@ func Deploy(opts DeploymentOptions) (*api.CreateDeploymentResponse, error) {
 	progress.done = false
 	progress.print()
 
-	domainName, err := handleIngressAndDependencies(opts, deploymentID, serviceID, userID, opts.Organization, projectName, opts.Hostnames)
+	domainName, ingressID, err := handleIngressAndDependencies(opts, deploymentID, serviceID, userID, opts.Organization, projectName, opts.Hostnames)
 	if err != nil {
 		deployCleanup(cmgr)
 		return nil, utils.NewError(fmt.Sprintf("failed to configure ingress and dependencies: %s", err.Error()), nil)
+	}
+	if ingressID != "" {
+		cmgr.AddResource(cleanup.ResourceIngress, ingressID, projectName)
 	}
 	progress.complete()
 
@@ -390,9 +401,8 @@ func upsertService(deploymentID string, opts DeploymentOptions, projectName, org
 	return serviceID, nil
 }
 
-func upsertIngress(deploymentID string, serviceID string, opts DeploymentOptions, organization, projectName string) (string, error) {
+func upsertIngress(deploymentID string, serviceID string, opts DeploymentOptions, organization, projectName string) (domainName, ingressID string, err error) {
 	// Check if there's an existing ingress for this deployment
-	var domainName string
 	existingIngress, err := api.GetIngressByDeploymentID(deploymentID)
 	if err != nil {
 		utils.PrintInfo("No existing ingress found for deployment %s, will create new one: %s", deploymentID, err.Error())
@@ -401,7 +411,7 @@ func upsertIngress(deploymentID string, serviceID string, opts DeploymentOptions
 		if opts.Domain == "" {
 			domainName, err = api.GenerateDomainName(projectName)
 			if err != nil {
-				return "", utils.NewError(fmt.Sprintf("failed to generate domain name: %s", err.Error()), nil)
+				return "", "", utils.NewError(fmt.Sprintf("failed to generate domain name: %s", err.Error()), nil)
 			}
 			utils.PrintInfo("Generated new domain: %s", domainName)
 		} else {
@@ -418,7 +428,7 @@ func upsertIngress(deploymentID string, serviceID string, opts DeploymentOptions
 
 	port, err := api.SafeInt32(opts.Port)
 	if err != nil {
-		return "", utils.NewError(fmt.Sprintf("invalid port: %s", err.Error()), nil)
+		return "", "", utils.NewError(fmt.Sprintf("invalid port: %s", err.Error()), nil)
 	}
 
 	ingress := api.Ingress{
@@ -433,10 +443,10 @@ func upsertIngress(deploymentID string, serviceID string, opts DeploymentOptions
 
 	ingressResp, err := api.UpsertIngress(ingress)
 	if err != nil {
-		return "", utils.NewError(fmt.Sprintf("failed to upsert ingress: %s", err.Error()), nil)
+		return "", "", utils.NewError(fmt.Sprintf("failed to upsert ingress: %s", err.Error()), nil)
 	}
 
-	return ingressResp.DomainName, nil
+	return ingressResp.DomainName, ingressResp.IngressID.String(), nil
 }
 
 func handleDependencies(deps []api.Dependency, userID, organization string, hostnames []string) error {
@@ -474,51 +484,64 @@ func handleDependencies(deps []api.Dependency, userID, organization string, host
 	return nil
 }
 
-func handleEnvironmentAndVolumes(opts DeploymentOptions, deploymentID, projectName, organization string) error {
-	errChan := make(chan error, 2)
+// handleEnvironmentAndVolumes returns the envID and volumeName of any resources
+// it created so the caller can register them with the cleanup manager.
+// Either may be "" when the corresponding feature wasn't enabled.
+func handleEnvironmentAndVolumes(opts DeploymentOptions, deploymentID, projectName, organization string) (envID, volumeName string, err error) {
+	type envResult struct {
+		id  string
+		err error
+	}
+	type volResult struct {
+		name string
+		err  error
+	}
+	envChan := make(chan envResult, 1)
+	volChan := make(chan volResult, 1)
 
-	// Handle environment variables
 	go func() {
 		if opts.EnvEnabled && opts.Environment != nil {
 			opts.Environment.DeploymentID = api.ToUUID(deploymentID)
 			opts.Environment.AppLabel = projectName
 			opts.Environment.Namespace = organization
 
-			_, err := api.UpsertEnvironment(*opts.Environment)
-			if err != nil {
-				errChan <- utils.NewError(fmt.Sprintf("failed to create environment: %s", err.Error()), nil)
+			created, e := api.UpsertEnvironment(*opts.Environment)
+			if e != nil {
+				envChan <- envResult{err: utils.NewError(fmt.Sprintf("failed to create environment: %s", e.Error()), nil)}
 				return
 			}
+			envChan <- envResult{id: created.EnvironmentID.String()}
+			return
 		}
-		errChan <- nil
+		envChan <- envResult{}
 	}()
 
-	// Handle volume
 	go func() {
 		if opts.VolumeEnabled && opts.Volume != nil {
 			opts.Volume.DeploymentID = api.ToUUID(deploymentID)
 			opts.Volume.VolumeName = fmt.Sprintf("%s-volume", projectName)
 			opts.Volume.ClaimName = fmt.Sprintf("%s-claim", projectName)
-			if err := api.CreateVolume(*opts.Volume); err != nil {
-				errChan <- utils.NewError(fmt.Sprintf("failed to create volume: %s", err.Error()), nil)
+			if e := api.CreateVolume(*opts.Volume); e != nil {
+				volChan <- volResult{err: utils.NewError(fmt.Sprintf("failed to create volume: %s", e.Error()), nil)}
 				return
 			}
+			// CreateVolume returns no ID today; track by volume name so the
+			// CleanupManager can list it even though the backend doesn't yet
+			// support volume deletion.
+			volChan <- volResult{name: opts.Volume.VolumeName}
+			return
 		}
-		errChan <- nil
+		volChan <- volResult{}
 	}()
 
-	// Drain both results, collecting all errors
-	var errs []error
-	for i := 0; i < 2; i++ {
-		if err := <-errChan; err != nil {
-			errs = append(errs, err)
-		}
+	envRes := <-envChan
+	volRes := <-volChan
+	// Both errors are surfaced — previously only errs[0] was returned, hiding
+	// the second when both goroutines failed simultaneously.
+	if joined := errors.Join(envRes.err, volRes.err); joined != nil {
+		return envRes.id, volRes.name, joined
 	}
-	if len(errs) > 0 {
-		return errs[0]
-	}
-
-	return nil
+	return envRes.id, volRes.name, nil
 }
 
 // buildStrategyConfig converts DeploymentOptions strategy fields into the API struct
@@ -545,46 +568,43 @@ func buildStrategyConfig(opts DeploymentOptions) *api.DeploymentStrategyConfig {
 	return nil
 }
 
-func handleIngressAndDependencies(opts DeploymentOptions, deploymentID, serviceID, userID, organization, projectName string, hostnames []string) (string, error) {
-	errChan := make(chan error, 2)
-	domainChan := make(chan string, 1)
+// handleIngressAndDependencies returns the resolved domain name and the
+// ingressID of any ingress it created so the caller can register the resource
+// with the cleanup manager.
+func handleIngressAndDependencies(opts DeploymentOptions, deploymentID, serviceID, userID, organization, projectName string, hostnames []string) (domainName, ingressID string, err error) {
+	type ingressResult struct {
+		domain string
+		id     string
+		err    error
+	}
+	ingressChan := make(chan ingressResult, 1)
+	depErrChan := make(chan error, 1)
 
-	// Handle ingress
 	go func() {
-		domainName, err := upsertIngress(deploymentID, serviceID, opts, organization, projectName)
-		if err != nil {
-			errChan <- utils.NewError(fmt.Sprintf("failed to create ingress: %s", err.Error()), nil)
+		domain, id, e := upsertIngress(deploymentID, serviceID, opts, organization, projectName)
+		if e != nil {
+			ingressChan <- ingressResult{err: utils.NewError(fmt.Sprintf("failed to create ingress: %s", e.Error()), nil)}
 			return
 		}
-		domainChan <- domainName
-		errChan <- nil
+		ingressChan <- ingressResult{domain: domain, id: id}
 	}()
 
-	// Handle dependencies
 	go func() {
 		if len(opts.Dependencies) > 0 {
-			if err := handleDependencies(opts.Dependencies, userID, organization, hostnames); err != nil {
-				errChan <- utils.NewError(fmt.Sprintf("failed to handle dependencies: %s", err.Error()), nil)
+			if e := handleDependencies(opts.Dependencies, userID, organization, hostnames); e != nil {
+				depErrChan <- utils.NewError(fmt.Sprintf("failed to handle dependencies: %s", e.Error()), nil)
 				return
 			}
 		}
-		errChan <- nil
+		depErrChan <- nil
 	}()
 
-	// Drain both results, collecting all errors
-	var errs []error
-	for i := 0; i < 2; i++ {
-		if err := <-errChan; err != nil {
-			errs = append(errs, err)
-		}
+	ing := <-ingressChan
+	depErr := <-depErrChan
+	if joined := errors.Join(ing.err, depErr); joined != nil {
+		return "", ing.id, joined
 	}
-	if len(errs) > 0 {
-		return "", errs[0]
-	}
-
-	// Only read domain if no errors — the ingress goroutine is guaranteed
-	// to have sent to domainChan before sending nil to errChan.
-	return <-domainChan, nil
+	return ing.domain, ing.id, nil
 }
 
 // dns1035 matches valid K8s Service names (DNS-1035): starts with a letter,
@@ -596,7 +616,7 @@ var dns1035 = regexp.MustCompile(`^[a-z]([-a-z0-9]*[a-z0-9])?$`)
 func validateAppName(name string) error {
 	if len(name) > 63 {
 		return utils.NewError(fmt.Sprintf(
-			"app name %q is too long (%d chars, max 63). Use --name to set a shorter name.",
+			"app name %q is too long (%d chars, max 63). Use --name <short-name> to set a shorter name, or update [app] name in satusky.toml.",
 			name, len(name)), nil)
 	}
 	if !dns1035.MatchString(name) {
@@ -607,7 +627,7 @@ func validateAppName(name string) error {
 		return utils.NewError(fmt.Sprintf(
 			"app name %q is not a valid K8s service name%s.\n"+
 				"  Names must start with a letter, contain only [a-z0-9-], and end with [a-z0-9].\n"+
-				"  Auto-detected from git remote — run from your project directory or use --name <name>.",
+				"  Source: --name flag, [app] name in satusky.toml, or git remote auto-detect.",
 			name, hint), nil)
 	}
 	return nil
