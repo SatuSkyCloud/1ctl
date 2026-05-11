@@ -24,6 +24,8 @@ func TestDeployCommand(t *testing.T) {
 		"restart":  false,
 		"releases": false,
 		"rollback": false,
+		"open":     false, // #3 D-02
+		"scale":    false, // #3 F-05
 	}
 
 	for _, subcmd := range cmd.Subcommands {
