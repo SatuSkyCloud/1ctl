@@ -96,30 +96,3 @@ func FormatCleanupErrors(errors []error) string {
 
 	return fmt.Sprintf("Cleanup errors:\n%s", strings.Join(messages, "\n"))
 }
-
-// Make cleanupFuncs package-visible for testing
-var cleanupFuncs []func()
-
-// RegisterCleanupFunc adds a cleanup function to be run later
-func RegisterCleanupFunc(f func()) {
-	if cleanupFuncs == nil {
-		cleanupFuncs = make([]func(), 0)
-	}
-	cleanupFuncs = append(cleanupFuncs, f)
-}
-
-// RunCleanup executes all registered cleanup functions
-func RunCleanup() {
-	if cleanupFuncs == nil {
-		return
-	}
-	for _, f := range cleanupFuncs {
-		f()
-	}
-	cleanupFuncs = nil // Clear the slice after running
-}
-
-// ResetCleanup resets the cleanup functions (useful for testing)
-func ResetCleanup() {
-	cleanupFuncs = nil
-}

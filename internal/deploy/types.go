@@ -59,6 +59,12 @@ type DeploymentOptions struct {
 	Strategy              string // "rolling" (default), "recreate"
 	RollingMaxSurge       string // Rolling update max surge (e.g. "25%" or "1")
 	RollingMaxUnavailable string // Rolling update max unavailable (e.g. "25%" or "0")
+	// RollingFlagsExplicit is true when the user explicitly set either of the
+	// rolling-* flags on the CLI. Used by buildStrategyConfig to decide whether
+	// to omit the strategy config (default-suppression optimisation) or send
+	// it through unchanged (so audit logs / version history capture the
+	// user-specified value).
+	RollingFlagsExplicit bool
 	// TargetArch is the CPU architecture the image was built for ("amd64", "arm64", or "").
 	// Empty means multi-arch or unknown — no arch-based machine filtering is applied.
 	TargetArch string

@@ -5,16 +5,23 @@ import (
 	"testing"
 )
 
-func TestRegisterCleanupFunc(t *testing.T) {
-	t.Skip("Skipping cleanup tests for now")
-}
+func TestCleanupManager_AddAndCleanupRegistry(t *testing.T) {
+	cm := NewCleanupManager()
+	cm.AddResource(ResourceDeployment, "dep-1", "myapp")
+	cm.AddResource(ResourceService, "svc-1", "myapp")
+	cm.AddResource(ResourceVolume, "myapp-volume", "myapp")
 
-func TestRunCleanup(t *testing.T) {
-	t.Skip("Skipping cleanup tests for now")
-}
-
-func TestCleanupManager(t *testing.T) {
-	t.Skip("Skipping cleanup tests for now")
+	// We don't exercise the actual API delete calls here (they require a
+	// live backend). The test asserts that resources are tracked in
+	// reverse-order registration so cleanup runs in dependency order.
+	if len(cm.resources) != 3 {
+		t.Fatalf("AddResource: have %d resources, want 3", len(cm.resources))
+	}
+	if cm.resources[0].Type != ResourceDeployment ||
+		cm.resources[1].Type != ResourceService ||
+		cm.resources[2].Type != ResourceVolume {
+		t.Errorf("registration order wrong: %+v", cm.resources)
+	}
 }
 
 func TestFormatCleanupErrors(t *testing.T) {

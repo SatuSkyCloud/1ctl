@@ -40,29 +40,14 @@ func RestartDeployment(deploymentID string) error {
 	return makeRequest("POST", fmt.Sprintf("/deployments/%s/restart", deploymentID), nil, nil)
 }
 
-// ListDeployments lists all deployments for current namespace
+// ListDeployments lists all deployments for the current namespace.
+// Thin wrapper around ListDeploymentsByNamespace using the active context.
 func ListDeployments() ([]Deployment, error) {
-	namespace := context.GetCurrentNamespace()
-	if namespace == "" {
-		return nil, utils.NewError("no namespace selected", nil)
-	}
-
-	var resp apiResponse
-	err := makeRequest("GET", fmt.Sprintf("/deployments/namespace/%s", namespace), nil, &resp)
+	namespace, err := context.GetCurrentNamespaceOrError()
 	if err != nil {
 		return nil, err
 	}
-
-	data, err := json.Marshal(resp.Data)
-	if err != nil {
-		return nil, utils.NewError(fmt.Sprintf("failed to marshal response data: %s", err.Error()), nil)
-	}
-
-	var deployments []Deployment
-	if err := json.Unmarshal(data, &deployments); err != nil {
-		return nil, utils.NewError(fmt.Sprintf("failed to unmarshal deployments: %s", err.Error()), nil)
-	}
-	return deployments, nil
+	return ListDeploymentsByNamespace(namespace)
 }
 
 // ListDeploymentVersions returns the release history for a deployment.
@@ -108,25 +93,19 @@ func GetDeploymentByAppLabel(namespace, appLabel string) (*Deployment, error) {
 	return &resp.Data, nil
 }
 
-// GetDeployment gets details for a specific deployment
+// GetDeployment gets details for a specific deployment.
+// Uses the typed-inline-struct pattern: the response is unmarshalled once
+// directly into the Deployment struct, avoiding the legacy apiResponse +
+// json.Marshal + json.Unmarshal double-encoding round trip.
 func GetDeployment(deploymentID string) (*Deployment, error) {
-	var resp apiResponse
-	resp.Data = &Deployment{}
-	err := makeRequest("GET", fmt.Sprintf("/deployments/id/%s", deploymentID), nil, &resp)
-	if err != nil {
+	var resp struct {
+		Error bool       `json:"error"`
+		Data  Deployment `json:"data"`
+	}
+	if err := makeRequest("GET", fmt.Sprintf("/deployments/id/%s", deploymentID), nil, &resp); err != nil {
 		return nil, err
 	}
-
-	data, err := json.Marshal(resp.Data)
-	if err != nil {
-		return nil, utils.NewError(fmt.Sprintf("failed to marshal response data: %s", err.Error()), nil)
-	}
-
-	var deployment Deployment
-	if err := json.Unmarshal(data, &deployment); err != nil {
-		return nil, utils.NewError(fmt.Sprintf("failed to unmarshal deployment: %s", err.Error()), nil)
-	}
-	return &deployment, nil
+	return &resp.Data, nil
 }
 
 // Service methods
@@ -394,25 +373,17 @@ func CreateVolume(volume Volume) error {
 	return makeRequest("POST", "/volumes/create", volume, nil)
 }
 
-// GetDeploymentStatus gets the current status of a deployment
+// GetDeploymentStatus gets the current status of a deployment.
+// Uses the typed-inline-struct pattern (see GetDeployment for rationale).
 func GetDeploymentStatus(deploymentID string) (*DeploymentStatus, error) {
-	var resp apiResponse
-	resp.Data = &DeploymentStatus{}
-	err := makeRequest("GET", fmt.Sprintf("/deployments/status/%s", deploymentID), nil, &resp)
-	if err != nil {
+	var resp struct {
+		Error bool             `json:"error"`
+		Data  DeploymentStatus `json:"data"`
+	}
+	if err := makeRequest("GET", fmt.Sprintf("/deployments/status/%s", deploymentID), nil, &resp); err != nil {
 		return nil, err
 	}
-
-	data, err := json.Marshal(resp.Data)
-	if err != nil {
-		return nil, utils.NewError(fmt.Sprintf("failed to marshal response data: %s", err.Error()), nil)
-	}
-
-	var status DeploymentStatus
-	if err := json.Unmarshal(data, &status); err != nil {
-		return nil, utils.NewError(fmt.Sprintf("failed to unmarshal status: %s", err.Error()), nil)
-	}
-	return &status, nil
+	return &resp.Data, nil
 }
 
 // WaitForDeployment waits for a deployment to reach a terminal state
@@ -613,26 +584,6 @@ func GetOrganizationByID(orgID uuid.UUID) (*Organization, error) {
 		return nil, utils.NewError(fmt.Sprintf("failed to unmarshal organization: %s", err.Error()), nil)
 	}
 	return &org, nil
-}
-
-// Deployment methods
-func GetDeploymentsByNamespace(namespace string) ([]Deployment, error) {
-	var resp apiResponse
-	err := makeRequest("GET", fmt.Sprintf("/deployments/namespace/%s", namespace), nil, &resp)
-	if err != nil {
-		return nil, err
-	}
-
-	data, err := json.Marshal(resp.Data)
-	if err != nil {
-		return nil, utils.NewError(fmt.Sprintf("failed to marshal response data: %s", err.Error()), nil)
-	}
-
-	var deployments []Deployment
-	if err := json.Unmarshal(data, &deployments); err != nil {
-		return nil, utils.NewError(fmt.Sprintf("failed to unmarshal deployments: %s", err.Error()), nil)
-	}
-	return deployments, nil
 }
 
 // User methods

@@ -544,15 +544,20 @@ func handleEnvironmentAndVolumes(opts DeploymentOptions, deploymentID, projectNa
 	return envRes.id, volRes.name, nil
 }
 
-// buildStrategyConfig converts DeploymentOptions strategy fields into the API struct
+// buildStrategyConfig converts DeploymentOptions strategy fields into the API struct.
+//
+// Optimisation: when the user didn't touch any strategy flag, we omit the
+// strategy config from the request to reduce noise. When the user explicitly
+// passed --rolling-max-surge or --rolling-max-unavailable — even with the
+// default values — the config is sent through so audit logs / version history
+// capture the user's intent.
 func buildStrategyConfig(opts DeploymentOptions) *api.DeploymentStrategyConfig {
 	strategy := opts.Strategy
 	if strategy == "" || strategy == "rolling" {
-		if opts.RollingMaxSurge == "25%" && opts.RollingMaxUnavailable == "25%" {
-			// Default rolling - omit config to reduce noise
+		if opts.RollingMaxSurge == "25%" && opts.RollingMaxUnavailable == "25%" && !opts.RollingFlagsExplicit {
+			// User-untouched defaults — omit config.
 			return nil
 		}
-		// Custom rolling config
 		return &api.DeploymentStrategyConfig{
 			Type: api.StrategyRolling,
 			Rolling: &api.RollingUpdateConfig{

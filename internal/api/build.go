@@ -144,57 +144,6 @@ func GetBuildStatus(buildID string) (*BuildStatusResponse, error) {
 	return &resp.Data, nil
 }
 
-// WaitForBuild polls until the build completes or fails, streaming any new log
-// lines to progressWriter. Returns the full image reference on success.
-func WaitForBuild(buildID string, progressWriter io.Writer) (string, error) {
-	const (
-		pollInterval = 3 * time.Second
-		maxWait      = 15 * time.Minute
-	)
-
-	deadline := time.Now().Add(maxWait)
-	ticker := time.NewTicker(pollInterval)
-	defer ticker.Stop()
-
-	var logOffset int // byte offset into the accumulated Logs string
-
-	for time.Now().Before(deadline) {
-		<-ticker.C
-
-		status, err := GetBuildStatus(buildID)
-		if err != nil {
-			// Transient network error — keep polling.
-			continue
-		}
-
-		// Print any new log lines since the last poll.
-		if len(status.Logs) > logOffset {
-			newLogs := status.Logs[logOffset:]
-			scanner := bufio.NewScanner(strings.NewReader(newLogs))
-			for scanner.Scan() {
-				if _, err := fmt.Fprintf(progressWriter, "  %s\n", scanner.Text()); err != nil {
-					return "", utils.NewError(fmt.Sprintf("failed to write build log: %s", err.Error()), nil)
-				}
-			}
-			logOffset = len(status.Logs)
-		}
-
-		switch status.Status {
-		case "completed":
-			return status.ImageRef, nil
-		case "failed":
-			msg := status.ErrorMessage
-			if msg == "" {
-				msg = "unknown error"
-			}
-			return "", utils.NewError(fmt.Sprintf("cloud build failed: %s", msg), nil)
-		}
-		// queued | building → keep polling
-	}
-
-	return "", utils.NewError(fmt.Sprintf("cloud build timed out after %v", maxWait), nil)
-}
-
 // BuildResult holds the outcome of a completed cloud build.
 type BuildResult struct {
 	ImageRef  string

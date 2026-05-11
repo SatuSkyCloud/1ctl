@@ -462,22 +462,32 @@ func handleDeploy(c *cli.Context) error {
 	return nil
 }
 
+// resolveDockerfilePath returns the Dockerfile path actually used by the
+// deploy, falling back from the --dockerfile flag value to FindDockerfile's
+// common-location search. Empty result means a pre-built --image was given
+// and no Dockerfile is required.
+func resolveDockerfilePath(c *cli.Context) (string, error) {
+	if c.IsSet("image") {
+		return "", nil
+	}
+	dockerfilePath := c.String("dockerfile")
+	if err := validator.ValidateDockerfile(dockerfilePath); err == nil {
+		return dockerfilePath, nil
+	}
+	found, err := validator.FindDockerfile(".")
+	if err != nil {
+		return "", utils.NewError("no valid Dockerfile found: please ensure a Dockerfile exists in your project", err)
+	}
+	return found, nil
+}
+
+// validateInputs validates flag-driven inputs in place. It does NOT mutate
+// cli.Context — Dockerfile resolution is the caller's responsibility via
+// resolveDockerfilePath.
 func validateInputs(c *cli.Context) error {
 	// Validate Dockerfile only when not using a pre-built image
-	if !c.IsSet("image") {
-		dockerfilePath := c.String("dockerfile")
-		if err := validator.ValidateDockerfile(dockerfilePath); err != nil {
-			// Try to find Dockerfile in common locations
-			var err error
-			dockerfilePath, err = validator.FindDockerfile(".")
-			if err != nil {
-				return utils.NewError("no valid Dockerfile found: please ensure a Dockerfile exists in your project", err)
-			}
-			// Update the context with the found Dockerfile path
-			if err := c.Set("dockerfile", dockerfilePath); err != nil {
-				return utils.NewError(fmt.Sprintf("failed to set dockerfile path: %s", err.Error()), nil)
-			}
-		}
+	if _, err := resolveDockerfilePath(c); err != nil {
+		return err
 	}
 
 	// Validate CPU and Memory
@@ -550,12 +560,16 @@ func validateInputs(c *cli.Context) error {
 }
 
 func prepareDeploymentOptions(c *cli.Context, cfg *config.ProjectConfig) (deploy.DeploymentOptions, error) {
+	dockerfilePath, err := resolveDockerfilePath(c)
+	if err != nil {
+		return deploy.DeploymentOptions{}, err
+	}
 	opts := deploy.DeploymentOptions{
 		CPU:            c.String("cpu"),
 		Memory:         c.String("memory"),
 		Domain:         c.String("domain"),
 		Port:           c.Int("port"),
-		DockerfilePath: c.String("dockerfile"),
+		DockerfilePath: dockerfilePath,
 		PrebuiltImage:  c.String("image"),
 	}
 
@@ -717,6 +731,10 @@ func prepareDeploymentOptions(c *cli.Context, cfg *config.ProjectConfig) (deploy
 	opts.Strategy = c.String("strategy")
 	opts.RollingMaxSurge = c.String("rolling-max-surge")
 	opts.RollingMaxUnavailable = c.String("rolling-max-unavailable")
+	// Record explicit-user-set so buildStrategyConfig doesn't drop a value
+	// the user typed deliberately (e.g. --rolling-max-surge=25% to assert
+	// the default in an audit log).
+	opts.RollingFlagsExplicit = c.IsSet("rolling-max-surge") || c.IsSet("rolling-max-unavailable")
 	opts.Wait = c.Bool("wait")
 
 	// Validate strategy value
@@ -918,16 +936,11 @@ func handleDeploymentStatus(c *cli.Context) error {
 // }
 
 func handleListDeployments(c *cli.Context) error {
-	var deployments []api.Deployment
-	var err error
-	namespace := context.GetCurrentNamespace()
-
-	if namespace != "" {
-		deployments, err = api.ListDeploymentsByNamespace(namespace)
-	} else {
-		deployments, err = api.ListDeployments()
+	namespace, err := context.GetCurrentNamespaceOrError()
+	if err != nil {
+		return err
 	}
-
+	deployments, err := api.ListDeploymentsByNamespace(namespace)
 	if err != nil {
 		return utils.NewError(fmt.Sprintf("failed to list deployments: %s", err.Error()), nil)
 	}
