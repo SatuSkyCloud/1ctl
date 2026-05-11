@@ -141,6 +141,12 @@ cd your-project
 # Wait for TCP dependencies to be ready before the app starts
 1ctl deploy --cpu 2 --memory 1Gi --wait-for postgres:5432 --wait-for redis:6379
 
+# Block until pods are Running (5min default timeout)
+1ctl deploy --cpu 2 --memory 1Gi --wait
+
+# JSON output (global flag — works on deploy list/get/status, env list, secret list, machine list, token list)
+1ctl --output json deploy list | jq '.[] | select(.status == "Running")'
+
 # List deployments (NAME column shows the app label as of v0.8.0)
 1ctl deploy list
 
@@ -216,17 +222,18 @@ cd your-project
 ### Environment Variables
 
 ```bash
-# Create environment variables
-1ctl env create --deployment-id=123 --name=myenv --env="DB_HOST=localhost" --env="DB_PORT=5432" --project=test-genesis-org
+# Create or merge env vars (upsert — keys you don't pass are preserved)
+1ctl env create --deployment-id=123 --env="DB_HOST=localhost" --env="DB_PORT=5432"
 
 # List environments
 1ctl env list
 1ctl env list --deployment-id=123
-1ctl env list --project=test-genesis-org
 
-# Delete environment
-1ctl env delete --env-id=789
+# Remove a single key
+1ctl env unset --deployment-id=123 --key=DB_HOST
 ```
+
+> The wholesale `env delete` was removed in development; use `env unset --key=<name>` for per-key removal. Same change applies to `secret`.
 
 ### Custom Domains
 
@@ -287,15 +294,9 @@ cd your-project
 # View machine usage
 1ctl credits usage --days 7
 
-# Initiate a top-up
-1ctl credits topup --amount 100
-
-# Manage invoices
-1ctl credits invoices
-1ctl credits invoices get <invoice-id>
-1ctl credits invoices download <invoice-id> --output invoice.pdf
-1ctl credits invoices generate --start-date 2025-01-01 --end-date 2025-01-31
 ```
+
+> Top-up, invoices, auto-topup, and billing notifications were moved from the CLI to the SatuSky Control Panel (web UI). The CLI keeps read-only visibility (`balance` / `transactions` / `usage`).
 
 <!-- `1ctl storage` was removed in the v0.7.x cleanup. The CLI surface will
      return in a follow-up release (#3 T-04) — the api/storage.go backend
@@ -400,10 +401,9 @@ cd your-project
 
 # Get audit log details
 1ctl audit get <log-id>
-
-# Export audit logs
-1ctl audit export --format json --output audit.json
 ```
+
+> Audit export was moved to the SatuSky Control Panel (web UI). The CLI keeps list + get.
 
 <!-- `1ctl talos` and `1ctl admin` were removed in the v0.7.x cleanup
      commit (f07d3f8). They were operator-facing surfaces moved to

@@ -2,15 +2,26 @@ name: CI
 
 on:
   push:
-    branches: [main]
+    branches: [main, development]
   pull_request:
     branches:
       - main
+      - development
       - feature/**
+
+# Self-hosted toggle — mirrors the satusky-core_backend pattern.
+# Set repo VARS (not secrets, they're plain strings):
+#   USE_SELF_HOSTED=true                     to opt in
+#   SELF_HOSTED_RUNNER_LABEL=satusky-org-runners
+# Falls back to GitHub-hosted ubuntu-latest when the flag is off or the
+# variables are unset. Cross-OS matrix (mac/windows) ALWAYS runs on
+# GitHub-hosted because self-hosted is Linux-only.
 
 jobs:
   test:
+    name: Test (cross-OS)
     strategy:
+      fail-fast: false
       matrix:
         go-version: [1.21.x]
         os: [ubuntu-latest, macos-latest, windows-latest]
@@ -47,7 +58,7 @@ jobs:
 
   lint:
     name: Lint
-    runs-on: ubuntu-latest
+    runs-on: ${{ vars.USE_SELF_HOSTED == 'true' && vars.SELF_HOSTED_RUNNER_LABEL || 'ubuntu-latest' }}
     steps:
       - uses: actions/checkout@v4
         with:
@@ -70,7 +81,7 @@ jobs:
 
   security:
     name: Security Scan
-    runs-on: ubuntu-latest
+    runs-on: ${{ vars.USE_SELF_HOSTED == 'true' && vars.SELF_HOSTED_RUNNER_LABEL || 'ubuntu-latest' }}
     steps:
       - uses: actions/checkout@v4
         with:
@@ -83,7 +94,7 @@ jobs:
 
   build:
     name: Build
-    runs-on: ubuntu-latest
+    runs-on: ${{ vars.USE_SELF_HOSTED == 'true' && vars.SELF_HOSTED_RUNNER_LABEL || 'ubuntu-latest' }}
     needs: [test, lint, security]
     strategy:
       matrix:
@@ -115,7 +126,7 @@ jobs:
         run: task build
 
       - name: Test binary
-        # Only test binary when it matches the runner (ubuntu-latest = linux/amd64)
+        # Only test binary when it matches the runner (self-hosted/ubuntu = linux/amd64)
         # Cross-compiled binaries cannot be executed on different platforms
         if: matrix.os == 'linux' && matrix.arch == 'amd64'
         run: ./bin/1ctl --version

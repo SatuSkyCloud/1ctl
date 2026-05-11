@@ -81,6 +81,25 @@ Resolution precedence per field: **CLI flag (explicit) > `satusky.toml` > flag `
 
 - **G-02 SSH/exec into containers**, **F-02 port-forwarding**, **F-01 managed databases**.
 
+### Also bundled (development work between v0.7.3 and the bundle PR)
+
+These commits had merged to the `development` branch between v0.7.3 and the cut of PR #31 but were never tagged for a release. They ship in 0.8.0:
+
+- **`feat: implement 6 CLI gaps`** (5b0a215). `logs stream --config` flag; `init` writes only non-empty fields (cleaner template); new global `--output/-o json` flag for `deploy list/get/status`, `env list`, `secret list`, `machine list`, `token list`; new `--wait/-w` on `deploy` that polls until pods are Running; new `env unset` / `secret unset` for per-key removal (replacing the old wholesale `env delete` / `secret delete`).
+- **`feat: arch-aware cloud build routing`** (7e3aadb). The build pipeline now detects the produced image's CPU architecture and the orchestrator filters owner machines whose `CPUArch` doesn't match. The backend sets `nodeSelector: {"kubernetes.io/arch": <arch>}` on the pod spec so cross-arch deploys can't land on incompatible nodes. Also fixes "no existing environment/secret found" on the first `env create` / `secret create` against a fresh deployment.
+- **`feat(config): name-based deployment resolution (Fly.io style)`** (3e811b3). Removed `deployment_id` from `satusky.toml` — the app `name` is the identifier; the CLI resolves the deployment via `GET /deployments/namespace/:namespace/app/:appLabel` at command time. Add `internal/commands/resolve.go` as the single resolution helper.
+- **`feat(config): org field removed; platform defaults for cpu/memory`** (6d9aea4). `org` no longer in `AppConfig` — the namespace comes from the auth context. `--cpu` / `--memory` get platform defaults (`0.5` / `256Mi`) instead of hard-erroring when neither flag nor toml supplied them.
+- **`fix(deploy): DNS-1035 app name validation`** (ddf029d). `validateAppName` rejects names that wouldn't be valid Kubernetes Service names BEFORE any resource is created.
+- **`fix+chore: remove analytics/billing/wholesale-delete commands`** (db4cf7a). Removed: `logs stats`, `logs delete`, `audit export`, `credits topup`, `credits invoices`, `credits auto-topup`, `credits notifications` (web-dashboard concerns), `env delete`, `secret delete` (wrong semantics — use `env unset` / `secret unset`). Also fixed two backend-route mismatches in `user permissions` and `token create/state` paths.
+- **`fix(domain): delegate domain generation to backend`** (d43986b). Removed client-side domain generation; the backend is the single source of truth for `*.satusky.com` allocation. Avoids drift between CLI guesses and backend reality.
+- **`fix(deploy): domain in deploy get -o json + configmap env dedup`** (8f49f04). Closes a JSON-output gap and a duplicate-env-var bug in the env ConfigMap upsert.
+- **`chore(cli): remove admin/talos/domain/storage/machine vm for v1`** (f07d3f8). Top-level commands that didn't belong in a user-facing CLI surface for v1. Note: my v0.8.0 work brings `domains` back (different scope — custom-domain attachment, not the legacy purchase flow).
+- **`feat: architectural hardening — HTTP safety, auth, deploy reliability`** (2e0809d). Enforces HTTPS for non-localhost API URLs (anti-token-leakage), tightens auth error paths, and tightens deploy retries / cleanup.
+- **`feat: add 1ctl-dev build variant for dev backend testing`** (986b938). Note: this commit is **retired in the same release** by commit `0aa7a37` above — the dev binary lived for ~4 weeks on development before being replaced by named profiles. Net effect for end users: dev binary never existed in a tagged release.
+- **Examples + user-journey docs** (2bccaaa, ff67f1f, 0415203, 9dd610c, 3d12e1d, f57df86, 2b6bd88, 5eb094f, 5ad215f). 12 user-journey guides under `examples/user-journeys/` covering real-world deployment scenarios, plus a comprehensive `REPORT.md` walking through 64 commands tested.
+
+These commits live in the `development` branch already and will arrive in `main` together with the bundle when the standing `development → main` PR (#6) merges and `v0.8.0` is tagged. See `git log v0.7.3..v0.8.0 --oneline` after the tag is cut for the complete enumeration.
+
 ## Version 0.7.3 (16-04-2026)
 
 > **Superseded:** the v0.7.3 dev-binary variant has been retired. See the [Unreleased] section above for the replacement (named profiles).
