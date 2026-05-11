@@ -171,7 +171,6 @@ func handleOrgList(c *cli.Context) error {
 func handleOrgCurrent(c *cli.Context) error {
 	orgName := context.GetCurrentOrgName()
 	orgID := context.GetCurrentOrgID()
-	namespace := context.GetCurrentNamespace()
 
 	if orgName == "" {
 		return utils.NewError("no organization set. Please run '1ctl auth login' first", nil)
@@ -180,7 +179,6 @@ func handleOrgCurrent(c *cli.Context) error {
 	utils.PrintHeader("Current Organization")
 	utils.PrintStatusLine("Organization", orgName)
 	utils.PrintStatusLine("Organization ID", orgID)
-	utils.PrintStatusLine("Namespace", namespace)
 	return nil
 }
 

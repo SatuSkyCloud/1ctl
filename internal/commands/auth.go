@@ -68,7 +68,7 @@ func handleLogin(c *cli.Context) error {
 		return utils.NewError("token is not associated with an organization — ensure the token has an organization scope", nil)
 	}
 
-	if err := context.SaveLoginState(token, result.UserID, result.UserEmail, result.OrganizationID, result.OrganizationName, result.Namespace, result.UserConfigKey); err != nil {
+	if err := context.SaveLoginState(token, result.UserID, result.UserEmail, result.OrganizationID, result.OrganizationName, result.Namespace); err != nil {
 		return utils.NewError(fmt.Sprintf("failed to store login state: %s", err.Error()), nil)
 	}
 

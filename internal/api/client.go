@@ -483,11 +483,8 @@ func makeRequest(method, path string, body interface{}, response interface{}) er
 		return utils.NewError("not authenticated. Please run '1ctl auth login' to authenticate", nil)
 	}
 
-	userConfigKey := context.GetUserConfigKey()
-
 	req.Header.Set("Content-Type", "application/json")
 	req.Header.Set("x-satusky-api-key", token)
-	req.Header.Set("x-satusky-config", userConfigKey)
 	if email := context.GetEmail(); email != "" {
 		req.Header.Set("x-satusky-user-email", email)
 	}

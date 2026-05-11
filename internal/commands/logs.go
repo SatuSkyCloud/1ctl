@@ -39,7 +39,6 @@ func LogsCommand() *cli.Command {
 	}
 }
 
-
 func handleLogs(c *cli.Context) error {
 	deploymentID, err := resolveDeploymentID(c.String("deployment-id"), c.String("config"))
 	if err != nil {
@@ -123,7 +122,6 @@ func handleLogsStream(c *cli.Context) error {
 
 	headers := http.Header{}
 	headers.Set("x-satusky-api-key", context.GetToken())
-	headers.Set("x-satusky-config", context.GetUserConfigKey())
 
 	conn, _, err := gorillaws.DefaultDialer.Dial(wsURL, headers)
 	if err != nil {
