@@ -12,7 +12,7 @@ import (
 func TestGetConfig(t *testing.T) {
 	// Isolate from the real ~/.satusky so the active profile's api_url doesn't leak in.
 	tempDir := t.TempDir()
-	context.SetConfigDir(filepath.Join(tempDir, ".satusky"))
+	context.SetDefault(context.NewTestStore(filepath.Join(tempDir, ".satusky")))
 
 	cfg := GetConfig()
 
@@ -49,8 +49,8 @@ func TestValidateEnvironment(t *testing.T) {
 	// Override HOME to use test directory
 	t.Setenv("HOME", tempDir)
 
-	// Override context package's configDir
-	context.SetConfigDir(testConfigDir)
+	// Override the default context Store so it operates on the test dir
+	context.SetDefault(context.NewTestStore(testConfigDir))
 
 	tests := []struct {
 		name    string

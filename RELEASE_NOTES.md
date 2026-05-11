@@ -1,5 +1,32 @@
 # Release Notes
 
+## Version 0.8.1 (12-05-2026)
+
+Internal refactor. No user-visible behaviour change; CLI surface, on-disk file layout, and command exit codes are all identical to v0.8.0.
+
+### Refactor
+
+* **Closes #9** — replace `internal/context` package-level globals (`configDir`, `profileOverride`, `cachedCtx`) with a `*Store` type holding the same state as fields.
+  - `Store` is constructed once in package `init()` and exposed as `context.Default()`.
+  - All package-level functions (`GetToken`, `SetCurrentNamespace`, `UseProfile`, etc.) are now thin shims around `Default().X()` — the ~80 existing call sites across the codebase keep working unchanged.
+  - `SetConfigDir` (the test-only escape hatch that was exported on the public API) is **removed**. Tests now call `context.SetDefault(context.NewTestStore(tempDir))` instead.
+  - The race-condition concerns in the original issue are resolved architecturally: each `*Store` carries its own `sync.RWMutex` for cache access; tests that construct their own Store via `NewTestStore` can run in parallel without touching shared state.
+
+### Quality gates
+
+* `task lint` — 0 issues
+* `task test` — all packages PASS
+* `go test -race ./...` — clean (race detector confirms concurrency safety)
+* `gosec ./...` — 0 issues across 66 files
+* `task format` / `go vet ./...` — clean
+
+### Migration
+
+None for end users. For contributors:
+
+* Tests that previously called `context.SetConfigDir(dir)` should now call `context.SetDefault(context.NewTestStore(dir))`.
+* New test code that wants total isolation can construct a `*Store` via `NewTestStore` and call methods on it directly (`store.GetToken()`) without touching `Default()`.
+
 ## Version 0.8.0 (11-05-2026)
 
 Closes 21 of 23 open issues on the repo (#10–#30) plus the in-scope subset of #3. See PR #31 for the full diff.

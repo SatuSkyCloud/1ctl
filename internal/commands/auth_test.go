@@ -63,7 +63,7 @@ func TestHandleLogin(t *testing.T) {
 			// Isolate from the real profile so the stored token doesn't leak in.
 			dir := helpers.SetupTestContext(t)
 			defer func() { _ = os.RemoveAll(dir) }() //nolint:errcheck
-			context.SetConfigDir(filepath.Join(dir, ".satusky"))
+			context.SetDefault(context.NewTestStore(filepath.Join(dir, ".satusky")))
 
 			// Set up CLI context
 			app := cli.NewApp()
@@ -113,7 +113,7 @@ func TestHandleLogout(t *testing.T) {
 			dir := tt.setup(t)
 			defer func() { _ = os.RemoveAll(dir) }() //nolint:errcheck
 			// Point context package at the temp dir so writes go to the test profile
-			context.SetConfigDir(filepath.Join(dir, ".satusky"))
+			context.SetDefault(context.NewTestStore(filepath.Join(dir, ".satusky")))
 			err := handleLogout(cli.NewContext(nil, nil, nil))
 			if (err != nil) != tt.wantErr {
 				t.Errorf("handleLogout() error = %v, wantErr %v", err, tt.wantErr)
