@@ -99,7 +99,7 @@ memory = "512Mi"
 
 ```bash
 cd my-nextjs-app
-1ctl-dev deploy --config satusky.toml --wait
+1ctl deploy --config satusky.toml --wait
 ```
 
 ```
@@ -123,9 +123,9 @@ First capture the backend's assigned domain from its own deploy output, then set
 
 ```bash
 # Get the domain your backend was assigned
-BACKEND_URL=$(1ctl-dev ingress list | awk '/backend-api/{print "https://"$1}')
+BACKEND_URL=$(1ctl ingress list | awk '/backend-api/{print "https://"$1}')
 
-1ctl-dev env create \
+1ctl env create \
   --config satusky.toml \
   --env NEXT_PUBLIC_API_URL="$BACKEND_URL"
 ```
@@ -133,7 +133,7 @@ BACKEND_URL=$(1ctl-dev ingress list | awk '/backend-api/{print "https://"$1}')
 Because `NEXT_PUBLIC_API_URL` is baked into the bundle during `next build`, you need to redeploy for the change to take effect:
 
 ```bash
-1ctl-dev deploy --config satusky.toml --wait
+1ctl deploy --config satusky.toml --wait
 ```
 
 Now your client-side code can reference `process.env.NEXT_PUBLIC_API_URL` and server components can use it for SSR data fetching.
@@ -143,7 +143,7 @@ Now your client-side code can reference `process.env.NEXT_PUBLIC_API_URL` and se
 ## 6. Verify the deployment
 
 ```bash
-1ctl-dev deploy status --config satusky.toml
+1ctl deploy status --config satusky.toml
 ```
 
 ```
@@ -166,7 +166,7 @@ curl -I https://bravehawk-f2j8l5.satusky.com
 You have both the frontend and backend running. List them together:
 
 ```bash
-1ctl-dev deploy list -o json
+1ctl deploy list -o json
 ```
 
 ```json
@@ -195,7 +195,7 @@ You have both the frontend and backend running. List them together:
 Capture the frontend's domain from `ingress list` (the URL is backend-assigned, not derived from the app name):
 
 ```bash
-FRONTEND_URL=$(1ctl-dev ingress list | awk '/my-nextjs-app/{print "https://"$1}')
+FRONTEND_URL=$(1ctl ingress list | awk '/my-nextjs-app/{print "https://"$1}')
 echo "Frontend live at $FRONTEND_URL"
 ```
 
@@ -206,7 +206,7 @@ echo "Frontend live at $FRONTEND_URL"
 Watch SSR requests and API route calls in real time:
 
 ```bash
-1ctl-dev logs stream --config satusky.toml
+1ctl logs stream --config satusky.toml
 ```
 
 ```
@@ -230,10 +230,10 @@ A minimal CI step that deploys, waits, and then smoke-tests the app URL:
 set -euo pipefail
 
 # Deploy and wait for healthy pods
-1ctl-dev deploy --config satusky.toml --wait
+1ctl deploy --config satusky.toml --wait
 
 # Grab the URL from JSON output
-APP_URL=$(1ctl-dev deploy get --config satusky.toml -o json | jq -r '.url')
+APP_URL=$(1ctl deploy get --config satusky.toml -o json | jq -r '.url')
 
 # Smoke test
 HTTP_STATUS=$(curl -o /dev/null -s -w "%{http_code}" "$APP_URL")
@@ -261,10 +261,10 @@ If you change `NEXT_PUBLIC_API_URL`, always follow it with a full `deploy` to tr
 
 | Task | Command |
 |---|---|
-| Deploy (cloud build) | `1ctl-dev deploy --config satusky.toml --wait` |
-| Set env vars (incl. build-time) | `1ctl-dev env create --config satusky.toml --env KEY=VAL` |
-| Remove an env var | `1ctl-dev env unset --config satusky.toml --key KEY` |
-| Check deploy status | `1ctl-dev deploy status --config satusky.toml` |
-| List all apps (JSON) | `1ctl-dev deploy list -o json` |
-| Get app details (JSON) | `1ctl-dev deploy get --config satusky.toml -o json` |
-| Live logs | `1ctl-dev logs stream --config satusky.toml` |
+| Deploy (cloud build) | `1ctl deploy --config satusky.toml --wait` |
+| Set env vars (incl. build-time) | `1ctl env create --config satusky.toml --env KEY=VAL` |
+| Remove an env var | `1ctl env unset --config satusky.toml --key KEY` |
+| Check deploy status | `1ctl deploy status --config satusky.toml` |
+| List all apps (JSON) | `1ctl deploy list -o json` |
+| Get app details (JSON) | `1ctl deploy get --config satusky.toml -o json` |
+| Live logs | `1ctl logs stream --config satusky.toml` |

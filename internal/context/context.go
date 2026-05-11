@@ -2,7 +2,6 @@ package context
 
 import (
 	"1ctl/internal/utils"
-	"1ctl/internal/version"
 	"encoding/base64"
 	"encoding/json"
 	"fmt"
@@ -66,13 +65,10 @@ func init() {
 		log.Fatal("Could not get home directory:", err)
 	}
 
-	// Non-production builds (e.g. 1ctl-dev) use a separate config dir so
-	// dev credentials don't clobber prod credentials on the same machine.
-	dir := ".satusky"
-	if env := version.Environment; env != "" && env != "production" {
-		dir = ".satusky-" + env
-	}
-	configDir = filepath.Join(homeDir, dir)
+	// Single config dir for all environments. Per-environment isolation
+	// (prod, dev, local) is handled by named profiles, not by binary variant.
+	// Internal devs configure a dev profile via internal onboarding docs.
+	configDir = filepath.Join(homeDir, ".satusky")
 	if err := os.MkdirAll(configDir, 0750); err != nil {
 		log.Fatal("Could not create config directory:", err)
 	}

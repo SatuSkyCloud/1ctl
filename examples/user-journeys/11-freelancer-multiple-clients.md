@@ -24,13 +24,13 @@ Each SatuSky profile stores a backend URL and auth token. Profiles are named so 
 
 ```bash
 # Client A — a startup on SatuSky cloud
-1ctl-dev profile create --url https://api.satusky.com/v1/cli client-a
+1ctl profile create --url https://api.satusky.com/v1/cli client-a
 
 # Client B — an agency on SatuSky cloud
-1ctl-dev profile create --url https://api.satusky.com/v1/cli client-b
+1ctl profile create --url https://api.satusky.com/v1/cli client-b
 
 # Local — your own dev environment
-1ctl-dev profile create --url http://localhost:8081/v1/cli local
+1ctl profile create --url http://localhost:8081/v1/cli local
 ```
 
 Each command prompts for credentials and stores them under the given name. The URL is the only required flag; the profile name is the positional argument.
@@ -38,7 +38,7 @@ Each command prompts for credentials and stores them under the given name. The U
 List your profiles to confirm:
 
 ```bash
-1ctl-dev profile list
+1ctl profile list
 ```
 
 ```
@@ -92,7 +92,7 @@ memory = "512Mi"
 **Morning: working on Client A**
 
 ```bash
-1ctl-dev profile use client-a
+1ctl profile use client-a
 ```
 
 ```
@@ -101,7 +101,7 @@ Switched to profile: client-a
 
 ```bash
 cd ~/projects/client-a-dashboard
-1ctl-dev deploy --config satusky.toml --wait
+1ctl deploy --config satusky.toml --wait
 ```
 
 ```
@@ -112,9 +112,9 @@ Deploy complete. App is live.
 **Afternoon: switching to Client B**
 
 ```bash
-1ctl-dev profile use client-b
+1ctl profile use client-b
 cd ~/projects/client-b-shop
-1ctl-dev deploy --config satusky.toml --wait
+1ctl deploy --config satusky.toml --wait
 ```
 
 Client B's deployment goes to Client B's org. No cross-contamination.
@@ -126,7 +126,7 @@ Client B's deployment goes to Client B's org. No cross-contamination.
 When you need to check on Client B while you're in the middle of Client A work, use `--profile` inline so the active profile doesn't change:
 
 ```bash
-1ctl-dev --profile client-b deploy status --config ~/projects/client-b-shop/satusky.toml
+1ctl --profile client-b deploy status --config ~/projects/client-b-shop/satusky.toml
 ```
 
 ```
@@ -143,21 +143,21 @@ Your active profile stays as `client-a`. The `--profile` flag applies only to th
 Client A has two orgs on SatuSky: `client-a-staging` and `client-a-prod`. After switching to the client-a profile, pick the right org before deploying:
 
 ```bash
-1ctl-dev profile use client-a
+1ctl profile use client-a
 
 # Deploy to staging org
-1ctl-dev org switch client-a-staging
-1ctl-dev deploy --config satusky.toml --wait
+1ctl org switch client-a-staging
+1ctl deploy --config satusky.toml --wait
 
 # Promote to prod org
-1ctl-dev org switch client-a-prod
-1ctl-dev deploy --config satusky.toml --wait
+1ctl org switch client-a-prod
+1ctl deploy --config satusky.toml --wait
 ```
 
 Check which org is currently active at any time:
 
 ```bash
-1ctl-dev org current
+1ctl org current
 ```
 
 ```
@@ -174,12 +174,12 @@ For projects where teammates also run deploys, encode the profile in the Makefil
 # client-b-shop/Makefile
 
 deploy-staging:
-	SATUSKY_PROFILE=client-b 1ctl-dev org switch client-b-staging && \
-	SATUSKY_PROFILE=client-b 1ctl-dev deploy --config satusky.toml --wait
+	SATUSKY_PROFILE=client-b 1ctl org switch client-b-staging && \
+	SATUSKY_PROFILE=client-b 1ctl deploy --config satusky.toml --wait
 
 deploy-prod:
-	SATUSKY_PROFILE=client-b 1ctl-dev org switch client-b-prod && \
-	SATUSKY_PROFILE=client-b 1ctl-dev deploy --config satusky.toml --wait
+	SATUSKY_PROFILE=client-b 1ctl org switch client-b-prod && \
+	SATUSKY_PROFILE=client-b 1ctl deploy --config satusky.toml --wait
 ```
 
 `SATUSKY_PROFILE` overrides whatever profile is currently active for the duration of that shell command.
@@ -192,16 +192,16 @@ Get a machine-readable snapshot of every deployment per profile:
 
 ```bash
 # Client A
-1ctl-dev --profile client-a -o json deploy list
+1ctl --profile client-a -o json deploy list
 
 # Client B
-1ctl-dev --profile client-b -o json deploy list
+1ctl --profile client-b -o json deploy list
 ```
 
 Pipe into `jq` for a condensed view:
 
 ```bash
-1ctl-dev --profile client-a -o json deploy list | jq '.[] | {name, status}'
+1ctl --profile client-a -o json deploy list | jq '.[] | {name, status}'
 ```
 
 ```json
@@ -209,7 +209,7 @@ Pipe into `jq` for a condensed view:
 ```
 
 ```bash
-1ctl-dev --profile client-b -o json deploy list | jq '.[] | {name, status}'
+1ctl --profile client-b -o json deploy list | jq '.[] | {name, status}'
 ```
 
 ```json
@@ -220,12 +220,12 @@ Pipe into `jq` for a condensed view:
 
 ## Step 8: Recover from a Deploy to the Wrong Client
 
-You ran `1ctl-dev deploy` while `client-b` was active, but the code was Client A's. The deploy list shows `dashboard` appearing in Client B's org.
+You ran `1ctl deploy` while `client-b` was active, but the code was Client A's. The deploy list shows `dashboard` appearing in Client B's org.
 
 First, check what got deployed where:
 
 ```bash
-1ctl-dev --profile client-b -o json deploy list | jq '.[].name'
+1ctl --profile client-b -o json deploy list | jq '.[].name'
 ```
 
 ```
@@ -236,7 +236,7 @@ First, check what got deployed where:
 `dashboard` should not be there. Destroy it from Client B:
 
 ```bash
-1ctl-dev --profile client-b deploy destroy \
+1ctl --profile client-b deploy destroy \
   --config ~/projects/client-a-dashboard/satusky.toml -y
 ```
 
@@ -247,16 +247,16 @@ Destroying deployment dashboard...  done
 Now deploy it to the correct profile:
 
 ```bash
-1ctl-dev profile use client-a
+1ctl profile use client-a
 cd ~/projects/client-a-dashboard
-1ctl-dev deploy --config satusky.toml --wait
+1ctl deploy --config satusky.toml --wait
 ```
 
 ---
 
 ## Tips
 
-- Run `1ctl-dev profile list` at the start of a new terminal session to confirm which profile is active before deploying.
+- Run `1ctl profile list` at the start of a new terminal session to confirm which profile is active before deploying.
 - Keep `satusky.toml` files committed to source control. They contain no credentials — the profile handles auth.
 - Use `SATUSKY_PROFILE` in CI/CD pipelines instead of calling `profile use`, so parallel jobs can't stomp on each other's active profile.
 - If a client has both a staging and prod org, consider naming profiles `client-a-staging` and `client-a-prod` rather than switching orgs manually.
@@ -267,11 +267,11 @@ cd ~/projects/client-a-dashboard
 
 | Task | Command |
 |---|---|
-| Create a profile | `1ctl-dev profile create --url https://api.satusky.com/v1/cli <name>` |
-| Switch active profile | `1ctl-dev profile use <name>` |
-| List profiles | `1ctl-dev profile list` |
-| One-shot deploy to another profile | `1ctl-dev --profile <name> deploy --config satusky.toml --wait` |
-| Switch org within a profile | `1ctl-dev org switch <org-name>` |
-| Check current org | `1ctl-dev org current` |
-| Deploy list for a specific profile | `1ctl-dev --profile <name> -o json deploy list` |
-| Destroy a misplaced deploy | `1ctl-dev --profile <name> deploy destroy --config satusky.toml -y` |
+| Create a profile | `1ctl profile create --url https://api.satusky.com/v1/cli <name>` |
+| Switch active profile | `1ctl profile use <name>` |
+| List profiles | `1ctl profile list` |
+| One-shot deploy to another profile | `1ctl --profile <name> deploy --config satusky.toml --wait` |
+| Switch org within a profile | `1ctl org switch <org-name>` |
+| Check current org | `1ctl org current` |
+| Deploy list for a specific profile | `1ctl --profile <name> -o json deploy list` |
+| Destroy a misplaced deploy | `1ctl --profile <name> deploy destroy --config satusky.toml -y` |

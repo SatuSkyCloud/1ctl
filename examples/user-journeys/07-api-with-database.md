@@ -17,7 +17,7 @@
 > (Neon, Supabase, PlanetScale, Railway Postgres, etc.) and store the full
 > `DATABASE_URL` connection string as a secret:
 > ```bash
-> 1ctl-dev secret create --config satusky.toml \
+> 1ctl secret create --config satusky.toml \
 >   --kv DATABASE_URL=postgres://user:pass@host/db?sslmode=require
 > ```
 > All other commands in this guide — `deploy restart`, `env unset`, `logs stream`,
@@ -84,7 +84,7 @@ memory = "256Mi"
 ## Step 1: Deploy the App (It Will Crash — That Is Expected)
 
 ```bash
-1ctl-dev deploy --config satusky.toml --wait
+1ctl deploy --config satusky.toml --wait
 ```
 
 The deploy will complete from the platform's perspective (image pushed, container started), but the app itself will crash immediately because `DATABASE_URL` is not set yet. This is fine — the next steps fix it.
@@ -94,7 +94,7 @@ The deploy will complete from the platform's perspective (image pushed, containe
 ## Step 2: See the Crash in Logs
 
 ```bash
-1ctl-dev logs stream --config satusky.toml
+1ctl logs stream --config satusky.toml
 ```
 
 You will see something like:
@@ -112,7 +112,7 @@ This confirms the app code is running but missing its secret. Exactly what you e
 ## Step 3: Add the Database Secret
 
 ```bash
-1ctl-dev secret create --config satusky.toml \
+1ctl secret create --config satusky.toml \
   --kv DATABASE_URL=postgres://api-user:strongpassword@db.internal:5432/myapp?sslmode=require
 ```
 
@@ -125,7 +125,7 @@ Secrets are merged — you can run `secret create` again later to update or add 
 These are non-sensitive tuning values, so they go in env, not secrets:
 
 ```bash
-1ctl-dev env create --config satusky.toml \
+1ctl env create --config satusky.toml \
   --env DB_MAX_CONNECTIONS=25 \
   --env DB_POOL_TIMEOUT=30s
 ```
@@ -137,7 +137,7 @@ These are non-sensitive tuning values, so they go in env, not secrets:
 Secrets and env vars are picked up on the next start. Trigger a rolling restart (zero downtime):
 
 ```bash
-1ctl-dev deploy restart --config satusky.toml
+1ctl deploy restart --config satusky.toml
 ```
 
 The platform replaces containers one by one, routing traffic to healthy instances throughout.
@@ -149,7 +149,7 @@ The platform replaces containers one by one, routing traffic to healthy instance
 Stream logs again to confirm a clean startup:
 
 ```bash
-1ctl-dev logs stream --config satusky.toml
+1ctl logs stream --config satusky.toml
 ```
 
 Expected output:
@@ -162,7 +162,7 @@ Expected output:
 Or check status in JSON for scripting:
 
 ```bash
-1ctl-dev -o json deploy status --config satusky.toml
+1ctl -o json deploy status --config satusky.toml
 ```
 
 ```json
@@ -183,13 +183,13 @@ Or check status in JSON for scripting:
 If you decide to let the app manage its own pool timeout instead of reading from env:
 
 ```bash
-1ctl-dev env unset --config satusky.toml --key DB_POOL_TIMEOUT
+1ctl env unset --config satusky.toml --key DB_POOL_TIMEOUT
 ```
 
 Then restart to apply:
 
 ```bash
-1ctl-dev deploy restart --config satusky.toml
+1ctl deploy restart --config satusky.toml
 ```
 
 `env unset` removes exactly one key. The rest of your env vars (`DB_MAX_CONNECTIONS`, etc.) are untouched.
@@ -201,10 +201,10 @@ Then restart to apply:
 When you rotate credentials, update the secret in place and restart:
 
 ```bash
-1ctl-dev secret create --config satusky.toml \
+1ctl secret create --config satusky.toml \
   --kv DATABASE_URL=postgres://api-user:newstrongpassword@db.internal:5432/myapp?sslmode=require
 
-1ctl-dev deploy restart --config satusky.toml
+1ctl deploy restart --config satusky.toml
 ```
 
 `secret create` merges, so only `DATABASE_URL` is updated. No other secrets are affected.
@@ -214,6 +214,6 @@ When you rotate credentials, update the secret in place and restart:
 ## Tips
 
 - Never put `DATABASE_URL` in `satusky.toml` or in your Dockerfile. TOML files are committed to source control; use `secret create` every time.
-- Use `1ctl-dev -o json deploy status` in a health-check script after every deploy to assert the app is actually running before sending traffic.
+- Use `1ctl -o json deploy status` in a health-check script after every deploy to assert the app is actually running before sending traffic.
 - If the rolling restart stalls (one replica never becomes healthy), `logs stream` will show the crash reason immediately — no need to guess.
-- To remove a secret key entirely (not just update it), use `1ctl-dev secret unset --config satusky.toml --key DATABASE_URL`. Use with care — the next restart will crash until you add the secret back.
+- To remove a secret key entirely (not just update it), use `1ctl secret unset --config satusky.toml --key DATABASE_URL`. Use with care — the next restart will crash until you add the secret back.

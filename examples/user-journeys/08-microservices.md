@@ -21,9 +21,9 @@
 > `cleverpanda-a1b2c3d.satusky.com`) — **not** `<app-name>.satusky.com`. Read it
 > programmatically from `deploy get -o json`:
 > ```bash
-> USER_SERVICE_URL=$(1ctl-dev -o json deploy get \
+> USER_SERVICE_URL=$(1ctl -o json deploy get \
 >   --config services/user-service/satusky.toml | jq -r '.domain')
-> 1ctl-dev env create --config services/order-service/satusky.toml \
+> 1ctl env create --config services/order-service/satusky.toml \
 >   --env USER_SERVICE_URL=$USER_SERVICE_URL
 > ```
 
@@ -78,7 +78,7 @@ memory = "256Mi"
 Always deploy the dependency before the dependent service.
 
 ```bash
-1ctl-dev deploy --config services/user-service/satusky.toml --wait
+1ctl deploy --config services/user-service/satusky.toml --wait
 ```
 
 `--wait` blocks until user-service is Running. Only then will you have a stable URL to hand to order-service.
@@ -92,8 +92,8 @@ Use `-o json` to extract the URL programmatically rather than eyeballing the out
 SatuSky assigns a backend-generated random domain (e.g. `cleverpanda-a1b2c3d.satusky.com`) — not a predictable `<app-name>.satusky.com`. Capture it from the deploy output:
 
 ```bash
-1ctl-dev deploy --config services/user-service/satusky.toml --wait
-USER_SERVICE_URL=$(1ctl-dev -o json deploy get \
+1ctl deploy --config services/user-service/satusky.toml --wait
+USER_SERVICE_URL=$(1ctl -o json deploy get \
   --config services/user-service/satusky.toml | jq -r '.domain')
 echo "$USER_SERVICE_URL"
 # https://cleverpanda-a1b2c3d.satusky.com
@@ -106,7 +106,7 @@ echo "$USER_SERVICE_URL"
 Set the URL as an env var in order-service. Use the variable you captured above:
 
 ```bash
-1ctl-dev env create \
+1ctl env create \
   --config services/order-service/satusky.toml \
   --env USER_SERVICE_URL="$USER_SERVICE_URL"   # captured from deploy output above
 ```
@@ -114,7 +114,7 @@ Set the URL as an env var in order-service. Use the variable you captured above:
 Or, if you already know the domain from a previous deploy:
 
 ```bash
-1ctl-dev env create \
+1ctl env create \
   --config services/order-service/satusky.toml \
   --env USER_SERVICE_URL="$USER_SERVICE_URL"
 ```
@@ -127,12 +127,12 @@ Each service has its own secret store keyed by its deployment name.
 
 ```bash
 # user-service needs a JWT signing secret
-1ctl-dev secret create \
+1ctl secret create \
   --config services/user-service/satusky.toml \
   --kv JWT_SECRET=supersecretjwtkey123
 
 # order-service needs its own database
-1ctl-dev secret create \
+1ctl secret create \
   --config services/order-service/satusky.toml \
   --kv DATABASE_URL=postgres://orders-user:pass@db.internal:5432/orders
 ```
@@ -144,7 +144,7 @@ There is no shared secret namespace between services — setting a secret for us
 ## Step 5: Deploy order-service
 
 ```bash
-1ctl-dev deploy --config services/order-service/satusky.toml --wait
+1ctl deploy --config services/order-service/satusky.toml --wait
 ```
 
 ---
@@ -152,7 +152,7 @@ There is no shared secret namespace between services — setting a secret for us
 ## Step 6: Verify Both Services Are Running
 
 ```bash
-1ctl-dev -o json deploy list
+1ctl -o json deploy list
 ```
 
 Example output:
@@ -183,7 +183,7 @@ Both services appear by their `name` field from their respective TOML files.
 This is the core benefit of independent deployments. Push a new version of user-service:
 
 ```bash
-1ctl-dev deploy --config services/user-service/satusky.toml --wait
+1ctl deploy --config services/user-service/satusky.toml --wait
 ```
 
 order-service keeps running uninterrupted. The domain assigned to user-service does not change across redeploys of the same deployment — so no reconfiguration of order-service is needed.
@@ -195,13 +195,13 @@ order-service keeps running uninterrupted. The domain assigned to user-service d
 Debug user-service independently:
 
 ```bash
-1ctl-dev logs stream --config services/user-service/satusky.toml
+1ctl logs stream --config services/user-service/satusky.toml
 ```
 
 Debug order-service independently:
 
 ```bash
-1ctl-dev logs stream --config services/order-service/satusky.toml
+1ctl logs stream --config services/order-service/satusky.toml
 ```
 
 ---
@@ -212,21 +212,21 @@ If user-service moves to a new domain, update order-service:
 
 ```bash
 # Overwrite the existing value (env create merges)
-1ctl-dev env create \
+1ctl env create \
   --config services/order-service/satusky.toml \
   --env USER_SERVICE_URL=https://cleverpanda-a1b2c3d.satusky.com   # new domain from deploy output
 
-1ctl-dev deploy restart --config services/order-service/satusky.toml
+1ctl deploy restart --config services/order-service/satusky.toml
 ```
 
 Or remove the variable entirely and let order-service fall back to its own default:
 
 ```bash
-1ctl-dev env unset \
+1ctl env unset \
   --config services/order-service/satusky.toml \
   --key USER_SERVICE_URL
 
-1ctl-dev deploy restart --config services/order-service/satusky.toml
+1ctl deploy restart --config services/order-service/satusky.toml
 ```
 
 ---
@@ -234,7 +234,7 @@ Or remove the variable entirely and let order-service fall back to its own defau
 ## Tips
 
 - Always deploy dependencies (`--wait`) before dependents. A crashed order-service on first boot — because user-service wasn't ready — is a common mistake.
-- Use `1ctl-dev -o json ingress list` in a deploy script to automatically extract and inject URLs rather than hardcoding them.
+- Use `1ctl -o json ingress list` in a deploy script to automatically extract and inject URLs rather than hardcoding them.
 - Keep each service's `satusky.toml` in its own subdirectory so `--config` paths are unambiguous: `--config services/user-service/satusky.toml`.
-- Use `1ctl-dev -o json deploy list` as a quick health dashboard for your entire mesh — pipe it through `jq '[.[] | {name, status}]'` to get a clean status table.
+- Use `1ctl -o json deploy list` as a quick health dashboard for your entire mesh — pipe it through `jq '[.[] | {name, status}]'` to get a clean status table.
 - Secret keys are scoped per deployment name, not per TOML file path. If you ever rename a service, create its secrets fresh — the old store does not carry over.

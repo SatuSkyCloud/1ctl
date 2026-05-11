@@ -146,7 +146,7 @@ memory = "256Mi"
 
 ```bash
 cd task-system/api
-1ctl-dev deploy --config satusky.toml --wait
+1ctl deploy --config satusky.toml --wait
 ```
 
 ```
@@ -164,7 +164,7 @@ Deploy complete. App is live.
 
 ```bash
 cd ../worker
-1ctl-dev deploy --config satusky.toml --wait
+1ctl deploy --config satusky.toml --wait
 ```
 
 ```
@@ -184,12 +184,12 @@ Both deployments need the same `REDIS_URL`. Add it to each independently — sec
 
 ```bash
 # Add to the API
-1ctl-dev secret create \
+1ctl secret create \
   --config api/satusky.toml \
   --kv REDIS_URL=rediss://default:your-upstash-token@global-fly-12345.upstash.io:6379
 
 # Add to the worker
-1ctl-dev secret create \
+1ctl secret create \
   --config worker/satusky.toml \
   --kv REDIS_URL=rediss://default:your-upstash-token@global-fly-12345.upstash.io:6379
 ```
@@ -199,8 +199,8 @@ Both deployments need the same `REDIS_URL`. Add it to each independently — sec
 Secrets are not live until the pods restart. Trigger a fresh deploy for each:
 
 ```bash
-1ctl-dev deploy --config api/satusky.toml --wait
-1ctl-dev deploy --config worker/satusky.toml --wait
+1ctl deploy --config api/satusky.toml --wait
+1ctl deploy --config worker/satusky.toml --wait
 ```
 
 ---
@@ -208,7 +208,7 @@ Secrets are not live until the pods restart. Trigger a fresh deploy for each:
 ## Step 7: Verify Both Deployments
 
 ```bash
-1ctl-dev -o json deploy list
+1ctl -o json deploy list
 ```
 
 ```json
@@ -237,7 +237,7 @@ Open two terminals — one per service:
 **Terminal 1 — API logs:**
 
 ```bash
-1ctl-dev logs stream --config api/satusky.toml
+1ctl logs stream --config api/satusky.toml
 ```
 
 ```
@@ -248,7 +248,7 @@ Open two terminals — one per service:
 **Terminal 2 — Worker logs:**
 
 ```bash
-1ctl-dev logs stream --config worker/satusky.toml
+1ctl logs stream --config worker/satusky.toml
 ```
 
 ```
@@ -276,7 +276,7 @@ memory = "512Mi"
 Then redeploy:
 
 ```bash
-1ctl-dev deploy --config worker/satusky.toml --wait
+1ctl deploy --config worker/satusky.toml --wait
 ```
 
 The API keeps running without interruption — you only redeployed the worker.
@@ -288,7 +288,7 @@ The API keeps running without interruption — you only redeployed the worker.
 To pause job processing without touching the API:
 
 ```bash
-1ctl-dev deploy destroy --config worker/satusky.toml -y
+1ctl deploy destroy --config worker/satusky.toml -y
 ```
 
 ```
@@ -298,7 +298,7 @@ Destroying deployment job-worker...  done
 The API continues accepting and enqueuing jobs. Redis holds them until the worker comes back. When you're ready to resume:
 
 ```bash
-1ctl-dev deploy --config worker/satusky.toml --wait
+1ctl deploy --config worker/satusky.toml --wait
 ```
 
 ---
@@ -307,11 +307,11 @@ The API continues accepting and enqueuing jobs. Redis holds them until the worke
 
 | Task | Command |
 |---|---|
-| Deploy API | `1ctl-dev deploy --config api/satusky.toml --wait` |
-| Deploy worker | `1ctl-dev deploy --config worker/satusky.toml --wait` |
-| Add Redis secret | `1ctl-dev secret create --config <dir>/satusky.toml --kv REDIS_URL=...` |
-| Remove a secret | `1ctl-dev secret unset --config <dir>/satusky.toml --key REDIS_URL` |
-| Watch worker process jobs | `1ctl-dev logs stream --config worker/satusky.toml` |
-| Scale worker resources | Edit satusky.toml, then `1ctl-dev deploy --config worker/satusky.toml --wait` |
-| Pause worker (maintenance) | `1ctl-dev deploy destroy --config worker/satusky.toml -y` |
-| List all deployments | `1ctl-dev -o json deploy list` |
+| Deploy API | `1ctl deploy --config api/satusky.toml --wait` |
+| Deploy worker | `1ctl deploy --config worker/satusky.toml --wait` |
+| Add Redis secret | `1ctl secret create --config <dir>/satusky.toml --kv REDIS_URL=...` |
+| Remove a secret | `1ctl secret unset --config <dir>/satusky.toml --key REDIS_URL` |
+| Watch worker process jobs | `1ctl logs stream --config worker/satusky.toml` |
+| Scale worker resources | Edit satusky.toml, then `1ctl deploy --config worker/satusky.toml --wait` |
+| Pause worker (maintenance) | `1ctl deploy destroy --config worker/satusky.toml -y` |
+| List all deployments | `1ctl -o json deploy list` |

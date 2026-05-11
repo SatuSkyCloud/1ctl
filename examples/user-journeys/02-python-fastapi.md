@@ -73,7 +73,7 @@ SatuSky builds the image in the cloud — you don't need Docker installed locall
 
 ```bash
 cd my-fastapi
-1ctl-dev deploy --config satusky.toml --wait
+1ctl deploy --config satusky.toml --wait
 ```
 
 ```
@@ -92,7 +92,7 @@ Deploy complete. App is live.
 The Redis URL contains credentials and the OpenAI key is sensitive — both go into secrets.
 
 ```bash
-1ctl-dev secret create \
+1ctl secret create \
   --config satusky.toml \
   --kv REDIS_URL=rediss://default:AXabCDEFgh123456@us1-cool-stork-12345.upstash.io:6380 \
   --kv OPENAI_API_KEY=sk-proj-AbCdEfGhIjKlMnOpQrStUvWxYz1234567890abcdefghijklmnop
@@ -101,7 +101,7 @@ The Redis URL contains credentials and the OpenAI key is sensitive — both go i
 Verify your app can reach Redis. If it can't, check the URL in the logs:
 
 ```bash
-1ctl-dev logs stream --config satusky.toml
+1ctl logs stream --config satusky.toml
 # 2026-04-26T09:12:05Z [my-fastapi] Redis ping OK — connected to Upstash
 ```
 
@@ -112,7 +112,7 @@ Verify your app can reach Redis. If it can't, check the URL in the logs:
 Non-sensitive runtime config — environment name, log verbosity — lives in env vars.
 
 ```bash
-1ctl-dev env create \
+1ctl env create \
   --config satusky.toml \
   --env ENVIRONMENT=production \
   --env LOG_LEVEL=info
@@ -121,7 +121,7 @@ Non-sensitive runtime config — environment name, log verbosity — lives in en
 Trigger a redeploy to apply the new vars:
 
 ```bash
-1ctl-dev deploy --config satusky.toml --wait
+1ctl deploy --config satusky.toml --wait
 ```
 
 ---
@@ -131,7 +131,7 @@ Trigger a redeploy to apply the new vars:
 `-o json` (or `--output json`) returns machine-readable output — useful for CI scripts or just for double-checking.
 
 ```bash
-1ctl-dev deploy get --config satusky.toml -o json
+1ctl deploy get --config satusky.toml -o json
 ```
 
 ```json
@@ -157,7 +157,7 @@ If the CPU or memory values don't match what's in your `satusky.toml`, you likel
 Open a second terminal and tail logs while you hit the API:
 
 ```bash
-1ctl-dev logs stream --config satusky.toml
+1ctl logs stream --config satusky.toml
 ```
 
 ```
@@ -174,7 +174,7 @@ Open a second terminal and tail logs while you hit the API:
 Your API key was compromised or you're doing a planned rotation. `secret create` merges, so passing a new value for an existing key overwrites it without touching `REDIS_URL`.
 
 ```bash
-1ctl-dev secret create \
+1ctl secret create \
   --config satusky.toml \
   --kv OPENAI_API_KEY=sk-proj-NewKeyHere9876543210zyxwvutsrqponmlkjihgfedcba
 ```
@@ -182,13 +182,13 @@ Your API key was compromised or you're doing a planned rotation. `secret create`
 Redeploy to inject the new secret into the running container:
 
 ```bash
-1ctl-dev deploy --config satusky.toml --wait
+1ctl deploy --config satusky.toml --wait
 ```
 
 Watch the logs to confirm no auth errors on startup:
 
 ```bash
-1ctl-dev logs stream --config satusky.toml
+1ctl logs stream --config satusky.toml
 # 2026-04-26T09:31:07Z [my-fastapi] OpenAI client initialized OK
 ```
 
@@ -199,13 +199,13 @@ Watch the logs to confirm no auth errors on startup:
 Your app stabilized. `LOG_LEVEL=info` is fine in production but you want to stop emitting info-level logs entirely to reduce noise. Remove the env var:
 
 ```bash
-1ctl-dev env unset --config satusky.toml --key LOG_LEVEL
+1ctl env unset --config satusky.toml --key LOG_LEVEL
 ```
 
 `env unset` removes only the named key — `ENVIRONMENT` is untouched. Redeploy:
 
 ```bash
-1ctl-dev deploy --config satusky.toml --wait
+1ctl deploy --config satusky.toml --wait
 ```
 
 ---
@@ -215,7 +215,7 @@ Your app stabilized. `LOG_LEVEL=info` is fine in production but you want to stop
 Extract the app URL in a shell script without parsing human-readable output:
 
 ```bash
-APP_URL=$(1ctl-dev deploy get --config satusky.toml -o json | jq -r '.url')
+APP_URL=$(1ctl deploy get --config satusky.toml -o json | jq -r '.url')
 echo "Running smoke test against $APP_URL"
 curl -sf "$APP_URL/health" | jq .
 ```
@@ -232,11 +232,11 @@ This pattern is useful in CI — gate the smoke test on the deploy finishing wit
 
 | Task | Command |
 |---|---|
-| Deploy (cloud build) | `1ctl-dev deploy --config satusky.toml --wait` |
-| Set secrets (create or update) | `1ctl-dev secret create --config satusky.toml --kv KEY=VAL` |
-| Rotate a single secret | `1ctl-dev secret create --config satusky.toml --kv KEY=new-val` |
-| Remove a secret | `1ctl-dev secret unset --config satusky.toml --key KEY` |
-| Set env vars | `1ctl-dev env create --config satusky.toml --env KEY=VAL` |
-| Remove an env var | `1ctl-dev env unset --config satusky.toml --key KEY` |
-| JSON deploy info | `1ctl-dev deploy get --config satusky.toml -o json` |
-| Live logs | `1ctl-dev logs stream --config satusky.toml` |
+| Deploy (cloud build) | `1ctl deploy --config satusky.toml --wait` |
+| Set secrets (create or update) | `1ctl secret create --config satusky.toml --kv KEY=VAL` |
+| Rotate a single secret | `1ctl secret create --config satusky.toml --kv KEY=new-val` |
+| Remove a secret | `1ctl secret unset --config satusky.toml --key KEY` |
+| Set env vars | `1ctl env create --config satusky.toml --env KEY=VAL` |
+| Remove an env var | `1ctl env unset --config satusky.toml --key KEY` |
+| JSON deploy info | `1ctl deploy get --config satusky.toml -o json` |
+| Live logs | `1ctl logs stream --config satusky.toml` |

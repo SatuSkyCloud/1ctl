@@ -1,20 +1,42 @@
 # Release Notes
 
-## Version 0.7.3 (16-04-2026)
+## Unreleased
+
+### Breaking Changes
+
+- **Single `1ctl` binary**: the separate `1ctl-dev` variant is retired. Per-environment isolation is now handled by named profiles, not by binary variant. Internal devs running `1ctl-dev` previously: configure a profile in your fresh `~/.satusky/` directory using the internal onboarding doc. Existing `~/.satusky-development/` data is not auto-migrated.
+- **Memory validator requires `Mi`/`Gi` suffix**: `--memory 512` is now rejected; use `--memory 512Mi`. Bare numbers were being interpreted by Kubernetes as bytes (causing silent OOMKills).
+- **`auth login` errors on org-less tokens**: previously wrote a poisoned context silently; now fails at login with a clear message.
+- **`org switch` errors on empty namespace**: previously fell back to the org name (an invalid k8s namespace); now fails fast.
 
 ### New Features
 
-- **`1ctl-dev` build variant for dev-backend testing**: Every tagged release now ships a second binary — `1ctl-dev` — alongside `1ctl`. The dev binary bakes in `https://dev-core-api.satusky.com/v1/cli` via `-ldflags` at link time, so engineers can exercise CLI changes against the dev backend before a prod release with zero configuration. Installable side-by-side with `1ctl` via:
-  ```bash
-  curl -sSL https://raw.githubusercontent.com/SatuSkyCloud/1ctl/main/install-dev.sh | bash
-  ```
-  `--version` shows `[development]` to make the active binary obvious. Internal testing only — not published to Homebrew.
-- **Credential isolation between dev and prod**: Non-production builds use `~/.satusky-<env>/` (e.g. `~/.satusky-development/`) instead of `~/.satusky/`, so switching between `1ctl` and `1ctl-dev` no longer requires re-logging-in. Each binary maintains its own token, org context, and state.
+- **`--name` flag on `deploy`**: explicit override for the auto-detected app name.
+- **`GetCurrentNamespaceOrError`** at API boundaries surfaces missing organization state immediately.
 
 ### Improvements
 
-- **Build-time URL overrides**: `defaultAPIURL` and `defaultDockerUploadURL` in `internal/config/config.go` are now `var` (not `const`) so GoReleaser can override them via `-ldflags`. Runtime `SATUSKY_API_URL` / `SATUSKY_DOCKER_API_URL` env vars still win for per-invocation overrides (e.g. pointing `1ctl-dev` at a local backend).
-- **`--version` output**: now routes through `GetVersionInfo()` so commit hash, build date, and environment tag all show consistently.
+- **`profile use` / `profile current`** now show the resolved API URL (full precedence chain) rather than the raw profile field.
+- **`deploy get`** no longer panics on untagged images.
+- **`WaitForDeployment`** treats unknown statuses as non-terminal — keeps `--wait` forward-compatible with new backend status strings.
+- **CleanupManager** now tracks env (auto-cleaned on partial-deploy failure) and ingress (auto-cleaned) and registers volumes for audit logs (manual PVC cleanup still required pending backend DELETE support).
+- **`UpsertEnvironment` / `CreateSecret`** stop overriding caller-supplied namespace.
+- **Context loads cached** with `sync.Once`; deploys now read `context.json` once instead of ~30 times.
+- **`x-satusky-config` header dropped** from API requests; backend `K8sClientMiddleware` has a DB fallback.
+
+## Version 0.7.3 (16-04-2026)
+
+> **Superseded:** the v0.7.3 dev-binary variant has been retired. See the [Unreleased] section above for the replacement (named profiles).
+
+### New Features
+
+- **Build variant for dev-backend testing**: shipped a second `1ctl` binary variant that baked an alternate API URL via `-ldflags`. Internal testing only; not published to Homebrew.
+- **Credential isolation**: the dev variant used a separate config directory so dev and prod tokens didn't clobber each other.
+
+### Improvements
+
+- **Build-time URL overrides**: `defaultAPIURL` and `defaultDockerUploadURL` in `internal/config/config.go` are now `var` (not `const`) so GoReleaser can override them via `-ldflags`. Runtime `SATUSKY_API_URL` / `SATUSKY_DOCKER_API_URL` env vars still win for per-invocation overrides.
+- **`--version` output**: now routes through `GetVersionInfo()` so commit hash and build date show consistently.
 
 ### Bug Fixes
 
