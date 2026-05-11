@@ -8,7 +8,7 @@ Closes 21 of 23 open issues on the repo (#10–#30) plus the in-scope subset of 
 
 ### Breaking Changes
 
-- **Single `1ctl` binary**: the separate `1ctl-dev` variant is retired. Per-environment isolation is now handled by named profiles, not by binary variant. Internal devs running `1ctl-dev` previously: configure a profile in your fresh `~/.satusky/` directory. Existing `~/.satusky-development/` data is not auto-migrated.
+- **Single `1ctl` binary**: the separate `1ctl-dev` variant is retired. Per-environment isolation is now handled by named profiles, not by binary variant. If you previously ran `1ctl-dev`, configure a profile in your `~/.satusky/` directory (`1ctl profile create --url <server-url> <name>`). Existing `~/.satusky-development/` data is not auto-migrated.
 - **Memory validator requires `Mi`/`Gi` suffix**: `--memory 512` is now rejected; use `--memory 512Mi`. Bare numbers were being interpreted by Kubernetes as bytes (causing silent OOMKills).
 - **`auth login` errors on org-less tokens**: previously wrote a poisoned context silently; now fails at login with a clear message.
 - **`org switch` errors on empty namespace**: previously fell back to the org name (an invalid k8s namespace); now fails fast.
