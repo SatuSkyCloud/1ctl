@@ -338,6 +338,25 @@ Subcommands manage existing deployments:
 				},
 				Action: handleRollback,
 			},
+			{
+				Name:  "open",
+				Usage: "Open a deployment's URL in the default browser",
+				Flags: []cli.Flag{
+					&cli.StringFlag{Name: "deployment-id", Usage: "Deployment ID"},
+					&cli.StringFlag{Name: "config", Usage: "Config name or path. Default: satusky.toml"},
+				},
+				Action: handleOpenDeployment,
+			},
+			{
+				Name:  "scale",
+				Usage: "Set the replica count for a deployment without redeploying",
+				Flags: []cli.Flag{
+					&cli.StringFlag{Name: "deployment-id", Usage: "Deployment ID"},
+					&cli.StringFlag{Name: "config", Usage: "Config name or path. Default: satusky.toml"},
+					&cli.IntFlag{Name: "replicas", Usage: "Target replica count", Required: true},
+				},
+				Action: handleScaleDeployment,
+			},
 		},
 		Action: func(c *cli.Context) error {
 			// If subcommand is provided, let it handle
@@ -976,27 +995,9 @@ func handleDeploymentStatus(c *cli.Context) error {
 	return nil
 }
 
-// TODO: deployment logs is still WIP on the backend... (/ws)
-// func handleDeploymentLogs(c *cli.Context) error {
-// 	deploymentID := c.String("deployment-id")
-// 	follow := c.Bool("follow")
-
-// 	if follow {
-// 		utils.PrintInfo("Streaming logs for deployment %s...\n", deploymentID)
-// 		return api.StreamDeploymentLogs(deploymentID, true)
-// 	}
-
-// 	logs, err := api.GetDeploymentLogs(deploymentID)
-// 	if err != nil {
-// 		utils.PrintError(fmt.Sprintf("failed to get deployment logs: %s", err.Error()), nil)
-// 		return nil
-// 	}
-
-// 	for _, line := range logs {
-// 		utils.PrintInfo(line)
-// 	}
-// 	return nil
-// }
+// Note: deployment log streaming is implemented in `1ctl logs` for now;
+// `1ctl deploy logs` will land alongside the backend WS endpoint in a
+// follow-up (#3 G-01).
 
 func handleListDeployments(c *cli.Context) error {
 	namespace, err := context.GetCurrentNamespaceOrError()
@@ -1179,5 +1180,61 @@ func handleRollback(c *cli.Context) error {
 	}
 	utils.PrintSuccess("Rollback to version %d initiated", version)
 	utils.PrintInfo("Use '1ctl deploy status --deployment-id %s' to monitor progress.", deploymentID)
+	return nil
+}
+
+// handleOpenDeployment opens the deployment's primary URL in the user's
+// default browser. Resolves the URL from the ingress record, falling back
+// to a clear error when no ingress is attached yet.
+func handleOpenDeployment(c *cli.Context) error {
+	deploymentID, err := resolveDeploymentID(c.String("deployment-id"), c.String("config"))
+	if err != nil {
+		return err
+	}
+	ing, err := api.GetIngressByDeploymentID(deploymentID)
+	if err != nil || ing == nil || ing.DomainName == "" {
+		return utils.NewError(fmt.Sprintf("no domain attached to deployment %s — use '1ctl domains add' first", deploymentID), nil)
+	}
+	url := "https://" + ing.DomainName
+	utils.PrintInfo("Opening %s", url)
+	if err := openBrowser(url); err != nil {
+		// Don't fail the command — print the URL so the user can copy it.
+		utils.PrintWarning("Could not open browser: %s", err.Error())
+		utils.PrintInfo("URL: %s", url)
+	}
+	return nil
+}
+
+// handleScaleDeployment sets the replica count on an existing deployment
+// without rebuilding the image. Uses UpsertDeployment after fetching the
+// current state so all other fields are preserved.
+func handleScaleDeployment(c *cli.Context) error {
+	deploymentID, err := resolveDeploymentID(c.String("deployment-id"), c.String("config"))
+	if err != nil {
+		return err
+	}
+	replicas, err := api.SafeInt32(c.Int("replicas"))
+	if err != nil {
+		return utils.NewError("invalid --replicas value", err)
+	}
+	if replicas < 1 {
+		return utils.NewError("--replicas must be >= 1", nil)
+	}
+
+	current, err := api.GetDeployment(deploymentID)
+	if err != nil {
+		return utils.NewError(fmt.Sprintf("failed to fetch deployment: %s", err.Error()), nil)
+	}
+	if current.Replicas == replicas {
+		utils.PrintInfo("Deployment %s already at %d replicas — no change.", deploymentID, replicas)
+		return nil
+	}
+	current.Replicas = replicas
+
+	var resp string
+	if err := api.UpsertDeployment(*current, &resp); err != nil {
+		return utils.NewError(fmt.Sprintf("failed to scale deployment: %s", err.Error()), nil)
+	}
+	utils.PrintSuccess("Scaled deployment %s to %d replicas", deploymentID, replicas)
 	return nil
 }
