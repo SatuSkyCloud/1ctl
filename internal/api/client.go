@@ -9,10 +9,19 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"net/url"
 	"time"
+
+	"strings"
 
 	"github.com/google/uuid"
 )
+
+// httpClient is a shared HTTP client with a reasonable timeout.
+// 30 seconds is sufficient for most API calls while preventing indefinite hangs.
+var httpClient = &http.Client{
+	Timeout: 30 * time.Second,
+}
 
 // Common response structure that matches backend
 type apiResponse struct {
@@ -23,33 +32,41 @@ type apiResponse struct {
 }
 
 // DeleteDeployment deletes a deployment
-func DeleteDeployment(req interface{}, deploymentID string) error {
-	return makeRequest("POST", fmt.Sprintf("/deployments/delete/%s", deploymentID), req, nil)
+func DeleteDeployment(deploymentID string) error {
+	return makeRequest("POST", fmt.Sprintf("/deployments/delete/%s", deploymentID), nil, nil)
 }
 
-// ListDeployments lists all deployments for current namespace
-func ListDeployments() ([]Deployment, error) {
-	namespace := context.GetCurrentNamespace()
-	if namespace == "" {
-		return nil, utils.NewError("no namespace selected", nil)
-	}
+// RestartDeployment triggers a rolling restart of a deployment
+func RestartDeployment(deploymentID string) error {
+	return makeRequest("POST", fmt.Sprintf("/deployments/%s/restart", deploymentID), nil, nil)
+}
 
-	var resp apiResponse
-	err := makeRequest("GET", fmt.Sprintf("/deployments/namespace/%s", namespace), nil, &resp)
+// ListDeployments lists all deployments for the current namespace.
+// Thin wrapper around ListDeploymentsByNamespace using the active context.
+func ListDeployments() ([]Deployment, error) {
+	namespace, err := context.GetCurrentNamespaceOrError()
 	if err != nil {
 		return nil, err
 	}
+	return ListDeploymentsByNamespace(namespace)
+}
 
-	data, err := json.Marshal(resp.Data)
-	if err != nil {
-		return nil, utils.NewError(fmt.Sprintf("failed to marshal response data: %s", err.Error()), nil)
+// ListDeploymentVersions returns the release history for a deployment.
+func ListDeploymentVersions(deploymentID string) ([]DeploymentVersion, error) {
+	var resp struct {
+		Error   bool                `json:"error"`
+		Message string              `json:"message"`
+		Data    []DeploymentVersion `json:"data"`
 	}
+	if err := makeRequest("GET", fmt.Sprintf("/deployments/%s/versions", deploymentID), nil, &resp); err != nil {
+		return nil, err
+	}
+	return resp.Data, nil
+}
 
-	var deployments []Deployment
-	if err := json.Unmarshal(data, &deployments); err != nil {
-		return nil, utils.NewError(fmt.Sprintf("failed to unmarshal deployments: %s", err.Error()), nil)
-	}
-	return deployments, nil
+// RollbackDeployment initiates a rollback to the specified version number.
+func RollbackDeployment(deploymentID string, versionNumber int) error {
+	return makeRequest("POST", fmt.Sprintf("/deployments/%s/rollback/%d", deploymentID, versionNumber), nil, nil)
 }
 
 // ListDeploymentsByNamespace lists deployments in a specific namespace
@@ -64,25 +81,32 @@ func ListDeploymentsByNamespace(namespace string) ([]Deployment, error) {
 	return response.Data, err
 }
 
-// GetDeployment gets details for a specific deployment
-func GetDeployment(deploymentID string) (*Deployment, error) {
-	var resp apiResponse
-	resp.Data = &Deployment{}
-	err := makeRequest("GET", fmt.Sprintf("/deployments/id/%s", deploymentID), nil, &resp)
-	if err != nil {
+// GetDeploymentByAppLabel looks up a deployment by its app label within a namespace.
+// This is the primary way the CLI resolves deployment IDs from satusky.toml.
+func GetDeploymentByAppLabel(namespace, appLabel string) (*Deployment, error) {
+	var resp struct {
+		Error bool       `json:"error"`
+		Data  Deployment `json:"data"`
+	}
+	if err := makeRequest("GET", fmt.Sprintf("/deployments/namespace/%s/app/%s", namespace, appLabel), nil, &resp); err != nil {
 		return nil, err
 	}
+	return &resp.Data, nil
+}
 
-	data, err := json.Marshal(resp.Data)
-	if err != nil {
-		return nil, utils.NewError(fmt.Sprintf("failed to marshal response data: %s", err.Error()), nil)
+// GetDeployment gets details for a specific deployment.
+// Uses the typed-inline-struct pattern: the response is unmarshalled once
+// directly into the Deployment struct, avoiding the legacy apiResponse +
+// json.Marshal + json.Unmarshal double-encoding round trip.
+func GetDeployment(deploymentID string) (*Deployment, error) {
+	var resp struct {
+		Error bool       `json:"error"`
+		Data  Deployment `json:"data"`
 	}
-
-	var deployment Deployment
-	if err := json.Unmarshal(data, &deployment); err != nil {
-		return nil, utils.NewError(fmt.Sprintf("failed to unmarshal deployment: %s", err.Error()), nil)
+	if err := makeRequest("GET", fmt.Sprintf("/deployments/id/%s", deploymentID), nil, &resp); err != nil {
+		return nil, err
 	}
-	return &deployment, nil
+	return &resp.Data, nil
 }
 
 // Service methods
@@ -107,9 +131,9 @@ func ListServices() ([]Service, error) {
 	return services, nil
 }
 
-func DeleteService(req interface{}, serviceID string) error {
+func DeleteService(serviceID string) error {
 	var resp apiResponse
-	return makeRequest("POST", fmt.Sprintf("/services/delete/%s", serviceID), req, &resp)
+	return makeRequest("POST", fmt.Sprintf("/services/delete/%s", serviceID), nil, &resp)
 }
 
 // Secret methods
@@ -118,8 +142,12 @@ func CreateSecret(secret Secret) (*Secret, error) {
 	var secretResp Secret
 	resp.Data = &secretResp
 
-	// Always use the current namespace
-	secret.Namespace = context.GetCurrentNamespace()
+	// Only fall back to context namespace if caller didn't set one. Overriding
+	// a non-empty value silently routes resources to the wrong namespace when
+	// the deploy was scoped via --organization.
+	if secret.Namespace == "" {
+		secret.Namespace = context.GetCurrentNamespace()
+	}
 
 	err := makeRequest("POST", "/secrets/upsert", secret, &resp)
 	if err != nil {
@@ -162,6 +190,33 @@ func DeleteSecret(secretID string) error {
 	return makeRequest("POST", fmt.Sprintf("/secrets/delete/%s", secretID), nil, &resp)
 }
 
+// GetSecretsByDeploymentID returns secrets for a given deployment ID.
+func GetSecretsByDeploymentID(deploymentID string) ([]Secret, error) {
+	var resp apiResponse
+	err := makeRequest("GET", fmt.Sprintf("/secrets/deploymentId/%s", deploymentID), nil, &resp)
+	if err != nil {
+		return nil, err
+	}
+
+	data, err := json.Marshal(resp.Data)
+	if err != nil {
+		return nil, utils.NewError(fmt.Sprintf("failed to marshal response data: %s", err.Error()), nil)
+	}
+
+	var secrets []Secret
+	if err := json.Unmarshal(data, &secrets); err != nil {
+		return nil, utils.NewError(fmt.Sprintf("failed to unmarshal secrets: %s", err.Error()), nil)
+	}
+	return secrets, nil
+}
+
+// UnsetSecretKey removes a single key from a secret.
+func UnsetSecretKey(secretID, key string) error {
+	body := map[string]string{"key": key}
+	var resp struct{}
+	return makeRequest("POST", fmt.Sprintf("/secrets/unset/%s", secretID), body, &resp)
+}
+
 // Ingress methods
 
 // ListIngresses lists all ingresses for current namespace
@@ -185,9 +240,9 @@ func ListIngresses() ([]Ingress, error) {
 	return ingresses, nil
 }
 
-func DeleteIngress(req interface{}, ingressID string) error {
+func DeleteIngress(ingressID string) error {
 	var resp apiResponse
-	return makeRequest("POST", fmt.Sprintf("/ingresses/delete/%s", ingressID), req, &resp)
+	return makeRequest("POST", fmt.Sprintf("/ingresses/delete/%s", ingressID), nil, &resp)
 }
 
 // Environment methods
@@ -196,8 +251,12 @@ func UpsertEnvironment(env Environment) (*Environment, error) {
 	var envResp Environment
 	resp.Data = &envResp
 
-	// Always use the current namespace
-	env.Namespace = context.GetCurrentNamespace()
+	// Only fall back to context namespace if caller didn't set one. Overriding
+	// a non-empty value silently routes resources to the wrong namespace when
+	// the deploy was scoped via --organization.
+	if env.Namespace == "" {
+		env.Namespace = context.GetCurrentNamespace()
+	}
 
 	err := makeRequest("POST", "/environments/upsert", env, &resp)
 	if err != nil {
@@ -236,9 +295,36 @@ func ListEnvironments() ([]Environment, error) {
 	return environments, nil
 }
 
-func DeleteEnvironment(req interface{}, environmentID string) error {
+func DeleteEnvironment(environmentID string) error {
 	var resp apiResponse
-	return makeRequest("POST", fmt.Sprintf("/environments/delete/%s", environmentID), req, &resp)
+	return makeRequest("POST", fmt.Sprintf("/environments/delete/%s", environmentID), nil, &resp)
+}
+
+// GetEnvironmentsByDeploymentID returns environments for a given deployment ID.
+func GetEnvironmentsByDeploymentID(deploymentID string) ([]Environment, error) {
+	var resp apiResponse
+	err := makeRequest("GET", fmt.Sprintf("/environments/deploymentId/%s", deploymentID), nil, &resp)
+	if err != nil {
+		return nil, err
+	}
+
+	data, err := json.Marshal(resp.Data)
+	if err != nil {
+		return nil, utils.NewError(fmt.Sprintf("failed to marshal response data: %s", err.Error()), nil)
+	}
+
+	var environments []Environment
+	if err := json.Unmarshal(data, &environments); err != nil {
+		return nil, utils.NewError(fmt.Sprintf("failed to unmarshal environments: %s", err.Error()), nil)
+	}
+	return environments, nil
+}
+
+// UnsetEnvironmentKey removes a single key from an environment's ConfigMap.
+func UnsetEnvironmentKey(environmentID, key string) error {
+	body := map[string]string{"key": key}
+	var resp struct{}
+	return makeRequest("POST", fmt.Sprintf("/environments/unset/%s", environmentID), body, &resp)
 }
 
 // LoginCLI logs in the CLI with the API token
@@ -260,8 +346,7 @@ func LoginCLI(token string) (*TokenValidate, error) {
 	request.Header.Set("Content-Type", "application/json")
 	request.Header.Set("x-satusky-api-key", token)
 
-	client := &http.Client{}
-	resp, err := client.Do(request)
+	resp, err := httpClient.Do(request)
 	if err != nil {
 		return nil, utils.NewError(fmt.Sprintf("failed to send request: %s", err.Error()), nil)
 	}
@@ -289,25 +374,17 @@ func CreateVolume(volume Volume) error {
 	return makeRequest("POST", "/volumes/create", volume, nil)
 }
 
-// GetDeploymentStatus gets the current status of a deployment
+// GetDeploymentStatus gets the current status of a deployment.
+// Uses the typed-inline-struct pattern (see GetDeployment for rationale).
 func GetDeploymentStatus(deploymentID string) (*DeploymentStatus, error) {
-	var resp apiResponse
-	resp.Data = &DeploymentStatus{}
-	err := makeRequest("GET", fmt.Sprintf("/deployments/status/%s", deploymentID), nil, &resp)
-	if err != nil {
+	var resp struct {
+		Error bool             `json:"error"`
+		Data  DeploymentStatus `json:"data"`
+	}
+	if err := makeRequest("GET", fmt.Sprintf("/deployments/status/%s", deploymentID), nil, &resp); err != nil {
 		return nil, err
 	}
-
-	data, err := json.Marshal(resp.Data)
-	if err != nil {
-		return nil, utils.NewError(fmt.Sprintf("failed to marshal response data: %s", err.Error()), nil)
-	}
-
-	var status DeploymentStatus
-	if err := json.Unmarshal(data, &status); err != nil {
-		return nil, utils.NewError(fmt.Sprintf("failed to unmarshal status: %s", err.Error()), nil)
-	}
-	return &status, nil
+	return &resp.Data, nil
 }
 
 // WaitForDeployment waits for a deployment to reach a terminal state
@@ -327,15 +404,22 @@ func WaitForDeployment(deploymentID string, timeout time.Duration) (*DeploymentS
 			return nil, err
 		}
 
+		// Two distinct "running" tokens coexist intentionally:
+		//   StatusRunning    ("running") — backend lifecycle: in-progress, not yet healthy
+		//   StatusRunningK8s ("Running") — K8s pod phase: healthy, terminal-success
+		// Same casing distinction for Failed/failed.
 		switch status.Status {
 		case StatusCompleted, StatusRunningK8s:
 			return status, nil
 		case StatusFailed, StatusFailedK8s:
 			return status, utils.NewError(fmt.Sprintf("deployment failed: %s", status.Message), nil)
 		case StatusPending, StatusCreating, StatusRunning, StatusNotReady, StatusProgressing, StatusUnknown:
-			utils.PrintInfo("Deployment status: %s (%d%%)\n", status.Status, status.Progress)
+			utils.PrintInfo("Deployment status: %s (%d pct)", status.Status, status.Progress)
 		default:
-			return nil, utils.NewError(fmt.Sprintf("unknown deployment status: %s", status.Status), nil)
+			// Forward-compatibility: a new status string added on the backend
+			// must not break --wait on older CLI versions. Treat unknown
+			// values as non-terminal and keep polling.
+			utils.PrintInfo("Deployment status: %s (waiting...)", status.Status)
 		}
 
 		<-ticker.C
@@ -346,6 +430,11 @@ func WaitForDeployment(deploymentID string, timeout time.Duration) (*DeploymentS
 func makeRequest(method, path string, body interface{}, response interface{}) error {
 	config := config.GetConfig()
 	url := fmt.Sprintf("%s%s", config.ApiURL, path)
+
+	// Enforce HTTPS for non-localhost API URLs to prevent token leakage over plaintext
+	if !utils.IsLocalhostURL(url) && !strings.HasPrefix(url, "https://") {
+		return utils.NewError(fmt.Sprintf("refusing to send auth token over insecure connection (%s). Use HTTPS or http://localhost for local development", config.ApiURL), nil)
+	}
 
 	var bodyReader io.Reader
 	if body != nil {
@@ -366,17 +455,13 @@ func makeRequest(method, path string, body interface{}, response interface{}) er
 		return utils.NewError("not authenticated. Please run '1ctl auth login' to authenticate", nil)
 	}
 
-	userConfigKey := context.GetUserConfigKey()
-	// if userConfigKey == "" {
-	// 	return utils.NewError("not authenticated. Please run '1ctl auth login' to authenticate")
-	// }
-
 	req.Header.Set("Content-Type", "application/json")
 	req.Header.Set("x-satusky-api-key", token)
-	req.Header.Set("x-satusky-config", userConfigKey)
-	// TODO: configure x-satusky-user-email for custom domain lets' encrypt
+	if email := context.GetEmail(); email != "" {
+		req.Header.Set("x-satusky-user-email", email)
+	}
 
-	resp, err := http.DefaultClient.Do(req)
+	resp, err := httpClient.Do(req)
 	if err != nil {
 		return utils.NewError(fmt.Sprintf("failed to make request: %s", err.Error()), nil)
 	}
@@ -397,6 +482,9 @@ func makeRequest(method, path string, body interface{}, response interface{}) er
 		var apiError APIError
 		if err := json.Unmarshal(respBody, &apiError); err != nil {
 			return utils.NewError(fmt.Sprintf("request failed with status %d: %s", resp.StatusCode, string(respBody)), nil)
+		}
+		if resp.StatusCode == 500 {
+			return utils.NewError(fmt.Sprintf("%s — check backend logs for details", apiError.Message), nil)
 		}
 		return utils.NewError(apiError.Message, nil)
 	}
@@ -499,26 +587,6 @@ func GetOrganizationByID(orgID uuid.UUID) (*Organization, error) {
 	return &org, nil
 }
 
-// Deployment methods
-func GetDeploymentsByNamespace(namespace string) ([]Deployment, error) {
-	var resp apiResponse
-	err := makeRequest("GET", fmt.Sprintf("/deployments/namespace/%s", namespace), nil, &resp)
-	if err != nil {
-		return nil, err
-	}
-
-	data, err := json.Marshal(resp.Data)
-	if err != nil {
-		return nil, utils.NewError(fmt.Sprintf("failed to marshal response data: %s", err.Error()), nil)
-	}
-
-	var deployments []Deployment
-	if err := json.Unmarshal(data, &deployments); err != nil {
-		return nil, utils.NewError(fmt.Sprintf("failed to unmarshal deployments: %s", err.Error()), nil)
-	}
-	return deployments, nil
-}
-
 // User methods
 func GetUserByEmail(email string) (*User, error) {
 	var resp apiResponse
@@ -582,7 +650,10 @@ func GetUserTokens(userID string, orgID string) ([]APIToken, error) {
 // Ingress methods
 func GetIngressByDomainName(domainName string) (*Ingress, error) {
 	var resp apiResponse
-	err := makeRequest("GET", fmt.Sprintf("/ingresses/domainName/%s", domainName), nil, &resp)
+	// PathEscape so domains with characters that would otherwise be reserved
+	// (e.g. ?, #, /) don't break the request URL. The backend validates the
+	// decoded value separately.
+	err := makeRequest("GET", fmt.Sprintf("/ingresses/domainName/%s", url.PathEscape(domainName)), nil, &resp)
 	if err != nil {
 		return nil, err
 	}
@@ -640,6 +711,37 @@ func GetEnvironmentsByNamespace(namespace string) ([]Environment, error) {
 }
 
 // Machine methods
+
+// MachineTagLabelPrefix is the namespaced label key prefix used to record
+// user-defined machine tags. A machine tagged "production" has the K8s node
+// label `satusky.com/production` set on it.
+const MachineTagLabelPrefix = "satusky.com/"
+
+// GetMachineLabels returns the satusky.com/* labels for a machine. Used by
+// the deploy `--machine-tag` resolver to filter owned machines client-side
+// without a new backend endpoint.
+func GetMachineLabels(machineID string) (map[string]string, error) {
+	var resp struct {
+		Error bool `json:"error"`
+		Data  struct {
+			Labels map[string]string `json:"labels"`
+		} `json:"data"`
+	}
+	if err := makeRequest("GET", fmt.Sprintf("/machines/%s/labels", machineID), nil, &resp); err != nil {
+		return nil, err
+	}
+	return resp.Data.Labels, nil
+}
+
+// MachineHasTag reports whether the given label set contains the satusky.com/<tag> key.
+func MachineHasTag(labels map[string]string, tag string) bool {
+	if tag == "" || labels == nil {
+		return false
+	}
+	_, ok := labels[MachineTagLabelPrefix+tag]
+	return ok
+}
+
 func GetMachinesByOwnerID(ownerID uuid.UUID) ([]Machine, error) {
 	var resp apiResponse
 	err := makeRequest("GET", fmt.Sprintf("/machines/ownerId/%s", ownerID), nil, &resp)

@@ -13,7 +13,7 @@ import (
 func AuthCommand() *cli.Command {
 	return &cli.Command{
 		Name:  "auth",
-		Usage: "Display commands for authentication",
+		Usage: "Authenticate and manage credentials for SatuSky Cloud",
 		Subcommands: []*cli.Command{
 			{
 				Name:  "login",
@@ -55,34 +55,21 @@ func handleLogin(c *cli.Context) error {
 		}
 	}
 
-	// Store token in context.json
-	if err := context.SetToken(token); err != nil {
-		return utils.NewError(fmt.Sprintf("failed to store token: %s", err.Error()), nil)
-	}
-
-	// Validate token with API
+	// Validate token with API first, before writing anything to disk
 	result, err := api.LoginCLI(token)
 	if err != nil {
 		return utils.NewError(fmt.Sprintf("failed to login: %s", err.Error()), nil)
 	}
 
-	// Store user ID in context.json
-	if err := context.SetUserID(result.UserID); err != nil {
-		return utils.NewError(fmt.Sprintf("failed to store user ID: %s", err.Error()), nil)
+	// Fail-fast: a token unassociated with an organization is unusable. Writing
+	// an empty namespace to context.json poisons every subsequent command with
+	// cryptic "not found" errors. Surface the cause at login instead.
+	if result.OrganizationID == "" || result.Namespace == "" {
+		return utils.NewError("token is not associated with an organization — ensure the token has an organization scope", nil)
 	}
 
-	// Store organization info in context.json
-	namespace := result.Namespace
-	if namespace == "" {
-		namespace = result.OrganizationName
-	}
-	if err := context.SetCurrentOrganization(result.OrganizationID, result.OrganizationName, namespace); err != nil {
-		return utils.NewError(fmt.Sprintf("failed to store organization info: %s", err.Error()), nil)
-	}
-
-	// Store user config key in context.json
-	if err := context.SetUserConfigKey(result.UserConfigKey); err != nil {
-		return utils.NewError(fmt.Sprintf("failed to store user config key: %s", err.Error()), nil)
+	if err := context.SaveLoginState(token, result.UserID, result.UserEmail, result.OrganizationID, result.OrganizationName, result.Namespace); err != nil {
+		return utils.NewError(fmt.Sprintf("failed to store login state: %s", err.Error()), nil)
 	}
 
 	utils.PrintSuccess("Logged in successfully to SatuSky 1ctl as %s!\n", result.UserEmail)
@@ -90,24 +77,8 @@ func handleLogin(c *cli.Context) error {
 }
 
 func handleLogout(c *cli.Context) error {
-	// Clear token from context
-	if err := context.SetToken(""); err != nil {
-		return utils.NewError(fmt.Sprintf("failed to clear token: %s", err.Error()), nil)
-	}
-
-	// Clear namespace from context
-	if err := context.SetCurrentNamespace(""); err != nil {
-		return utils.NewError(fmt.Sprintf("failed to clear namespace: %s", err.Error()), nil)
-	}
-
-	// Clear user config key from context
-	if err := context.SetUserConfigKey(""); err != nil {
-		return utils.NewError(fmt.Sprintf("failed to clear user config key: %s", err.Error()), nil)
-	}
-
-	// Clear user ID from context
-	if err := context.SetUserID(""); err != nil {
-		return utils.NewError(fmt.Sprintf("failed to clear user ID: %s", err.Error()), nil)
+	if err := context.ClearAuthState(); err != nil {
+		return utils.NewError(fmt.Sprintf("failed to clear auth state: %s", err.Error()), nil)
 	}
 
 	utils.PrintSuccess("Successfully logged out")

@@ -5,8 +5,6 @@ import (
 	"encoding/json"
 	"fmt"
 	"time"
-
-	"github.com/google/uuid"
 )
 
 // CLIUserProfile represents user profile information for CLI operations
@@ -19,12 +17,12 @@ type CLIUserProfile struct {
 	CreatedAt    time.Time `json:"created_at"`
 }
 
-// UserPermissions represents user permissions for an organization
-type UserPermissions struct {
-	UserID         uuid.UUID `json:"user_id"`
-	OrganizationID uuid.UUID `json:"organization_id"`
-	Role           string    `json:"role"`
-	Permissions    []string  `json:"permissions"`
+// UserPermission represents a single permission entry returned by the backend.
+type UserPermission struct {
+	Name        string `json:"permission_name"`
+	Description string `json:"permission_description"`
+	Resource    string `json:"resource_type"`
+	Action      string `json:"action"`
 }
 
 // UpdateUserRequest represents request to update user profile
@@ -80,7 +78,7 @@ func ChangePassword(currentPassword, newPassword string) error {
 }
 
 // GetUserPermissions gets user permissions for an organization
-func GetUserPermissions(orgID string) (*UserPermissions, error) {
+func GetUserPermissions(orgID string) ([]UserPermission, error) {
 	var resp apiResponse
 	err := makeRequest("GET", fmt.Sprintf("/users/permissions/%s", orgID), nil, &resp)
 	if err != nil {
@@ -92,11 +90,11 @@ func GetUserPermissions(orgID string) (*UserPermissions, error) {
 		return nil, utils.NewError(fmt.Sprintf("failed to marshal response data: %s", err.Error()), nil)
 	}
 
-	var perms UserPermissions
+	var perms []UserPermission
 	if err := json.Unmarshal(data, &perms); err != nil {
 		return nil, utils.NewError(fmt.Sprintf("failed to unmarshal permissions: %s", err.Error()), nil)
 	}
-	return &perms, nil
+	return perms, nil
 }
 
 // RevokeAllSessions revokes all user sessions

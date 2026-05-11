@@ -1,5 +1,7 @@
 # Binaries and build artifacts
 bin/
+/1ctl
+/1ctl-dev
 *.exe
 *.exe~
 *.dll

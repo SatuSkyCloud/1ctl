@@ -4,10 +4,42 @@ import (
 	"flag"
 	"testing"
 
-	"1ctl/internal/docker"
-
 	"github.com/urfave/cli/v2"
 )
+
+// TestCaptureUserSetFlags_BeforeAndAfterCSet locks down the invariant that
+// applyConfigScalar's c.Set call should NOT make the captured snapshot
+// report a user-set flag. This regression existed in pre-review code: a
+// satusky.toml carrying rolling_max_surge would flip
+// opts.RollingFlagsExplicit and force strategy config onto requests that
+// would otherwise have been omitted. The fix moved the IsSet capture to
+// the top of handleDeploy. Test guards that.
+func TestCaptureUserSetFlags_NotPoisonedByCSet(t *testing.T) {
+	fs := flag.NewFlagSet("test", flag.ContinueOnError)
+	fs.String("rolling-max-surge", "25%", "")
+	// Do NOT call fs.Set / c.Set for "rolling-max-surge" — simulating the
+	// "user did not pass --rolling-max-surge" case.
+	ctx := cli.NewContext(nil, fs, nil)
+
+	snapshot := captureUserSetFlags(ctx, "rolling-max-surge")
+	if snapshot["rolling-max-surge"] {
+		t.Fatalf("snapshot pre-c.Set: want false, got true")
+	}
+
+	// Simulate applyConfigScalar's effect.
+	if err := ctx.Set("rolling-max-surge", "50%"); err != nil {
+		t.Fatalf("ctx.Set: %v", err)
+	}
+
+	// The snapshot must still report user did not set it. c.IsSet would
+	// return true here — that's exactly the trap the snapshot avoids.
+	if snapshot["rolling-max-surge"] {
+		t.Errorf("snapshot post-c.Set mutated: want false, got true")
+	}
+	if !ctx.IsSet("rolling-max-surge") {
+		t.Log("note: c.IsSet returns true after c.Set — this is the trap captureUserSetFlags exists to side-step")
+	}
+}
 
 func TestDeployCommand(t *testing.T) {
 	cmd := DeployCommand()
@@ -19,9 +51,15 @@ func TestDeployCommand(t *testing.T) {
 
 	// Check subcommands
 	expectedSubcommands := map[string]bool{
-		"list":   false,
-		"get":    false,
-		"status": false,
+		"list":     false,
+		"get":      false,
+		"status":   false,
+		"destroy":  false,
+		"restart":  false,
+		"releases": false,
+		"rollback": false,
+		"open":     false, // #3 D-02
+		"scale":    false, // #3 F-05
 	}
 
 	for _, subcmd := range cmd.Subcommands {
@@ -40,10 +78,9 @@ func TestDeployCommand(t *testing.T) {
 
 func TestHandleDeploy(t *testing.T) {
 	tests := []struct {
-		name      string
-		flags     map[string]string
-		mockBuild func(opts docker.BuildOptions) error
-		wantErr   bool
+		name    string
+		flags   map[string]string
+		wantErr bool
 	}{
 		{
 			name: "valid deployment",
@@ -52,9 +89,6 @@ func TestHandleDeploy(t *testing.T) {
 				"memory":     "512Mi",
 				"project":    "test-project",
 				"dockerfile": "testdata/Dockerfile",
-			},
-			mockBuild: func(opts docker.BuildOptions) error {
-				return nil
 			},
 			wantErr: true,
 		},
@@ -66,8 +100,7 @@ func TestHandleDeploy(t *testing.T) {
 				"project":    "test-project",
 				"dockerfile": "testdata/Dockerfile",
 			},
-			mockBuild: nil,
-			wantErr:   true,
+			wantErr: true,
 		},
 		{
 			name: "invalid memory",
@@ -77,8 +110,7 @@ func TestHandleDeploy(t *testing.T) {
 				"project":    "test-project",
 				"dockerfile": "testdata/Dockerfile",
 			},
-			mockBuild: nil,
-			wantErr:   true,
+			wantErr: true,
 		},
 	}
 

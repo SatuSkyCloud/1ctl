@@ -1,9 +1,11 @@
 package commands
 
 import (
+	"1ctl/internal/context"
 	"1ctl/internal/testing/helpers"
 	"flag"
 	"os"
+	"path/filepath"
 	"testing"
 
 	"github.com/urfave/cli/v2"
@@ -58,6 +60,11 @@ func TestHandleLogin(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			// Isolate from the real profile so the stored token doesn't leak in.
+			dir := helpers.SetupTestContext(t)
+			defer func() { _ = os.RemoveAll(dir) }() //nolint:errcheck
+			context.SetConfigDir(filepath.Join(dir, ".satusky"))
+
 			// Set up CLI context
 			app := cli.NewApp()
 			flags := flag.NewFlagSet("test", flag.ContinueOnError)
@@ -105,6 +112,8 @@ func TestHandleLogout(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			dir := tt.setup(t)
 			defer func() { _ = os.RemoveAll(dir) }() //nolint:errcheck
+			// Point context package at the temp dir so writes go to the test profile
+			context.SetConfigDir(filepath.Join(dir, ".satusky"))
 			err := handleLogout(cli.NewContext(nil, nil, nil))
 			if (err != nil) != tt.wantErr {
 				t.Errorf("handleLogout() error = %v, wantErr %v", err, tt.wantErr)

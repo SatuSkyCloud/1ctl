@@ -84,45 +84,81 @@ type WaitFor struct {
 	Port int32  `json:"port"`
 }
 
+// DeploymentStrategyType represents the rollout strategy type
+type DeploymentStrategyType string
+
+const (
+	StrategyRolling  DeploymentStrategyType = "rolling"
+	StrategyRecreate DeploymentStrategyType = "recreate"
+)
+
+// RollingUpdateConfig configures rolling update behaviour
+type RollingUpdateConfig struct {
+	MaxSurge       string `json:"max_surge"`
+	MaxUnavailable string `json:"max_unavailable"`
+}
+
+// DeploymentStrategyConfig holds the complete strategy configuration
+type DeploymentStrategyConfig struct {
+	Type    DeploymentStrategyType `json:"type"`
+	Rolling *RollingUpdateConfig   `json:"rolling,omitempty"`
+}
+
 type Deployment struct {
-	DeploymentID       uuid.UUID           `json:"deployment_id,omitempty"`
-	UserID             uuid.UUID           `json:"user_id"`
-	Hostnames          []string            `json:"hostnames"`
-	Type               string              `json:"type"`
-	Zone               string              `json:"zone"`
-	Region             string              `json:"region"`
-	SSD                string              `json:"ssd"`
-	GPU                string              `json:"gpu"`
-	Namespace          string              `json:"namespace"`
-	Replicas           int32               `json:"replicas"`
-	Image              string              `json:"image"`
-	AppLabel           string              `json:"app_label"`
-	Port               int32               `json:"port"`
-	CpuRequest         string              `json:"cpu_request"`
-	MemoryRequest      string              `json:"memory_request"`
-	MemoryLimit        string              `json:"memory_limit"`
-	RepoURL            string              `json:"repo_url,omitempty"`
-	BranchName         string              `json:"branch_name,omitempty"`
-	DockerfilePath     string              `json:"dockerfile_path,omitempty"`
-	EnvEnabled         bool                `json:"env_enabled"`
-	SecretEnabled      bool                `json:"secret_enabled"`
-	VolumeEnabled      bool                `json:"volume_enabled"`
-	Status             string              `json:"status"`
-	Environment        string              `json:"environment"`
-	MarketplaceAppName string              `json:"marketplace_app_name"`
-	MulticlusterConfig *MulticlusterConfig `json:"multicluster_config,omitempty"`
-	PDBConfig          *PDBConfig          `json:"pdb_config,omitempty"`
-	HPAConfig          *HPAConfig          `json:"hpa_config,omitempty"`
-	VPAConfig          *VPAConfig          `json:"vpa_config,omitempty"`
-	WaitFor            []WaitFor           `json:"wait_for,omitempty"`
-	CreatedAt          time.Time           `json:"created_at"`
-	UpdatedAt          time.Time           `json:"updated_at"`
+	DeploymentID       uuid.UUID                 `json:"deployment_id,omitempty"`
+	UserID             uuid.UUID                 `json:"user_id"`
+	Hostnames          []string                  `json:"hostnames"`
+	Type               string                    `json:"type"`
+	Zone               string                    `json:"zone"`
+	Region             string                    `json:"region"`
+	SSD                string                    `json:"ssd"`
+	GPU                string                    `json:"gpu"`
+	Namespace          string                    `json:"namespace"`
+	Replicas           int32                     `json:"replicas"`
+	Image              string                    `json:"image"`
+	AppLabel           string                    `json:"app_label"`
+	Port               int32                     `json:"port"`
+	CpuRequest         string                    `json:"cpu_request"`
+	MemoryRequest      string                    `json:"memory_request"`
+	MemoryLimit        string                    `json:"memory_limit"`
+	RepoURL            string                    `json:"repo_url,omitempty"`
+	BranchName         string                    `json:"branch_name,omitempty"`
+	DockerfilePath     string                    `json:"dockerfile_path,omitempty"`
+	EnvEnabled         bool                      `json:"env_enabled"`
+	SecretEnabled      bool                      `json:"secret_enabled"`
+	VolumeEnabled      bool                      `json:"volume_enabled"`
+	Status             string                    `json:"status"`
+	Environment        string                    `json:"environment"`
+	MarketplaceAppName string                    `json:"marketplace_app_name"`
+	MulticlusterConfig *MulticlusterConfig       `json:"multicluster_config,omitempty"`
+	PDBConfig          *PDBConfig                `json:"pdb_config,omitempty"`
+	HPAConfig          *HPAConfig                `json:"hpa_config,omitempty"`
+	VPAConfig          *VPAConfig                `json:"vpa_config,omitempty"`
+	StrategyConfig     *DeploymentStrategyConfig `json:"deployment_strategy,omitempty"`
+	WaitFor            []WaitFor                 `json:"wait_for,omitempty"`
+	TargetArch         string                    `json:"target_arch,omitempty"`
+	Domain             string                    `json:"domain,omitempty"`
+	CreatedAt          time.Time                 `json:"created_at"`
+	UpdatedAt          time.Time                 `json:"updated_at"`
 }
 
 type CreateDeploymentResponse struct {
 	DeploymentID uuid.UUID `json:"deployment_id"`
 	AppLabel     string    `json:"app_label"`
 	Domain       string    `json:"domain"`
+}
+
+// DeploymentVersion represents a single release in the deployment version history.
+type DeploymentVersion struct {
+	VersionID     string    `json:"version_id"`
+	DeploymentID  string    `json:"deployment_id"`
+	VersionNumber int       `json:"version_number"`
+	Image         string    `json:"image"`
+	CPU           string    `json:"cpu"`
+	Memory        string    `json:"memory"`
+	Replicas      int       `json:"replicas"`
+	DeployedAt    time.Time `json:"deployed_at"`
+	Status        string    `json:"status"`
 }
 
 type Secret struct {
@@ -207,6 +243,7 @@ type Issuer struct {
 type Organization struct {
 	OrganizationID   uuid.UUID `json:"organization_id"`
 	OrganizationName string    `json:"organization_name"`
+	Namespace        string    `json:"namespace,omitempty"`
 	Description      string    `json:"description,omitempty"`
 	CreatedAt        time.Time `json:"created_at"`
 	UpdatedAt        time.Time `json:"updated_at"`
@@ -309,6 +346,7 @@ type Machine struct {
 	HourlyCost          float64    `db:"hourly_cost" json:"hourly_cost"`
 	CreatedAt           time.Time  `db:"created_at" json:"created_at"`
 	UpdatedAt           time.Time  `db:"updated_at" json:"updated_at"`
+	CPUArch             string     `json:"cpu_arch"`
 }
 
 type MachineIDs struct {

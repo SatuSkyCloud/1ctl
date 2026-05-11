@@ -1,0 +1,5 @@
+[app]
+  name = "backend-api"
+  port = 8080
+  cpu  = "0.5"
+  memory = "256Mi"

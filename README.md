@@ -22,9 +22,42 @@ Download from [Releases](https://github.com/SatuSkyCloud/1ctl/releases/latest), 
 
 ### Build from source
 
+#### Local development build
+
+A standard build connects to `api.satusky.com` by default:
+
 ```bash
-git clone https://github.com/satuskycloud/1ctl.git && cd 1ctl && go build -o 1ctl ./cmd/...
+git clone https://github.com/satuskycloud/1ctl.git
+cd 1ctl
+go build -o 1ctl ./cmd/...
 ```
+
+To point the binary at a local API server, override the default URLs at compile time via ldflags:
+
+```bash
+go build \
+  -ldflags "-X '1ctl/internal/config.defaultAPIURL=http://localhost:8080/v1/cli' \
+            -X '1ctl/internal/config.defaultDockerUploadURL=http://localhost:3000'" \
+  -o 1ctl ./cmd/...
+```
+
+Alternatively, override at runtime with environment variables (no rebuild needed):
+
+```bash
+export SATUSKY_API_URL=http://localhost:8080/v1/cli
+export SATUSKY_DOCKER_API_URL=http://localhost:3000
+./1ctl deploy ...
+```
+
+#### Production build (CI/CD)
+
+Production releases are built by GoReleaser and triggered automatically when a semver tag is pushed. The CI pipeline produces cross-platform binaries (Linux, macOS, Windows — amd64 and arm64) with version metadata embedded:
+
+```bash
+git tag v0.X.Y && git push origin v0.X.Y
+```
+
+Do **not** run GoReleaser locally for production releases — the pipeline requires `HOMEBREW_TAP_TOKEN` and other CI secrets.
 
 ## Usage on GitHub Actions
 
@@ -63,15 +96,18 @@ export SATUSKY_API_KEY=your_api_token
 1ctl auth logout
 ```
 
-3. Deploy your first application:
+3. Run the interactive wizard (new in v0.8.0):
 
 ```bash
-# Navigate to your project directory with a Dockerfile
+# Detects your project runtime, suggests defaults, writes satusky.toml
 cd your-project
+1ctl launch
 
-# Deploy the application
-1ctl deploy --cpu 1 --memory 512Mi
+# Or skip the wizard and write satusky.toml yourself, then:
+1ctl deploy
 ```
+
+> **Memory unit suffix is required** as of v0.8.0: use `--memory 512Mi`, never `--memory 512`. Bare numbers are parsed by Kubernetes as bytes and silently OOMKill the pod.
 
 ## Usage Examples
 
@@ -81,10 +117,37 @@ cd your-project
 # Basic deployment
 1ctl deploy --cpu 2 --memory 512Mi
 
-# Deploy with custom domain and machine targeting
-1ctl deploy --cpu 2 --memory 1Gi --domain example.com --machine my-machine-1
+# Deploy to managed cloud, targeting a specific zone
+1ctl deploy --cpu 2 --memory 1Gi --zone my-kul-1b
 
-# List deployments
+# Deploy with a custom domain (Let's Encrypt picked automatically for non-*.satusky.com hosts)
+1ctl deploy --cpu 2 --memory 1Gi --domain example.com
+
+# BYOA: deploy to one of YOUR machines, by name
+1ctl deploy --cpu 2 --memory 1Gi --machine my-machine-1
+
+# BYOA: deploy to all your machines labelled satusky.com/production
+1ctl deploy --cpu 2 --memory 1Gi --machine-tag production
+
+# Deploy a pre-built image (skips local Docker build and push)
+1ctl deploy --cpu 2 --memory 512Mi --image registry.satusky.com/satusky-container-registry/myapp:abc1234
+
+# Deploy with rolling update strategy (default: 25% max surge, 25% max unavailable)
+1ctl deploy --cpu 2 --memory 1Gi --strategy rolling --rolling-max-surge 1 --rolling-max-unavailable 0
+
+# Deploy with recreate strategy (stops all pods before starting new ones)
+1ctl deploy --cpu 2 --memory 1Gi --strategy recreate
+
+# Wait for TCP dependencies to be ready before the app starts
+1ctl deploy --cpu 2 --memory 1Gi --wait-for postgres:5432 --wait-for redis:6379
+
+# Block until pods are Running (5min default timeout)
+1ctl deploy --cpu 2 --memory 1Gi --wait
+
+# JSON output (global flag — works on deploy list/get/status, env list, secret list, machine list, token list)
+1ctl --output json deploy list | jq '.[] | select(.status == "Running")'
+
+# List deployments (NAME column shows the app label as of v0.8.0)
 1ctl deploy list
 
 # Get deployment info
@@ -92,7 +155,24 @@ cd your-project
 
 # Check deployment status
 1ctl deploy status --deployment-id=123 --watch
+
+# Open the deployed app URL in your browser
+1ctl deploy open --deployment-id=123
+
+# Scale an existing deployment without rebuilding
+1ctl deploy scale --deployment-id=123 --replicas 4
+
+# Roll back to the previous release
+1ctl deploy rollback --deployment-id=123
+
+# Rolling restart (pick up new env / config without redeploying the image)
+1ctl deploy restart --deployment-id=123
+
+# Tear down a deployment (prompts for confirmation; use --yes to skip)
+1ctl deploy destroy --deployment-id=123 --yes
 ```
+
+> **Default targeting is managed cloud.** Even if you have registered machines, `1ctl deploy` (with no `--machine*` flag) goes to the marketplace. To use your own hardware pass `--machine` or `--machine-tag` explicitly. This changed in v0.8.0.
 
 ### High Availability (PDB, HPA, VPA)
 
@@ -123,18 +203,11 @@ cd your-project
 
 **Note:** PDB auto-enables when replicas > 1. HPA and VPA with mode `Auto` cannot be used together.
 
-### Services
+<!-- The `1ctl service` command was hidden from `--help` in v0.8.0.
+     Kubernetes Services are now a `deploy` implementation detail; the
+     `deploy` orchestrator creates and updates the Service automatically.
+     The command is still callable for scripts that depend on it. -->
 
-```bash
-# Create/update a service
-1ctl service --deployment-id=123 --name=myapp --port=8080 --namespace=my-org
-
-# List services
-1ctl service list
-
-# Delete a service
-1ctl service delete --service-id=456
-```
 
 ### Secrets
 
@@ -149,30 +222,39 @@ cd your-project
 ### Environment Variables
 
 ```bash
-# Create environment variables
-1ctl env create --deployment-id=123 --name=myenv --env="DB_HOST=localhost" --env="DB_PORT=5432" --project=test-genesis-org
+# Create or merge env vars (upsert — keys you don't pass are preserved)
+1ctl env create --deployment-id=123 --env="DB_HOST=localhost" --env="DB_PORT=5432"
 
 # List environments
 1ctl env list
 1ctl env list --deployment-id=123
-1ctl env list --project=test-genesis-org
 
-# Delete environment
-1ctl env delete --env-id=789
+# Remove a single key
+1ctl env unset --deployment-id=123 --key=DB_HOST
 ```
 
-### Ingress/DNS
+> The wholesale `env delete` was removed in development; use `env unset --key=<name>` for per-key removal. Same change applies to `secret`.
+
+### Custom Domains
 
 ```bash
-# Create/update ingress
-1ctl ingress --deployment-id=123 --service-id=456 --domain=myapp.example.com --app-label=myapp --namespace=my-org
+# Attach a custom domain to an app (resolves deployment/service/namespace internally)
+1ctl domains add app.example.com --app myapp
 
-# List ingress rules
-1ctl ingress list
+# *.satusky.com hostnames use the platform-managed wildcard cert
+1ctl domains add foo.satusky.com --app myapp
 
-# Delete ingress
-1ctl ingress delete --ingress-id=789
+# List domains in the current organization
+1ctl domains list
+
+# Show DNS / TLS status for a domain
+1ctl domains check app.example.com
+
+# Detach a domain (refuses cross-app removal even when the domain matches)
+1ctl domains remove app.example.com --app myapp --yes
 ```
+
+> **`1ctl ingress` and `1ctl issuer` were hidden from `--help` in v0.8.0.** Custom-domain workflows go through `1ctl domains`, which resolves IDs internally from `--app <name>` — no more passing deployment / service UUIDs by hand. The hidden commands still work for scripts that depend on them.
 
 ### Organizations (Multi-Tenant)
 
@@ -212,45 +294,14 @@ cd your-project
 # View machine usage
 1ctl credits usage --days 7
 
-# Initiate a top-up
-1ctl credits topup --amount 100
-
-# Manage invoices
-1ctl credits invoices
-1ctl credits invoices get <invoice-id>
-1ctl credits invoices download <invoice-id> --output invoice.pdf
-1ctl credits invoices generate --start-date 2025-01-01 --end-date 2025-01-31
 ```
 
-### Storage (S3)
+> Top-up, invoices, auto-topup, and billing notifications were moved from the CLI to the SatuSky Control Panel (web UI). The CLI keeps read-only visibility (`balance` / `transactions` / `usage`).
 
-```bash
-# List storage configurations
-1ctl storage list
-
-# Get storage details
-1ctl storage get <storage-id>
-
-# Create storage
-1ctl storage create --name my-storage --type s3 --size 10Gi
-
-# Delete storage
-1ctl storage delete <storage-id>
-
-# Bucket operations
-1ctl storage buckets
-1ctl storage buckets create --name my-bucket
-1ctl storage buckets delete <bucket-name>
-
-# File operations
-1ctl storage files <storage-id>
-1ctl storage upload <storage-id> ./myfile.txt
-1ctl storage download <object-id> --output ./downloaded.txt
-1ctl storage presign <storage-id> --file myfile.txt --expires 3600
-
-# Usage info
-1ctl storage usage <storage-id>
-```
+<!-- `1ctl storage` was removed in the v0.7.x cleanup. The CLI surface will
+     return in a follow-up release (#3 T-04) — the api/storage.go backend
+     calls are present, the command handlers aren't wired yet. For now use
+     the SatuSky Control Panel for storage operations. -->
 
 ### Logs
 
@@ -350,48 +401,14 @@ cd your-project
 
 # Get audit log details
 1ctl audit get <log-id>
-
-# Export audit logs
-1ctl audit export --format json --output audit.json
 ```
 
-### Talos Configuration
+> Audit export was moved to the SatuSky Control Panel (web UI). The CLI keeps list + get.
 
-```bash
-# Generate Talos configuration
-1ctl talos generate --machine-id <id> --cluster-name my-cluster --role worker
-
-# Apply configuration to a machine
-1ctl talos apply --machine-id <id> --config-file talos.yaml
-
-# View configuration history
-1ctl talos history <machine-id>
-
-# View network info
-1ctl talos network <machine-id>
-```
-
-### Admin Operations (Super-admin only)
-
-```bash
-# Machine usage management
-1ctl admin usage unbilled
-1ctl admin usage machine <machine-id>
-1ctl admin usage bill <usage-id>
-
-# Credits management
-1ctl admin credits add <org-id> --amount 100 --description "Bonus"
-1ctl admin credits refund <org-id> --amount 50 --description "Refund"
-
-# View all namespaces
-1ctl admin namespaces
-
-# View cluster roles
-1ctl admin cluster-roles
-
-# Cleanup resources
-1ctl admin cleanup --label app=test --namespace my-ns
-```
+<!-- `1ctl talos` and `1ctl admin` were removed in the v0.7.x cleanup
+     commit (f07d3f8). They were operator-facing surfaces moved to
+     dedicated internal tooling. The README sections are kept out of
+     this user-facing doc so the public command list stays accurate. -->
 
 ### Machines
 

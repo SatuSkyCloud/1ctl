@@ -5,7 +5,6 @@ import (
 	"1ctl/internal/context"
 	"1ctl/internal/utils"
 	"fmt"
-	"os"
 
 	"github.com/urfave/cli/v2"
 )
@@ -17,7 +16,6 @@ func AuditCommand() *cli.Command {
 		Subcommands: []*cli.Command{
 			auditListCommand(),
 			auditGetCommand(),
-			auditExportCommand(),
 		},
 	}
 }
@@ -51,25 +49,6 @@ func auditGetCommand() *cli.Command {
 		Usage:     "Get audit log details",
 		ArgsUsage: "<log-id>",
 		Action:    handleAuditGet,
-	}
-}
-
-func auditExportCommand() *cli.Command {
-	return &cli.Command{
-		Name:  "export",
-		Usage: "Export audit logs",
-		Flags: []cli.Flag{
-			&cli.StringFlag{
-				Name:  "format",
-				Usage: "Export format (json, csv)",
-				Value: "json",
-			},
-			&cli.StringFlag{
-				Name:  "output",
-				Usage: "Output file path",
-			},
-		},
-		Action: handleAuditExport,
 	}
 }
 
@@ -153,32 +132,6 @@ func handleAuditGet(c *cli.Context) error {
 		for key, value := range log.Metadata {
 			utils.PrintStatusLine(key, fmt.Sprintf("%v", value))
 		}
-	}
-
-	return nil
-}
-
-func handleAuditExport(c *cli.Context) error {
-	orgID := context.GetCurrentOrgID()
-	if orgID == "" {
-		return utils.NewError("organization ID not found. Please run '1ctl auth login' first", nil)
-	}
-
-	format := c.String("format")
-	output := c.String("output")
-
-	data, err := api.ExportAuditLogs(orgID, format)
-	if err != nil {
-		return utils.NewError(fmt.Sprintf("failed to export audit logs: %s", err.Error()), nil)
-	}
-
-	if output != "" {
-		if err := os.WriteFile(output, data, 0600); err != nil {
-			return utils.NewError(fmt.Sprintf("failed to write file: %s", err.Error()), nil)
-		}
-		utils.PrintSuccess("Audit logs exported to %s", output)
-	} else {
-		fmt.Println(string(data))
 	}
 
 	return nil

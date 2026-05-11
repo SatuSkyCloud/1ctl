@@ -42,14 +42,15 @@ func (cm *CleanupManager) AddResource(resourceType ResourceType, id, name string
 	})
 }
 
-// TODO: proper cleanup upon error (resources) on orchestrator
-func (cm *CleanupManager) Cleanup(payload interface{}) []error {
+// Cleanup iterates the registered resources in reverse-registration order
+// so children (ingress, env) come down before parents (deployment).
+func (cm *CleanupManager) Cleanup() []error {
 	var errors []error
 
 	// Cleanup in reverse order to handle dependencies
 	for i := len(cm.resources) - 1; i >= 0; i-- {
 		resource := cm.resources[i]
-		if err := cm.cleanupResource(payload, resource); err != nil {
+		if err := cm.cleanupResource(resource); err != nil {
 			errors = append(errors, utils.NewError(fmt.Sprintf("failed to cleanup %s %s: %s", resource.Type, resource.Name, err.Error()), nil))
 		}
 	}
@@ -57,24 +58,28 @@ func (cm *CleanupManager) Cleanup(payload interface{}) []error {
 	return errors
 }
 
-func (cm *CleanupManager) cleanupResource(payload interface{}, resource Resource) error {
+func (cm *CleanupManager) cleanupResource(resource Resource) error {
 	utils.PrintWarning("Cleaning up %s: %s...\n", resource.Type, resource.Name)
 
 	switch resource.Type {
 	case ResourceDeployment:
-		return api.DeleteDeployment(payload, resource.ID)
+		return api.DeleteDeployment(resource.ID)
 	case ResourceService:
-		return api.DeleteService(payload, resource.ID)
+		return api.DeleteService(resource.ID)
 	case ResourceIngress:
-		return api.DeleteIngress(payload, resource.ID)
+		return api.DeleteIngress(resource.ID)
 	case ResourceVolume:
-		// TODO: Add volume deletion when API supports it
+		// The backend's POST /volumes/create has no DELETE counterpart yet.
+		// We still register volumes with the manager so they appear in cleanup
+		// logs (operators can manually clean up the PVC), but the actual delete
+		// is a no-op until the backend ships volume deletion.
+		utils.PrintWarning("Volume %s (%s) cannot be deleted via CLI — manual PVC cleanup required.", resource.Name, resource.ID)
 		return nil
 	case ResourceSecret:
 		// TODO: Add secret deletion when API supports it
 		return nil
 	case ResourceEnv:
-		return api.DeleteEnvironment(payload, resource.ID)
+		return api.DeleteEnvironment(resource.ID)
 	default:
 		return utils.NewError(fmt.Sprintf("unknown resource type: %s", resource.Type), nil)
 	}
@@ -91,31 +96,4 @@ func FormatCleanupErrors(errors []error) string {
 	}
 
 	return fmt.Sprintf("Cleanup errors:\n%s", strings.Join(messages, "\n"))
-}
-
-// Make cleanupFuncs package-visible for testing
-var cleanupFuncs []func()
-
-// RegisterCleanupFunc adds a cleanup function to be run later
-func RegisterCleanupFunc(f func()) {
-	if cleanupFuncs == nil {
-		cleanupFuncs = make([]func(), 0)
-	}
-	cleanupFuncs = append(cleanupFuncs, f)
-}
-
-// RunCleanup executes all registered cleanup functions
-func RunCleanup() {
-	if cleanupFuncs == nil {
-		return
-	}
-	for _, f := range cleanupFuncs {
-		f()
-	}
-	cleanupFuncs = nil // Clear the slice after running
-}
-
-// ResetCleanup resets the cleanup functions (useful for testing)
-func ResetCleanup() {
-	cleanupFuncs = nil
 }

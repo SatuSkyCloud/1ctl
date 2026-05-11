@@ -21,18 +21,21 @@ func SecretCommand() *cli.Command {
 				Usage: "Create a new secret",
 				Flags: []cli.Flag{
 					&cli.StringFlag{
-						Name:     "deployment-id",
-						Usage:    "Deployment ID",
-						Required: true,
+						Name:  "deployment-id",
+						Usage: "Deployment ID",
 					},
 					&cli.StringFlag{
-						Name:     "name",
-						Usage:    "Secret name",
-						Required: true,
+						Name:  "config",
+						Usage: "Config name or path (e.g. staging, satusky.staging.toml). Default: satusky.toml",
+					},
+					&cli.StringFlag{
+						Name:  "name",
+						Usage: "App label (defaults to deployment name, auto-resolved from deployment-id)",
 					},
 					&cli.StringSliceFlag{
-						Name:  "env",
-						Usage: "Environment variables (format: KEY=VALUE)",
+						Name:    "kv",
+						Aliases: []string{"env"},
+						Usage:   "Secret key-value pairs (format: KEY=VALUE)",
 					},
 				},
 				Action: handleCreateSecret,
@@ -43,26 +46,23 @@ func SecretCommand() *cli.Command {
 				Action: handleListSecrets,
 			},
 			{
-				Name:  "delete",
-				Usage: "Delete a secret",
+				Name:  "unset",
+				Usage: "Remove a specific key from a secret",
 				Flags: []cli.Flag{
-					&cli.StringFlag{
-						Name:     "secret-id",
-						Aliases:  []string{"s"},
-						Usage:    "Secret ID to delete",
-						Required: true,
-					},
+					&cli.StringFlag{Name: "config", Usage: "Config name or path"},
+					&cli.StringFlag{Name: "deployment-id", Aliases: []string{"d"}, Usage: "Deployment ID"},
+					&cli.StringFlag{Name: "key", Aliases: []string{"k"}, Usage: "Key to remove", Required: true},
 				},
-				Action: handleDeleteSecret,
+				Action: handleSecretUnset,
 			},
 		},
 	}
 }
 
 func handleCreateSecret(c *cli.Context) error {
-	deploymentIDStr := c.String("deployment-id")
-	if deploymentIDStr == "" {
-		return utils.NewError("deployment-id is required", nil)
+	deploymentIDStr, err := resolveDeploymentID(c.String("deployment-id"), c.String("config"))
+	if err != nil {
+		return err
 	}
 
 	deploymentID, err := uuid.Parse(deploymentIDStr)
@@ -70,13 +70,13 @@ func handleCreateSecret(c *cli.Context) error {
 		return utils.NewError(fmt.Sprintf("invalid deployment-id: %s", err.Error()), nil)
 	}
 
-	envVars := c.StringSlice("env")
+	envVars := c.StringSlice("kv")
 	keyValues := make([]api.KeyValuePair, 0, len(envVars))
 
-	for _, env := range envVars {
-		parts := strings.SplitN(env, "=", 2)
+	for _, kv := range envVars {
+		parts := strings.SplitN(kv, "=", 2)
 		if len(parts) != 2 {
-			return utils.NewError("invalid environment variable format: %s", nil)
+			return utils.NewError("invalid key-value format (expected KEY=VALUE)", nil)
 		}
 		keyValues = append(keyValues, api.KeyValuePair{
 			Key:   parts[0],
@@ -84,9 +84,18 @@ func handleCreateSecret(c *cli.Context) error {
 		})
 	}
 
+	appLabel := c.String("name")
+	if appLabel == "" {
+		deployment, err := api.GetDeployment(deploymentIDStr)
+		if err != nil {
+			return utils.NewError(fmt.Sprintf("failed to resolve deployment name: %s", err.Error()), nil)
+		}
+		appLabel = deployment.AppLabel
+	}
+
 	secret := api.Secret{
 		DeploymentID: deploymentID,
-		AppLabel:     c.String("name"),
+		AppLabel:     appLabel,
 		Namespace:    context.GetCurrentNamespace(),
 		KeyValues:    keyValues,
 	}
@@ -96,16 +105,11 @@ func handleCreateSecret(c *cli.Context) error {
 		return utils.NewError(fmt.Sprintf("failed to create secret: %s", err.Error()), nil)
 	}
 
-	utils.PrintSuccess("Secret %s created successfully\n", secretResp.AppLabel)
-	return nil
-}
-
-func handleDeleteSecret(c *cli.Context) error {
-	secretID := c.String("secret-id")
-	if err := api.DeleteSecret(secretID); err != nil {
-		return utils.NewError(fmt.Sprintf("failed to delete secret: %s", err.Error()), nil)
+	displayName := secretResp.AppLabel
+	if displayName == "" {
+		displayName = appLabel
 	}
-	utils.PrintSuccess("Secret %s deleted successfully", secretID)
+	utils.PrintSuccess("Secret %s created successfully\n", displayName)
 	return nil
 }
 
@@ -120,21 +124,41 @@ func handleListSecrets(c *cli.Context) error {
 		return nil
 	}
 
-	utils.PrintHeader("Secrets")
-	for _, secret := range secrets {
-		utils.PrintStatusLine("Secret", secret.SecretID.String())
-		utils.PrintStatusLine("Deployment ID", secret.DeploymentID.String())
-		utils.PrintStatusLine("Namespace", secret.Namespace)
-		utils.PrintStatusLine("App Label", secret.AppLabel)
-		if len(secret.KeyValues) > 0 {
-			utils.PrintInfo("Key-Value Pairs:\n")
-			for _, kv := range secret.KeyValues {
-				utils.PrintInfo("  %s: %s\n", kv.Key, kv.Value)
-			}
-		}
-		utils.PrintStatusLine("Created", api.FormatTimeAgo(secret.CreatedAt))
-		utils.PrintStatusLine("Last Updated", api.FormatTimeAgo(secret.UpdatedAt))
-		utils.PrintDivider()
+	if utils.TryPrintJSON(secrets) {
+		return nil
 	}
+
+	headers := []string{"NAME", "SECRET ID", "DEPLOYMENT ID", "CREATED"}
+	rows := make([][]string, 0, len(secrets))
+	for _, secret := range secrets {
+		rows = append(rows, []string{
+			secret.AppLabel,
+			secret.SecretID.String(),
+			secret.DeploymentID.String(),
+			api.FormatTimeAgo(secret.CreatedAt),
+		})
+	}
+	utils.PrintTable(headers, rows)
+	return nil
+}
+
+func handleSecretUnset(c *cli.Context) error {
+	key := c.String("key")
+
+	deploymentID, err := resolveDeploymentID(c.String("deployment-id"), c.String("config"))
+	if err != nil {
+		return utils.NewError(fmt.Sprintf("failed to resolve deployment: %s", err.Error()), nil)
+	}
+
+	secrets, err := api.GetSecretsByDeploymentID(deploymentID)
+	if err != nil || len(secrets) == 0 {
+		return utils.NewError("no secret found for this deployment", nil)
+	}
+
+	if err := api.UnsetSecretKey(secrets[0].SecretID.String(), key); err != nil {
+		return utils.NewError(fmt.Sprintf("failed to unset key: %s", err.Error()), nil)
+	}
+
+	utils.PrintSuccess("Key %q removed from secrets", key)
 	return nil
 }

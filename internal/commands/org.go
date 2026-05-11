@@ -6,6 +6,7 @@ import (
 	"1ctl/internal/utils"
 	"fmt"
 
+	"github.com/google/uuid"
 	"github.com/urfave/cli/v2"
 )
 
@@ -170,7 +171,6 @@ func handleOrgList(c *cli.Context) error {
 func handleOrgCurrent(c *cli.Context) error {
 	orgName := context.GetCurrentOrgName()
 	orgID := context.GetCurrentOrgID()
-	namespace := context.GetCurrentNamespace()
 
 	if orgName == "" {
 		return utils.NewError("no organization set. Please run '1ctl auth login' first", nil)
@@ -179,7 +179,6 @@ func handleOrgCurrent(c *cli.Context) error {
 	utils.PrintHeader("Current Organization")
 	utils.PrintStatusLine("Organization", orgName)
 	utils.PrintStatusLine("Organization ID", orgID)
-	utils.PrintStatusLine("Namespace", namespace)
 	return nil
 }
 
@@ -187,8 +186,20 @@ func handleOrgSwitch(c *cli.Context) error {
 	orgID := c.String("org-id")
 	orgName := c.String("org-name")
 
+	// Accept positional arg as org-id or org-name
 	if orgID == "" && orgName == "" {
-		return utils.NewError("either --org-id or --org-name is required", nil)
+		if arg := c.Args().First(); arg != "" {
+			// Try as UUID first, fall back to name
+			if _, err := uuid.Parse(arg); err == nil {
+				orgID = arg
+			} else {
+				orgName = arg
+			}
+		}
+	}
+
+	if orgID == "" && orgName == "" {
+		return utils.NewError("provide --org-id, --org-name, or a positional org name/id", nil)
 	}
 
 	// Get the organization details
@@ -218,8 +229,14 @@ func handleOrgSwitch(c *cli.Context) error {
 		}
 	}
 
-	// Update context with new organization
-	if err := context.SetCurrentOrganization(org.OrganizationID.String(), org.OrganizationName, org.OrganizationName); err != nil {
+	// The organizations table enforces NOT NULL on namespace, so a successful
+	// org lookup always returns a non-empty namespace. An empty value means the
+	// API response is malformed; falling back to OrganizationName would produce
+	// an invalid k8s namespace (org names allow spaces/uppercase/etc).
+	if org.Namespace == "" {
+		return utils.NewError(fmt.Sprintf("organization '%s' has no namespace assigned — contact support", org.OrganizationName), nil)
+	}
+	if err := context.SetCurrentOrganization(org.OrganizationID.String(), org.OrganizationName, org.Namespace); err != nil {
 		return utils.NewError(fmt.Sprintf("failed to switch organization: %s", err.Error()), nil)
 	}
 

@@ -5,6 +5,7 @@ import (
 	"1ctl/internal/context"
 	"1ctl/internal/utils"
 	"fmt"
+	"net/http"
 
 	gorillaws "github.com/gorilla/websocket"
 	"github.com/urfave/cli/v2"
@@ -16,10 +17,13 @@ func LogsCommand() *cli.Command {
 		Usage: "View and manage pod logs",
 		Flags: []cli.Flag{
 			&cli.StringFlag{
-				Name:     "deployment-id",
-				Aliases:  []string{"d"},
-				Usage:    "Deployment ID to view logs for",
-				Required: true,
+				Name:    "deployment-id",
+				Aliases: []string{"d"},
+				Usage:   "Deployment ID to view logs for",
+			},
+			&cli.StringFlag{
+				Name:  "config",
+				Usage: "Config name or path (e.g. staging, satusky.staging.toml). Default: satusky.toml",
 			},
 			&cli.IntFlag{
 				Name:    "tail",
@@ -27,61 +31,18 @@ func LogsCommand() *cli.Command {
 				Usage:   "Number of lines to show (default: 100)",
 				Value:   100,
 			},
-			&cli.BoolFlag{
-				Name:  "stats",
-				Usage: "Show log statistics instead of logs",
-			},
 		},
 		Subcommands: []*cli.Command{
 			logsStreamCommand(),
-			logsStatsCommand(),
-			logsDeleteCommand(),
 		},
 		Action: handleLogs,
 	}
 }
 
-func logsStatsCommand() *cli.Command {
-	return &cli.Command{
-		Name:  "stats",
-		Usage: "Show log statistics for a deployment",
-		Flags: []cli.Flag{
-			&cli.StringFlag{
-				Name:     "deployment-id",
-				Aliases:  []string{"d"},
-				Usage:    "Deployment ID",
-				Required: true,
-			},
-		},
-		Action: handleLogsStats,
-	}
-}
-
-func logsDeleteCommand() *cli.Command {
-	return &cli.Command{
-		Name:  "delete",
-		Usage: "Delete logs for a deployment",
-		Flags: []cli.Flag{
-			&cli.StringFlag{
-				Name:     "deployment-id",
-				Aliases:  []string{"d"},
-				Usage:    "Deployment ID",
-				Required: true,
-			},
-		},
-		Action: handleLogsDelete,
-	}
-}
-
 func handleLogs(c *cli.Context) error {
-	deploymentID := c.String("deployment-id")
-	if deploymentID == "" {
-		return utils.NewError("--deployment-id is required", nil)
-	}
-
-	// If stats flag is set, show stats instead
-	if c.Bool("stats") {
-		return handleLogsStats(c)
+	deploymentID, err := resolveDeploymentID(c.String("deployment-id"), c.String("config"))
+	if err != nil {
+		return err
 	}
 
 	tail := c.Int("tail")
@@ -112,53 +73,6 @@ func handleLogs(c *cli.Context) error {
 	return nil
 }
 
-func handleLogsStats(c *cli.Context) error {
-	deploymentID := c.String("deployment-id")
-	if deploymentID == "" {
-		return utils.NewError("--deployment-id is required", nil)
-	}
-
-	stats, err := api.GetLogStats(deploymentID)
-	if err != nil {
-		return utils.NewError(fmt.Sprintf("failed to get log stats: %s", err.Error()), nil)
-	}
-
-	utils.PrintHeader("Log Statistics")
-	utils.PrintStatusLine("Deployment ID", stats.DeploymentID.String())
-	utils.PrintStatusLine("Total Lines", fmt.Sprintf("%d", stats.TotalLines))
-	utils.PrintStatusLine("Total Size", api.FormatBytes(stats.TotalSize))
-	if !stats.OldestLog.IsZero() {
-		utils.PrintStatusLine("Oldest Log", stats.OldestLog.Format("2006-01-02 15:04:05"))
-	}
-	if !stats.NewestLog.IsZero() {
-		utils.PrintStatusLine("Newest Log", stats.NewestLog.Format("2006-01-02 15:04:05"))
-	}
-
-	// Calculate log rate if we have time range
-	if !stats.OldestLog.IsZero() && !stats.NewestLog.IsZero() {
-		duration := stats.NewestLog.Sub(stats.OldestLog)
-		if duration.Hours() > 0 {
-			rate := float64(stats.TotalLines) / duration.Hours()
-			utils.PrintStatusLine("Log Rate", fmt.Sprintf("~%.0f lines/hour", rate))
-		}
-	}
-	return nil
-}
-
-func handleLogsDelete(c *cli.Context) error {
-	deploymentID := c.String("deployment-id")
-	if deploymentID == "" {
-		return utils.NewError("--deployment-id is required", nil)
-	}
-
-	if err := api.DeleteLogs(deploymentID); err != nil {
-		return utils.NewError(fmt.Sprintf("failed to delete logs: %s", err.Error()), nil)
-	}
-
-	utils.PrintSuccess("Logs for deployment %s deleted successfully", deploymentID)
-	return nil
-}
-
 // requireUserContext returns the userID from context or an error
 func requireUserContext() (string, error) {
 	userID := context.GetUserID()
@@ -172,6 +86,16 @@ func handleLogsStream(c *cli.Context) error {
 	namespace := c.String("namespace")
 	appLabel := c.String("app")
 	batchSize := c.Int("batch-size")
+
+	// Resolve deployment-id from --config if not provided directly
+	if c.String("deployment-id") == "" && c.String("namespace") == "" {
+		id, err := resolveDeploymentID("", c.String("config"))
+		if err == nil && id != "" {
+			if err := c.Set("deployment-id", id); err != nil {
+				return utils.NewError(fmt.Sprintf("failed to set deployment-id: %s", err.Error()), nil)
+			}
+		}
+	}
 
 	// Resolve via deployment ID if explicit flags not given
 	if deploymentID := c.String("deployment-id"); deploymentID != "" {
@@ -191,11 +115,15 @@ func handleLogsStream(c *cli.Context) error {
 	if err != nil {
 		return err
 	}
+
 	if batchSize > 0 {
 		wsURL = fmt.Sprintf("%s?batchSize=%d", wsURL, batchSize)
 	}
 
-	conn, _, err := gorillaws.DefaultDialer.Dial(wsURL, nil)
+	headers := http.Header{}
+	headers.Set("x-satusky-api-key", context.GetToken())
+
+	conn, _, err := gorillaws.DefaultDialer.Dial(wsURL, headers)
 	if err != nil {
 		return utils.NewError(fmt.Sprintf("failed to connect to log stream: %s", err.Error()), nil)
 	}
@@ -238,6 +166,10 @@ func logsStreamCommand() *cli.Command {
 				Name:  "batch-size",
 				Usage: "Log lines per batch sent by the server",
 				Value: 100,
+			},
+			&cli.StringFlag{
+				Name:  "config",
+				Usage: "Config name or path (e.g. staging, satusky.staging.toml). Default: satusky.toml",
 			},
 		},
 		Action: handleLogsStream,

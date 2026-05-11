@@ -85,7 +85,14 @@ func tokenDeleteCommand() *cli.Command {
 		Name:      "delete",
 		Usage:     "Delete a token",
 		ArgsUsage: "<token-id>",
-		Action:    handleTokenDelete,
+		Flags: []cli.Flag{
+			&cli.BoolFlag{
+				Name:    "yes",
+				Aliases: []string{"y"},
+				Usage:   "Skip confirmation prompt",
+			},
+		},
+		Action: handleTokenDelete,
 	}
 }
 
@@ -103,6 +110,10 @@ func handleTokenList(c *cli.Context) error {
 
 	if len(tokens) == 0 {
 		utils.PrintInfo("No API tokens found")
+		return nil
+	}
+
+	if utils.TryPrintJSON(tokens) {
 		return nil
 	}
 
@@ -257,6 +268,11 @@ func handleTokenDelete(c *cli.Context) error {
 	}
 
 	tokenID := c.Args().First()
+
+	if !utils.Confirm(fmt.Sprintf("Delete token %s? This cannot be undone.", tokenID), c.Bool("yes")) {
+		fmt.Println("Aborted.")
+		return nil
+	}
 
 	if err := api.DeleteCLIToken(userID, orgID, tokenID); err != nil {
 		return utils.NewError(fmt.Sprintf("failed to delete token: %s", err.Error()), nil)

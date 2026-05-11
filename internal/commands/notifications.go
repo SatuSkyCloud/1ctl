@@ -102,21 +102,22 @@ func handleNotifList(c *cli.Context) error {
 		return nil
 	}
 
-	utils.PrintHeader("Notifications")
+	headers := []string{"TYPE", "SUBJECT", "PRIORITY", "STATUS", "CREATED"}
+	rows := make([][]string, 0, len(notifications))
 	for _, notif := range notifications {
 		readStatus := "unread"
 		if notif.ReadAt != nil {
 			readStatus = "read"
 		}
-		utils.PrintStatusLine("ID", notif.NotificationID.String())
-		utils.PrintStatusLine("Type", notif.Type)
-		utils.PrintStatusLine("Subject", notif.Subject)
-		utils.PrintStatusLine("Message", notif.Message)
-		utils.PrintStatusLine("Priority", notif.Priority)
-		utils.PrintStatusLine("Status", readStatus)
-		utils.PrintStatusLine("Created", formatTimeAgo(notif.CreatedAt))
-		utils.PrintDivider()
+		rows = append(rows, []string{
+			notif.Type,
+			notif.Subject,
+			notif.Priority,
+			readStatus,
+			formatTimeAgo(notif.CreatedAt),
+		})
 	}
+	utils.PrintTable(headers, rows)
 	return nil
 }
 

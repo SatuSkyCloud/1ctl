@@ -4,12 +4,9 @@ import (
 	"1ctl/internal/api"
 	"1ctl/internal/context"
 	"1ctl/internal/utils"
-	"encoding/base64"
 	"fmt"
-	"os"
 	"strings"
 
-	"github.com/google/uuid"
 	"github.com/urfave/cli/v2"
 )
 
@@ -20,21 +17,9 @@ func MachineCommand() *cli.Command {
 		Subcommands: []*cli.Command{
 			machineListCommand(),
 			machineAvailableCommand(),
-			machineVMCommand(),
 			machineUsageCommand(),
 		},
 	}
-}
-
-// resolveMachine looks up a machine by UUID or name
-func resolveMachine(nameOrID string) (*api.Machine, error) {
-	if nameOrID == "" {
-		return nil, utils.NewError("machine name or ID is required", nil)
-	}
-	if _, err := uuid.Parse(nameOrID); err == nil {
-		return api.GetMachineByID(api.ToUUID(nameOrID))
-	}
-	return api.GetMachineByName(nameOrID)
 }
 
 func machineListCommand() *cli.Command {
@@ -61,11 +46,24 @@ func handleListMachines(c *cli.Context) error {
 		return nil
 	}
 
-	utils.PrintHeader("Machines")
-	for _, machine := range machines {
-		printMachineDetails(&machine)
-		utils.PrintDivider()
+	if utils.TryPrintJSON(machines) {
+		return nil
 	}
+
+	headers := []string{"NAME", "MACHINE ID", "REGION/ZONE", "STATUS", "CPU", "MEM(GB)", "HOURLY COST"}
+	rows := make([][]string, 0, len(machines))
+	for _, machine := range machines {
+		rows = append(rows, []string{
+			machine.MachineName,
+			machine.MachineID,
+			fmt.Sprintf("%s/%s", machine.MachineRegion, machine.MachineZone),
+			machine.Status,
+			fmt.Sprintf("%d", machine.CPUCores),
+			fmt.Sprintf("%d", machine.MemoryGB),
+			fmt.Sprintf("$%.4f", machine.HourlyCost),
+		})
+	}
+	utils.PrintTable(headers, rows)
 	return nil
 }
 
@@ -225,234 +223,6 @@ func filterMachines(machines []api.Machine, c *cli.Context) []api.Machine {
 	return filtered
 }
 
-func machineVMCommand() *cli.Command {
-	return &cli.Command{
-		Name:  "vm",
-		Usage: "Manage Mac agent VM lifecycle (start, stop, reboot, resize, etc.)",
-		Subcommands: []*cli.Command{
-			machineVMStatusCommand(),
-			machineVMStartCommand(),
-			machineVMStopCommand(),
-			machineVMRebootCommand(),
-			machineVMResizeCommand(),
-			machineVMApplyConfigCommand(),
-			machineVMConsoleCommand(),
-		},
-	}
-}
-
-func machineVMStatusCommand() *cli.Command {
-	return &cli.Command{
-		Name:      "status",
-		Usage:     "Show VM state for a Mac agent machine",
-		ArgsUsage: "<machine-name|id>",
-		Action: func(c *cli.Context) error {
-			nameOrID := c.Args().First()
-			machine, err := resolveMachine(nameOrID)
-			if err != nil {
-				return utils.NewError(fmt.Sprintf("failed to get machine: %s", err.Error()), nil)
-			}
-			utils.PrintHeader("VM Status: %s", machine.MachineName)
-			utils.PrintStatusLine("Machine ID", machine.MachineID)
-			utils.PrintStatusLine("Status", machine.Status)
-			if machine.ConnectionMode != nil {
-				utils.PrintStatusLine("Connection Mode", *machine.ConnectionMode)
-			}
-			if machine.VMState != nil {
-				utils.PrintStatusLine("VM State", colorVMState(*machine.VMState))
-			} else {
-				utils.PrintStatusLine("VM State", utils.WarnColor("unknown"))
-			}
-			return nil
-		},
-	}
-}
-
-func machineVMStartCommand() *cli.Command {
-	return &cli.Command{
-		Name:      "start",
-		Usage:     "Start a Mac agent VM",
-		ArgsUsage: "<machine-name|id>",
-		Action: func(c *cli.Context) error {
-			nameOrID := c.Args().First()
-			machine, err := resolveMachine(nameOrID)
-			if err != nil {
-				return utils.NewError(fmt.Sprintf("failed to get machine: %s", err.Error()), nil)
-			}
-			resp, err := api.SendMachineCommand(machine.MachineID, api.SendCommandRequest{Type: api.CmdStart})
-			if err != nil {
-				return utils.NewError(fmt.Sprintf("failed to start VM: %s", err.Error()), nil)
-			}
-			utils.PrintSuccess("Start command sent (command_id: %s, status: %s)", resp.CommandID, resp.Status)
-			return nil
-		},
-	}
-}
-
-func machineVMStopCommand() *cli.Command {
-	return &cli.Command{
-		Name:      "stop",
-		Usage:     "Stop a Mac agent VM",
-		ArgsUsage: "<machine-name|id>",
-		Flags: []cli.Flag{
-			&cli.BoolFlag{
-				Name:  "force",
-				Usage: "Force stop (no graceful shutdown)",
-			},
-			&cli.IntFlag{
-				Name:  "grace-seconds",
-				Usage: "Grace period in seconds before stop (default: 0)",
-				Value: 0,
-			},
-		},
-		Action: func(c *cli.Context) error {
-			nameOrID := c.Args().First()
-			machine, err := resolveMachine(nameOrID)
-			if err != nil {
-				return utils.NewError(fmt.Sprintf("failed to get machine: %s", err.Error()), nil)
-			}
-			req := api.SendCommandRequest{Type: api.CmdStop}
-			if c.Bool("force") {
-				req.Type = api.CmdForceStop
-			} else if grace := c.Int("grace-seconds"); grace > 0 {
-				req.Payload = map[string]interface{}{"grace_seconds": grace}
-			}
-			resp, err := api.SendMachineCommand(machine.MachineID, req)
-			if err != nil {
-				return utils.NewError(fmt.Sprintf("failed to stop VM: %s", err.Error()), nil)
-			}
-			utils.PrintSuccess("Stop command sent (command_id: %s, status: %s)", resp.CommandID, resp.Status)
-			return nil
-		},
-	}
-}
-
-func machineVMRebootCommand() *cli.Command {
-	return &cli.Command{
-		Name:      "reboot",
-		Usage:     "Reboot a Mac agent VM",
-		ArgsUsage: "<machine-name|id>",
-		Action: func(c *cli.Context) error {
-			nameOrID := c.Args().First()
-			machine, err := resolveMachine(nameOrID)
-			if err != nil {
-				return utils.NewError(fmt.Sprintf("failed to get machine: %s", err.Error()), nil)
-			}
-			resp, err := api.SendMachineCommand(machine.MachineID, api.SendCommandRequest{Type: api.CmdReboot})
-			if err != nil {
-				return utils.NewError(fmt.Sprintf("failed to reboot VM: %s", err.Error()), nil)
-			}
-			utils.PrintSuccess("Reboot command sent (command_id: %s, status: %s)", resp.CommandID, resp.Status)
-			return nil
-		},
-	}
-}
-
-func machineVMResizeCommand() *cli.Command {
-	return &cli.Command{
-		Name:      "resize",
-		Usage:     "Resize a Mac agent VM (CPU and memory)",
-		ArgsUsage: "<machine-name|id>",
-		Flags: []cli.Flag{
-			&cli.IntFlag{
-				Name:     "cpu",
-				Usage:    "Number of CPU cores",
-				Required: true,
-			},
-			&cli.IntFlag{
-				Name:     "memory",
-				Usage:    "Memory in GB",
-				Required: true,
-			},
-		},
-		Action: func(c *cli.Context) error {
-			nameOrID := c.Args().First()
-			machine, err := resolveMachine(nameOrID)
-			if err != nil {
-				return utils.NewError(fmt.Sprintf("failed to get machine: %s", err.Error()), nil)
-			}
-			resp, err := api.SendMachineCommand(machine.MachineID, api.SendCommandRequest{
-				Type: api.CmdResize,
-				Payload: map[string]interface{}{
-					"cpu_cores": c.Int("cpu"),
-					"memory_gb": c.Int("memory"),
-				},
-			})
-			if err != nil {
-				return utils.NewError(fmt.Sprintf("failed to resize VM: %s", err.Error()), nil)
-			}
-			utils.PrintSuccess("Resize command sent (command_id: %s, status: %s)", resp.CommandID, resp.Status)
-			return nil
-		},
-	}
-}
-
-func machineVMApplyConfigCommand() *cli.Command {
-	return &cli.Command{
-		Name:      "apply-config",
-		Usage:     "Apply a Talos config to a Mac agent VM",
-		ArgsUsage: "<machine-name|id>",
-		Flags: []cli.Flag{
-			&cli.StringFlag{
-				Name:     "config-file",
-				Usage:    "Path to Talos config file (will be base64-encoded)",
-				Required: true,
-			},
-		},
-		Action: func(c *cli.Context) error {
-			nameOrID := c.Args().First()
-			machine, err := resolveMachine(nameOrID)
-			if err != nil {
-				return utils.NewError(fmt.Sprintf("failed to get machine: %s", err.Error()), nil)
-			}
-			configBytes, err := os.ReadFile(c.String("config-file"))
-			if err != nil {
-				return utils.NewError(fmt.Sprintf("failed to read config file: %s", err.Error()), nil)
-			}
-			encoded := base64.StdEncoding.EncodeToString(configBytes)
-			resp, err := api.SendMachineCommand(machine.MachineID, api.SendCommandRequest{
-				Type:    api.CmdApplyConfig,
-				Payload: map[string]interface{}{"config_base64": encoded},
-			})
-			if err != nil {
-				return utils.NewError(fmt.Sprintf("failed to apply config: %s", err.Error()), nil)
-			}
-			utils.PrintSuccess("Apply-config command sent (command_id: %s, status: %s)", resp.CommandID, resp.Status)
-			return nil
-		},
-	}
-}
-
-func machineVMConsoleCommand() *cli.Command {
-	return &cli.Command{
-		Name:      "console",
-		Usage:     "Enable or disable console streaming on a Mac agent VM",
-		ArgsUsage: "<machine-name|id>",
-		Flags: []cli.Flag{
-			&cli.BoolFlag{
-				Name:  "enable",
-				Usage: "Enable console streaming (default: disable)",
-			},
-		},
-		Action: func(c *cli.Context) error {
-			nameOrID := c.Args().First()
-			machine, err := resolveMachine(nameOrID)
-			if err != nil {
-				return utils.NewError(fmt.Sprintf("failed to get machine: %s", err.Error()), nil)
-			}
-			resp, err := api.SendMachineCommand(machine.MachineID, api.SendCommandRequest{
-				Type:    api.CmdStreamConsole,
-				Payload: map[string]interface{}{"enabled": c.Bool("enable")},
-			})
-			if err != nil {
-				return utils.NewError(fmt.Sprintf("failed to toggle console: %s", err.Error()), nil)
-			}
-			utils.PrintSuccess("Console command sent (command_id: %s, status: %s)", resp.CommandID, resp.Status)
-			return nil
-		},
-	}
-}
-
 func printAvailableMachineDetails(machine *api.Machine) {
 	utils.PrintStatusLine("Machine ID", machine.MachineID)
 	utils.PrintStatusLine("Name", machine.MachineName)
@@ -461,38 +231,24 @@ func printAvailableMachineDetails(machine *api.Machine) {
 	if machine.ConnectionMode != nil {
 		utils.PrintStatusLine("Connection Mode", *machine.ConnectionMode)
 	}
-	if machine.VMState != nil {
-		utils.PrintStatusLine("VM State", colorVMState(*machine.VMState))
-	}
-
-	// Resource information
 	utils.PrintStatusLine("CPU Cores", fmt.Sprintf("%d", machine.CPUCores))
 	utils.PrintStatusLine("Memory (GB)", fmt.Sprintf("%d", machine.MemoryGB))
 	utils.PrintStatusLine("Storage (GB)", fmt.Sprintf("%d", machine.StorageGB))
-
-	// GPU information
 	if machine.HasGPU && machine.GPUCount > 0 {
 		utils.PrintStatusLine("GPU", fmt.Sprintf("%d x %s", machine.GPUCount, machine.GPUType))
 	} else {
 		utils.PrintStatusLine("GPU", "None")
 	}
-
-	// Network and performance
 	utils.PrintStatusLine("Bandwidth (Gbps)", fmt.Sprintf("%d", machine.BandwidthGbps))
 	utils.PrintStatusLine("Node Type", machine.NodeType)
-
-	// Pricing and recommendations
 	utils.PrintStatusLine("Pricing Tier", machine.PricingTier)
 	utils.PrintStatusLine("Hourly Cost", fmt.Sprintf("$%.4f", machine.HourlyCost))
-
 	if machine.Recommended {
 		utils.PrintStatusLine("Status", "✅ Recommended")
 	}
-
 	if machine.ResourceScore != nil {
 		utils.PrintStatusLine("Resource Score", fmt.Sprintf("%.2f", *machine.ResourceScore))
 	}
-
 	if machine.UptimePercent != nil {
 		utils.PrintStatusLine("Uptime", fmt.Sprintf("%.2f%%", *machine.UptimePercent))
 	}
@@ -568,20 +324,19 @@ func handleMachineUsageList(c *cli.Context) error {
 		return nil
 	}
 
-	utils.PrintHeader("Machine Usage Records")
+	headers := []string{"USAGE ID", "MACHINE ID", "STATUS", "HOURLY RATE", "START", "BILLED"}
+	rows := make([][]string, 0, len(usages))
 	for _, u := range usages {
-		utils.PrintStatusLine("Usage ID", u.UsageID)
-		utils.PrintStatusLine("Machine", u.MachineID)
-		utils.PrintStatusLine("Deployment", u.DeploymentID)
-		utils.PrintStatusLine("Status", u.Status)
-		utils.PrintStatusLine("Hourly Rate", fmt.Sprintf("$%.4f/hr", u.HourlyRate))
-		utils.PrintStatusLine("Start", u.StartTime)
-		if u.EndTime != nil {
-			utils.PrintStatusLine("End", *u.EndTime)
-		}
-		utils.PrintStatusLine("Billed", fmt.Sprintf("%v", u.IsBilled))
-		utils.PrintDivider()
+		rows = append(rows, []string{
+			u.UsageID,
+			u.MachineID,
+			u.Status,
+			fmt.Sprintf("$%.4f/hr", u.HourlyRate),
+			u.StartTime,
+			fmt.Sprintf("%v", u.IsBilled),
+		})
 	}
+	utils.PrintTable(headers, rows)
 	return nil
 }
 

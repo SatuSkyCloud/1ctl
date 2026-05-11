@@ -21,14 +21,16 @@ func EnvironmentCommand() *cli.Command {
 				Usage: "Create a new environment",
 				Flags: []cli.Flag{
 					&cli.StringFlag{
-						Name:     "deployment-id",
-						Usage:    "Deployment ID",
-						Required: true,
+						Name:  "deployment-id",
+						Usage: "Deployment ID",
 					},
 					&cli.StringFlag{
-						Name:     "name",
-						Usage:    "Environment name",
-						Required: true,
+						Name:  "config",
+						Usage: "Config name or path (e.g. staging, satusky.staging.toml). Default: satusky.toml",
+					},
+					&cli.StringFlag{
+						Name:  "name",
+						Usage: "App label (defaults to deployment name, auto-resolved from deployment-id)",
 					},
 					&cli.StringSliceFlag{
 						Name:  "env",
@@ -49,25 +51,23 @@ func EnvironmentCommand() *cli.Command {
 				Action: handleListEnvironments,
 			},
 			{
-				Name:  "delete",
-				Usage: "Delete an environment",
+				Name:  "unset",
+				Usage: "Remove a specific key from an environment",
 				Flags: []cli.Flag{
-					&cli.StringFlag{
-						Name:     "env-id",
-						Usage:    "Environment ID to delete",
-						Required: true,
-					},
+					&cli.StringFlag{Name: "config", Usage: "Config name or path"},
+					&cli.StringFlag{Name: "deployment-id", Aliases: []string{"d"}, Usage: "Deployment ID"},
+					&cli.StringFlag{Name: "key", Aliases: []string{"k"}, Usage: "Key to remove", Required: true},
 				},
-				Action: handleDeleteEnvironment,
+				Action: handleEnvUnset,
 			},
 		},
 	}
 }
 
 func handleCreateEnvironment(c *cli.Context) error {
-	deploymentIDStr := c.String("deployment-id")
-	if deploymentIDStr == "" {
-		return utils.NewError("deployment-id is required", nil)
+	deploymentIDStr, err := resolveDeploymentID(c.String("deployment-id"), c.String("config"))
+	if err != nil {
+		return err
 	}
 
 	deploymentID, err := uuid.Parse(deploymentIDStr)
@@ -89,9 +89,18 @@ func handleCreateEnvironment(c *cli.Context) error {
 		})
 	}
 
+	appLabel := c.String("name")
+	if appLabel == "" {
+		deployment, err := api.GetDeployment(deploymentIDStr)
+		if err != nil {
+			return utils.NewError(fmt.Sprintf("failed to resolve deployment name: %s", err.Error()), nil)
+		}
+		appLabel = deployment.AppLabel
+	}
+
 	env := api.Environment{
 		DeploymentID: deploymentID,
-		AppLabel:     c.String("name"),
+		AppLabel:     appLabel,
 		KeyValues:    keyValues,
 	}
 
@@ -100,7 +109,11 @@ func handleCreateEnvironment(c *cli.Context) error {
 		return utils.NewError(fmt.Sprintf("failed to upsert environment: %s", err.Error()), nil)
 	}
 
-	utils.PrintSuccess("Environment %s created successfully\n", envResp.AppLabel)
+	displayName := envResp.AppLabel
+	if displayName == "" {
+		displayName = appLabel
+	}
+	utils.PrintSuccess("Environment %s created successfully\n", displayName)
 	return nil
 }
 
@@ -115,31 +128,41 @@ func handleListEnvironments(c *cli.Context) error {
 		return nil
 	}
 
-	utils.PrintHeader("Environments")
-	for _, env := range environments {
-		utils.PrintStatusLine("Environment", env.EnvironmentID.String())
-		utils.PrintStatusLine("Deployment ID", env.DeploymentID.String())
-		utils.PrintStatusLine("App Label", env.AppLabel)
-		if len(env.KeyValues) > 0 {
-			utils.PrintInfo("Environment Variables:\n")
-			for _, kv := range env.KeyValues {
-				utils.PrintStatusLine(kv.Key, kv.Value)
-			}
-		}
-		utils.PrintStatusLine("Created", api.FormatTimeAgo(env.CreatedAt))
-		utils.PrintStatusLine("Last Updated", api.FormatTimeAgo(env.UpdatedAt))
-		utils.PrintDivider()
+	if utils.TryPrintJSON(environments) {
+		return nil
 	}
+
+	headers := []string{"NAME", "ENV ID", "DEPLOYMENT ID", "CREATED"}
+	rows := make([][]string, 0, len(environments))
+	for _, env := range environments {
+		rows = append(rows, []string{
+			env.AppLabel,
+			env.EnvironmentID.String(),
+			env.DeploymentID.String(),
+			api.FormatTimeAgo(env.CreatedAt),
+		})
+	}
+	utils.PrintTable(headers, rows)
 	return nil
 }
 
-// TODO: get data by id first before deleting to pass in the payload
-func handleDeleteEnvironment(c *cli.Context) error {
-	envID := c.String("env-id")
-	if err := api.DeleteEnvironment(nil, envID); err != nil {
-		return utils.NewError(fmt.Sprintf("failed to delete environment: %s", err.Error()), nil)
+func handleEnvUnset(c *cli.Context) error {
+	key := c.String("key")
+
+	deploymentID, err := resolveDeploymentID(c.String("deployment-id"), c.String("config"))
+	if err != nil {
+		return utils.NewError(fmt.Sprintf("failed to resolve deployment: %s", err.Error()), nil)
 	}
 
-	utils.PrintSuccess("Environment %s deleted successfully\n", envID)
+	envs, err := api.GetEnvironmentsByDeploymentID(deploymentID)
+	if err != nil || len(envs) == 0 {
+		return utils.NewError("no environment found for this deployment", nil)
+	}
+
+	if err := api.UnsetEnvironmentKey(envs[0].EnvironmentID.String(), key); err != nil {
+		return utils.NewError(fmt.Sprintf("failed to unset key: %s", err.Error()), nil)
+	}
+
+	utils.PrintSuccess("Key %q removed from environment", key)
 	return nil
 }

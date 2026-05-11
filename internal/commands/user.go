@@ -16,9 +16,8 @@ import (
 
 func UserCommand() *cli.Command {
 	return &cli.Command{
-		Name:    "user",
-		Aliases: []string{"profile"},
-		Usage:   "Manage user profile",
+		Name:  "user",
+		Usage: "Manage user account",
 		Subcommands: []*cli.Command{
 			userMeCommand(),
 			userUpdateCommand(),
@@ -208,22 +207,18 @@ func handleUserPermissions(c *cli.Context) error {
 		return utils.NewError("organization ID not found. Please run '1ctl auth login' first", nil)
 	}
 
-	perms, err := api.GetUserPermissions(orgID)
+	permsList, err := api.GetUserPermissions(orgID)
 	if err != nil {
 		return utils.NewError(fmt.Sprintf("failed to get permissions: %s", err.Error()), nil)
 	}
 
 	utils.PrintHeader("User Permissions")
-	utils.PrintStatusLine("User ID", perms.UserID.String())
-	utils.PrintStatusLine("Organization ID", perms.OrganizationID.String())
-	utils.PrintStatusLine("Role", perms.Role)
-
-	if len(perms.Permissions) > 0 {
-		fmt.Println()
-		utils.PrintHeader("Permissions")
-		for _, perm := range perms.Permissions {
-			fmt.Printf("  - %s\n", perm)
-		}
+	if len(permsList) == 0 {
+		utils.PrintInfo("No permissions assigned")
+		return nil
+	}
+	for _, p := range permsList {
+		fmt.Printf("  %-30s  %s\n", p.Name, p.Description)
 	}
 
 	return nil

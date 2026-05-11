@@ -10,6 +10,10 @@ import (
 )
 
 func TestGetConfig(t *testing.T) {
+	// Isolate from the real ~/.satusky so the active profile's api_url doesn't leak in.
+	tempDir := t.TempDir()
+	context.SetConfigDir(filepath.Join(tempDir, ".satusky"))
+
 	cfg := GetConfig()
 
 	if cfg.ApiURL != defaultAPIURL {
@@ -23,16 +27,22 @@ func TestValidateEnvironment(t *testing.T) {
 		t.Skip("Skipping context-dependent test on Windows")
 	}
 
-	// Set up isolated test context directory
+	// Set up isolated test context directory with a "test" profile
 	tempDir := t.TempDir()
 	testConfigDir := filepath.Join(tempDir, ".satusky")
-	if err := os.MkdirAll(testConfigDir, 0755); err != nil {
-		t.Fatalf("Failed to create test config dir: %v", err)
+	profilesDir := filepath.Join(testConfigDir, "profiles")
+	if err := os.MkdirAll(profilesDir, 0755); err != nil {
+		t.Fatalf("Failed to create test profiles dir: %v", err)
 	}
 
-	// Create empty context file with valid JSON
+	// Create an empty "test" profile
+	if err := os.WriteFile(filepath.Join(profilesDir, "test.json"), []byte("{}"), 0600); err != nil {
+		t.Fatalf("Failed to create test profile: %v", err)
+	}
+
+	// context.json points at the test profile
 	contextFile := filepath.Join(testConfigDir, "context.json")
-	if err := os.WriteFile(contextFile, []byte("{}"), 0600); err != nil {
+	if err := os.WriteFile(contextFile, []byte(`{"active_profile":"test"}`), 0600); err != nil {
 		t.Fatalf("Failed to create context file: %v", err)
 	}
 

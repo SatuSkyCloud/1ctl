@@ -9,24 +9,23 @@ import (
 	"github.com/joho/godotenv"
 )
 
-// These defaults are intentionally vars (not consts) so the 1ctl-dev build
-// can override them at link time via -ldflags "-X ...defaultAPIURL=...".
-// SATUSKY_API_URL / SATUSKY_DOCKER_API_URL env vars still override at runtime.
+// defaultAPIURL is the baked-in production endpoint. It can be overridden at
+// build time via -ldflags (for forks pointing at a different production
+// deployment) and at runtime via the --api-url flag, the SATUSKY_API_URL
+// environment variable, or a named profile's api_url field.
 var (
-	defaultAPIURL          = "https://api.satusky.com/v1/cli"
-	defaultDockerUploadURL = "http://docker-upload.api.satusky.com"
+	defaultAPIURL = "https://api.satusky.com/v1/cli"
 )
 
-// DefaultAPIURL returns the compiled-in default API URL (prod for `1ctl`,
-// dev for `1ctl-dev`). Ignores both env vars — use GetConfig() for the
+// DefaultAPIURL returns the compiled-in default API URL. It ignores both the
+// active profile and the SATUSKY_API_URL env var — use GetConfig() for the
 // effective runtime URL.
 func DefaultAPIURL() string {
 	return defaultAPIURL
 }
 
 type Config struct {
-	ApiURL       string
-	DockerApiURL string
+	ApiURL string
 }
 
 func init() {
@@ -41,18 +40,17 @@ func init() {
 
 func GetConfig() *Config {
 	config := &Config{
-		ApiURL:       defaultAPIURL,
-		DockerApiURL: defaultDockerUploadURL,
+		ApiURL: defaultAPIURL,
 	}
 
-	// Override API URL if explicitly set
-	if apiURL := os.Getenv("SATUSKY_API_URL"); apiURL != "" {
+	// Active profile API URL overrides the compiled-in default
+	if apiURL := context.GetAPIURL(); apiURL != "" {
 		config.ApiURL = apiURL
 	}
 
-	// Override Docker API URL if explicitly set
-	if dockerURL := os.Getenv("SATUSKY_DOCKER_API_URL"); dockerURL != "" {
-		config.DockerApiURL = dockerURL
+	// Env var overrides profile (useful for one-off overrides without switching profiles)
+	if apiURL := os.Getenv("SATUSKY_API_URL"); apiURL != "" {
+		config.ApiURL = apiURL
 	}
 
 	return config

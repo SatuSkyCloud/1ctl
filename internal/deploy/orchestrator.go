@@ -2,14 +2,15 @@ package deploy
 
 import (
 	"1ctl/internal/api"
+	"1ctl/internal/cleanup"
 	"1ctl/internal/context"
 	"1ctl/internal/docker"
 	"1ctl/internal/utils"
+	"1ctl/internal/validator"
+	"errors"
 	"fmt"
 	"os"
-	"path/filepath"
-	"strings"
-	"time"
+	"regexp"
 )
 
 type deploymentProgress struct {
@@ -32,67 +33,57 @@ func (dp *deploymentProgress) complete() {
 // Deploy handles the sequential deployment process
 func Deploy(opts DeploymentOptions) (*api.CreateDeploymentResponse, error) {
 	progress := &deploymentProgress{total: 5}
+	cmgr := cleanup.NewCleanupManager()
 
 	userID := context.GetUserID()
 	if userID == "" {
 		return nil, utils.NewError("Failed to get user ID", nil)
 	}
 
-	// First try to use owner's machines if no hostnames provided
+	// BYOA targeting is now explicit: the user must pass --machine or
+	// --machine-tag to deploy to owned hardware. Default behaviour deploys
+	// to managed cloud — issue #24 retires the implicit owner-machine
+	// auto-selection that bypassed quota enforcement and confused new users.
 	if len(opts.Hostnames) == 0 {
-		// Try owner's machines first
-		machines, err := api.GetMachinesByOwnerID(api.ToUUID(userID))
-		if err != nil {
-			// Don't return error here, we'll fall back to monetized machines
-			// log.Info("Failed to get owner's machines: %v", err)
-			utils.PrintWarning("Failed to get owner's machines: %v", err)
-		} else {
-			// Check if owner has any machines and deduplicate hostnames
-			hostnameSet := make(map[string]bool)
-			var hostnames []string
-			for _, machine := range machines {
-				// Only add hostname if we haven't seen it before (using machine ID instead of machine name)
-				if !hostnameSet[machine.MachineID] {
-					hostnameSet[machine.MachineID] = true
-					hostnames = append(hostnames, machine.MachineID)
-				}
-			}
-
-			if len(hostnames) > 0 {
-				opts.Hostnames = hostnames
-				utils.PrintInfo("Using owner's machines: %v", hostnames)
-			}
-		}
-
-		// If still no hostnames (no owner machines or error), let backend handle monetized machine selection
-		if len(opts.Hostnames) == 0 {
-			utils.PrintWarning("No owner machines available, will use monetized machines")
-			// The backend will:
-			// 1. Find cheapest machine with sufficient resources
-			// 2. Check user's credit balance
-			// 3. Create usage records if using monetized machines
-		}
+		utils.PrintInfo("Deploying to managed cloud — backend will select the cheapest suitable machine.")
 	}
 
-	projectName, err := docker.GetProjectName()
-	if err != nil {
-		return nil, utils.NewError("Failed to determine project name", err)
+	var projectName string
+	if opts.Name != "" {
+		projectName = opts.Name
+	} else {
+		var err2 error
+		projectName, err2 = docker.GetProjectName()
+		if err2 != nil {
+			return nil, utils.NewError("Failed to determine project name", err2)
+		}
+		utils.PrintInfo("App name: %s (auto-detected — use --name to override)", projectName)
+	}
+
+	// K8s Services use DNS-1035: must start with a letter, only [a-z0-9-], end with alphanumeric.
+	if err := validateAppName(projectName); err != nil {
+		return nil, err
 	}
 
 	// Step 1: Build and push image (skipped when a pre-built image is provided)
-	var image string
+	var (
+		image string
+		err   error
+	)
 	if opts.PrebuiltImage != "" {
 		image = opts.PrebuiltImage
 		utils.PrintInfo("Using pre-built image: %s", image)
 	} else {
 		progress.step = 1
-		progress.message = "Building and pushing Docker image"
+		progress.message = "Building image (cloud)"
 		progress.print()
 
-		image, err = buildAndUploadImage(opts.DockerfilePath, projectName)
+		var imageArch string
+		image, imageArch, err = submitRemoteBuild(opts.DockerfilePath, projectName)
 		if err != nil {
-			return nil, utils.NewError("Failed to build and push image", err)
+			return nil, utils.NewError("Failed to build image", err)
 		}
+		opts.TargetArch = imageArch
 		progress.complete()
 	}
 
@@ -107,6 +98,7 @@ func Deploy(opts DeploymentOptions) (*api.CreateDeploymentResponse, error) {
 	if err != nil {
 		return nil, err
 	}
+	cmgr.AddResource(cleanup.ResourceDeployment, deploymentID, projectName)
 	progress.complete()
 
 	// Step 3: Configure services
@@ -118,8 +110,10 @@ func Deploy(opts DeploymentOptions) (*api.CreateDeploymentResponse, error) {
 
 	serviceID, err := upsertService(deploymentID, opts, projectName, opts.Organization)
 	if err != nil {
+		deployCleanup(cmgr)
 		return nil, utils.NewError(fmt.Sprintf("failed to create service: %s", err.Error()), nil)
 	}
+	cmgr.AddResource(cleanup.ResourceService, serviceID, projectName)
 	progress.complete()
 
 	// Step 4: Handle environment and volumes
@@ -129,8 +123,16 @@ func Deploy(opts DeploymentOptions) (*api.CreateDeploymentResponse, error) {
 	progress.done = false
 	progress.print()
 
-	if err := handleEnvironmentAndVolumes(opts, deploymentID, projectName, opts.Organization); err != nil {
+	envID, volumeName, err := handleEnvironmentAndVolumes(opts, deploymentID, projectName, opts.Organization)
+	if err != nil {
+		deployCleanup(cmgr)
 		return nil, utils.NewError(fmt.Sprintf("failed to setup environment and volumes: %s", err.Error()), nil)
+	}
+	if envID != "" {
+		cmgr.AddResource(cleanup.ResourceEnv, envID, projectName)
+	}
+	if volumeName != "" {
+		cmgr.AddResource(cleanup.ResourceVolume, volumeName, projectName)
 	}
 	progress.complete()
 
@@ -141,9 +143,13 @@ func Deploy(opts DeploymentOptions) (*api.CreateDeploymentResponse, error) {
 	progress.done = false
 	progress.print()
 
-	domainName, err := handleIngressAndDependencies(opts, deploymentID, serviceID, userID, opts.Organization, projectName, opts.Hostnames)
+	domainName, ingressID, err := handleIngressAndDependencies(opts, deploymentID, serviceID, userID, opts.Organization, projectName, opts.Hostnames)
 	if err != nil {
+		deployCleanup(cmgr)
 		return nil, utils.NewError(fmt.Sprintf("failed to configure ingress and dependencies: %s", err.Error()), nil)
+	}
+	if ingressID != "" {
+		cmgr.AddResource(cleanup.ResourceIngress, ingressID, projectName)
 	}
 	progress.complete()
 
@@ -154,56 +160,53 @@ func Deploy(opts DeploymentOptions) (*api.CreateDeploymentResponse, error) {
 	}, nil
 }
 
-func buildAndUploadImage(dockerfilePath, projectName string) (string, error) {
-	// Build Docker image locally
-	if err := docker.Build(docker.BuildOptions{
-		DockerfilePath: dockerfilePath,
-		Tag:            projectName,
-	}); err != nil {
-		return "", utils.NewError(fmt.Sprintf("failed to build Docker image: %s", err.Error()), nil)
+// deployCleanup runs best-effort cleanup on partial deployment failure.
+func deployCleanup(cmgr *cleanup.CleanupManager) {
+	utils.PrintWarning("Deployment failed, attempting cleanup of created resources...")
+	if errs := cmgr.Cleanup(); len(errs) > 0 {
+		utils.PrintWarning("Cleanup encountered errors:\n%s", cleanup.FormatCleanupErrors(errs))
+	} else {
+		utils.PrintSuccess("Successfully cleaned up partial deployment resources")
+	}
+}
+
+// submitRemoteBuild packages the local build context, uploads it to the backend,
+// and waits for the Kaniko cloud build to complete. No local Docker daemon is required.
+// Returns the image reference, image architecture, and any error.
+func submitRemoteBuild(dockerfilePath, projectName string) (imageRef, imageArch string, err error) {
+	// Validate that the Dockerfile exists and is well-formed before shipping anything.
+	if err = validator.ValidateDockerfile(dockerfilePath); err != nil {
+		return "", "", utils.NewError(fmt.Sprintf("invalid Dockerfile: %s", err.Error()), nil)
 	}
 
-	// Save image to temporary file
-	tmpFile := filepath.Join(os.TempDir(), fmt.Sprintf("%s.tar", strings.ReplaceAll(projectName, "/", "_")))
-	defer func() { _ = os.Remove(tmpFile) }() //nolint:errcheck // Clean up temp file
+	// Package the build context into a gzipped tar, respecting .dockerignore.
+	utils.PrintInfo("Packaging build context...")
+	contextPath, err := docker.PackageContext(".")
+	if err != nil {
+		return "", "", utils.NewError(fmt.Sprintf("failed to package build context: %s", err.Error()), nil)
+	}
+	defer func() { _ = os.Remove(contextPath) }() //nolint:errcheck
 
-	if err := docker.SaveImage(projectName, tmpFile); err != nil {
-		return "", utils.NewError(fmt.Sprintf("failed to save Docker image: %s", err.Error()), nil)
+	// Submit the context to the backend; it returns a build ID immediately.
+	utils.PrintInfo("Submitting build to cloud...")
+	buildID, err := api.SubmitBuild(contextPath, projectName, dockerfilePath, nil)
+	if err != nil {
+		return "", "", utils.NewError(fmt.Sprintf("failed to submit build: %s", err.Error()), nil)
+	}
+	utils.PrintInfo("Build queued (ID: %s)", buildID)
+
+	// Poll until the Kaniko job finishes, streaming log output as it arrives.
+	// TODO: Should we be polling? is there a better way other than polling?
+	result, err := api.WaitForBuildResult(buildID, os.Stdout)
+	if err != nil {
+		return "", "", err
 	}
 
-	// Upload image to backend with retry logic
-	var version string
-	var uploadErr error
-	maxRetries := 3
-
-	for attempt := 1; attempt <= maxRetries; attempt++ {
-		utils.PrintInfo("Uploading Docker image (attempt %d/%d)...", attempt, maxRetries)
-
-		version, uploadErr = api.UploadDockerImage(tmpFile, projectName)
-		if uploadErr == nil {
-			utils.PrintSuccess("Docker image uploaded successfully")
-			break
-		}
-
-		if attempt < maxRetries {
-			// Exponential backoff: wait 2^attempt seconds
-			waitTime := 1 << attempt // 2, 4, 8 seconds
-			utils.PrintWarning("Upload failed (attempt %d/%d): %s. Retrying in %d seconds...",
-				attempt, maxRetries, uploadErr.Error(), waitTime)
-			time.Sleep(time.Duration(waitTime) * time.Second)
-		} else {
-			utils.PrintError("Upload failed after %d attempts: %s", maxRetries, uploadErr.Error())
-		}
+	utils.PrintSuccess("Cloud build complete: %s", result.ImageRef)
+	if result.ImageArch != "" {
+		utils.PrintInfo("Image architecture: %s", result.ImageArch)
 	}
-
-	if uploadErr != nil {
-		return "", utils.NewError(fmt.Sprintf("failed to deploy Docker image after %d attempts: %s", maxRetries, uploadErr.Error()), nil)
-	}
-
-	// generate full image tag
-	fullImage := fmt.Sprintf("%s/%s:%s", docker.RegistryURL, projectName, version)
-
-	return fullImage, nil
+	return result.ImageRef, result.ImageArch, nil
 }
 
 func mainDeploy(opts DeploymentOptions, image, name, userID, organization string, hostnames []string) (string, error) {
@@ -232,6 +235,7 @@ func mainDeploy(opts DeploymentOptions, image, name, userID, organization string
 		replicas = 1
 	}
 
+	// TODO: Shoudl we be hardcoding any of the values here? Make it strict and require to pass in params.
 	deployment := api.Deployment{
 		UserID:        api.ToUUID(userID),
 		Type:          "production", // Default to production (cluster env)
@@ -243,8 +247,7 @@ func mainDeploy(opts DeploymentOptions, image, name, userID, organization string
 		Namespace:     organization,
 		Port:          port,
 		Image:         image,
-		Region:        opts.Region, // Zone value for backward compat, or empty for auto-select
-		Zone:          opts.Zone,   // Target zone for cluster routing
+		Zone:          opts.Zone, // Target zone for cluster routing
 		SSD:           "true",
 		GPU:           "false",
 		AppLabel:      name,
@@ -316,6 +319,12 @@ func mainDeploy(opts DeploymentOptions, image, name, userID, organization string
 		deployment.WaitFor = opts.WaitFor
 	}
 
+	// Add deployment strategy configuration
+	deployment.StrategyConfig = buildStrategyConfig(opts)
+
+	// Pass image architecture so the backend sets the kubernetes.io/arch nodeSelector.
+	deployment.TargetArch = opts.TargetArch
+
 	var deploymentID string
 	if err := api.UpsertDeployment(deployment, &deploymentID); err != nil {
 		// Check if this is a resource exhausted error and handle it specially
@@ -350,9 +359,8 @@ func upsertService(deploymentID string, opts DeploymentOptions, projectName, org
 	return serviceID, nil
 }
 
-func upsertIngress(deploymentID string, serviceID string, opts DeploymentOptions, organization, projectName string) (string, error) {
+func upsertIngress(deploymentID string, serviceID string, opts DeploymentOptions, organization, projectName string) (domainName, ingressID string, err error) {
 	// Check if there's an existing ingress for this deployment
-	var domainName string
 	existingIngress, err := api.GetIngressByDeploymentID(deploymentID)
 	if err != nil {
 		utils.PrintInfo("No existing ingress found for deployment %s, will create new one: %s", deploymentID, err.Error())
@@ -361,7 +369,7 @@ func upsertIngress(deploymentID string, serviceID string, opts DeploymentOptions
 		if opts.Domain == "" {
 			domainName, err = api.GenerateDomainName(projectName)
 			if err != nil {
-				return "", utils.NewError(fmt.Sprintf("failed to generate domain name: %s", err.Error()), nil)
+				return "", "", utils.NewError(fmt.Sprintf("failed to generate domain name: %s", err.Error()), nil)
 			}
 			utils.PrintInfo("Generated new domain: %s", domainName)
 		} else {
@@ -378,7 +386,7 @@ func upsertIngress(deploymentID string, serviceID string, opts DeploymentOptions
 
 	port, err := api.SafeInt32(opts.Port)
 	if err != nil {
-		return "", utils.NewError(fmt.Sprintf("invalid port: %s", err.Error()), nil)
+		return "", "", utils.NewError(fmt.Sprintf("invalid port: %s", err.Error()), nil)
 	}
 
 	ingress := api.Ingress{
@@ -393,10 +401,10 @@ func upsertIngress(deploymentID string, serviceID string, opts DeploymentOptions
 
 	ingressResp, err := api.UpsertIngress(ingress)
 	if err != nil {
-		return "", utils.NewError(fmt.Sprintf("failed to upsert ingress: %s", err.Error()), nil)
+		return "", "", utils.NewError(fmt.Sprintf("failed to upsert ingress: %s", err.Error()), nil)
 	}
 
-	return ingressResp.DomainName, nil
+	return ingressResp.DomainName, ingressResp.IngressID.String(), nil
 }
 
 func handleDependencies(deps []api.Dependency, userID, organization string, hostnames []string) error {
@@ -434,81 +442,156 @@ func handleDependencies(deps []api.Dependency, userID, organization string, host
 	return nil
 }
 
-func handleEnvironmentAndVolumes(opts DeploymentOptions, deploymentID, projectName, organization string) error {
-	errChan := make(chan error, 2)
+// handleEnvironmentAndVolumes returns the envID and volumeName of any resources
+// it created so the caller can register them with the cleanup manager.
+// Either may be "" when the corresponding feature wasn't enabled.
+func handleEnvironmentAndVolumes(opts DeploymentOptions, deploymentID, projectName, organization string) (envID, volumeName string, err error) {
+	type envResult struct {
+		id  string
+		err error
+	}
+	type volResult struct {
+		name string
+		err  error
+	}
+	envChan := make(chan envResult, 1)
+	volChan := make(chan volResult, 1)
 
-	// Handle environment variables
 	go func() {
 		if opts.EnvEnabled && opts.Environment != nil {
 			opts.Environment.DeploymentID = api.ToUUID(deploymentID)
 			opts.Environment.AppLabel = projectName
 			opts.Environment.Namespace = organization
 
-			_, err := api.UpsertEnvironment(*opts.Environment)
-			if err != nil {
-				errChan <- utils.NewError(fmt.Sprintf("failed to create environment: %s", err.Error()), nil)
+			created, e := api.UpsertEnvironment(*opts.Environment)
+			if e != nil {
+				envChan <- envResult{err: utils.NewError(fmt.Sprintf("failed to create environment: %s", e.Error()), nil)}
 				return
 			}
+			envChan <- envResult{id: created.EnvironmentID.String()}
+			return
 		}
-		errChan <- nil
+		envChan <- envResult{}
 	}()
 
-	// Handle volume
 	go func() {
 		if opts.VolumeEnabled && opts.Volume != nil {
 			opts.Volume.DeploymentID = api.ToUUID(deploymentID)
 			opts.Volume.VolumeName = fmt.Sprintf("%s-volume", projectName)
 			opts.Volume.ClaimName = fmt.Sprintf("%s-claim", projectName)
-			if err := api.CreateVolume(*opts.Volume); err != nil {
-				errChan <- utils.NewError(fmt.Sprintf("failed to create volume: %s", err.Error()), nil)
+			if e := api.CreateVolume(*opts.Volume); e != nil {
+				volChan <- volResult{err: utils.NewError(fmt.Sprintf("failed to create volume: %s", e.Error()), nil)}
 				return
 			}
+			// CreateVolume returns no ID today; track by volume name so the
+			// CleanupManager can list it even though the backend doesn't yet
+			// support volume deletion.
+			volChan <- volResult{name: opts.Volume.VolumeName}
+			return
 		}
-		errChan <- nil
+		volChan <- volResult{}
 	}()
 
-	// Wait for both operations
-	for i := 0; i < 2; i++ {
-		if err := <-errChan; err != nil {
-			return err
+	envRes := <-envChan
+	volRes := <-volChan
+	// Both errors are surfaced — previously only errs[0] was returned, hiding
+	// the second when both goroutines failed simultaneously.
+	if joined := errors.Join(envRes.err, volRes.err); joined != nil {
+		return envRes.id, volRes.name, joined
+	}
+	return envRes.id, volRes.name, nil
+}
+
+// buildStrategyConfig converts DeploymentOptions strategy fields into the API struct.
+//
+// Optimisation: when the user didn't touch any strategy flag, we omit the
+// strategy config from the request to reduce noise. When the user explicitly
+// passed --rolling-max-surge or --rolling-max-unavailable — even with the
+// default values — the config is sent through so audit logs / version history
+// capture the user's intent.
+func buildStrategyConfig(opts DeploymentOptions) *api.DeploymentStrategyConfig {
+	strategy := opts.Strategy
+	if strategy == "" || strategy == "rolling" {
+		if opts.RollingMaxSurge == "25%" && opts.RollingMaxUnavailable == "25%" && !opts.RollingFlagsExplicit {
+			// User-untouched defaults — omit config.
+			return nil
+		}
+		return &api.DeploymentStrategyConfig{
+			Type: api.StrategyRolling,
+			Rolling: &api.RollingUpdateConfig{
+				MaxSurge:       opts.RollingMaxSurge,
+				MaxUnavailable: opts.RollingMaxUnavailable,
+			},
 		}
 	}
 
+	if api.DeploymentStrategyType(strategy) == api.StrategyRecreate {
+		return &api.DeploymentStrategyConfig{Type: api.StrategyRecreate}
+	}
 	return nil
 }
 
-func handleIngressAndDependencies(opts DeploymentOptions, deploymentID, serviceID, userID, organization, projectName string, hostnames []string) (string, error) {
-	errChan := make(chan error, 2)
-	var domain string
+// handleIngressAndDependencies returns the resolved domain name and the
+// ingressID of any ingress it created so the caller can register the resource
+// with the cleanup manager.
+func handleIngressAndDependencies(opts DeploymentOptions, deploymentID, serviceID, userID, organization, projectName string, hostnames []string) (domainName, ingressID string, err error) {
+	type ingressResult struct {
+		domain string
+		id     string
+		err    error
+	}
+	ingressChan := make(chan ingressResult, 1)
+	depErrChan := make(chan error, 1)
 
-	// Handle ingress
 	go func() {
-		domainName, err := upsertIngress(deploymentID, serviceID, opts, organization, projectName)
-		if err != nil {
-			errChan <- utils.NewError(fmt.Sprintf("failed to create ingress: %s", err.Error()), nil)
+		domain, id, e := upsertIngress(deploymentID, serviceID, opts, organization, projectName)
+		if e != nil {
+			ingressChan <- ingressResult{err: utils.NewError(fmt.Sprintf("failed to create ingress: %s", e.Error()), nil)}
 			return
 		}
-		errChan <- nil
-		domain = domainName
+		ingressChan <- ingressResult{domain: domain, id: id}
 	}()
 
-	// Handle dependencies
 	go func() {
 		if len(opts.Dependencies) > 0 {
-			if err := handleDependencies(opts.Dependencies, userID, organization, hostnames); err != nil {
-				errChan <- utils.NewError(fmt.Sprintf("failed to handle dependencies: %s", err.Error()), nil)
+			if e := handleDependencies(opts.Dependencies, userID, organization, hostnames); e != nil {
+				depErrChan <- utils.NewError(fmt.Sprintf("failed to handle dependencies: %s", e.Error()), nil)
 				return
 			}
 		}
-		errChan <- nil
+		depErrChan <- nil
 	}()
 
-	// Wait for both operations
-	for i := 0; i < 2; i++ {
-		if err := <-errChan; err != nil {
-			return "", err
-		}
+	ing := <-ingressChan
+	depErr := <-depErrChan
+	if joined := errors.Join(ing.err, depErr); joined != nil {
+		return "", ing.id, joined
 	}
+	return ing.domain, ing.id, nil
+}
 
-	return domain, nil
+// dns1035 matches valid K8s Service names (DNS-1035): starts with a letter,
+// only lowercase alphanumeric and hyphens, ends with alphanumeric, max 63 chars.
+var dns1035 = regexp.MustCompile(`^[a-z]([-a-z0-9]*[a-z0-9])?$`)
+
+// validateAppName checks the name against DNS-1035 before the deploy pipeline
+// starts, so users get an actionable error before any K8s resources are created.
+func validateAppName(name string) error {
+	if len(name) > 63 {
+		return utils.NewError(fmt.Sprintf(
+			"app name %q is too long (%d chars, max 63). Use --name <short-name> to set a shorter name, or update [app] name in satusky.toml.",
+			name, len(name)), nil)
+	}
+	if !dns1035.MatchString(name) {
+		hint := ""
+		if len(name) > 0 && (name[0] >= '0' && name[0] <= '9') {
+			hint = fmt.Sprintf(" (starts with a digit — try --name %s)", "app-"+name)
+		}
+		return utils.NewError(fmt.Sprintf(
+			"app name %q is not a valid K8s service name%s.\n"+
+				"  Names must start with a letter, contain only [a-z0-9-], and end with [a-z0-9].\n"+
+				"  Source: --name flag, [app] name in satusky.toml, or git remote auto-detect.",
+			name, hint), nil)
+	}
+	return nil
 }

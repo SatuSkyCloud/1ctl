@@ -13,7 +13,12 @@ import (
 func IssuerCommand() *cli.Command {
 	return &cli.Command{
 		Name:  "issuer",
-		Usage: "Manage SSL/TLS certificate issuers",
+		Usage: "Manage cert-manager issuers (internal — TLS is automatic when adding a custom domain)",
+		// Hidden from --help and shell completion: cert-manager Issuer is a
+		// backend implementation detail. Custom-domain TLS is provisioned
+		// automatically when `1ctl domains add` resolves a non-*.satusky.com
+		// host. The command still works for scripts that depend on it.
+		Hidden: true,
 		Subcommands: []*cli.Command{
 			{
 				Name:  "create",

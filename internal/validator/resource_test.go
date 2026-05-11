@@ -41,6 +41,11 @@ func TestValidateMemory(t *testing.T) {
 		{name: "invalid unit", input: "512MB", wantErr: true},
 		{name: "zero value", input: "0Mi", wantErr: true},
 		{name: "negative value", input: "-1Mi", wantErr: true},
+		// Bare integers must be rejected — K8s interprets them as bytes (issue #20).
+		{name: "bare number 512 rejected", input: "512", wantErr: true},
+		{name: "bare number 1 rejected", input: "1", wantErr: true},
+		{name: "bare number 2048 rejected", input: "2048", wantErr: true},
+		{name: "non-numeric rejected", input: "abc", wantErr: true},
 	}
 
 	runValidatorTests(t, tests, ValidateMemory)

@@ -34,8 +34,13 @@ func ServiceCommand() *cli.Command {
 
 	return &cli.Command{
 		Name:  "service",
-		Usage: "Create or update a service",
-		Flags: serviceFlags,
+		Usage: "Create or update a Kubernetes Service (low-level — deploy creates services automatically)",
+		// Hidden from --help and shell completion: Kubernetes Service is a
+		// deploy implementation detail. `1ctl deploy` already creates/updates
+		// services as part of the orchestration. The command still works for
+		// scripts that depend on it.
+		Hidden: true,
+		Flags:  serviceFlags,
 		Subcommands: []*cli.Command{
 			{
 				Name:   "list",
@@ -50,6 +55,11 @@ func ServiceCommand() *cli.Command {
 						Name:     "service-id",
 						Usage:    "Service ID to delete",
 						Required: true,
+					},
+					&cli.BoolFlag{
+						Name:    "yes",
+						Aliases: []string{"y"},
+						Usage:   "Skip confirmation prompt",
 					},
 				},
 				Action: handleDeleteService,
@@ -121,24 +131,28 @@ func handleListServices(c *cli.Context) error {
 		return nil
 	}
 
-	utils.PrintHeader("Services")
+	headers := []string{"NAME", "SERVICE ID", "DEPLOYMENT ID", "PORT", "UPDATED"}
+	rows := make([][]string, 0, len(services))
 	for _, svc := range services {
-		utils.PrintStatusLine("Service", svc.ServiceName)
-		utils.PrintStatusLine("ID", svc.ServiceID.String())
-		utils.PrintStatusLine("Deployment ID", svc.DeploymentID.String())
-		utils.PrintStatusLine("Namespace", svc.Namespace)
-		utils.PrintStatusLine("Port", fmt.Sprintf("%d", svc.Port))
-		utils.PrintStatusLine("Created", api.FormatTimeAgo(svc.CreatedAt))
-		utils.PrintStatusLine("Last Updated", api.FormatTimeAgo(svc.UpdatedAt))
-		utils.PrintDivider()
+		rows = append(rows, []string{
+			svc.ServiceName,
+			svc.ServiceID.String(),
+			svc.DeploymentID.String(),
+			fmt.Sprintf("%d", svc.Port),
+			api.FormatTimeAgo(svc.UpdatedAt),
+		})
 	}
+	utils.PrintTable(headers, rows)
 	return nil
 }
 
-// TODO: get data by id first before deleting to pass in the payload
 func handleDeleteService(c *cli.Context) error {
 	serviceID := c.String("service-id")
-	if err := api.DeleteService(nil, serviceID); err != nil {
+	if !utils.Confirm(fmt.Sprintf("Delete service %s? This cannot be undone.", serviceID), c.Bool("yes")) {
+		fmt.Println("Aborted.")
+		return nil
+	}
+	if err := api.DeleteService(serviceID); err != nil {
 		return utils.NewError(fmt.Sprintf("failed to delete service: %s", err.Error()), nil)
 	}
 

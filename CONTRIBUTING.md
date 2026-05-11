@@ -59,16 +59,23 @@ task build
 task run -- <command>
 ```
 
-## Testing against the dev backend
+## Testing against alternate backends
 
-For changes you want to exercise against the live dev backend before cutting a prod release, install the `1ctl-dev` variant — it's the same codebase as `1ctl` but points at `https://dev-core-api.satusky.com/v1/cli` via `-ldflags`. Safe to keep installed alongside the prod `1ctl`:
+The CLI is a single binary that defaults to the production backend. To target a staging environment or a local backend, configure a named profile:
 
 ```bash
-curl -sSL https://raw.githubusercontent.com/SatuSkyCloud/1ctl/main/install-dev.sh | bash
-1ctl-dev --version   # shows [development]
+1ctl profile create --url <env-api-url> staging
+1ctl profile use staging
 ```
 
-The dev binary uses `~/.satusky-development/` for its config, so dev credentials don't clobber your prod `~/.satusky/` state. Runtime `SATUSKY_API_URL` still overrides the baked-in default, useful for pointing `1ctl-dev` at a local backend.
+Or override per-invocation:
+
+```bash
+1ctl --api-url http://localhost:8080/v1/cli deploy
+SATUSKY_PROFILE=staging 1ctl deploy
+```
+
+Each profile stores its own token and org context under `~/.satusky/profiles/<name>.json`, so switching environments doesn't clobber credentials.
 
 ## Code Style
 
@@ -124,9 +131,7 @@ git tag v0.X.Y
 git push origin v0.X.Y
 ```
 
-3. GoReleaser (triggered by the tag) produces two binary families on the same GitHub release:
-   - `1ctl-*` — prod, defaults to `https://api.satusky.com/v1/cli`. Published to Homebrew (`satuctl`).
-   - `1ctl-dev-*` — dev, defaults baked to `https://dev-core-api.satusky.com/v1/cli`. Tarballs only. Installed via `install-dev.sh`.
+3. GoReleaser (triggered by the tag) produces a single `1ctl` binary family for linux/darwin/windows on amd64/arm64, defaults to `https://api.satusky.com/v1/cli`, and publishes to Homebrew (`satuctl`).
 
 4. Update the GitHub release description with the relevant `RELEASE_NOTES.md` entry.
 

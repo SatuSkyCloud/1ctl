@@ -8,6 +8,79 @@ import (
 	"1ctl/internal/testutils"
 )
 
+func TestBuildStrategyConfig(t *testing.T) {
+	tests := []struct {
+		name            string
+		opts            DeploymentOptions
+		wantNil         bool
+		wantType        api.DeploymentStrategyType
+		wantSurge       string
+		wantUnavailable string
+	}{
+		{
+			name:    "untouched defaults omit config",
+			opts:    DeploymentOptions{Strategy: "rolling", RollingMaxSurge: "25%", RollingMaxUnavailable: "25%"},
+			wantNil: true,
+		},
+		{
+			name:            "explicit defaults are preserved (#27 sub-5)",
+			opts:            DeploymentOptions{Strategy: "rolling", RollingMaxSurge: "25%", RollingMaxUnavailable: "25%", RollingFlagsExplicit: true},
+			wantNil:         false,
+			wantType:        api.StrategyRolling,
+			wantSurge:       "25%",
+			wantUnavailable: "25%",
+		},
+		{
+			name:            "non-default values send config",
+			opts:            DeploymentOptions{Strategy: "rolling", RollingMaxSurge: "50%", RollingMaxUnavailable: "0"},
+			wantNil:         false,
+			wantType:        api.StrategyRolling,
+			wantSurge:       "50%",
+			wantUnavailable: "0",
+		},
+		{
+			name:     "recreate strategy always sends config",
+			opts:     DeploymentOptions{Strategy: "recreate"},
+			wantNil:  false,
+			wantType: api.StrategyRecreate,
+		},
+		{
+			name:    "empty strategy is treated as rolling+default",
+			opts:    DeploymentOptions{RollingMaxSurge: "25%", RollingMaxUnavailable: "25%"},
+			wantNil: true,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := buildStrategyConfig(tt.opts)
+			if tt.wantNil {
+				if got != nil {
+					t.Errorf("buildStrategyConfig = %+v, want nil", got)
+				}
+				return
+			}
+			if got == nil {
+				t.Fatalf("buildStrategyConfig = nil, want non-nil")
+			}
+			if got.Type != tt.wantType {
+				t.Errorf("Type = %q, want %q", got.Type, tt.wantType)
+			}
+			if tt.wantType == api.StrategyRolling {
+				if got.Rolling == nil {
+					t.Fatalf("Rolling is nil for rolling strategy")
+				}
+				if got.Rolling.MaxSurge != tt.wantSurge {
+					t.Errorf("MaxSurge = %q, want %q", got.Rolling.MaxSurge, tt.wantSurge)
+				}
+				if got.Rolling.MaxUnavailable != tt.wantUnavailable {
+					t.Errorf("MaxUnavailable = %q, want %q", got.Rolling.MaxUnavailable, tt.wantUnavailable)
+				}
+			}
+		})
+	}
+}
+
 func TestDeploy(t *testing.T) {
 	// Skip this test in CI - it requires Docker daemon and actual API
 	// This is an integration test that should run with proper setup
@@ -109,21 +182,15 @@ func TestDeploy(t *testing.T) {
 	}
 }
 
-func TestBuildAndUploadImage(t *testing.T) {
+func TestSubmitRemoteBuild(t *testing.T) {
 	tests := []struct {
 		name           string
 		dockerfilePath string
 		projectName    string
 		wantErr        bool
 	}{
-		// {
-		// 	name:           "valid dockerfile",
-		// 	dockerfilePath: "testdata/Dockerfile",
-		// 	projectName:    "test-project",
-		// 	wantErr:        false,
-		// },
 		{
-			name:           "missing dockerfile",
+			name:           "missing dockerfile is rejected before upload",
 			dockerfilePath: "testdata/nonexistent",
 			projectName:    "test-project",
 			wantErr:        true,
@@ -132,9 +199,9 @@ func TestBuildAndUploadImage(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			_, err := buildAndUploadImage(tt.dockerfilePath, tt.projectName)
+			_, _, err := submitRemoteBuild(tt.dockerfilePath, tt.projectName)
 			if (err != nil) != tt.wantErr {
-				t.Errorf("buildAndUploadImage() error = %v, wantErr %v", err, tt.wantErr)
+				t.Errorf("submitRemoteBuild() error = %v, wantErr %v", err, tt.wantErr)
 			}
 		})
 	}
