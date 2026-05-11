@@ -42,7 +42,8 @@ func (cm *CleanupManager) AddResource(resourceType ResourceType, id, name string
 	})
 }
 
-// TODO: proper cleanup upon error (resources) on orchestrator
+// Cleanup iterates the registered resources in reverse-registration order
+// so children (ingress, env) come down before parents (deployment).
 func (cm *CleanupManager) Cleanup() []error {
 	var errors []error
 

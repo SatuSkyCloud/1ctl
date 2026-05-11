@@ -17,6 +17,10 @@ func TestDetectRuntime(t *testing.T) {
 		{"python requirements", "requirements.txt", "Python"},
 		{"poetry pyproject", "pyproject.toml", "Python (Poetry)"},
 		{"rust cargo", "Cargo.toml", "Rust"},
+		{"ruby gemfile", "Gemfile", "Ruby"},
+		{"java maven", "pom.xml", "Java (Maven)"},
+		{"java gradle", "build.gradle", "Java (Gradle)"},
+		{"php composer", "composer.json", "PHP"},
 		{"unknown stack", "README.md", ""},
 	}
 	for _, tt := range tests {

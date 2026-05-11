@@ -150,8 +150,9 @@ type BuildResult struct {
 	ImageArch string // "amd64", "arm64", or "" if detection failed
 }
 
-// WaitForBuildResult is like WaitForBuild but returns the full BuildResult,
-// including the detected image architecture.
+// WaitForBuildResult polls the cloud-build job until completion, streaming
+// new log lines to progressWriter, and returns the BuildResult (image ref +
+// detected image architecture).
 func WaitForBuildResult(buildID string, progressWriter io.Writer) (*BuildResult, error) {
 	const (
 		pollInterval = 3 * time.Second

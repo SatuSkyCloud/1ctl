@@ -67,12 +67,15 @@ type VPAConfig struct {
 	MaxMemory string `toml:"max_memory"`
 }
 
+// PDBConfig fields match the API surface (api.PDBConfig): only MinAvailable
+// and Percent are accepted today. MaxUnavailable is intentionally not on the
+// struct — the platform doesn't yet support it and silently dropping the
+// field would surprise users who set it expecting it to work.
 type PDBConfig struct {
-	Enabled        bool   `toml:"enabled"`
-	Type           string `toml:"type"`
-	MinAvailable   int32  `toml:"min_available"`
-	MaxUnavailable int32  `toml:"max_unavailable"`
-	Percent        int32  `toml:"percent"`
+	Enabled      bool   `toml:"enabled"`
+	Type         string `toml:"type"`
+	MinAvailable int32  `toml:"min_available"`
+	Percent      int32  `toml:"percent"`
 }
 
 type MulticlusterConfig struct {

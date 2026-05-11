@@ -388,6 +388,14 @@ func handleDeploy(c *cli.Context) error {
 		}
 	}
 
+	// Snapshot user-typed flags BEFORE the toml merge. applyConfigScalar uses
+	// cli.Set, which flips c.IsSet(...) to true — so any downstream check that
+	// needs "did the *user* set this" must use this snapshot, not c.IsSet.
+	// (Discovered during review: RollingFlagsExplicit was tripping for
+	// toml-provided defaults, forcing strategy config onto requests that
+	// would otherwise have been omitted.)
+	userSet := captureUserSetFlags(c, "rolling-max-surge", "rolling-max-unavailable", "domain", "multicluster")
+
 	// Apply satusky.toml scalar fields to flags the user didn't explicitly set.
 	// Precedence overall: CLI flag (c.IsSet) > satusky.toml > flag Value: default.
 	// Structured sections ([volume], [hpa], [vpa], [pdb], [multicluster]) are
@@ -454,7 +462,7 @@ func handleDeploy(c *cli.Context) error {
 	}
 
 	// Prepare deployment options
-	opts, err := prepareDeploymentOptions(c, cfg)
+	opts, err := prepareDeploymentOptions(c, cfg, userSet)
 	if err != nil {
 		return utils.NewError(fmt.Sprintf("deployment preparation failed: %s", err.Error()), nil)
 	}
@@ -562,7 +570,10 @@ func validateInputs(c *cli.Context) error {
 	// KUL via the public LoadBalancer. Backend enforces the same rule; this
 	// client-side check just gives a friendlier error before the round trip.
 	// See backend .devs/docs/MULTICLUSTER_CONSTRAINTS.md.
-	if c.Bool("multicluster") && c.IsSet("domain") {
+	// Validator checks the resolved domain value, not c.IsSet — so toml-only
+	// domains are validated too. (Pre-fix this was implicitly skipped when
+	// the domain came from satusky.toml.)
+	if c.Bool("multicluster") {
 		domain := strings.TrimSpace(strings.ToLower(c.String("domain")))
 		domain = strings.TrimPrefix(domain, "*.")
 		if domain != "" && domain != "satusky.com" && !strings.HasSuffix(domain, ".satusky.com") {
@@ -582,7 +593,7 @@ func validateInputs(c *cli.Context) error {
 	return nil
 }
 
-func prepareDeploymentOptions(c *cli.Context, cfg *config.ProjectConfig) (deploy.DeploymentOptions, error) {
+func prepareDeploymentOptions(c *cli.Context, cfg *config.ProjectConfig, userSet map[string]bool) (deploy.DeploymentOptions, error) {
 	dockerfilePath, err := resolveDockerfilePath(c)
 	if err != nil {
 		return deploy.DeploymentOptions{}, err
@@ -770,8 +781,8 @@ func prepareDeploymentOptions(c *cli.Context, cfg *config.ProjectConfig) (deploy
 	opts.RollingMaxUnavailable = c.String("rolling-max-unavailable")
 	// Record explicit-user-set so buildStrategyConfig doesn't drop a value
 	// the user typed deliberately (e.g. --rolling-max-surge=25% to assert
-	// the default in an audit log).
-	opts.RollingFlagsExplicit = c.IsSet("rolling-max-surge") || c.IsSet("rolling-max-unavailable")
+	// the default in an audit log). Snapshot taken BEFORE the toml merge.
+	opts.RollingFlagsExplicit = userSet["rolling-max-surge"] || userSet["rolling-max-unavailable"]
 	opts.Wait = c.Bool("wait")
 
 	// Validate strategy value
@@ -817,7 +828,7 @@ func resolveMachineTag(tag string) ([]string, error) {
 		return nil, utils.NewError(fmt.Sprintf("failed to list owned machines: %s", err.Error()), nil)
 	}
 	if len(machines) == 0 {
-		return nil, utils.NewError(fmt.Sprintf("no owned machines found — register a machine before using --machine-tag"), nil)
+		return nil, utils.NewError("no owned machines found — register a machine before using --machine-tag", nil)
 	}
 
 	var hostnames []string
@@ -838,6 +849,18 @@ func resolveMachineTag(tag string) ([]string, error) {
 		return nil, utils.NewError(fmt.Sprintf("no machines tagged %q are online — apply the satusky.com/%s label to at least one machine first", tag, tag), nil)
 	}
 	return hostnames, nil
+}
+
+// captureUserSetFlags records which of the named flags the user explicitly
+// passed BEFORE any toml merge runs. applyConfigScalar later calls c.Set
+// for toml-provided values, which would make c.IsSet return true and hide
+// the user-vs-toml distinction from downstream code.
+func captureUserSetFlags(c *cli.Context, names ...string) map[string]bool {
+	out := make(map[string]bool, len(names))
+	for _, n := range names {
+		out[n] = c.IsSet(n)
+	}
+	return out
 }
 
 // applyConfigScalar sets a CLI flag from a non-empty satusky.toml value when
@@ -1071,7 +1094,6 @@ func handleGetDeployment(c *cli.Context) error {
 	}
 	utils.PrintStatusLine("Deployed to machines", strings.Join(deployment.Hostnames, ", "))
 	utils.PrintStatusLine("Type", deployment.Type)
-	utils.PrintStatusLine("Region", deployment.Region)
 	utils.PrintStatusLine("Zone", deployment.Zone)
 	// Image refs without a ":tag" (e.g., "nginx", "registry.example.com/app")
 	// are legal; show "untagged" rather than indexing into a 1-element slice.
@@ -1224,6 +1246,17 @@ func handleScaleDeployment(c *cli.Context) error {
 	current, err := api.GetDeployment(deploymentID)
 	if err != nil {
 		return utils.NewError(fmt.Sprintf("failed to fetch deployment: %s", err.Error()), nil)
+	}
+	// Refuse to scale autoscaler-managed deployments: HPA/VPA take over
+	// replica counts, so a manual `scale` would race the controller and
+	// the user should disable/adjust the autoscaler instead. Also a guard
+	// against the GetDeployment-then-UpsertDeployment round trip silently
+	// dropping nested config if the backend GET ever flattens fields.
+	if current.HPAConfig != nil && current.HPAConfig.Enabled {
+		return utils.NewError(fmt.Sprintf("deployment %s is managed by HPA — adjust --hpa-min-replicas / --hpa-max-replicas via `1ctl deploy` instead", deploymentID), nil)
+	}
+	if current.VPAConfig != nil && current.VPAConfig.Enabled {
+		return utils.NewError(fmt.Sprintf("deployment %s is managed by VPA — adjust VPA config via `1ctl deploy` instead", deploymentID), nil)
 	}
 	if current.Replicas == replicas {
 		utils.PrintInfo("Deployment %s already at %d replicas — no change.", deploymentID, replicas)

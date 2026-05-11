@@ -247,8 +247,7 @@ func mainDeploy(opts DeploymentOptions, image, name, userID, organization string
 		Namespace:     organization,
 		Port:          port,
 		Image:         image,
-		Region:        opts.Region, // Zone value for backward compat, or empty for auto-select
-		Zone:          opts.Zone,   // Target zone for cluster routing
+		Zone:          opts.Zone, // Target zone for cluster routing
 		SSD:           "true",
 		GPU:           "false",
 		AppLabel:      name,

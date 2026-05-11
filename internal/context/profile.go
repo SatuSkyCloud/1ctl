@@ -21,8 +21,10 @@ var profileOverride string
 
 // SetProfileOverride temporarily overrides the active profile for the current process.
 // Used by the --profile global flag. Not persisted to disk.
+// Invalidates the context cache so subsequent loads read the new profile.
 func SetProfileOverride(name string) {
 	profileOverride = sanitizeProfileName(name)
+	invalidateCache()
 }
 
 // sanitizeProfileName allows only alphanumeric, dash, and underscore characters.
@@ -67,7 +69,9 @@ func GetActiveProfileName() string {
 
 // SetActiveProfileName writes only the active profile name to context.json.
 // context.json contains nothing else — all credentials are in the profile file.
+// Invalidates the context cache so subsequent loads read the new profile.
 func SetActiveProfileName(name string) error {
+	defer invalidateCache()
 	root := rootContext{ActiveProfile: name}
 	data, err := json.MarshalIndent(root, "", "  ")
 	if err != nil {

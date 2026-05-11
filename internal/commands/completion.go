@@ -207,11 +207,6 @@ _satusky_cli_completion() {
                 esac
             fi
             ;;
-        domain)
-            if [[ ${COMP_CWORD} == 2 ]]; then
-                COMPREPLY=( $(compgen -W "list get create delete verify check search purchase purchase-status contact dns" -- ${cur}) )
-            fi
-            ;;
         credits|billing)
             if [[ ${COMP_CWORD} == 2 ]]; then
                 COMPREPLY=( $(compgen -W "balance transactions usage topup invoices auto-topup notifications" -- ${cur}) )
@@ -542,17 +537,10 @@ _satusky_cli() {
                 domain)
                     if (( CURRENT == 2 )); then
                         local -a subcommands=(
-                            'list:List domains'
-                            'get:Get domain details'
-                            'create:Register a domain'
-                            'delete:Delete a domain'
-                            'verify:Verify domain ownership'
-                            'check:Check domain availability'
-                            'search:Search available domains'
-                            'purchase:Create purchase intent'
-                            'purchase-status:Check purchase status'
-                            'contact:Manage contact details'
-                            'dns:Manage DNS records'
+                            'list:List custom domains'
+                            'add:Attach a domain to an app'
+                            'remove:Detach a domain'
+                            'check:Show DNS/TLS status'
                         )
                         _describe -t subcommands 'domain subcommands' subcommands
                     fi
@@ -956,13 +944,10 @@ Register-ArgumentCompleter -Native -CommandName 1ctl -ScriptBlock {
             [CompletionResult]::new('auth', 'auth', [CompletionResultType]::ParameterValue, 'Authentication commands')
             [CompletionResult]::new('org', 'org', [CompletionResultType]::ParameterValue, 'Manage organizations')
             [CompletionResult]::new('deploy', 'deploy', [CompletionResultType]::ParameterValue, 'Deploy applications')
-            [CompletionResult]::new('service', 'service', [CompletionResultType]::ParameterValue, 'Manage services')
             [CompletionResult]::new('secret', 'secret', [CompletionResultType]::ParameterValue, 'Manage secrets')
-            [CompletionResult]::new('ingress', 'ingress', [CompletionResultType]::ParameterValue, 'Manage ingresses')
-            [CompletionResult]::new('issuer', 'issuer', [CompletionResultType]::ParameterValue, 'Manage certificate issuers')
+            [CompletionResult]::new('domains', 'domains', [CompletionResultType]::ParameterValue, 'Manage custom domains for your apps')
             [CompletionResult]::new('environment', 'environment', [CompletionResultType]::ParameterValue, 'Manage environments')
             [CompletionResult]::new('machine', 'machine', [CompletionResultType]::ParameterValue, 'Manage machines')
-            [CompletionResult]::new('domain', 'domain', [CompletionResultType]::ParameterValue, 'Manage custom domains')
             [CompletionResult]::new('credits', 'credits', [CompletionResultType]::ParameterValue, 'Manage credits and billing')
             [CompletionResult]::new('storage', 'storage', [CompletionResultType]::ParameterValue, 'Manage S3/object storage')
             [CompletionResult]::new('logs', 'logs', [CompletionResultType]::ParameterValue, 'View and stream pod logs')
@@ -971,8 +956,6 @@ Register-ArgumentCompleter -Native -CommandName 1ctl -ScriptBlock {
             [CompletionResult]::new('token', 'token', [CompletionResultType]::ParameterValue, 'Manage API tokens')
             [CompletionResult]::new('marketplace', 'marketplace', [CompletionResultType]::ParameterValue, 'Browse and deploy marketplace apps')
             [CompletionResult]::new('audit', 'audit', [CompletionResultType]::ParameterValue, 'View audit logs')
-            [CompletionResult]::new('talos', 'talos', [CompletionResultType]::ParameterValue, 'Talos Linux configuration')
-            [CompletionResult]::new('admin', 'admin', [CompletionResultType]::ParameterValue, 'Admin operations')
             [CompletionResult]::new('pricing', 'pricing', [CompletionResultType]::ParameterValue, 'View machine pricing')
             [CompletionResult]::new('cluster', 'cluster', [CompletionResultType]::ParameterValue, 'View cluster and zone information')
             [CompletionResult]::new('completion', 'completion', [CompletionResultType]::ParameterValue, 'Generate shell completion scripts')
@@ -1006,26 +989,24 @@ Register-ArgumentCompleter -Native -CommandName 1ctl -ScriptBlock {
             [CompletionResult]::new('status', 'status', [CompletionResultType]::ParameterValue, 'Check deployment status')
             break
         }
-        '1ctl;service' {
-            [CompletionResult]::new('list', 'list', [CompletionResultType]::ParameterValue, 'List services')
-            [CompletionResult]::new('delete', 'delete', [CompletionResultType]::ParameterValue, 'Delete a service')
-            break
-        }
         '1ctl;secret' {
             [CompletionResult]::new('create', 'create', [CompletionResultType]::ParameterValue, 'Create a secret')
             [CompletionResult]::new('list', 'list', [CompletionResultType]::ParameterValue, 'List secrets')
             [CompletionResult]::new('delete', 'delete', [CompletionResultType]::ParameterValue, 'Delete a secret')
             break
         }
-        '1ctl;ingress' {
-            [CompletionResult]::new('list', 'list', [CompletionResultType]::ParameterValue, 'List ingresses')
-            [CompletionResult]::new('delete', 'delete', [CompletionResultType]::ParameterValue, 'Delete an ingress')
+        '1ctl;domains' {
+            [CompletionResult]::new('list', 'list', [CompletionResultType]::ParameterValue, 'List custom domains')
+            [CompletionResult]::new('add', 'add', [CompletionResultType]::ParameterValue, 'Attach a domain to an app')
+            [CompletionResult]::new('remove', 'remove', [CompletionResultType]::ParameterValue, 'Detach a domain')
+            [CompletionResult]::new('check', 'check', [CompletionResultType]::ParameterValue, 'Show DNS/TLS status')
             break
         }
-        '1ctl;issuer' {
-            [CompletionResult]::new('create', 'create', [CompletionResultType]::ParameterValue, 'Create an issuer')
-            [CompletionResult]::new('list', 'list', [CompletionResultType]::ParameterValue, 'List issuers')
-            [CompletionResult]::new('delete', 'delete', [CompletionResultType]::ParameterValue, 'Delete an issuer')
+        '1ctl;domain' {
+            [CompletionResult]::new('list', 'list', [CompletionResultType]::ParameterValue, 'List custom domains')
+            [CompletionResult]::new('add', 'add', [CompletionResultType]::ParameterValue, 'Attach a domain to an app')
+            [CompletionResult]::new('remove', 'remove', [CompletionResultType]::ParameterValue, 'Detach a domain')
+            [CompletionResult]::new('check', 'check', [CompletionResultType]::ParameterValue, 'Show DNS/TLS status')
             break
         }
         '1ctl;environment' {
@@ -1049,20 +1030,6 @@ Register-ArgumentCompleter -Native -CommandName 1ctl -ScriptBlock {
             [CompletionResult]::new('resize', 'resize', [CompletionResultType]::ParameterValue, 'Resize a VM')
             [CompletionResult]::new('apply-config', 'apply-config', [CompletionResultType]::ParameterValue, 'Apply Talos config')
             [CompletionResult]::new('console', 'console', [CompletionResultType]::ParameterValue, 'Enable/disable console streaming')
-            break
-        }
-        '1ctl;domain' {
-            [CompletionResult]::new('list', 'list', [CompletionResultType]::ParameterValue, 'List domains')
-            [CompletionResult]::new('get', 'get', [CompletionResultType]::ParameterValue, 'Get domain details')
-            [CompletionResult]::new('create', 'create', [CompletionResultType]::ParameterValue, 'Register a domain')
-            [CompletionResult]::new('delete', 'delete', [CompletionResultType]::ParameterValue, 'Delete a domain')
-            [CompletionResult]::new('verify', 'verify', [CompletionResultType]::ParameterValue, 'Verify domain ownership')
-            [CompletionResult]::new('check', 'check', [CompletionResultType]::ParameterValue, 'Check availability')
-            [CompletionResult]::new('search', 'search', [CompletionResultType]::ParameterValue, 'Search available domains')
-            [CompletionResult]::new('purchase', 'purchase', [CompletionResultType]::ParameterValue, 'Create purchase intent')
-            [CompletionResult]::new('purchase-status', 'purchase-status', [CompletionResultType]::ParameterValue, 'Check purchase status')
-            [CompletionResult]::new('contact', 'contact', [CompletionResultType]::ParameterValue, 'Manage contact details')
-            [CompletionResult]::new('dns', 'dns', [CompletionResultType]::ParameterValue, 'Manage DNS records')
             break
         }
         '1ctl;credits' {

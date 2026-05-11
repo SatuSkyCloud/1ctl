@@ -9,6 +9,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"net/url"
 	"time"
 
 	"strings"
@@ -649,7 +650,10 @@ func GetUserTokens(userID string, orgID string) ([]APIToken, error) {
 // Ingress methods
 func GetIngressByDomainName(domainName string) (*Ingress, error) {
 	var resp apiResponse
-	err := makeRequest("GET", fmt.Sprintf("/ingresses/domainName/%s", domainName), nil, &resp)
+	// PathEscape so domains with characters that would otherwise be reserved
+	// (e.g. ?, #, /) don't break the request URL. The backend validates the
+	// decoded value separately.
+	err := makeRequest("GET", fmt.Sprintf("/ingresses/domainName/%s", url.PathEscape(domainName)), nil, &resp)
 	if err != nil {
 		return nil, err
 	}

@@ -24,7 +24,10 @@ func openBrowser(url string) error {
 	case "linux":
 		cmd = exec.Command("xdg-open", url) // #nosec G204 -- argv form; url not shell-interpreted
 	case "windows":
-		cmd = exec.Command("cmd", "/c", "start", url) // #nosec G204 -- argv form
+		// Empty "" before url is the window title — Windows `start` would
+		// otherwise interpret the URL itself as the title and silently
+		// drop the actual address.
+		cmd = exec.Command("cmd", "/c", "start", "", url) // #nosec G204 -- argv form
 	default:
 		return fmt.Errorf("unsupported OS: %s", runtime.GOOS)
 	}

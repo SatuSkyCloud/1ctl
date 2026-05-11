@@ -45,9 +45,10 @@ type DeploymentOptions struct {
 	PDBConfig *PDBConfig     `json:"pdb_config,omitempty"`
 	HPAConfig *api.HPAConfig `json:"hpa_config,omitempty"`
 	VPAConfig *api.VPAConfig `json:"vpa_config,omitempty"`
-	// Zone targeting
-	Zone   string // Target zone (e.g., "my-kul-1b", "my-bki-1a")
-	Region string // Backward compat: zone value sent as region to backend
+	// Zone targeting. Region is intentionally not on the struct: the
+	// legacy "zone-in-region" backward-compat shim was retired with
+	// issue #24's backend-coordinated change.
+	Zone string // Target zone (e.g., "my-kul-1b", "my-bki-1a")
 	// PrebuiltImage, when non-empty, skips local Docker build and upload.
 	// The image must already exist in the registry and be pullable by the cluster.
 	PrebuiltImage string
