@@ -7,7 +7,6 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/google/uuid"
 	"github.com/urfave/cli/v2"
 )
 
@@ -21,17 +20,6 @@ func MachineCommand() *cli.Command {
 			machineUsageCommand(),
 		},
 	}
-}
-
-// resolveMachine looks up a machine by UUID or name
-func resolveMachine(nameOrID string) (*api.Machine, error) {
-	if nameOrID == "" {
-		return nil, utils.NewError("machine name or ID is required", nil)
-	}
-	if _, err := uuid.Parse(nameOrID); err == nil {
-		return api.GetMachineByID(api.ToUUID(nameOrID))
-	}
-	return api.GetMachineByName(nameOrID)
 }
 
 func machineListCommand() *cli.Command {

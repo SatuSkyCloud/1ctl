@@ -16,11 +16,12 @@ func TestSecretCommand(t *testing.T) {
 		t.Errorf("Expected command name 'secret', got %s", cmd.Name)
 	}
 
-	// Check subcommands
+	// Check subcommands. `delete` was replaced with `unset` (per-key
+	// removal) in db4cf7a — wholesale delete was the wrong semantics.
 	expectedSubcommands := map[string]bool{
 		"create": false,
 		"list":   false,
-		"delete": false,
+		"unset":  false,
 	}
 
 	for _, subcmd := range cmd.Subcommands {
