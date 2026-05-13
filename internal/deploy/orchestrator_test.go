@@ -81,6 +81,30 @@ func TestBuildStrategyConfig(t *testing.T) {
 	}
 }
 
+func TestNormalizeTargetArch(t *testing.T) {
+	tests := []struct {
+		name      string
+		imageArch string
+		want      string
+	}{
+		{name: "empty", imageArch: "", want: ""},
+		{name: "single amd64", imageArch: "amd64", want: "amd64"},
+		{name: "single arm64", imageArch: "arm64", want: "arm64"},
+		{name: "linux prefix amd64", imageArch: "linux/amd64", want: "amd64"},
+		{name: "linux prefix arm64", imageArch: "linux/arm64", want: "arm64"},
+		{name: "multi-arch list", imageArch: "linux/amd64,linux/arm64", want: ""},
+		{name: "unknown value", imageArch: "linux/ppc64le", want: ""},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := normalizeTargetArch(tt.imageArch); got != tt.want {
+				t.Errorf("normalizeTargetArch(%q) = %q, want %q", tt.imageArch, got, tt.want)
+			}
+		})
+	}
+}
+
 func TestDeploy(t *testing.T) {
 	// Skip this test in CI - it requires Docker daemon and actual API
 	// This is an integration test that should run with proper setup
