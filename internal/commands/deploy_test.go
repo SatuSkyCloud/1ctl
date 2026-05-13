@@ -204,3 +204,25 @@ func TestValidateInputs_MulticlusterCustomDomain(t *testing.T) {
 		})
 	}
 }
+
+func TestShouldWaitForPlatformDNS(t *testing.T) {
+	tests := []struct {
+		domain string
+		want   bool
+	}{
+		{"angrypanda-k28aur1.satusky.com", true},
+		{"Satusky.com", true},
+		{"*.satusky.com", true},
+		{"example.com", false},
+		{"app.example.com", false},
+		{"", false},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.domain, func(t *testing.T) {
+			if got := shouldWaitForPlatformDNS(tt.domain); got != tt.want {
+				t.Fatalf("shouldWaitForPlatformDNS(%q) = %v, want %v", tt.domain, got, tt.want)
+			}
+		})
+	}
+}
