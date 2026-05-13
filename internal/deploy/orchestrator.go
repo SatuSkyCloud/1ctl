@@ -219,9 +219,7 @@ func normalizeTargetArch(imageArch string) string {
 		return ""
 	}
 
-	if strings.HasPrefix(imageArch, "linux/") {
-		imageArch = strings.TrimPrefix(imageArch, "linux/")
-	}
+	imageArch = strings.TrimPrefix(imageArch, "linux/")
 
 	switch imageArch {
 	case "amd64", "arm64":
