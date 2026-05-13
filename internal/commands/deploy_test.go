@@ -4,6 +4,8 @@ import (
 	"flag"
 	"testing"
 
+	"1ctl/internal/config"
+
 	"github.com/urfave/cli/v2"
 )
 
@@ -38,6 +40,30 @@ func TestCaptureUserSetFlags_NotPoisonedByCSet(t *testing.T) {
 	}
 	if !ctx.IsSet("rolling-max-surge") {
 		t.Log("note: c.IsSet returns true after c.Set — this is the trap captureUserSetFlags exists to side-step")
+	}
+}
+
+func TestShouldShowDeployHelp_UsesFlagDefaults(t *testing.T) {
+	fs := flag.NewFlagSet("test", flag.ContinueOnError)
+	fs.String("cpu", "0.5", "")
+	fs.String("memory", "256Mi", "")
+	fs.String("image", "", "")
+	ctx := cli.NewContext(nil, fs, nil)
+
+	if shouldShowDeployHelp(ctx, &config.ProjectConfig{}) {
+		t.Fatal("deploy help guard ignored cpu/memory flag defaults")
+	}
+}
+
+func TestShouldShowDeployHelp_EmptyResourceDefaults(t *testing.T) {
+	fs := flag.NewFlagSet("test", flag.ContinueOnError)
+	fs.String("cpu", "", "")
+	fs.String("memory", "", "")
+	fs.String("image", "", "")
+	ctx := cli.NewContext(nil, fs, nil)
+
+	if !shouldShowDeployHelp(ctx, &config.ProjectConfig{}) {
+		t.Fatal("deploy help guard should show help when no image, cpu, or memory defaults exist")
 	}
 }
 

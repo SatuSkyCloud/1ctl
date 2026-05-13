@@ -1,5 +1,19 @@
 # Release Notes
 
+## Version 0.8.3 (14-05-2026)
+
+Deploy defaults patch for minimal project configs.
+
+### Bug Fixes
+
+* **`deploy` no longer requires CPU/memory in `satusky.toml`**: `1ctl deploy` now honors the built-in `--cpu 0.5` and `--memory 256Mi` defaults instead of printing help when those fields are omitted from the project config.
+  - A minimal config with `[app] name` and `port` can deploy without uncommenting resource defaults.
+  - Explicit CLI flags and active `satusky.toml` values still keep the same precedence.
+
+### Tests
+
+* Added regression coverage for deploy help guard behavior with default CPU/memory values.
+
 ## Version 0.8.2 (13-05-2026)
 
 Deploy reliability patch for platform-managed apps.

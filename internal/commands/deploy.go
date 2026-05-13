@@ -382,11 +382,11 @@ func handleDeploy(c *cli.Context) error {
 		return utils.NewError(fmt.Sprintf("failed to load config: %s", err.Error()), nil)
 	}
 
-	// Show help when neither flags nor toml provide enough to deploy.
-	if !c.IsSet("cpu") && !c.IsSet("memory") && !c.IsSet("image") {
-		if cfg == nil || (cfg.App.CPU == "" && cfg.App.Memory == "") {
-			return cli.ShowSubcommandHelp(c)
-		}
+	// Show help only when no deployable resource defaults are available.
+	// `cpu` and `memory` have flag defaults, so a basic Dockerfile deploy
+	// should not require users to repeat those values in satusky.toml.
+	if shouldShowDeployHelp(c, cfg) {
+		return cli.ShowSubcommandHelp(c)
 	}
 
 	// Snapshot user-typed flags BEFORE the toml merge. applyConfigScalar uses
@@ -506,6 +506,16 @@ func handleDeploy(c *cli.Context) error {
 	}
 
 	return nil
+}
+
+func shouldShowDeployHelp(c *cli.Context, cfg *config.ProjectConfig) bool {
+	if c.String("image") != "" {
+		return false
+	}
+	if c.String("cpu") != "" && c.String("memory") != "" {
+		return false
+	}
+	return cfg == nil || (cfg.App.CPU == "" && cfg.App.Memory == "")
 }
 
 // resolveDockerfilePath returns the Dockerfile path actually used by the
