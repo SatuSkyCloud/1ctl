@@ -1,5 +1,23 @@
 # Release Notes
 
+## Version 0.8.2 (13-05-2026)
+
+Deploy reliability patch for platform-managed apps.
+
+### Bug Fixes
+
+* **Backend-reported DNS readiness before "live" output**: `1ctl deploy` now waits for the control plane's ingress DNS-status endpoint before saying a `*.satusky.com` deployment is live.
+  - The CLI carries the ingress ID returned by the deploy flow and polls `/ingresses/{ingress_id}/dns-status`.
+  - If DNS is still propagating after the timeout, deploy still succeeds, but the output warns that the app URL is not live yet instead of claiming immediate availability.
+  - DNS readiness is now based on backend state instead of the operator workstation's resolver.
+* **Multi-arch build output no longer becomes a Kubernetes arch selector**: cloud build results such as `linux/amd64,linux/arm64` now normalize to an empty `target_arch`, avoiding invalid `kubernetes.io/arch` nodeSelector values.
+  - Single-arch `amd64`, `arm64`, `linux/amd64`, and `linux/arm64` outputs still map to the expected Kubernetes label values.
+
+### Tests
+
+* Added regression coverage for target-arch normalization.
+* Added deploy flow coverage for returning the ingress ID used by DNS readiness polling.
+
 ## Version 0.8.1 (12-05-2026)
 
 Internal refactor. No user-visible behaviour change; CLI surface, on-disk file layout, and command exit codes are all identical to v0.8.0.
