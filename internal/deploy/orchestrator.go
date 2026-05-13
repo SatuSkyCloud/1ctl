@@ -155,6 +155,7 @@ func Deploy(opts DeploymentOptions) (*api.CreateDeploymentResponse, error) {
 
 	return &api.CreateDeploymentResponse{
 		DeploymentID: api.ToUUID(deploymentID),
+		IngressID:    api.ToUUID(ingressID),
 		AppLabel:     projectName,
 		Domain:       domainName,
 	}, nil

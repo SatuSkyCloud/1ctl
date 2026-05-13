@@ -11,6 +11,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/google/uuid"
 	"github.com/urfave/cli/v2"
 )
 
@@ -478,9 +479,9 @@ func handleDeploy(c *cli.Context) error {
 	}
 
 	dnsReady := true
-	if shouldWaitForPlatformDNS(resp.Domain) {
+	if resp.IngressID != uuid.Nil {
 		utils.PrintInfo("Waiting for DNS propagation for https://%s...", resp.Domain)
-		if _, err := api.WaitForPublicDNSResolution(resp.Domain, 2*time.Minute); err != nil {
+		if _, err := api.WaitForIngressDNSStatus(resp.IngressID.String(), 2*time.Minute); err != nil {
 			dnsReady = false
 			utils.PrintWarning("DNS is still propagating for https://%s: %s", resp.Domain, err.Error())
 		}
@@ -505,11 +506,6 @@ func handleDeploy(c *cli.Context) error {
 	}
 
 	return nil
-}
-
-func shouldWaitForPlatformDNS(domain string) bool {
-	domain = strings.TrimSpace(strings.ToLower(domain))
-	return domain == "satusky.com" || strings.HasSuffix(domain, ".satusky.com")
 }
 
 // resolveDockerfilePath returns the Dockerfile path actually used by the
