@@ -144,6 +144,7 @@ type Deployment struct {
 
 type CreateDeploymentResponse struct {
 	DeploymentID uuid.UUID `json:"deployment_id"`
+	IngressID    uuid.UUID `json:"ingress_id,omitempty"`
 	AppLabel     string    `json:"app_label"`
 	Domain       string    `json:"domain"`
 }
@@ -187,6 +188,22 @@ type Ingress struct {
 	DnsConfig    DnsConfigType `json:"dns_config"`
 	CreatedAt    time.Time     `json:"created_at"`
 	UpdatedAt    time.Time     `json:"updated_at"`
+}
+
+type DNSStatus string
+
+const (
+	DNSStatusResolved      DNSStatus = "resolved"
+	DNSStatusPropagating   DNSStatus = "propagating"
+	DNSStatusNotConfigured DNSStatus = "not_configured"
+)
+
+type DNSStatusResponse struct {
+	Status      DNSStatus `json:"status"`
+	Domain      string    `json:"domain"`
+	ExpectedIP  string    `json:"expected_ip,omitempty"`
+	ResolvedIPs []string  `json:"resolved_ips,omitempty"`
+	Message     string    `json:"message,omitempty"`
 }
 
 type Dependency struct {

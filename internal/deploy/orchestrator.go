@@ -11,6 +11,7 @@ import (
 	"fmt"
 	"os"
 	"regexp"
+	"strings"
 )
 
 type deploymentProgress struct {
@@ -83,7 +84,7 @@ func Deploy(opts DeploymentOptions) (*api.CreateDeploymentResponse, error) {
 		if err != nil {
 			return nil, utils.NewError("Failed to build image", err)
 		}
-		opts.TargetArch = imageArch
+		opts.TargetArch = normalizeTargetArch(imageArch)
 		progress.complete()
 	}
 
@@ -155,6 +156,7 @@ func Deploy(opts DeploymentOptions) (*api.CreateDeploymentResponse, error) {
 
 	return &api.CreateDeploymentResponse{
 		DeploymentID: api.ToUUID(deploymentID),
+		IngressID:    api.ToUUID(ingressID),
 		AppLabel:     projectName,
 		Domain:       domainName,
 	}, nil
@@ -207,6 +209,25 @@ func submitRemoteBuild(dockerfilePath, projectName string) (imageRef, imageArch 
 		utils.PrintInfo("Image architecture: %s", result.ImageArch)
 	}
 	return result.ImageRef, result.ImageArch, nil
+}
+
+// normalizeTargetArch converts a build result into a single Kubernetes arch label.
+// Multi-arch platform lists are intentionally collapsed to empty so the backend
+// does not apply an invalid nodeSelector like "linux/amd64,linux/arm64".
+func normalizeTargetArch(imageArch string) string {
+	imageArch = strings.TrimSpace(imageArch)
+	if imageArch == "" || strings.Contains(imageArch, ",") {
+		return ""
+	}
+
+	imageArch = strings.TrimPrefix(imageArch, "linux/")
+
+	switch imageArch {
+	case "amd64", "arm64":
+		return imageArch
+	default:
+		return ""
+	}
 }
 
 func mainDeploy(opts DeploymentOptions, image, name, userID, organization string, hostnames []string) (string, error) {
