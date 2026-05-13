@@ -11,6 +11,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/google/uuid"
 	"github.com/urfave/cli/v2"
 )
 
@@ -477,7 +478,21 @@ func handleDeploy(c *cli.Context) error {
 		return utils.NewError(fmt.Sprintf("deployment failed: %s", err.Error()), nil)
 	}
 
-	utils.PrintSuccess("🚀 Deployment for %s is successful! Your app is live at: https://%s", resp.AppLabel, resp.Domain)
+	dnsReady := true
+	if resp.IngressID != uuid.Nil {
+		utils.PrintInfo("Waiting for DNS propagation for https://%s...", resp.Domain)
+		if _, err := api.WaitForIngressDNSStatus(resp.IngressID.String(), 2*time.Minute); err != nil {
+			dnsReady = false
+			utils.PrintWarning("DNS is still propagating for https://%s: %s", resp.Domain, err.Error())
+		}
+	}
+
+	if dnsReady {
+		utils.PrintSuccess("🚀 Deployment for %s is successful! Your app is live at: https://%s", resp.AppLabel, resp.Domain)
+	} else {
+		utils.PrintSuccess("🚀 Deployment for %s is successful!", resp.AppLabel)
+		utils.PrintInfo("The app URL will become live once DNS propagates: https://%s", resp.Domain)
+	}
 	utils.PrintStatusLine("Deployment ID", resp.DeploymentID.String())
 
 	if opts.Wait {
