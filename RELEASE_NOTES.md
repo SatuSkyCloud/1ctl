@@ -6,6 +6,9 @@ Deploy reliability patch for platform-managed apps.
 
 ### Bug Fixes
 
+* **`deploy` no longer requires CPU/memory in `satusky.toml`**: `1ctl deploy` now honors the built-in `--cpu 0.5` and `--memory 256Mi` defaults instead of printing help when those fields are omitted from the project config.
+  - A minimal config with `[app] name` and `port` can deploy without uncommenting resource defaults.
+  - Explicit CLI flags and active `satusky.toml` values still keep the same precedence.
 * **Backend-reported DNS readiness before "live" output**: `1ctl deploy` now waits for the control plane's ingress DNS-status endpoint before saying a `*.satusky.com` deployment is live.
   - The CLI carries the ingress ID returned by the deploy flow and polls `/ingresses/{ingress_id}/dns-status`.
   - If DNS is still propagating after the timeout, deploy still succeeds, but the output warns that the app URL is not live yet instead of claiming immediate availability.
@@ -15,6 +18,7 @@ Deploy reliability patch for platform-managed apps.
 
 ### Tests
 
+* Added regression coverage for deploy help guard behavior with default CPU/memory values.
 * Added regression coverage for target-arch normalization.
 * Added deploy flow coverage for returning the ingress ID used by DNS readiness polling.
 
