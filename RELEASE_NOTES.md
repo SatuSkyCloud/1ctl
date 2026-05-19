@@ -1,5 +1,48 @@
 # Release Notes
 
+## Version 0.8.4 (19-05-2026)
+
+Urgent CLI reliability and diagnostics fixes for the v1 contract.
+
+### Bug Fixes
+
+* **`deploy --wait` now reports workload readiness separately from public URL readiness**: the command no longer implies that a deployment URL is live when DNS or route attachment is still pending.
+  - Workload health and public URL readiness are rendered as separate final states.
+  - If pods are healthy but the public URL is not ready, `--wait` exits with a clear degraded error and points users to `1ctl domains check <domain> --probe`.
+* **Unknown command errors now include the actual command name**: fixes the malformed `%!q(MISSING)` output and adds a storage/volume hint for legacy command attempts.
+* **Global JSON output flags work after subcommands**: common forms such as `1ctl deploy list -o json` and `1ctl domains check example.com --output=json` are normalized before CLI parsing.
+* **`logs stream` labels target resolution and stream mode**: output now distinguishes explicit namespace/app targets from deployment-ID resolution, and labels historical replay vs live-follow behavior.
+
+### Domain Diagnostics
+
+* **`domains check` now uses backend domain-status diagnostics**:
+  - Shows backend attachment, Kubernetes route attachment, DNS state, TLS state, and optional HTTP reachability.
+  - Stale or detached domains now render as `not attached` instead of an empty successful-looking object.
+* **`domains setup <domain>` added**:
+  - Prints exact DNS record type/name/value when the backend exposes the expected DNS target.
+  - Supports JSON output via the global `--output json` contract.
+
+### Deployment And Volume Lifecycle
+
+* **`deploy status` now shows operational deployment details**:
+  - App, deployment ID, namespace, URL, image, desired replicas, rollout strategy, env/secret/volume attachment, route/DNS/TLS status, and timestamps.
+  - JSON output includes the deployment, workload status, ingress, and domain-status objects.
+* **`deploy destroy` now reports cleanup results**:
+  - Prints deleted deployment resources and PVC retention/deletion status returned by the backend.
+  - JSON output returns the backend deletion result directly.
+* **`volumes` command group added**:
+  - `1ctl volumes list --deployment-id <id>`
+  - `1ctl volumes inspect <volume-id>`
+  - `1ctl volumes detach <volume-id>`
+  - `1ctl volumes destroy <volume-id>`
+  - Human and JSON output make PVC existence, mount state, and destroy policy explicit.
+
+### Tests And Quality
+
+* Added parser tests for trailing `-o/--output` normalization.
+* Added command-structure coverage for `domains setup` and `volumes`.
+* Fixed integration test fixtures so they use isolated temp profiles and current cleanup API signatures.
+
 ## Version 0.8.3 (14-05-2026)
 
 Deploy defaults patch for minimal project configs.
