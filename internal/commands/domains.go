@@ -2,6 +2,7 @@ package commands
 
 import (
 	"fmt"
+	"net"
 	"strings"
 
 	"1ctl/internal/api"
@@ -25,6 +26,7 @@ func DomainsCommand() *cli.Command {
 			domainsAddCommand(),
 			domainsRemoveCommand(),
 			domainsCheckCommand(),
+			domainsSetupCommand(),
 		},
 	}
 }
@@ -87,9 +89,24 @@ func domainsRemoveCommand() *cli.Command {
 func domainsCheckCommand() *cli.Command {
 	return &cli.Command{
 		Name:      "check",
-		Usage:     "Check DNS / TLS status for a domain",
+		Usage:     "Check backend, route, DNS, TLS, and HTTP status for a domain",
 		ArgsUsage: "<domain>",
-		Action:    handleDomainsCheck,
+		Flags: []cli.Flag{
+			&cli.BoolFlag{
+				Name:  "probe",
+				Usage: "Run an HTTP reachability probe",
+			},
+		},
+		Action: handleDomainsCheck,
+	}
+}
+
+func domainsSetupCommand() *cli.Command {
+	return &cli.Command{
+		Name:      "setup",
+		Usage:     "Show exact DNS setup instructions for a domain",
+		ArgsUsage: "<domain>",
+		Action:    handleDomainsSetup,
 	}
 }
 
@@ -192,7 +209,11 @@ func handleDomainsAdd(c *cli.Context) error {
 
 	utils.PrintSuccess("Domain %s attached to app %s", resp.DomainName, appName)
 	if dnsCfg == api.DnsConfigCustom {
-		utils.PrintInfo("Custom domain: point an A record at the platform LoadBalancer IP, then run:")
+		if status, statusErr := api.GetDomainStatus(resp.IngressID.String(), domain, false); statusErr == nil {
+			printDomainSetup(status)
+		} else {
+			utils.PrintInfo("Custom domain: run '1ctl domains setup %s' for exact DNS records.", domain)
+		}
 		utils.PrintInfo("  1ctl domains check %s", domain)
 	}
 	return nil
@@ -235,22 +256,165 @@ func handleDomainsCheck(c *cli.Context) error {
 
 	ing, err := api.GetIngressByDomainName(domain)
 	if err != nil {
-		return utils.NewError(fmt.Sprintf("no domain %q registered: %s", domain, err.Error()), nil)
+		return printDetachedDomainStatus(domain, err)
 	}
 
-	if utils.TryPrintJSON(ing) {
+	status, err := api.GetDomainStatus(ing.IngressID.String(), domain, c.Bool("probe"))
+	if err != nil {
+		return utils.NewError(fmt.Sprintf("failed to check domain %q: %s", domain, err.Error()), nil)
+	}
+
+	if utils.TryPrintJSON(status) {
 		return nil
 	}
 
-	utils.PrintHeader("Domain %s", domain)
-	utils.PrintStatusLine("App", ing.AppLabel)
-	utils.PrintStatusLine("Namespace", ing.Namespace)
-	if ing.DnsConfig == api.DnsConfigCustom {
-		utils.PrintStatusLine("TLS", "Let's Encrypt (custom domain)")
-		utils.PrintStatusLine("DNS requirement", "A record must point at platform LoadBalancer IP")
-	} else {
-		utils.PrintStatusLine("TLS", "Platform-managed (*.satusky.com)")
-	}
-	utils.PrintStatusLine("Created", api.FormatTimeAgo(ing.CreatedAt))
+	printDomainStatus(status)
 	return nil
+}
+
+func handleDomainsSetup(c *cli.Context) error {
+	if c.NArg() < 1 {
+		return utils.NewError("domain is required. Usage: 1ctl domains setup <domain>", nil)
+	}
+	domain := c.Args().First()
+
+	ing, err := api.GetIngressByDomainName(domain)
+	if err != nil {
+		return printDetachedDomainSetup(domain, err)
+	}
+	status, err := api.GetDomainStatus(ing.IngressID.String(), domain, false)
+	if err != nil {
+		return utils.NewError(fmt.Sprintf("failed to load setup details for %q: %s", domain, err.Error()), nil)
+	}
+	if utils.TryPrintJSON(status) {
+		return nil
+	}
+
+	printDomainSetup(status)
+	return nil
+}
+
+func printDetachedDomainStatus(domain string, cause error) error {
+	if utils.IsJSONOutput() {
+		utils.TryPrintJSON(map[string]interface{}{
+			"domain_name": domain,
+			"attached":    false,
+			"message":     cause.Error(),
+		})
+		return nil
+	}
+	utils.PrintHeader("Domain %s", domain)
+	utils.PrintStatusLine("Backend", "not attached")
+	utils.PrintStatusLine("Route", "not attached")
+	utils.PrintStatusLine("DNS", "not checked")
+	utils.PrintStatusLine("TLS", "unknown")
+	utils.PrintStatusLine("HTTP", "not checked")
+	utils.PrintInfo("Attach it with: 1ctl domains add %s --app <app>", domain)
+	return nil
+}
+
+func printDetachedDomainSetup(domain string, cause error) error {
+	if utils.IsJSONOutput() {
+		utils.TryPrintJSON(map[string]interface{}{
+			"domain_name": domain,
+			"attached":    false,
+			"message":     cause.Error(),
+		})
+		return nil
+	}
+	utils.PrintHeader("Domain Setup %s", domain)
+	utils.PrintStatusLine("Backend", "not attached")
+	utils.PrintInfo("Attach it first with: 1ctl domains add %s --app <app>", domain)
+	return nil
+}
+
+func printDomainStatus(status *api.DomainStatusResponse) {
+	utils.PrintHeader("Domain %s", status.DomainName)
+	utils.PrintStatusLine("Backend", fmt.Sprintf("attached to %s in %s", status.AppLabel, status.Namespace))
+	utils.PrintStatusLine("Route", domainRouteText(status.Route))
+	utils.PrintStatusLine("DNS", domainDNSText(status.DNS))
+	utils.PrintStatusLine("TLS", domainTLSText(status.TLS))
+	utils.PrintStatusLine("HTTP", domainHTTPText(status.Reachability))
+	if status.DNS.Status != api.DNSStatusResolved {
+		utils.PrintInfo("Run setup details with: 1ctl domains setup %s", status.DomainName)
+	}
+}
+
+func printDomainSetup(status *api.DomainStatusResponse) {
+	utils.PrintHeader("Domain Setup %s", status.DomainName)
+	utils.PrintStatusLine("App", status.AppLabel)
+	utils.PrintStatusLine("Namespace", status.Namespace)
+	utils.PrintStatusLine("Current DNS", domainDNSText(status.DNS))
+	utils.PrintStatusLine("TLS", domainTLSText(status.TLS))
+
+	if status.DNS.ExpectedIP == "" {
+		utils.PrintWarning("Backend did not return an expected DNS target yet.")
+		return
+	}
+
+	recordType := "A"
+	if net.ParseIP(status.DNS.ExpectedIP) == nil {
+		recordType = "CNAME"
+	}
+	utils.PrintHeader("Required DNS Records")
+	utils.PrintStatusLine("Type", recordType)
+	utils.PrintStatusLine("Name", status.DomainName)
+	utils.PrintStatusLine("Value", status.DNS.ExpectedIP)
+	utils.PrintInfo("Next check: 1ctl domains check %s --probe", status.DomainName)
+}
+
+func domainRouteText(status api.DomainRouteStatus) string {
+	if !status.Attached {
+		if status.Message != "" {
+			return "not attached: " + status.Message
+		}
+		return "not attached"
+	}
+	if status.ResourceKind == "" && status.ResourceName == "" {
+		return "attached"
+	}
+	return fmt.Sprintf("attached to %s/%s", status.ResourceKind, status.ResourceName)
+}
+
+func domainDNSText(status api.DNSStatusResponse) string {
+	parts := []string{string(status.Status)}
+	if len(status.ResolvedIPs) > 0 {
+		parts = append(parts, "resolved "+strings.Join(status.ResolvedIPs, ", "))
+	}
+	if status.ExpectedIP != "" {
+		parts = append(parts, "expected "+status.ExpectedIP)
+	}
+	if status.Message != "" {
+		parts = append(parts, status.Message)
+	}
+	return strings.Join(parts, " - ")
+}
+
+func domainTLSText(status api.TLSStatusResponse) string {
+	if status.Status == "" {
+		return "unknown"
+	}
+	if status.ExpiresAt != nil {
+		return fmt.Sprintf("%s, expires %s", status.Status, status.ExpiresAt.Format("2006-01-02"))
+	}
+	if status.Message != "" {
+		return fmt.Sprintf("%s - %s", status.Status, status.Message)
+	}
+	return string(status.Status)
+}
+
+func domainHTTPText(status api.DomainReachabilityStatus) string {
+	if !status.Checked {
+		if status.Message != "" {
+			return "not checked - " + status.Message
+		}
+		return "not checked"
+	}
+	if status.Reachable {
+		return fmt.Sprintf("reachable %s %d", status.URL, status.StatusCode)
+	}
+	if status.Message != "" {
+		return "not reachable - " + status.Message
+	}
+	return "not reachable"
 }
