@@ -256,7 +256,7 @@ func mainDeploy(opts DeploymentOptions, image, name, userID, organization string
 		replicas = 1
 	}
 
-	// TODO: Shoudl we be hardcoding any of the values here? Make it strict and require to pass in params.
+	// TODO: Should we be hardcoding any of the values here? Make it strict and require to pass in params.
 	deployment := api.Deployment{
 		UserID:        api.ToUUID(userID),
 		Type:          "production", // Default to production (cluster env)
