@@ -53,7 +53,7 @@ func TestServiceFlow(t *testing.T) {
 		}
 
 		// Test service deletion
-		err = api.DeleteService(nil, serviceID)
+		err = api.DeleteService(serviceID)
 		if err != nil {
 			t.Errorf("DeleteService() error = %v", err)
 		}
