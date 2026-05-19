@@ -206,6 +206,53 @@ type DNSStatusResponse struct {
 	Message     string    `json:"message,omitempty"`
 }
 
+type TLSStatus string
+
+const (
+	TLSStatusProvisioning  TLSStatus = "provisioning"
+	TLSStatusActive        TLSStatus = "active"
+	TLSStatusExpiringSoon  TLSStatus = "expiring_soon"
+	TLSStatusError         TLSStatus = "error"
+	TLSStatusNotApplicable TLSStatus = "not_applicable"
+)
+
+type TLSStatusResponse struct {
+	Status    TLSStatus  `json:"status"`
+	ExpiresAt *time.Time `json:"expires_at,omitempty"`
+	Message   string     `json:"message,omitempty"`
+}
+
+type DomainRouteStatus struct {
+	Attached     bool     `json:"attached"`
+	ResourceKind string   `json:"resource_kind,omitempty"`
+	ResourceName string   `json:"resource_name,omitempty"`
+	Namespace    string   `json:"namespace,omitempty"`
+	Hostnames    []string `json:"hostnames,omitempty"`
+	Message      string   `json:"message,omitempty"`
+}
+
+type DomainReachabilityStatus struct {
+	Checked    bool   `json:"checked"`
+	Reachable  bool   `json:"reachable"`
+	StatusCode int    `json:"status_code,omitempty"`
+	URL        string `json:"url,omitempty"`
+	Message    string `json:"message,omitempty"`
+}
+
+type DomainStatusResponse struct {
+	IngressID    uuid.UUID                `json:"ingress_id"`
+	DeploymentID uuid.UUID                `json:"deployment_id"`
+	AppLabel     string                   `json:"app_label"`
+	Namespace    string                   `json:"namespace"`
+	DomainName   string                   `json:"domain_name"`
+	DnsConfig    DnsConfigType            `json:"dns_config"`
+	Attached     bool                     `json:"attached"`
+	Route        DomainRouteStatus        `json:"route"`
+	DNS          DNSStatusResponse        `json:"dns"`
+	TLS          TLSStatusResponse        `json:"tls"`
+	Reachability DomainReachabilityStatus `json:"reachability"`
+}
+
 type Dependency struct {
 	Name    string   `json:"name"`
 	Image   string   `json:"image"`
@@ -223,6 +270,48 @@ type Volume struct {
 	MountPath    string    `json:"mount_path"`
 	CreatedAt    time.Time `json:"created_at"`
 	UpdatedAt    time.Time `json:"updated_at"`
+}
+
+type VolumePVCStatus struct {
+	Name         string `json:"name"`
+	Namespace    string `json:"namespace"`
+	Exists       bool   `json:"exists"`
+	Phase        string `json:"phase,omitempty"`
+	StorageClass string `json:"storage_class,omitempty"`
+	Capacity     string `json:"capacity,omitempty"`
+	Message      string `json:"message,omitempty"`
+}
+
+type VolumeMountStatus struct {
+	Attached bool   `json:"attached"`
+	Mounted  bool   `json:"mounted"`
+	Path     string `json:"path,omitempty"`
+	Message  string `json:"message,omitempty"`
+}
+
+type VolumeLifecycleStatus struct {
+	Volume        Volume            `json:"volume"`
+	PVC           VolumePVCStatus   `json:"pvc"`
+	Mount         VolumeMountStatus `json:"mount"`
+	DestroyPolicy string            `json:"destroy_policy"`
+}
+
+type VolumeDestroyResult struct {
+	VolumeID      uuid.UUID `json:"volume_id"`
+	VolumeName    string    `json:"volume_name"`
+	ClaimName     string    `json:"claim_name"`
+	Namespace     string    `json:"namespace"`
+	Status        string    `json:"status"`
+	DestroyPolicy string    `json:"destroy_policy"`
+	Message       string    `json:"message,omitempty"`
+}
+
+type DeletionResult struct {
+	DeletedDeployments []string              `json:"deleted_deployments"`
+	Namespace          string                `json:"namespace"`
+	AppLabel           string                `json:"app_label"`
+	IsCNPGDeployment   bool                  `json:"is_cnpg_deployment"`
+	Volumes            []VolumeDestroyResult `json:"volumes,omitempty"`
 }
 
 type Service struct {

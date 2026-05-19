@@ -63,7 +63,8 @@ func (cm *CleanupManager) cleanupResource(resource Resource) error {
 
 	switch resource.Type {
 	case ResourceDeployment:
-		return api.DeleteDeployment(resource.ID)
+		_, err := api.DeleteDeployment(resource.ID)
+		return err
 	case ResourceService:
 		return api.DeleteService(resource.ID)
 	case ResourceIngress:

@@ -53,7 +53,7 @@ func TestEnvironmentFlow(t *testing.T) {
 		}
 
 		// Test environment deletion
-		err = api.DeleteEnvironment(nil, envResp.EnvironmentID.String())
+		err = api.DeleteEnvironment(envResp.EnvironmentID.String())
 		if err != nil {
 			t.Errorf("DeleteEnvironment() error = %v", err)
 		}

@@ -478,30 +478,45 @@ func handleDeploy(c *cli.Context) error {
 		return utils.NewError(fmt.Sprintf("deployment failed: %s", err.Error()), nil)
 	}
 
-	dnsReady := true
-	if resp.IngressID != uuid.Nil {
-		utils.PrintInfo("Waiting for DNS propagation for https://%s...", resp.Domain)
-		if _, err := api.WaitForIngressDNSStatus(resp.IngressID.String(), 2*time.Minute); err != nil {
-			dnsReady = false
-			utils.PrintWarning("DNS is still propagating for https://%s: %s", resp.Domain, err.Error())
-		}
-	}
+	publicURL := checkPublicURLReadiness(resp)
+	return reportDeployResult(resp, opts.Wait, publicURL)
+}
 
-	if dnsReady {
+func reportDeployResult(resp *api.CreateDeploymentResponse, waitForWorkload bool, publicURL publicURLReadiness) error {
+	if publicURL.Ready {
 		utils.PrintSuccess("🚀 Deployment for %s is successful! Your app is live at: https://%s", resp.AppLabel, resp.Domain)
 	} else {
-		utils.PrintSuccess("🚀 Deployment for %s is successful!", resp.AppLabel)
-		utils.PrintInfo("The app URL will become live once DNS propagates: https://%s", resp.Domain)
+		utils.PrintSuccess("Deployment for %s was accepted by the platform.", resp.AppLabel)
+		utils.PrintWarning("Public URL is not ready yet: https://%s", resp.Domain)
+		if publicURL.Reason != "" {
+			utils.PrintStatusLine("Public URL reason", publicURL.Reason)
+		}
+		utils.PrintInfo("Run: 1ctl domains check %s --probe", resp.Domain)
 	}
 	utils.PrintStatusLine("Deployment ID", resp.DeploymentID.String())
 
-	if opts.Wait {
+	workloadReady := false
+	if waitForWorkload {
 		utils.PrintInfo("Waiting for deployment to become healthy...")
 		status, err := api.WaitForDeployment(resp.DeploymentID.String(), 5*time.Minute)
 		if err != nil {
 			utils.PrintWarning("Timed out waiting for deployment: %s", err.Error())
 		} else if status != nil && status.Status == "Running" {
-			utils.PrintSuccess("Deployment is healthy — pods Running")
+			workloadReady = true
+			utils.PrintSuccess("Deployment is healthy: pods Running")
+		}
+		if resp.Domain != "" {
+			if publicURL.Ready {
+				utils.PrintStatusLine("Public URL", fmt.Sprintf("ready: https://%s", resp.Domain))
+			} else {
+				utils.PrintStatusLine("Public URL", fmt.Sprintf("not ready: https://%s", resp.Domain))
+				if publicURL.Reason != "" {
+					utils.PrintStatusLine("Reason", publicURL.Reason)
+				}
+			}
+		}
+		if workloadReady && !publicURL.Ready && resp.Domain != "" {
+			return utils.NewError(fmt.Sprintf("deployment workload is healthy, but public URL is not ready yet. Run: 1ctl domains check %s --probe", resp.Domain), nil)
 		}
 	}
 
@@ -992,6 +1007,89 @@ func defaultInt32(v, fallback int32) int32 {
 	return v
 }
 
+type publicURLReadiness struct {
+	Ready  bool
+	Reason string
+}
+
+func checkPublicURLReadiness(resp *api.CreateDeploymentResponse) publicURLReadiness {
+	if resp == nil || resp.IngressID == uuid.Nil || resp.Domain == "" {
+		return publicURLReadiness{Ready: true}
+	}
+
+	readiness := publicURLReadiness{Ready: true}
+	utils.PrintInfo("Waiting for DNS propagation for https://%s...", resp.Domain)
+	if _, err := api.WaitForIngressDNSStatus(resp.IngressID.String(), 2*time.Minute); err != nil {
+		readiness.Ready = false
+		readiness.Reason = fmt.Sprintf("DNS propagation timed out: %s", err.Error())
+		utils.PrintWarning("DNS is still propagating for https://%s: %s", resp.Domain, err.Error())
+	}
+
+	status, err := api.GetDomainStatus(resp.IngressID.String(), resp.Domain, false)
+	if err != nil {
+		if readiness.Ready {
+			readiness.Ready = false
+			readiness.Reason = fmt.Sprintf("domain status unavailable: %s", err.Error())
+		}
+		return readiness
+	}
+	if !domainStatusReady(status) {
+		readiness.Ready = false
+		readiness.Reason = domainStatusReason(status)
+	}
+	return readiness
+}
+
+func domainStatusReady(status *api.DomainStatusResponse) bool {
+	return status != nil &&
+		status.Attached &&
+		status.Route.Attached &&
+		status.DNS.Status == api.DNSStatusResolved
+}
+
+func domainStatusReason(status *api.DomainStatusResponse) string {
+	if status == nil {
+		return "domain status unavailable"
+	}
+	if !status.Attached {
+		return "domain is not attached in backend metadata"
+	}
+	if !status.Route.Attached {
+		if status.Route.Message != "" {
+			return "route is not attached: " + status.Route.Message
+		}
+		return "route is not attached"
+	}
+	if status.DNS.Status != api.DNSStatusResolved {
+		if status.DNS.Message != "" {
+			return fmt.Sprintf("DNS is %s: %s", status.DNS.Status, status.DNS.Message)
+		}
+		return fmt.Sprintf("DNS is %s", status.DNS.Status)
+	}
+	return "public URL is not ready"
+}
+
+func deploymentStrategyText(strategy *api.DeploymentStrategyConfig) string {
+	if strategy == nil {
+		return "default"
+	}
+	if strategy.Rolling == nil {
+		return string(strategy.Type)
+	}
+	return fmt.Sprintf("%s (maxSurge=%s, maxUnavailable=%s)",
+		strategy.Type,
+		strategy.Rolling.MaxSurge,
+		strategy.Rolling.MaxUnavailable,
+	)
+}
+
+func enabledText(enabled bool) string {
+	if enabled {
+		return "attached"
+	}
+	return "not attached"
+}
+
 func parseEnvVars(envVars []string) []api.KeyValuePair {
 	var keyValues []api.KeyValuePair
 	for _, env := range envVars {
@@ -1030,15 +1128,62 @@ func handleDeploymentStatus(c *cli.Context) error {
 		return utils.NewError(fmt.Sprintf("failed to get deployment status: %s", err.Error()), nil)
 	}
 
-	if utils.TryPrintJSON(status) {
+	deployment, err := api.GetDeployment(deploymentID)
+	if err != nil {
+		return utils.NewError(fmt.Sprintf("failed to get deployment details: %s", err.Error()), nil)
+	}
+
+	var ingress *api.Ingress
+	var domainStatus *api.DomainStatusResponse
+	if ing, ingErr := api.GetIngressByDeploymentID(deploymentID); ingErr == nil {
+		ingress = ing
+		if ing.DomainName != "" {
+			if ds, dsErr := api.GetDomainStatus(ing.IngressID.String(), ing.DomainName, false); dsErr == nil {
+				domainStatus = ds
+			}
+		}
+	}
+
+	details := struct {
+		Deployment   *api.Deployment           `json:"deployment"`
+		Status       *api.DeploymentStatus     `json:"status"`
+		Ingress      *api.Ingress              `json:"ingress,omitempty"`
+		DomainStatus *api.DomainStatusResponse `json:"domain_status,omitempty"`
+	}{
+		Deployment:   deployment,
+		Status:       status,
+		Ingress:      ingress,
+		DomainStatus: domainStatus,
+	}
+	if utils.TryPrintJSON(details) {
 		return nil
 	}
 
-	utils.PrintStatusLine("Status", status.Status)
+	utils.PrintHeader("Deployment Status")
+	utils.PrintStatusLine("App", deployment.AppLabel)
+	utils.PrintStatusLine("Deployment ID", deployment.DeploymentID.String())
+	utils.PrintStatusLine("Namespace", deployment.Namespace)
+	if ingress != nil && ingress.DomainName != "" {
+		utils.PrintStatusLine("URL", "https://"+ingress.DomainName)
+	}
+	utils.PrintStatusLine("Workload", status.Status)
 	if status.Message != "" {
 		utils.PrintStatusLine("Message", status.Message)
 	}
 	utils.PrintStatusLine("Progress", fmt.Sprintf("%d%%", status.Progress))
+	utils.PrintStatusLine("Image", deployment.Image)
+	utils.PrintStatusLine("Replicas", fmt.Sprintf("%d desired", deployment.Replicas))
+	utils.PrintStatusLine("Strategy", deploymentStrategyText(deployment.StrategyConfig))
+	utils.PrintStatusLine("Environment", enabledText(deployment.EnvEnabled))
+	utils.PrintStatusLine("Secrets", enabledText(deployment.SecretEnabled))
+	utils.PrintStatusLine("Volume", enabledText(deployment.VolumeEnabled))
+	if domainStatus != nil {
+		utils.PrintStatusLine("Route", domainRouteText(domainStatus.Route))
+		utils.PrintStatusLine("DNS", domainDNSText(domainStatus.DNS))
+		utils.PrintStatusLine("TLS", domainTLSText(domainStatus.TLS))
+	}
+	utils.PrintStatusLine("Created", api.FormatTimeAgo(deployment.CreatedAt))
+	utils.PrintStatusLine("Last Updated", api.FormatTimeAgo(deployment.UpdatedAt))
 
 	return nil
 }
@@ -1149,11 +1294,53 @@ func handleDestroyDeployment(c *cli.Context) error {
 		return nil
 	}
 	utils.PrintInfo("Destroying deployment %s...", deploymentID)
-	if err := api.DeleteDeployment(deploymentID); err != nil {
+	result, err := api.DeleteDeployment(deploymentID)
+	if err != nil {
 		return utils.NewError(fmt.Sprintf("failed to destroy deployment: %s", err.Error()), nil)
 	}
-	utils.PrintSuccess("Deployment %s destroyed successfully", deploymentID)
+	if utils.TryPrintJSON(result) {
+		return nil
+	}
+	printDeletionResult(deploymentID, result)
 	return nil
+}
+
+func printDeletionResult(deploymentID string, result *api.DeletionResult) {
+	utils.PrintSuccess("Deployment %s destroy completed", deploymentID)
+	if result == nil {
+		return
+	}
+	utils.PrintHeader("Deleted Resources")
+	if result.AppLabel != "" {
+		utils.PrintStatusLine("App", result.AppLabel)
+	}
+	if result.Namespace != "" {
+		utils.PrintStatusLine("Namespace", result.Namespace)
+	}
+	if len(result.DeletedDeployments) > 0 {
+		utils.PrintStatusLine("Deployments", strings.Join(result.DeletedDeployments, ", "))
+	} else {
+		utils.PrintStatusLine("Deployments", "none reported")
+	}
+	if result.IsCNPGDeployment {
+		utils.PrintStatusLine("CNPG", "database deployment cleanup applied")
+	}
+	if len(result.Volumes) == 0 {
+		utils.PrintStatusLine("PVCs", "none reported")
+		return
+	}
+	headers := []string{"PVC", "VOLUME", "STATUS", "POLICY", "MESSAGE"}
+	rows := make([][]string, 0, len(result.Volumes))
+	for _, volume := range result.Volumes {
+		rows = append(rows, []string{
+			volume.ClaimName,
+			volume.VolumeName,
+			volume.Status,
+			volume.DestroyPolicy,
+			volume.Message,
+		})
+	}
+	utils.PrintTable(headers, rows)
 }
 
 func handleRestartDeployment(c *cli.Context) error {
