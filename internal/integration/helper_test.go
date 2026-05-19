@@ -25,6 +25,7 @@ var (
 // setupTestAuth sets up authentication for tests
 func setupTestAuth(t *testing.T) {
 	t.Helper()
+	setupTestStore(t)
 	token := "test_token"
 	if err := context.SetToken(token); err != nil {
 		t.Fatalf("Failed to set token: %v", err)
@@ -38,6 +39,13 @@ func setupTestAuth(t *testing.T) {
 	if err := context.SetCurrentOrganization("test-org-id", "Test Org", "test-org"); err != nil {
 		t.Fatalf("Failed to set organization: %v", err)
 	}
+}
+
+func setupTestStore(t *testing.T) {
+	t.Helper()
+	store := context.NewTestStore(t.TempDir())
+	store.SetProfileOverride("integration-test")
+	context.SetDefault(store)
 }
 
 // setupTestDockerfile creates a test Dockerfile
@@ -66,7 +74,7 @@ CMD ["./app"]`
 // cleanupDeployment helps clean up test deployments
 func cleanupDeployment(t *testing.T, deploymentID string) {
 	t.Helper()
-	if err := api.DeleteDeployment(deploymentID); err != nil {
+	if _, err := api.DeleteDeployment(deploymentID); err != nil {
 		t.Logf("Warning: Failed to cleanup deployment %s: %v", deploymentID, err)
 	}
 }
@@ -77,6 +85,7 @@ func createTestDeployment(t *testing.T) uuid.UUID {
 	dockerfilePath := setupTestDockerfile(t)
 
 	opts := deploy.DeploymentOptions{
+		Name:           "integration-app",
 		CPU:            "100m",
 		Memory:         "128Mi",
 		Organization:   "test-project",
@@ -124,7 +133,7 @@ func createTestService(t *testing.T, deploymentID uuid.UUID) string {
 // cleanupService helps clean up test services
 func cleanupService(t *testing.T, serviceID string) {
 	t.Helper()
-	if err := api.DeleteService(nil, serviceID); err != nil {
+	if err := api.DeleteService(serviceID); err != nil {
 		t.Logf("Warning: Failed to cleanup service %s: %v", serviceID, err)
 	}
 }

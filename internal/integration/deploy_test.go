@@ -16,6 +16,7 @@ func TestDeploymentFlow(t *testing.T) {
 
 	t.Run("create and manage deployment", func(t *testing.T) {
 		opts := deploy.DeploymentOptions{
+			Name:           "integration-deploy",
 			CPU:            "100m",
 			Memory:         "128Mi",
 			Organization:   "test-project",

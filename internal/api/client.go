@@ -32,8 +32,22 @@ type apiResponse struct {
 }
 
 // DeleteDeployment deletes a deployment
-func DeleteDeployment(deploymentID string) error {
-	return makeRequest("POST", fmt.Sprintf("/deployments/delete/%s", deploymentID), nil, nil)
+func DeleteDeployment(deploymentID string) (*DeletionResult, error) {
+	var resp apiResponse
+	if err := makeRequest("POST", fmt.Sprintf("/deployments/delete/%s", deploymentID), nil, &resp); err != nil {
+		return nil, err
+	}
+
+	data, err := json.Marshal(resp.Data)
+	if err != nil {
+		return nil, utils.NewError(fmt.Sprintf("failed to marshal deletion result: %s", err.Error()), nil)
+	}
+
+	var result DeletionResult
+	if err := json.Unmarshal(data, &result); err != nil {
+		return nil, utils.NewError(fmt.Sprintf("failed to unmarshal deletion result: %s", err.Error()), nil)
+	}
+	return &result, nil
 }
 
 // RestartDeployment triggers a rolling restart of a deployment
@@ -374,6 +388,54 @@ func CreateVolume(volume Volume) error {
 	return makeRequest("POST", "/volumes/create", volume, nil)
 }
 
+// GetVolumeLifecycleStatus reports DB, PVC, and mount state for a volume.
+func GetVolumeLifecycleStatus(volumeID string) (*VolumeLifecycleStatus, error) {
+	var resp struct {
+		Error bool                  `json:"error"`
+		Data  VolumeLifecycleStatus `json:"data"`
+	}
+	if err := makeRequest("GET", fmt.Sprintf("/volumes/id/%s/status", volumeID), nil, &resp); err != nil {
+		return nil, err
+	}
+	return &resp.Data, nil
+}
+
+// GetDeploymentVolumeLifecycleStatuses reports all volume lifecycle state for a deployment.
+func GetDeploymentVolumeLifecycleStatuses(deploymentID string) ([]VolumeLifecycleStatus, error) {
+	var resp struct {
+		Error bool                    `json:"error"`
+		Data  []VolumeLifecycleStatus `json:"data"`
+	}
+	if err := makeRequest("GET", fmt.Sprintf("/volumes/deploymentId/%s/status", deploymentID), nil, &resp); err != nil {
+		return nil, err
+	}
+	return resp.Data, nil
+}
+
+// DetachVolume removes the deployment mount reference without deleting the PVC.
+func DetachVolume(volumeID string) (*VolumeLifecycleStatus, error) {
+	var resp struct {
+		Error bool                  `json:"error"`
+		Data  VolumeLifecycleStatus `json:"data"`
+	}
+	if err := makeRequest("POST", fmt.Sprintf("/volumes/%s/detach", volumeID), nil, &resp); err != nil {
+		return nil, err
+	}
+	return &resp.Data, nil
+}
+
+// DeleteVolumePVC detaches and destroys the live PVC, then removes the DB record.
+func DeleteVolumePVC(volumeID string) (*VolumeLifecycleStatus, error) {
+	var resp struct {
+		Error bool                  `json:"error"`
+		Data  VolumeLifecycleStatus `json:"data"`
+	}
+	if err := makeRequest("DELETE", fmt.Sprintf("/volumes/%s/pvc", volumeID), nil, &resp); err != nil {
+		return nil, err
+	}
+	return &resp.Data, nil
+}
+
 // GetDeploymentStatus gets the current status of a deployment.
 // Uses the typed-inline-struct pattern (see GetDeployment for rationale).
 func GetDeploymentStatus(deploymentID string) (*DeploymentStatus, error) {
@@ -688,6 +750,30 @@ func GetIngressByDeploymentID(deploymentID string) (*Ingress, error) {
 		return nil, utils.NewError(fmt.Sprintf("failed to unmarshal ingress: %s", err.Error()), nil)
 	}
 	return &ingress, nil
+}
+
+// GetDomainStatus returns consolidated backend, route, DNS, TLS, and optional HTTP status.
+func GetDomainStatus(ingressID, domain string, probe bool) (*DomainStatusResponse, error) {
+	query := url.Values{}
+	if domain != "" {
+		query.Set("domain", domain)
+	}
+	if probe {
+		query.Set("probe", "true")
+	}
+	path := fmt.Sprintf("/ingresses/%s/domain-status", ingressID)
+	if encoded := query.Encode(); encoded != "" {
+		path += "?" + encoded
+	}
+
+	var resp struct {
+		Error bool                 `json:"error"`
+		Data  DomainStatusResponse `json:"data"`
+	}
+	if err := makeRequest("GET", path, nil, &resp); err != nil {
+		return nil, err
+	}
+	return &resp.Data, nil
 }
 
 // Environment methods

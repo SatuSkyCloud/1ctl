@@ -1,7 +1,9 @@
 package main
 
 import (
+	"fmt"
 	"os"
+	"strings"
 
 	"1ctl/internal/commands"
 	"1ctl/internal/config"
@@ -15,7 +17,7 @@ import (
 // Make run function accessible to tests
 func run() error {
 	app := createApp()
-	return app.Run(os.Args)
+	return app.Run(normalizeGlobalOutputArgs(os.Args))
 }
 
 // Make createApp function accessible to tests
@@ -74,6 +76,7 @@ Tokens: https://cloud.satusky.com/<org-id>/token`,
 			commands.IngressCommand(),
 			commands.IssuerCommand(),
 			commands.DomainsCommand(),
+			commands.VolumesCommand(),
 			commands.EnvironmentCommand(),
 			commands.MachineCommand(),
 			commands.CompletionCommand(),
@@ -131,7 +134,7 @@ Tokens: https://cloud.satusky.com/<org-id>/token`,
 			// Check if command exists in our registered commands
 			commandExists := false
 			for _, cmd := range c.App.Commands {
-				if cmd.Name == cmdName {
+				if cmd.Name == cmdName || containsString(cmd.Aliases, cmdName) {
 					commandExists = true
 					break
 				}
@@ -142,7 +145,14 @@ Tokens: https://cloud.satusky.com/<org-id>/token`,
 				if err := cli.ShowAppHelp(c); err != nil {
 					return utils.NewError("failed to show help", err)
 				}
-				return utils.NewError("command %q not found\nRun '1ctl --help' for usage", nil)
+				msg := fmt.Sprintf("command %q not found\nRun '1ctl --help' for usage", cmdName)
+				if cmdName == "storage" {
+					msg += "\nPersistent volumes are managed with '1ctl volumes'."
+				}
+				if cmdName == "volume" {
+					msg += "\nPersistent volumes are managed with '1ctl volumes'."
+				}
+				return utils.NewError(msg, nil)
 			}
 
 			// Only validate environment for existing commands
@@ -153,6 +163,51 @@ Tokens: https://cloud.satusky.com/<org-id>/token`,
 		},
 	}
 	return app
+}
+
+func containsString(values []string, needle string) bool {
+	for _, value := range values {
+		if value == needle {
+			return true
+		}
+	}
+	return false
+}
+
+func normalizeGlobalOutputArgs(args []string) []string {
+	if len(args) <= 2 {
+		return args
+	}
+
+	normalized := make([]string, 0, len(args))
+	outputArgs := make([]string, 0, 2)
+	normalized = append(normalized, args[0])
+
+	for i := 1; i < len(args); i++ {
+		arg := args[i]
+		switch {
+		case arg == "-o" || arg == "--output":
+			if i+1 < len(args) {
+				outputArgs = append(outputArgs, arg, args[i+1])
+				i++
+				continue
+			}
+		case strings.HasPrefix(arg, "--output="), strings.HasPrefix(arg, "-o="):
+			outputArgs = append(outputArgs, arg)
+			continue
+		}
+		normalized = append(normalized, arg)
+	}
+
+	if len(outputArgs) == 0 {
+		return args
+	}
+
+	result := make([]string, 0, len(args))
+	result = append(result, normalized[0])
+	result = append(result, outputArgs...)
+	result = append(result, normalized[1:]...)
+	return result
 }
 
 func main() {

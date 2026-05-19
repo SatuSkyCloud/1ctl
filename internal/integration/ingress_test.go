@@ -65,7 +65,7 @@ func TestIngressFlow(t *testing.T) {
 		}
 
 		// Test ingress deletion
-		err = api.DeleteIngress(nil, ingressResp.IngressID.String())
+		err = api.DeleteIngress(ingressResp.IngressID.String())
 		if err != nil {
 			t.Errorf("DeleteIngress() error = %v", err)
 		}

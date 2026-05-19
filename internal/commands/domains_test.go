@@ -14,7 +14,7 @@ func TestDomainsCommandStructure(t *testing.T) {
 	if !containsString(cmd.Aliases, "domain") {
 		t.Errorf("Aliases = %v, want to include 'domain'", cmd.Aliases)
 	}
-	wantSubs := []string{"list", "add", "remove", "check"}
+	wantSubs := []string{"list", "add", "remove", "check", "setup"}
 	got := subNames(cmd.Subcommands)
 	for _, w := range wantSubs {
 		if !containsString(got, w) {
