@@ -1,7 +1,13 @@
 package api
 
 import (
+	cliContext "1ctl/internal/context"
 	"fmt"
+	"io"
+	"net/http"
+	"os"
+	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 
@@ -187,6 +193,62 @@ func TestMachineHasTag(t *testing.T) {
 			}
 		})
 	}
+}
+
+func TestMakeMainAPIRequestPreservesV1Prefix(t *testing.T) {
+	originalClient := httpClient
+	t.Cleanup(func() { httpClient = originalClient })
+
+	httpClient = &http.Client{Transport: roundTripFunc(func(r *http.Request) (*http.Response, error) {
+		if r.Method != http.MethodGet {
+			t.Errorf("method = %s, want GET", r.Method)
+		}
+		if r.URL.Path != "/v1/machines/machine-123/details" {
+			t.Errorf("path = %s, want /v1/machines/machine-123/details", r.URL.Path)
+		}
+		return &http.Response{
+			StatusCode: http.StatusOK,
+			Header:     make(http.Header),
+			Body:       io.NopCloser(strings.NewReader(`{"error":false,"data":{"ok":true}}`)),
+		}, nil
+	})}
+
+	originalStore := cliContext.Default()
+	configDir := filepath.Join(t.TempDir(), ".satusky")
+	profilesDir := filepath.Join(configDir, "profiles")
+	if err := os.MkdirAll(profilesDir, 0750); err != nil {
+		t.Fatalf("MkdirAll() error = %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(profilesDir, "test.json"), []byte("{}"), 0600); err != nil {
+		t.Fatalf("WriteFile(profile) error = %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(configDir, "context.json"), []byte(`{"active_profile":"test"}`), 0600); err != nil {
+		t.Fatalf("WriteFile(context) error = %v", err)
+	}
+	cliContext.SetDefault(cliContext.NewTestStore(configDir))
+	t.Cleanup(func() { cliContext.SetDefault(originalStore) })
+	if err := cliContext.SetToken("test-token"); err != nil {
+		t.Fatalf("SetToken() error = %v", err)
+	}
+
+	t.Setenv("SATUSKY_API_URL", "http://localhost:8080/v1/cli")
+
+	var resp struct {
+		Error bool            `json:"error"`
+		Data  map[string]bool `json:"data"`
+	}
+	if err := makeMainAPIRequest(http.MethodGet, "/machines/machine-123/details", nil, &resp); err != nil {
+		t.Fatalf("makeMainAPIRequest() error = %v", err)
+	}
+	if !resp.Data["ok"] {
+		t.Fatalf("response data = %v, want ok=true", resp.Data)
+	}
+}
+
+type roundTripFunc func(*http.Request) (*http.Response, error)
+
+func (fn roundTripFunc) RoundTrip(r *http.Request) (*http.Response, error) {
+	return fn(r)
 }
 
 func TestParseUUID(t *testing.T) {

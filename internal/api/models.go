@@ -453,6 +453,7 @@ type Machine struct {
 	CreatedAt           time.Time  `db:"created_at" json:"created_at"`
 	UpdatedAt           time.Time  `db:"updated_at" json:"updated_at"`
 	CPUArch             string     `json:"cpu_arch"`
+	OrganizationID      string     `json:"organization_id,omitempty"`
 }
 
 type MachineIDs struct {
@@ -767,4 +768,50 @@ type SendCommandRequest struct {
 type SendCommandResponse struct {
 	CommandID string `json:"command_id"`
 	Status    string `json:"status"`
+}
+
+type MachineLabelsResponse struct {
+	Labels map[string]string `json:"labels"`
+}
+
+type MachineLogFetchRequest struct {
+	MachineID      string   `json:"machine_id,omitempty"`
+	Sources        []string `json:"sources,omitempty"`
+	Follow         bool     `json:"follow,omitempty"`
+	TailLines      int      `json:"tail_lines,omitempty"`
+	Since          string   `json:"since,omitempty"`
+	Filter         string   `json:"filter,omitempty"`
+	Components     []string `json:"components,omitempty"`
+	IncludePrevLog bool     `json:"include_prev_log,omitempty"`
+}
+
+type MachineLogEntry struct {
+	Timestamp string `json:"timestamp"`
+	Source    string `json:"source"`
+	Stage     string `json:"stage"`
+	Message   string `json:"message"`
+	Severity  string `json:"severity,omitempty"`
+	Component string `json:"component,omitempty"`
+}
+
+type MachineLogsResponse struct {
+	MachineID string            `json:"machine_id"`
+	Entries   []MachineLogEntry `json:"entries"`
+	Count     int               `json:"count"`
+	Stage     string            `json:"stage"`
+	FetchedAt string            `json:"fetched_at"`
+}
+
+type MachineEvent struct {
+	ID      string `json:"id"`
+	TypeURL string `json:"type_url"`
+	ActorID string `json:"actor_id,omitempty"`
+	Node    string `json:"node,omitempty"`
+	Payload string `json:"payload,omitempty"`
+}
+
+type MachineEventsResponse struct {
+	MachineID string         `json:"machine_id"`
+	Events    []MachineEvent `json:"events"`
+	Count     int            `json:"count"`
 }

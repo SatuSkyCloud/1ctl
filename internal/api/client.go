@@ -492,10 +492,22 @@ func WaitForDeployment(deploymentID string, timeout time.Duration) (*DeploymentS
 func makeRequest(method, path string, body interface{}, response interface{}) error {
 	config := config.GetConfig()
 	url := fmt.Sprintf("%s%s", config.ApiURL, path)
+	return makeRequestURL(method, url, body, response)
+}
 
+func makeMainAPIRequest(method, path string, body interface{}, response interface{}) error {
+	cfg := config.GetConfig()
+	baseURL := strings.TrimSuffix(cfg.ApiURL, "/")
+	baseURL = strings.TrimSuffix(baseURL, "/cli")
+	baseURL = strings.TrimSuffix(baseURL, "/")
+	url := fmt.Sprintf("%s%s", baseURL, path)
+	return makeRequestURL(method, url, body, response)
+}
+
+func makeRequestURL(method, url string, body interface{}, response interface{}) error {
 	// Enforce HTTPS for non-localhost API URLs to prevent token leakage over plaintext
 	if !utils.IsLocalhostURL(url) && !strings.HasPrefix(url, "https://") {
-		return utils.NewError(fmt.Sprintf("refusing to send auth token over insecure connection (%s). Use HTTPS or http://localhost for local development", config.ApiURL), nil)
+		return utils.NewError(fmt.Sprintf("refusing to send auth token over insecure connection (%s). Use HTTPS or http://localhost for local development", url), nil)
 	}
 
 	var bodyReader io.Reader
@@ -817,6 +829,97 @@ func GetMachineLabels(machineID string) (map[string]string, error) {
 		return nil, err
 	}
 	return resp.Data.Labels, nil
+}
+
+func CreateMachine(machine Machine) (int64, error) {
+	var resp struct {
+		Error bool  `json:"error"`
+		Data  int64 `json:"data"`
+	}
+	if err := makeRequest("POST", "/machines/create", machine, &resp); err != nil {
+		return 0, err
+	}
+	return resp.Data, nil
+}
+
+func UpdateMachine(machineID string, machine Machine) error {
+	var resp apiResponse
+	return makeRequest("POST", fmt.Sprintf("/machines/update/%s", machineID), machine, &resp)
+}
+
+func DeleteMachine(machineID string) error {
+	var resp apiResponse
+	return makeMainAPIRequest("DELETE", fmt.Sprintf("/machines/%s", url.PathEscape(machineID)), nil, &resp)
+}
+
+func GetMachineHardware(machineID string) (map[string]interface{}, error) {
+	var resp struct {
+		Error bool                   `json:"error"`
+		Data  map[string]interface{} `json:"data"`
+	}
+	if err := makeRequest("GET", fmt.Sprintf("/machines/%s/hardware", url.PathEscape(machineID)), nil, &resp); err != nil {
+		return nil, err
+	}
+	return resp.Data, nil
+}
+
+func RefreshMachineHardware(machineID string) (map[string]interface{}, error) {
+	var resp struct {
+		Error bool                   `json:"error"`
+		Data  map[string]interface{} `json:"data"`
+	}
+	if err := makeRequest("POST", fmt.Sprintf("/machines/%s/hardware/refresh", url.PathEscape(machineID)), nil, &resp); err != nil {
+		return nil, err
+	}
+	return resp.Data, nil
+}
+
+func GetMachineTalosStatus(machineID string) (map[string]interface{}, error) {
+	var resp struct {
+		Error bool                   `json:"error"`
+		Data  map[string]interface{} `json:"data"`
+	}
+	if err := makeRequest("GET", fmt.Sprintf("/machines/%s/talos/status", url.PathEscape(machineID)), nil, &resp); err != nil {
+		return nil, err
+	}
+	return resp.Data, nil
+}
+
+func GetMachineDetails(machineID string) (map[string]interface{}, error) {
+	var resp struct {
+		Error bool                   `json:"error"`
+		Data  map[string]interface{} `json:"data"`
+	}
+	if err := makeMainAPIRequest("GET", fmt.Sprintf("/machines/%s/details", url.PathEscape(machineID)), nil, &resp); err != nil {
+		return nil, err
+	}
+	return resp.Data, nil
+}
+
+func FetchMachineLogs(machineID string, req MachineLogFetchRequest) (*MachineLogsResponse, error) {
+	var resp struct {
+		Error bool                `json:"error"`
+		Data  MachineLogsResponse `json:"data"`
+	}
+	if err := makeMainAPIRequest("POST", fmt.Sprintf("/machines/%s/logs/fetch", url.PathEscape(machineID)), req, &resp); err != nil {
+		return nil, err
+	}
+	return &resp.Data, nil
+}
+
+func GetMachineEvents(machineID string, tail int) (*MachineEventsResponse, error) {
+	var resp struct {
+		Error bool                  `json:"error"`
+		Data  MachineEventsResponse `json:"data"`
+	}
+	path := fmt.Sprintf("/machines/%s/events", url.PathEscape(machineID))
+	if tail > 0 {
+		path = fmt.Sprintf("%s?tail=%d", path, tail)
+	}
+	if err := makeMainAPIRequest("GET", path, nil, &resp); err != nil {
+		return nil, err
+	}
+	return &resp.Data, nil
 }
 
 // MachineHasTag reports whether the given label set contains the satusky.com/<tag> key.
