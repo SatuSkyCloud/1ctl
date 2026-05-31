@@ -21,6 +21,13 @@ func TestMachineCommand(t *testing.T) {
 	// Mac agent VM lifecycle moved to dedicated tooling.
 	expectedSubcommands := map[string]bool{
 		"list":      false,
+		"get":       false,
+		"create":    false,
+		"update":    false,
+		"delete":    false,
+		"inspect":   false,
+		"logs":      false,
+		"events":    false,
 		"available": false,
 		"usage":     false,
 	}
