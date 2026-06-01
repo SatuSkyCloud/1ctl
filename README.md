@@ -51,7 +51,7 @@ export SATUSKY_DOCKER_API_URL=http://localhost:3000
 
 #### Production build (CI/CD)
 
-Production releases are built by GoReleaser. Merges to `main` automatically read the top `RELEASE_NOTES.md` version, create the matching semver tag, and publish the release. The CI pipeline produces cross-platform binaries (Linux, macOS, Windows — amd64 and arm64) with version metadata embedded.
+Production releases are built by GoReleaser. Merges to `main` automatically read the top `RELEASE_NOTES.md` version, create the matching semver tag, and publish the release. Pull request CI runs Linux tests, linting, security scanning, and one Linux amd64 sanity build; the tag-triggered release pipeline owns the full cross-platform binary matrix.
 
 Manual/emergency releases can still be triggered by pushing a semver tag:
 
