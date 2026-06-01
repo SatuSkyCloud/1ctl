@@ -119,6 +119,7 @@ type Deployment struct {
 	AppLabel           string                    `json:"app_label"`
 	Port               int32                     `json:"port"`
 	CpuRequest         string                    `json:"cpu_request"`
+	CPULimit           string                    `json:"cpu_limit,omitempty"`
 	MemoryRequest      string                    `json:"memory_request"`
 	MemoryLimit        string                    `json:"memory_limit"`
 	RepoURL            string                    `json:"repo_url,omitempty"`

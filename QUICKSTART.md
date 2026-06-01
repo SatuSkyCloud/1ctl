@@ -111,7 +111,7 @@ cd examples/backend
 
 Or with explicit flags:
 ```bash
-./1ctl deploy --cpu 0.5 --memory 256Mi --port 8080
+./1ctl deploy --cpu-request 250m --cpu-limit 1 --memory 256Mi --port 8080
 ```
 
 What happens:
@@ -335,12 +335,14 @@ All of these are valid CPU values:
 | Integer | `1`    | 1 core |
 | Millicores | `500m` | 500 millicores (0.5 cores) |
 
+`--cpu-request` is the guaranteed scheduler reservation. `--cpu-limit` is the burst ceiling. The default shared tier is `250m` request with `1` vCPU burst.
+
 ---
 
 ## Next steps
 
 - Browse available machines: `1ctl machine list`
 - View logs: `1ctl logs --deployment-id <uuid>`
-- Set up autoscaling: `1ctl deploy --hpa --hpa-min-replicas 2 --hpa-max-replicas 10 --cpu 1 --memory 512Mi --port 8080`
+- Set up autoscaling: `1ctl deploy --hpa --hpa-min-replicas 2 --hpa-max-replicas 10 --cpu-request 250m --cpu-limit 1 --memory 512Mi --port 8080`
 - Explore all commands: `1ctl --help`
 - Full docs: [docs.satusky.com/cli](https://docs.satusky.com/cli)

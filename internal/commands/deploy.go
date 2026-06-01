@@ -23,8 +23,17 @@ func DeployCommand() *cli.Command {
 		},
 		&cli.StringFlag{
 			Name:  "cpu",
-			Usage: "CPU cores allocation (e.g., '2')",
-			Value: "0.5",
+			Usage: "Legacy alias for --cpu-limit (e.g., '1', '500m')",
+		},
+		&cli.StringFlag{
+			Name:  "cpu-request",
+			Usage: "Guaranteed CPU reservation per replica (e.g., '250m')",
+			Value: "250m",
+		},
+		&cli.StringFlag{
+			Name:  "cpu-limit",
+			Usage: "Maximum burst CPU per replica (e.g., '1')",
+			Value: "1",
 		},
 		&cli.StringFlag{
 			Name:  "memory",
@@ -223,8 +232,8 @@ Images are built in the cloud via Kaniko — no local Docker installation requir
 Your source directory is packaged and sent to the build service, which builds
 and pushes the image directly to the registry.
 
-   1ctl deploy --cpu 1 --memory 512Mi --port 8080
-   1ctl deploy --cpu 2 --memory 1Gi --port 3000 --env KEY=VALUE
+   1ctl deploy --cpu-request 250m --cpu-limit 1 --memory 512Mi --port 8080
+   1ctl deploy --cpu-request 500m --cpu-limit 1 --memory 1Gi --port 3000 --env KEY=VALUE
    1ctl deploy --image registry.satusky.com/.../myapp:tag   # skip cloud build
 
 Config file (satusky.toml) can persist deploy settings across runs.
@@ -395,15 +404,26 @@ func handleDeploy(c *cli.Context) error {
 	// (Discovered during review: RollingFlagsExplicit was tripping for
 	// toml-provided defaults, forcing strategy config onto requests that
 	// would otherwise have been omitted.)
-	userSet := captureUserSetFlags(c, "rolling-max-surge", "rolling-max-unavailable", "domain", "multicluster")
+	userSet := captureUserSetFlags(c, "rolling-max-surge", "rolling-max-unavailable", "domain", "multicluster", "cpu", "cpu-request", "cpu-limit")
 
 	// Apply satusky.toml scalar fields to flags the user didn't explicitly set.
 	// Precedence overall: CLI flag (c.IsSet) > satusky.toml > flag Value: default.
 	// Structured sections ([volume], [hpa], [vpa], [pdb], [multicluster]) are
 	// merged in prepareDeploymentOptions where they map to nested option structs.
 	if cfg != nil {
-		if err := applyConfigScalar(c, "cpu", cfg.App.CPU); err != nil {
-			return err
+		if cfg.App.CPURequest != "" && !userSet["cpu-request"] {
+			if err := applyConfigScalar(c, "cpu-request", cfg.App.CPURequest); err != nil {
+				return err
+			}
+		}
+		if cfg.App.CPULimit != "" && !userSet["cpu"] && !userSet["cpu-limit"] {
+			if err := applyConfigScalar(c, "cpu-limit", cfg.App.CPULimit); err != nil {
+				return err
+			}
+		} else if cfg.App.CPU != "" && !userSet["cpu"] && !userSet["cpu-limit"] {
+			if err := applyConfigScalar(c, "cpu-limit", cfg.App.CPU); err != nil {
+				return err
+			}
 		}
 		if err := applyConfigScalar(c, "memory", cfg.App.Memory); err != nil {
 			return err
@@ -527,10 +547,10 @@ func shouldShowDeployHelp(c *cli.Context, cfg *config.ProjectConfig) bool {
 	if c.String("image") != "" {
 		return false
 	}
-	if c.String("cpu") != "" && c.String("memory") != "" {
+	if c.String("cpu-request") != "" && c.String("memory") != "" {
 		return false
 	}
-	return cfg == nil || (cfg.App.CPU == "" && cfg.App.Memory == "")
+	return cfg == nil || (cfg.App.CPU == "" && cfg.App.CPURequest == "" && cfg.App.Memory == "")
 }
 
 // resolveDockerfilePath returns the Dockerfile path actually used by the
@@ -562,8 +582,16 @@ func validateInputs(c *cli.Context) error {
 	}
 
 	// Validate CPU and Memory
-	if err := validator.ValidateCPU(c.String("cpu")); err != nil {
-		return utils.NewError("invalid CPU value: %v", err)
+	if c.String("cpu") != "" {
+		if err := validator.ValidateCPU(c.String("cpu")); err != nil {
+			return utils.NewError("invalid CPU value: %v", err)
+		}
+	}
+	if err := validator.ValidateCPU(c.String("cpu-request")); err != nil {
+		return utils.NewError("invalid CPU request value: %v", err)
+	}
+	if err := validator.ValidateCPU(c.String("cpu-limit")); err != nil {
+		return utils.NewError("invalid CPU limit value: %v", err)
 	}
 	if err := validator.ValidateMemory(c.String("memory")); err != nil {
 		return utils.NewError("invalid memory value: %v", err)
@@ -640,11 +668,16 @@ func prepareDeploymentOptions(c *cli.Context, cfg *config.ProjectConfig, userSet
 	}
 	opts := deploy.DeploymentOptions{
 		CPU:            c.String("cpu"),
+		CPURequest:     c.String("cpu-request"),
+		CPULimit:       c.String("cpu-limit"),
 		Memory:         c.String("memory"),
 		Domain:         c.String("domain"),
 		Port:           c.Int("port"),
 		DockerfilePath: dockerfilePath,
 		PrebuiltImage:  c.String("image"),
+	}
+	if userSet["cpu"] && !userSet["cpu-limit"] {
+		opts.CPULimit = c.String("cpu")
 	}
 
 	// App name precedence: --name flag > satusky.toml > git remote auto-detect.
