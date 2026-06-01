@@ -21,7 +21,9 @@ type PDBConfig struct {
 
 type DeploymentOptions struct {
 	Name           string // App name (from satusky.toml or git remote fallback)
-	CPU            string
+	CPU            string // Deprecated: legacy burst CPU flag alias.
+	CPURequest     string
+	CPULimit       string
 	Memory         string
 	Domain         string
 	Organization   string

@@ -1,5 +1,25 @@
 # Release Notes
 
+## Version 0.9.0 (02-06-2026)
+
+CPU request and burst semantics are now explicit for shared-resource deploys.
+
+### Features
+
+* **Explicit CPU fraction flags**:
+  - Added `--cpu-request` for guaranteed scheduler reservation.
+  - Added `--cpu-limit` for burst ceiling.
+  - Kept `--cpu` as a backward-compatible alias for `--cpu-limit`.
+* **Shared-tier defaults**:
+  - Default deploy shape is now `250m` request with `1` vCPU burst.
+  - `1ctl launch` writes `cpu_request` and `cpu_limit` into `satusky.toml`.
+  - Existing `cpu` config entries remain supported as legacy burst limits.
+
+### Documentation
+
+* Updated deploy examples to use `--cpu-request 250m --cpu-limit 1`.
+* Documented that `cpu_request` is the reserved baseline and `cpu_limit` is the burst ceiling.
+
 ## Version 0.8.5 (Unreleased)
 
 Machine inventory management and diagnostics for BYOA operators.

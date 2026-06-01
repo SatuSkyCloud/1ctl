@@ -45,7 +45,7 @@ func TestCaptureUserSetFlags_NotPoisonedByCSet(t *testing.T) {
 
 func TestShouldShowDeployHelp_UsesFlagDefaults(t *testing.T) {
 	fs := flag.NewFlagSet("test", flag.ContinueOnError)
-	fs.String("cpu", "0.5", "")
+	fs.String("cpu-request", "250m", "")
 	fs.String("memory", "256Mi", "")
 	fs.String("image", "", "")
 	ctx := cli.NewContext(nil, fs, nil)
@@ -57,7 +57,7 @@ func TestShouldShowDeployHelp_UsesFlagDefaults(t *testing.T) {
 
 func TestShouldShowDeployHelp_EmptyResourceDefaults(t *testing.T) {
 	fs := flag.NewFlagSet("test", flag.ContinueOnError)
-	fs.String("cpu", "", "")
+	fs.String("cpu-request", "", "")
 	fs.String("memory", "", "")
 	fs.String("image", "", "")
 	ctx := cli.NewContext(nil, fs, nil)
@@ -192,6 +192,8 @@ func TestValidateInputs_MulticlusterCustomDomain(t *testing.T) {
 			flags := flag.NewFlagSet("test", flag.ContinueOnError)
 			// Required flags so we don't trip the earlier validations.
 			flags.String("cpu", "1", "")
+			flags.String("cpu-request", "250m", "")
+			flags.String("cpu-limit", "1", "")
 			flags.String("memory", "512Mi", "")
 			flags.String("image", "registry.example.com/myapp:latest", "")
 			flags.Bool("multicluster", tt.multicluster, "")
@@ -202,6 +204,12 @@ func TestValidateInputs_MulticlusterCustomDomain(t *testing.T) {
 			ctx := cli.NewContext(app, flags, nil)
 			if err := ctx.Set("cpu", "1"); err != nil {
 				t.Fatalf("set cpu: %v", err)
+			}
+			if err := ctx.Set("cpu-request", "250m"); err != nil {
+				t.Fatalf("set cpu-request: %v", err)
+			}
+			if err := ctx.Set("cpu-limit", "1"); err != nil {
+				t.Fatalf("set cpu-limit: %v", err)
 			}
 			if err := ctx.Set("memory", "512Mi"); err != nil {
 				t.Fatalf("set memory: %v", err)
