@@ -20,6 +20,26 @@ CPU request and burst semantics are now explicit for shared-resource deploys.
 * Updated deploy examples to use `--cpu-request 250m --cpu-limit 1`.
 * Documented that `cpu_request` is the reserved baseline and `cpu_limit` is the burst ceiling.
 
+## Version 0.8.5 (Unreleased)
+
+Machine inventory management and diagnostics for BYOA operators.
+
+### New Commands
+
+* **`machine get <machine-id|name|numeric-id>`**: shows the full owned machine inventory record.
+* **`machine create`**: creates an owned machine inventory record with region, zone, hardware specs, pricing tier, monetization, recommendation, Talos/Kubernetes version, and optional organization scope.
+* **`machine update <machine-id|name|numeric-id>`**: updates the same mutable inventory fields while preserving ownership and omitted existing values.
+* **`machine delete <machine-id|name|numeric-id>`**: decommissions an owned machine through the authenticated machine API instead of hard-deleting the database row.
+* **`machine inspect <machine-id|name|numeric-id>`**: combines machine details, hardware inspection, SatuSky node labels, and Talos status in one command.
+* **`machine logs <machine-id|name|numeric-id>`**: fetches SideroLink, Talos, and Kubernetes discovery/config logs with source, component, tail, since, and text filters.
+* **`machine events <machine-id|name|numeric-id>`**: fetches recent runtime events for a machine.
+
+### Reliability And Safety
+
+* Machine references now resolve from the authenticated user's owned machine list, so name-based updates and deletes cannot accidentally target someone else's machine.
+* Main API calls from `1ctl` now preserve the `/v1` API prefix when deriving non-CLI machine endpoints from the configured `/v1/cli` URL.
+* The default machine type for new records is now `worker`, matching backend-supported machine types.
+
 ## Version 0.8.4 (19-05-2026)
 
 Urgent CLI reliability and diagnostics fixes for the v1 contract.

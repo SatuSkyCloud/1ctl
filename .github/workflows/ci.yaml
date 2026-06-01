@@ -3,11 +3,23 @@ name: CI
 on:
   push:
     branches: [main, development]
+    paths-ignore:
+      - "**/*.md"
+      - "docs/**"
+      - "LICENSE"
   pull_request:
     branches:
       - main
       - development
       - feature/**
+    paths-ignore:
+      - "**/*.md"
+      - "docs/**"
+      - "LICENSE"
+
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 # Self-hosted runner toggle. Set repo VARS (not secrets — these are
 # plain strings):
@@ -92,18 +104,9 @@ jobs:
           args: ./...
 
   build:
-    name: Build
+    name: Build Linux AMD64
     runs-on: ${{ vars.USE_SELF_HOSTED == 'true' && vars.SELF_HOSTED_RUNNER_LABEL || 'ubuntu-latest' }}
     needs: [test, lint, security]
-    strategy:
-      matrix:
-        os: [linux, darwin, windows]
-        arch: [amd64, arm64]
-        exclude:
-          - os: windows
-            arch: arm64
-          - os: linux
-            arch: arm64
     steps:
       - uses: actions/checkout@v4
         with:
@@ -120,19 +123,16 @@ jobs:
 
       - name: Build
         env:
-          GOOS: ${{ matrix.os }}
-          GOARCH: ${{ matrix.arch }}
+          GOOS: linux
+          GOARCH: amd64
         run: task build
 
       - name: Test binary
-        # Only test binary when it matches the runner (self-hosted/ubuntu = linux/amd64)
-        # Cross-compiled binaries cannot be executed on different platforms
-        if: matrix.os == 'linux' && matrix.arch == 'amd64'
         run: ./bin/1ctl --version
 
       - name: Upload artifact
         uses: actions/upload-artifact@v4
         with:
-          name: 1ctl-${{ matrix.os }}-${{ matrix.arch }}
-          path: bin/1ctl${{ matrix.os == 'windows' && '.exe' || '' }}
+          name: 1ctl-linux-amd64
+          path: bin/1ctl
           retention-days: 7
