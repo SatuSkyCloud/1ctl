@@ -69,7 +69,12 @@ func handleInit(c *cli.Context) error {
 	if base.App.Dockerfile != "" && base.App.Dockerfile != "Dockerfile" {
 		lines = append(lines, fmt.Sprintf("  dockerfile = %q", base.App.Dockerfile))
 	}
-	if base.App.CPU != "" {
+	if base.App.CPURequest != "" {
+		lines = append(lines, fmt.Sprintf("  cpu_request = %q", base.App.CPURequest))
+	}
+	if base.App.CPULimit != "" {
+		lines = append(lines, fmt.Sprintf("  cpu_limit = %q", base.App.CPULimit))
+	} else if base.App.CPU != "" {
 		lines = append(lines, fmt.Sprintf("  cpu = %q", base.App.CPU))
 	}
 	if base.App.Memory != "" {
@@ -84,7 +89,8 @@ func handleInit(c *cli.Context) error {
 
 	// Commented examples for the v2 schema. Uncomment to use.
 	lines = append(lines, "",
-		"  # cpu = \"0.5\"            # platform default 0.5",
+		"  # cpu_request = \"250m\"   # guaranteed scheduler reservation",
+		"  # cpu_limit = \"1\"        # burst ceiling",
 		"  # memory = \"256Mi\"       # platform default 256Mi",
 		"  # zone = \"my-kul-1b\"     # target marketplace zone",
 		"  # strategy = \"rolling\"   # rolling | recreate",

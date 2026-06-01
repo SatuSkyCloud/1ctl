@@ -235,6 +235,17 @@ func mainDeploy(opts DeploymentOptions, image, name, userID, organization string
 	if err != nil {
 		return "", utils.NewError(fmt.Sprintf("invalid port: %s", err.Error()), nil)
 	}
+	cpuRequest := opts.CPURequest
+	if cpuRequest == "" {
+		cpuRequest = "250m"
+	}
+	cpuLimit := opts.CPULimit
+	if cpuLimit == "" {
+		cpuLimit = opts.CPU
+	}
+	if cpuLimit == "" {
+		cpuLimit = "1"
+	}
 
 	// Replica count: use manual override if set, otherwise derive from hostnames
 	var replicas int32
@@ -262,7 +273,8 @@ func mainDeploy(opts DeploymentOptions, image, name, userID, organization string
 		Type:          "production", // Default to production (cluster env)
 		Environment:   "production", // Default to production (app env - can switch between development (preview) and production in future)
 		Hostnames:     hostnames,
-		CpuRequest:    opts.CPU,
+		CpuRequest:    cpuRequest,
+		CPULimit:      cpuLimit,
 		MemoryRequest: opts.Memory,
 		MemoryLimit:   opts.Memory,
 		Namespace:     organization,
@@ -431,8 +443,9 @@ func upsertIngress(deploymentID string, serviceID string, opts DeploymentOptions
 func handleDependencies(deps []api.Dependency, userID, organization string, hostnames []string) error {
 	for _, dep := range deps {
 		opts := DeploymentOptions{
-			CPU:          "100m",  // TODO: change this when --cpu is specified for each dependency
-			Memory:       "128Mi", // TODO: change this when --memory is specified for each dependency
+			CPURequest:   "125m",  // TODO: change this when CPU is specified for each dependency
+			CPULimit:     "1000m", // TODO: change this when CPU is specified for each dependency
+			Memory:       "128Mi", // TODO: change this when memory is specified for each dependency
 			Organization: organization,
 			Port:         int(dep.Service.Port), // Convert int32 to int
 		}
