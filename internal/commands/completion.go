@@ -65,8 +65,12 @@ _satusky_cli_completion() {
             COMPREPLY=( $(compgen -W "${machines}" -- ${cur}) )
             return 0
             ;;
-        --cpu)
-            COMPREPLY=( $(compgen -W "0.5 1 2 4 8 16" -- ${cur}) )
+        --cpu|--cpu-limit)
+            COMPREPLY=( $(compgen -W "500m 1 2 4 8 16" -- ${cur}) )
+            return 0
+            ;;
+        --cpu-request)
+            COMPREPLY=( $(compgen -W "63m 125m 250m 500m 1000m 2000m" -- ${cur}) )
             return 0
             ;;
         --memory)
@@ -155,7 +159,7 @@ _satusky_cli_completion() {
             ;;
         deploy)
             if [[ ${COMP_CWORD} == 2 ]]; then
-                COMPREPLY=( $(compgen -W "list get status --cpu --memory --machine --domain --image --dockerfile --env --port --volume-size --volume-mount --zone --multicluster --multicluster-mode --backup-enabled --backup-schedule --backup-retention --backup-priority-cluster --replicas --pdb --pdb-type --pdb-min-available --pdb-percent --hpa --hpa-min-replicas --hpa-max-replicas --hpa-cpu-target --hpa-memory-target --vpa --vpa-mode --vpa-min-cpu --vpa-max-cpu --vpa-min-memory --vpa-max-memory --wait-for" -- ${cur}) )
+                COMPREPLY=( $(compgen -W "list get status --cpu --cpu-request --cpu-limit --memory --machine --domain --image --dockerfile --env --port --volume-size --volume-mount --zone --multicluster --multicluster-mode --backup-enabled --backup-schedule --backup-retention --backup-priority-cluster --replicas --pdb --pdb-type --pdb-min-available --pdb-percent --hpa --hpa-min-replicas --hpa-max-replicas --hpa-cpu-target --hpa-memory-target --vpa --vpa-mode --vpa-min-cpu --vpa-max-cpu --vpa-min-memory --vpa-max-memory --wait-for" -- ${cur}) )
             else
                 case "${subcmd}" in
                     list)
@@ -749,7 +753,9 @@ function __fish_1ctl_zones
 end
 
 # Common value completions
-complete -c 1ctl -l cpu -xa '0.5 1 2 4 8 16'
+complete -c 1ctl -l cpu -xa '500m 1 2 4 8 16'
+complete -c 1ctl -l cpu-request -xa '63m 125m 250m 500m 1000m 2000m'
+complete -c 1ctl -l cpu-limit -xa '500m 1 2 4 8 16'
 complete -c 1ctl -l memory -xa '512Mi 1Gi 2Gi 4Gi 8Gi 16Gi 32Gi'
 complete -c 1ctl -l machine -xa '(__fish_1ctl_machines)'
 complete -c 1ctl -l hostname -xa '(__fish_1ctl_machines)'

@@ -117,34 +117,34 @@ cd your-project
 
 ```bash
 # Basic deployment
-1ctl deploy --cpu 2 --memory 512Mi
+1ctl deploy --cpu-request 250m --cpu-limit 1 --memory 512Mi
 
 # Deploy to managed cloud, targeting a specific zone
-1ctl deploy --cpu 2 --memory 1Gi --zone my-kul-1b
+1ctl deploy --cpu-request 250m --cpu-limit 1 --memory 1Gi --zone my-kul-1b
 
 # Deploy with a custom domain (Let's Encrypt picked automatically for non-*.satusky.com hosts)
-1ctl deploy --cpu 2 --memory 1Gi --domain example.com
+1ctl deploy --cpu-request 250m --cpu-limit 1 --memory 1Gi --domain example.com
 
 # BYOA: deploy to one of YOUR machines, by name
-1ctl deploy --cpu 2 --memory 1Gi --machine my-machine-1
+1ctl deploy --cpu-request 250m --cpu-limit 1 --memory 1Gi --machine my-machine-1
 
 # BYOA: deploy to all your machines labelled satusky.com/production
-1ctl deploy --cpu 2 --memory 1Gi --machine-tag production
+1ctl deploy --cpu-request 250m --cpu-limit 1 --memory 1Gi --machine-tag production
 
 # Deploy a pre-built image (skips local Docker build and push)
-1ctl deploy --cpu 2 --memory 512Mi --image registry.satusky.com/satusky-container-registry/myapp:abc1234
+1ctl deploy --cpu-request 250m --cpu-limit 1 --memory 512Mi --image registry.satusky.com/satusky-container-registry/myapp:abc1234
 
 # Deploy with rolling update strategy (default: 25% max surge, 25% max unavailable)
-1ctl deploy --cpu 2 --memory 1Gi --strategy rolling --rolling-max-surge 1 --rolling-max-unavailable 0
+1ctl deploy --cpu-request 250m --cpu-limit 1 --memory 1Gi --strategy rolling --rolling-max-surge 1 --rolling-max-unavailable 0
 
 # Deploy with recreate strategy (stops all pods before starting new ones)
-1ctl deploy --cpu 2 --memory 1Gi --strategy recreate
+1ctl deploy --cpu-request 250m --cpu-limit 1 --memory 1Gi --strategy recreate
 
 # Wait for TCP dependencies to be ready before the app starts
-1ctl deploy --cpu 2 --memory 1Gi --wait-for postgres:5432 --wait-for redis:6379
+1ctl deploy --cpu-request 250m --cpu-limit 1 --memory 1Gi --wait-for postgres:5432 --wait-for redis:6379
 
 # Block until pods are Running (5min default timeout)
-1ctl deploy --cpu 2 --memory 1Gi --wait
+1ctl deploy --cpu-request 250m --cpu-limit 1 --memory 1Gi --wait
 
 # JSON output (global flag — works on deploy list/get/status, env list, secret list, machine list, token list)
 1ctl --output json deploy list | jq '.[] | select(.status == "Running")'
