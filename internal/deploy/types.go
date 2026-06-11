@@ -54,6 +54,9 @@ type DeploymentOptions struct {
 	// PrebuiltImage, when non-empty, skips local Docker build and upload.
 	// The image must already exist in the registry and be pullable by the cluster.
 	PrebuiltImage string
+	// FastBuild requests the backend's accelerated build backend. It is ignored
+	// when PrebuiltImage is set and is intentionally separate for future billing.
+	FastBuild bool
 	// WaitFor declares TCP dependencies that must be reachable before the app starts.
 	// The platform injects init containers so the main container never crashes while
 	// dependencies are unavailable. Format: [{Host: "postgres", Port: 5432}]
