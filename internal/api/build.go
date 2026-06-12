@@ -36,14 +36,19 @@ type BuildStatusResponse struct {
 	Status       string `json:"status"`        // queued | building | completed | failed
 	ImageRef     string `json:"image_ref"`     // populated when Status == "completed"
 	ImageArch    string `json:"image_arch"`    // "amd64", "arm64", or "" if detection failed
-	Logs         string `json:"logs"`          // accumulated Kaniko stdout
+	Logs         string `json:"logs"`          // accumulated build stdout
 	ErrorMessage string `json:"error_message"` // populated when Status == "failed"
 }
 
+const (
+	BuildBackendDefault = ""
+	BuildBackendDepot   = "depot"
+)
+
 // SubmitBuild uploads the gzipped build context to the backend and returns the
-// build ID. The backend spawns a Kaniko job that builds the image and pushes it
+// build ID. The backend selects a cloud builder, builds the image, and pushes it
 // to the internal registry.
-func SubmitBuild(contextTarPath, projectName, dockerfilePath string, buildArgs map[string]string) (string, error) {
+func SubmitBuild(contextTarPath, projectName, dockerfilePath, builder string, buildArgs map[string]string) (string, error) {
 	token := context.GetToken()
 	if token == "" {
 		return "", utils.NewError("not authenticated. Please run '1ctl auth login' to authenticate", nil)
@@ -72,6 +77,11 @@ func SubmitBuild(contextTarPath, projectName, dockerfilePath string, buildArgs m
 	} {
 		if err := w.WriteField(pair.key, pair.val); err != nil {
 			return "", utils.NewError(fmt.Sprintf("failed to write %s field: %s", pair.key, err.Error()), nil)
+		}
+	}
+	if builder != "" {
+		if err := w.WriteField("builder", builder); err != nil {
+			return "", utils.NewError(fmt.Sprintf("failed to write builder field: %s", err.Error()), nil)
 		}
 	}
 	for k, v := range buildArgs {
