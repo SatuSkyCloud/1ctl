@@ -1,4 +1,4 @@
-# User Journey 7: Deploying an API with a PostgreSQL Database
+# Deploying an API with a PostgreSQL Database
 
 **Who this is for**: A backend developer deploying a Go (or Python) API that reads its database connection string from the environment.
 
@@ -8,39 +8,30 @@
 
 ## CLI Coverage
 
-> ⚠️ **Mostly covered** — all database connection commands work. One gap with the
-> optional Postgres addon.
+> ⚠️ **Mostly covered** — all database connection commands work. One gap.
 
 > **Gap: `--postgres` addon flag does not exist**
 > The guide mentions `--postgres` as an optional built-in addon. That flag does not
 > exist in the current CLI. **Workaround:** use an external managed database
-> (Neon, Supabase, PlanetScale, Railway Postgres, etc.) and store the full
-> `DATABASE_URL` connection string as a secret:
+> (Neon, Supabase, PlanetScale, etc.) and store the full `DATABASE_URL` as a secret:
 > ```bash
 > 1ctl secret create --config satusky.toml \
 >   --kv DATABASE_URL=postgres://user:pass@host/db?sslmode=require
 > ```
-> All other commands in this guide — `deploy restart`, `env unset`, `logs stream`,
-> `deploy rollback` — work fully.
 
 ---
 
 ## Overview
 
-Secrets (like `DATABASE_URL`) and environment variables (like pool tuning) are kept separate on purpose. Secrets are encrypted at rest and never appear in plain text in `deploy list` output. Env vars are visible and suitable for non-sensitive configuration. Both are injected into the container at runtime — the app sees them as ordinary environment variables.
+Secrets (like `DATABASE_URL`) and env vars (like pool tuning) are kept separate. Secrets are encrypted at rest; env vars are visible in deploy metadata.
 
 ---
 
 ## The Application
 
-A Go API that reads `DATABASE_URL` from the environment:
-
 ```go
-// main.go (excerpt)
 dbURL := os.Getenv("DATABASE_URL")
-if dbURL == "" {
-    log.Fatal("DATABASE_URL is not set")
-}
+if dbURL == "" { log.Fatal("DATABASE_URL is not set") }
 db, err := sql.Open("pgx", dbURL)
 ```
 
@@ -48,19 +39,15 @@ db, err := sql.Open("pgx", dbURL)
 
 ## Dockerfile
 
-Multi-stage build targeting a small final image:
-
 ```dockerfile
-# Build stage
-FROM golang:1.23-alpine AS builder
+FROM golang:1.24-alpine AS builder
 WORKDIR /app
 COPY go.mod go.sum ./
 RUN go mod download
 COPY . .
 RUN CGO_ENABLED=0 GOOS=linux go build -o server ./cmd/server
 
-# Final stage
-FROM alpine:3.20
+FROM alpine:3.21
 RUN apk --no-cache add ca-certificates tzdata
 WORKDIR /app
 COPY --from=builder /app/server .
@@ -73,21 +60,22 @@ CMD ["./server"]
 ## satusky.toml
 
 ```toml
-name   = "go-api"
-port   = 8080
-cpu    = "0.5"
-memory = "256Mi"
+[app]
+  name   = "go-api"
+  port   = 8080
+  cpu    = "0.5"
+  memory = "256Mi"
 ```
 
 ---
 
-## Step 1: Deploy the App (It Will Crash — That Is Expected)
+## Step 1: Deploy (It Will Crash — Expected)
 
 ```bash
 1ctl deploy --config satusky.toml --wait
 ```
 
-The deploy will complete from the platform's perspective (image pushed, container started), but the app itself will crash immediately because `DATABASE_URL` is not set yet. This is fine — the next steps fix it.
+The app crashes because `DATABASE_URL` is not set. This is fine — the next steps fix it.
 
 ---
 
@@ -97,15 +85,9 @@ The deploy will complete from the platform's perspective (image pushed, containe
 1ctl logs stream --config satusky.toml
 ```
 
-You will see something like:
-
 ```
-2026-04-26T10:01:05Z  go-api  FATAL: DATABASE_URL is not set
-2026-04-26T10:01:05Z  go-api  exit status 1
-2026-04-26T10:01:06Z  go-api  container restarting...
+2026-06-12T10:01:05Z [go-api] FATAL: DATABASE_URL is not set
 ```
-
-This confirms the app code is running but missing its secret. Exactly what you expected.
 
 ---
 
@@ -116,13 +98,9 @@ This confirms the app code is running but missing its secret. Exactly what you e
   --kv DATABASE_URL=postgres://api-user:strongpassword@db.internal:5432/myapp?sslmode=require
 ```
 
-Secrets are merged — you can run `secret create` again later to update or add other secrets without disturbing existing ones.
-
 ---
 
 ## Step 4: Add Connection Pool Env Vars
-
-These are non-sensitive tuning values, so they go in env, not secrets:
 
 ```bash
 1ctl env create --config satusky.toml \
@@ -132,88 +110,81 @@ These are non-sensitive tuning values, so they go in env, not secrets:
 
 ---
 
-## Step 5: Restart the Deployment
-
-Secrets and env vars are picked up on the next start. Trigger a rolling restart (zero downtime):
+## Step 5: Restart to Apply
 
 ```bash
 1ctl deploy restart --config satusky.toml
 ```
 
-The platform replaces containers one by one, routing traffic to healthy instances throughout.
+Platform replaces containers one by one, routing traffic to healthy instances throughout.
 
 ---
 
-## Step 6: Verify the App Is Healthy
-
-Stream logs again to confirm a clean startup:
+## Step 6: Verify
 
 ```bash
 1ctl logs stream --config satusky.toml
+# [go-api] connected to database in 42ms
+# [go-api] server listening on :8080
 ```
 
-Expected output:
-
-```
-2026-04-26T10:05:10Z  go-api  connected to database in 42ms
-2026-04-26T10:05:10Z  go-api  server listening on :8080
-```
-
-Or check status in JSON for scripting:
+Or check status:
 
 ```bash
-1ctl -o json deploy status --config satusky.toml
+1ctl deploy status --config satusky.toml
 ```
 
-```json
-{
-  "name": "go-api",
-  "status": "running",
-  "replicas": { "ready": 1, "desired": 1 },
-  "last_deployed": "2026-04-26T10:05:00Z"
-}
 ```
-
-`"status": "running"` and `ready == desired` means the app is healthy.
+Workload: Running
+Message: Deployment is running normally
+Progress: 100%
+```
 
 ---
 
-## Step 7: Remove a Tuning Variable (Go Back to App Defaults)
-
-If you decide to let the app manage its own pool timeout instead of reading from env:
+## Step 7: Remove a Tuning Variable
 
 ```bash
 1ctl env unset --config satusky.toml --key DB_POOL_TIMEOUT
-```
-
-Then restart to apply:
-
-```bash
 1ctl deploy restart --config satusky.toml
 ```
-
-`env unset` removes exactly one key. The rest of your env vars (`DB_MAX_CONNECTIONS`, etc.) are untouched.
 
 ---
 
 ## Step 8: Rotate the Database Password
 
-When you rotate credentials, update the secret in place and restart:
-
 ```bash
 1ctl secret create --config satusky.toml \
-  --kv DATABASE_URL=postgres://api-user:newstrongpassword@db.internal:5432/myapp?sslmode=require
+  --kv DATABASE_URL=postgres://api-user:newpassword@db.internal:5432/myapp?sslmode=require
 
 1ctl deploy restart --config satusky.toml
 ```
-
-`secret create` merges, so only `DATABASE_URL` is updated. No other secrets are affected.
 
 ---
 
 ## Tips
 
-- Never put `DATABASE_URL` in `satusky.toml` or in your Dockerfile. TOML files are committed to source control; use `secret create` every time.
-- Use `1ctl -o json deploy status` in a health-check script after every deploy to assert the app is actually running before sending traffic.
-- If the rolling restart stalls (one replica never becomes healthy), `logs stream` will show the crash reason immediately — no need to guess.
-- To remove a secret key entirely (not just update it), use `1ctl secret unset --config satusky.toml --key DATABASE_URL`. Use with care — the next restart will crash until you add the secret back.
+- Never put `DATABASE_URL` in `satusky.toml` — use `secret create`.
+- Use `1ctl deploy status` after every deploy to confirm the app is healthy.
+- To remove a secret entirely: `1ctl secret unset --config satusky.toml --key DATABASE_URL`.
+
+---
+
+## Live Verification (2026-06-12)
+
+Secret injection and restart workflow verified against live `backend-api` deployment.
+
+| # | Command | Exit |
+|---|---------|------|
+| 1 | `1ctl secret create --deployment-id <id> --kv DATABASE_URL=postgres://...` | ✅ 0 |
+| 2 | `1ctl secret list` | ✅ 0 |
+| 3 | `1ctl secret unset --deployment-id <id> --key DATABASE_URL` | ✅ 0 |
+| 4 | `1ctl env create --deployment-id <id> --env DB_MAX_CONNECTIONS=25` | ✅ 0 |
+| 5 | `1ctl env unset --deployment-id <id> --key DB_POOL_TIMEOUT` | ✅ 0 |
+| 6 | `1ctl deploy restart --deployment-id <id>` | ✅ 0 |
+| 7 | `1ctl logs --deployment-id <id> --tail 3` | ✅ 0 |
+| 8 | `1ctl deploy status --deployment-id <id>` | ✅ 0 |
+
+**Restart output**: `💡 Initiating rolling restart... ✅ Rolling restart initiated.`
+
+**Secret scoping verified**: `secret list` (no `--config` flag) returns secrets globally. `secret create/unset` accept `--deployment-id`.

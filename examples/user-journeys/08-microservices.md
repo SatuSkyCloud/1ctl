@@ -1,6 +1,6 @@
-# User Journey 8: Deploying Microservices with Inter-Service Communication
+# Deploying Microservices with Inter-Service Communication
 
-**Who this is for**: An architect deploying two services — `user-service` (authentication) and `order-service` (business logic). The order-service calls the user-service's internal URL.
+**Who this is for**: An architect deploying two services — `user-service` (authentication) and `order-service` (business logic). The order-service calls the user-service.
 
 **Goal**: Deploy both services independently, wire up inter-service communication via env vars, and manage secrets per service.
 
@@ -8,30 +8,18 @@
 
 ## CLI Coverage
 
-> ⚠️ **Mostly covered** — deployment, env wiring, and independent updates all work.
-> One gap with JSON output on `ingress list`.
+> ⚠️ **Mostly covered** — one gap with JSON output on `ingress list`.
 
 > **Gap: `-o json ingress list` is not yet wired**
-> `--output json` is wired to `deploy list/get/status`, `env list`, `secret list`,
-> `machine list`, and `token list` — but **not** to `ingress list` or `service list`.
-> The JSON extraction pattern shown in this guide (`jq` on ingress list) will fall
-> back to table output.
+> `--output json` works on `deploy list/get/status`, `env list`, `secret list`,
+> `machine list`, and `token list` — but **not** on `ingress list`.
 >
-> **Domain is backend-assigned**: SatuSky generates a random name (e.g.
-> `cleverpanda-a1b2c3d.satusky.com`) — **not** `<app-name>.satusky.com`. Read it
-> programmatically from `deploy get -o json`:
+> **Domain is backend-assigned** (e.g. `cleverpanda-a1b2c3d.satusky.com`). Read it
+> from `deploy get -o json`:
 > ```bash
 > USER_SERVICE_URL=$(1ctl -o json deploy get \
 >   --config services/user-service/satusky.toml | jq -r '.domain')
-> 1ctl env create --config services/order-service/satusky.toml \
->   --env USER_SERVICE_URL=$USER_SERVICE_URL
 > ```
-
----
-
-## Overview
-
-Each service is its own deployable unit with its own `satusky.toml`. They are deployed separately, scaled separately, and updated independently. The only coupling is a URL that order-service reads from its environment — which you set after user-service is live.
 
 ---
 
@@ -56,43 +44,36 @@ services/
 **`services/user-service/satusky.toml`**
 
 ```toml
-name   = "user-service"
-port   = 8081
-cpu    = "0.5"
-memory = "256Mi"
+[app]
+  name   = "user-service"
+  port   = 8081
+  cpu    = "0.5"
+  memory = "256Mi"
 ```
 
 **`services/order-service/satusky.toml`**
 
 ```toml
-name   = "order-service"
-port   = 8082
-cpu    = "0.5"
-memory = "256Mi"
+[app]
+  name   = "order-service"
+  port   = 8082
+  cpu    = "0.5"
+  memory = "256Mi"
 ```
 
 ---
 
 ## Step 1: Deploy user-service First
 
-Always deploy the dependency before the dependent service.
-
 ```bash
 1ctl deploy --config services/user-service/satusky.toml --wait
 ```
 
-`--wait` blocks until user-service is Running. Only then will you have a stable URL to hand to order-service.
-
 ---
 
-## Step 2: Find the user-service Ingress URL
-
-Use `-o json` to extract the URL programmatically rather than eyeballing the output:
-
-SatuSky assigns a backend-generated random domain (e.g. `cleverpanda-a1b2c3d.satusky.com`) — not a predictable `<app-name>.satusky.com`. Capture it from the deploy output:
+## Step 2: Capture the user-service URL
 
 ```bash
-1ctl deploy --config services/user-service/satusky.toml --wait
 USER_SERVICE_URL=$(1ctl -o json deploy get \
   --config services/user-service/satusky.toml | jq -r '.domain')
 echo "$USER_SERVICE_URL"
@@ -101,17 +82,7 @@ echo "$USER_SERVICE_URL"
 
 ---
 
-## Step 3: Wire the URL into order-service
-
-Set the URL as an env var in order-service. Use the variable you captured above:
-
-```bash
-1ctl env create \
-  --config services/order-service/satusky.toml \
-  --env USER_SERVICE_URL="$USER_SERVICE_URL"   # captured from deploy output above
-```
-
-Or, if you already know the domain from a previous deploy:
+## Step 3: Wire URL into order-service
 
 ```bash
 1ctl env create \
@@ -121,23 +92,21 @@ Or, if you already know the domain from a previous deploy:
 
 ---
 
-## Step 4: Set Secrets per Service Independently
-
-Each service has its own secret store keyed by its deployment name.
+## Step 4: Set Secrets per Service
 
 ```bash
-# user-service needs a JWT signing secret
+# user-service JWT secret
 1ctl secret create \
   --config services/user-service/satusky.toml \
   --kv JWT_SECRET=supersecretjwtkey123
 
-# order-service needs its own database
+# order-service database
 1ctl secret create \
   --config services/order-service/satusky.toml \
-  --kv DATABASE_URL=postgres://orders-user:pass@db.internal:5432/orders
+  --kv DATABASE_URL=postgres://orders:pass@db.internal:5432/orders
 ```
 
-There is no shared secret namespace between services — setting a secret for user-service has zero effect on order-service and vice versa.
+Secrets are scoped per deployment name — no cross-contamination.
 
 ---
 
@@ -149,83 +118,64 @@ There is no shared secret namespace between services — setting a secret for us
 
 ---
 
-## Step 6: Verify Both Services Are Running
+## Step 6: Verify Both
 
 ```bash
 1ctl -o json deploy list
 ```
 
-Example output:
-
 ```json
 [
   {
-    "name": "user-service",
-    "status": "running",
-    "image": "registry.satusky.com/user-service:d4e5f6a",
-    "created_at": "2026-04-26T11:00:00Z"
+    "deployment_id": "uuid-1",
+    "app_label": "user-service",
+    "status": "completed",
+    "image": "registry.satusky.com/user-service:d4e5f6a"
   },
   {
-    "name": "order-service",
-    "status": "running",
-    "image": "registry.satusky.com/order-service:b7c8d9e",
-    "created_at": "2026-04-26T11:05:00Z"
+    "deployment_id": "uuid-2",
+    "app_label": "order-service",
+    "status": "completed",
+    "image": "registry.satusky.com/order-service:b7c8d9e"
   }
 ]
 ```
 
-Both services appear by their `name` field from their respective TOML files.
-
 ---
 
-## Step 7: Update user-service Without Touching order-service
-
-This is the core benefit of independent deployments. Push a new version of user-service:
+## Step 7: Update user-service Independently
 
 ```bash
 1ctl deploy --config services/user-service/satusky.toml --wait
 ```
 
-order-service keeps running uninterrupted. The domain assigned to user-service does not change across redeploys of the same deployment — so no reconfiguration of order-service is needed.
+order-service keeps running. The domain does not change across redeploys of the same deployment.
 
 ---
 
 ## Step 8: Stream Logs per Service
 
-Debug user-service independently:
-
 ```bash
 1ctl logs stream --config services/user-service/satusky.toml
-```
-
-Debug order-service independently:
-
-```bash
 1ctl logs stream --config services/order-service/satusky.toml
 ```
 
 ---
 
-## Step 9: Unset an Env Var When It Changes
-
-If user-service moves to a new domain, update order-service:
+## Step 9: Update the Service URL
 
 ```bash
-# Overwrite the existing value (env create merges)
 1ctl env create \
   --config services/order-service/satusky.toml \
-  --env USER_SERVICE_URL=https://cleverpanda-a1b2c3d.satusky.com   # new domain from deploy output
+  --env USER_SERVICE_URL=https://new-domain.satusky.com
 
 1ctl deploy restart --config services/order-service/satusky.toml
 ```
 
-Or remove the variable entirely and let order-service fall back to its own default:
+Or remove it entirely:
 
 ```bash
-1ctl env unset \
-  --config services/order-service/satusky.toml \
-  --key USER_SERVICE_URL
-
+1ctl env unset --config services/order-service/satusky.toml --key USER_SERVICE_URL
 1ctl deploy restart --config services/order-service/satusky.toml
 ```
 
@@ -233,8 +183,30 @@ Or remove the variable entirely and let order-service fall back to its own defau
 
 ## Tips
 
-- Always deploy dependencies (`--wait`) before dependents. A crashed order-service on first boot — because user-service wasn't ready — is a common mistake.
-- Use `1ctl -o json ingress list` in a deploy script to automatically extract and inject URLs rather than hardcoding them.
-- Keep each service's `satusky.toml` in its own subdirectory so `--config` paths are unambiguous: `--config services/user-service/satusky.toml`.
-- Use `1ctl -o json deploy list` as a quick health dashboard for your entire mesh — pipe it through `jq '[.[] | {name, status}]'` to get a clean status table.
-- Secret keys are scoped per deployment name, not per TOML file path. If you ever rename a service, create its secrets fresh — the old store does not carry over.
+- Deploy dependencies (`--wait`) before dependents.
+- Use `1ctl -o json deploy list | jq '[.[] | {app_label, status}]'` for a quick health dashboard.
+- Secrets are scoped per deployment name, not TOML path.
+
+---
+
+## Live Verification (2026-06-12)
+
+Multi-service deployment and inter-service env wiring verified against live instance.
+
+| # | Command | Exit |
+|---|---------|------|
+| 1 | `1ctl deploy list` (multiple apps in namespace) | ✅ 0 |
+| 2 | `1ctl -o json deploy list \| jq '[.[] \| {app_label, status}]'` | ✅ 0 |
+| 3 | `1ctl -o json deploy get --deployment-id <id> \| jq -r '.domain'` | ✅ 0 |
+| 4 | `1ctl env create --deployment-id <id> --env SERVICE_URL=...` | ✅ 0 |
+| 5 | `1ctl env unset --deployment-id <id> --key SERVICE_URL` | ✅ 0 |
+| 6 | `1ctl deploy restart --deployment-id <id>` | ✅ 0 |
+| 7 | `1ctl secret create --deployment-id <id> --kv KEY=VAL` | ✅ 0 |
+| 8 | `1ctl logs stream --deployment-id <id>` | ✅ 0 |
+| 9 | `1ctl ingress list` | ✅ 0 |
+
+**Multi-deployment verified**: `deploy list` returns `backend-api` + `frontend` with separate `deployment_id` values.
+
+**Domain stability verified**: Same deployment ID retains same domain across redeploys.
+
+**Ingress `-o json` not wired**: `1ctl -o json ingress list` falls back to table output.
