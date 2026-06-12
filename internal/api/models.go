@@ -191,6 +191,29 @@ type Ingress struct {
 	UpdatedAt    time.Time     `json:"updated_at"`
 }
 
+type IngressAlias struct {
+	AliasID    uuid.UUID     `json:"alias_id"`
+	IngressID  uuid.UUID     `json:"ingress_id"`
+	DomainName string        `json:"domain_name"`
+	DnsConfig  DnsConfigType `json:"dns_config"`
+	DomainID   *uuid.UUID    `json:"domain_id,omitempty"`
+	IsRedirect bool          `json:"is_redirect"`
+	RedirectTo string        `json:"redirect_to,omitempty"`
+	CreatedAt  time.Time     `json:"created_at"`
+	UpdatedAt  time.Time     `json:"updated_at"`
+}
+
+type AttachDomainRequest struct {
+	OrgID           uuid.UUID `json:"org_id"`
+	DomainName      string    `json:"domain_name"`
+	WithWWWRedirect bool      `json:"with_www_redirect"`
+}
+
+type DetachDomainRequest struct {
+	OrgID      uuid.UUID `json:"org_id"`
+	DomainName string    `json:"domain_name"`
+}
+
 type DNSStatus string
 
 const (

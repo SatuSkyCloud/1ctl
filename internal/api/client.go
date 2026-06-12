@@ -744,6 +744,33 @@ func GetIngressByDomainName(domainName string) (*Ingress, error) {
 	return &ingress, nil
 }
 
+func ListDomainAliases(ingressID string) ([]IngressAlias, error) {
+	var resp struct {
+		Error bool           `json:"error"`
+		Data  []IngressAlias `json:"data"`
+	}
+	if err := makeRequest("GET", fmt.Sprintf("/ingresses/%s/aliases", ingressID), nil, &resp); err != nil {
+		return nil, err
+	}
+	return resp.Data, nil
+}
+
+func AttachDomain(ingressID string, req AttachDomainRequest) (*IngressAlias, error) {
+	var resp struct {
+		Error bool         `json:"error"`
+		Data  IngressAlias `json:"data"`
+	}
+	if err := makeRequest("POST", fmt.Sprintf("/ingresses/%s/domains", ingressID), req, &resp); err != nil {
+		return nil, err
+	}
+	return &resp.Data, nil
+}
+
+func DetachDomain(ingressID string, req DetachDomainRequest) error {
+	var resp apiResponse
+	return makeRequest("POST", fmt.Sprintf("/ingresses/%s/domains/detach", ingressID), req, &resp)
+}
+
 // GetIngressByDeploymentID gets existing ingress by deployment ID
 func GetIngressByDeploymentID(deploymentID string) (*Ingress, error) {
 	var resp apiResponse

@@ -8,9 +8,20 @@ import (
 	"1ctl/internal/api"
 	"1ctl/internal/context"
 	"1ctl/internal/utils"
+	"1ctl/internal/validator"
 
+	"github.com/google/uuid"
 	"github.com/urfave/cli/v2"
 )
+
+type domainListEntry struct {
+	DomainName string            `json:"domain_name"`
+	AppLabel   string            `json:"app_label"`
+	Namespace  string            `json:"namespace"`
+	DnsConfig  api.DnsConfigType `json:"dns_config"`
+	Kind       string            `json:"kind"`
+	CreatedAt  string            `json:"created_at"`
+}
 
 // DomainsCommand exposes app-oriented domain/TLS workflows over the same
 // backend routes that `ingress` uses, but resolves deployment, service,
@@ -57,7 +68,11 @@ func domainsAddCommand() *cli.Command {
 			},
 			&cli.BoolFlag{
 				Name:  "custom-dns",
-				Usage: "Use Let's Encrypt for TLS (required for non-*.satusky.com hostnames)",
+				Usage: "Treat the hostname as an external custom domain",
+			},
+			&cli.BoolFlag{
+				Name:  "with-www",
+				Usage: "Also configure a www redirect for apex domains when supported",
 			},
 		},
 		Action: handleDomainsAdd,
@@ -119,27 +134,57 @@ func handleDomainsList(c *cli.Context) error {
 		return utils.NewError(fmt.Sprintf("failed to list domains: %s", err.Error()), nil)
 	}
 
-	if len(ingresses) == 0 {
+	entries := make([]domainListEntry, 0, len(ingresses))
+	for _, ing := range ingresses {
+		entries = append(entries, domainListEntry{
+			DomainName: ing.DomainName,
+			AppLabel:   ing.AppLabel,
+			Namespace:  ing.Namespace,
+			DnsConfig:  ing.DnsConfig,
+			Kind:       "primary",
+			CreatedAt:  api.FormatTimeAgo(ing.CreatedAt),
+		})
+		aliases, aliasErr := api.ListDomainAliases(ing.IngressID.String())
+		if aliasErr != nil {
+			continue
+		}
+		for _, alias := range aliases {
+			if alias.IsRedirect {
+				continue
+			}
+			entries = append(entries, domainListEntry{
+				DomainName: alias.DomainName,
+				AppLabel:   ing.AppLabel,
+				Namespace:  ing.Namespace,
+				DnsConfig:  alias.DnsConfig,
+				Kind:       "custom",
+				CreatedAt:  api.FormatTimeAgo(alias.CreatedAt),
+			})
+		}
+	}
+
+	if len(entries) == 0 {
 		utils.PrintInfo("No domains yet. Add one with: 1ctl domains add <domain> --app <app>")
 		return nil
 	}
 
-	if utils.TryPrintJSON(ingresses) {
+	if utils.TryPrintJSON(entries) {
 		return nil
 	}
 
-	headers := []string{"DOMAIN", "APP", "TLS", "CREATED"}
-	rows := make([][]string, 0, len(ingresses))
-	for _, ing := range ingresses {
+	headers := []string{"DOMAIN", "APP", "KIND", "TLS", "CREATED"}
+	rows := make([][]string, 0, len(entries))
+	for _, entry := range entries {
 		tls := "platform"
-		if ing.DnsConfig == api.DnsConfigCustom {
+		if entry.DnsConfig == api.DnsConfigCustom {
 			tls = "letsencrypt"
 		}
 		rows = append(rows, []string{
-			ing.DomainName,
-			ing.AppLabel,
+			entry.DomainName,
+			entry.AppLabel,
+			entry.Kind,
 			tls,
-			api.FormatTimeAgo(ing.CreatedAt),
+			entry.CreatedAt,
 		})
 	}
 	utils.PrintTable(headers, rows)
@@ -150,7 +195,10 @@ func handleDomainsAdd(c *cli.Context) error {
 	if c.NArg() < 1 {
 		return utils.NewError("domain is required. Usage: 1ctl domains add <domain> --app <app>", nil)
 	}
-	domain := c.Args().First()
+	domain, err := normalizeDomainArg(c.Args().First())
+	if err != nil {
+		return err
+	}
 	appName := c.String("app")
 
 	namespace, err := context.GetCurrentNamespaceOrError()
@@ -185,12 +233,57 @@ func handleDomainsAdd(c *cli.Context) error {
 		return utils.NewError("invalid --port value", err)
 	}
 
-	// Auto-pick TLS strategy: custom hostnames go through Let's Encrypt unless
-	// the user explicitly opts out; *.satusky.com hostnames use the platform.
+	existingIngress, _ := api.GetIngressByDeploymentID(dep.DeploymentID.String())
+
+	// Auto-pick TLS strategy: external hostnames are independent custom-domain
+	// aliases. Platform-owned hostnames keep the legacy primary route behavior.
 	dnsCfg := api.DnsConfigDefault
 	isSatuskyHost := strings.HasSuffix(strings.ToLower(domain), ".satusky.com") || strings.ToLower(domain) == "satusky.com"
 	if c.Bool("custom-dns") || !isSatuskyHost {
 		dnsCfg = api.DnsConfigCustom
+	}
+
+	if dnsCfg == api.DnsConfigCustom {
+		orgID, err := currentOrgUUID()
+		if err != nil {
+			return err
+		}
+		ing := existingIngress
+		if ing == nil || ing.IngressID == uuid.Nil {
+			defaultDomain, genErr := api.GenerateDomainName(appName)
+			if genErr != nil {
+				return utils.NewError(fmt.Sprintf("failed to generate default app domain before attaching custom domain: %s", genErr.Error()), nil)
+			}
+			created, createErr := api.UpsertIngress(api.Ingress{
+				DeploymentID: dep.DeploymentID,
+				ServiceID:    api.ToUUID(serviceID),
+				AppLabel:     appName,
+				Namespace:    namespace,
+				DomainName:   defaultDomain,
+				DnsConfig:    api.DnsConfigDefault,
+				Port:         port,
+			})
+			if createErr != nil {
+				return utils.NewError(fmt.Sprintf("failed to create default app route before attaching custom domain: %s", createErr.Error()), nil)
+			}
+			ing = created
+		}
+		alias, err := api.AttachDomain(ing.IngressID.String(), api.AttachDomainRequest{
+			OrgID:           orgID,
+			DomainName:      domain,
+			WithWWWRedirect: c.Bool("with-www"),
+		})
+		if err != nil {
+			return utils.NewError(fmt.Sprintf("failed to add domain: %s", err.Error()), nil)
+		}
+		utils.PrintSuccess("Domain %s attached to app %s", alias.DomainName, appName)
+		if status, statusErr := api.GetDomainStatus(ing.IngressID.String(), domain, false); statusErr == nil {
+			printDomainSetup(status)
+		} else {
+			utils.PrintInfo("Custom domain: run '1ctl domains setup %s' for exact DNS records.", domain)
+		}
+		utils.PrintInfo("  1ctl domains check %s", domain)
+		return nil
 	}
 
 	ingress := api.Ingress{
@@ -223,7 +316,10 @@ func handleDomainsRemove(c *cli.Context) error {
 	if c.NArg() < 1 {
 		return utils.NewError("domain is required. Usage: 1ctl domains remove <domain> --app <app>", nil)
 	}
-	domain := c.Args().First()
+	domain, err := normalizeDomainArg(c.Args().First())
+	if err != nil {
+		return err
+	}
 	appName := c.String("app")
 
 	if _, err := context.GetCurrentNamespaceOrError(); err != nil {
@@ -241,7 +337,11 @@ func handleDomainsRemove(c *cli.Context) error {
 		fmt.Println("Aborted.")
 		return nil
 	}
-	if err := api.DeleteIngress(ing.IngressID.String()); err != nil {
+	orgID, err := currentOrgUUID()
+	if err != nil {
+		return err
+	}
+	if err := api.DetachDomain(ing.IngressID.String(), api.DetachDomainRequest{OrgID: orgID, DomainName: domain}); err != nil {
 		return utils.NewError(fmt.Sprintf("failed to remove domain: %s", err.Error()), nil)
 	}
 	utils.PrintSuccess("Domain %s removed from app %s", domain, appName)
@@ -252,7 +352,10 @@ func handleDomainsCheck(c *cli.Context) error {
 	if c.NArg() < 1 {
 		return utils.NewError("domain is required. Usage: 1ctl domains check <domain>", nil)
 	}
-	domain := c.Args().First()
+	domain, err := normalizeDomainArg(c.Args().First())
+	if err != nil {
+		return err
+	}
 
 	ing, err := api.GetIngressByDomainName(domain)
 	if err != nil {
@@ -276,7 +379,10 @@ func handleDomainsSetup(c *cli.Context) error {
 	if c.NArg() < 1 {
 		return utils.NewError("domain is required. Usage: 1ctl domains setup <domain>", nil)
 	}
-	domain := c.Args().First()
+	domain, err := normalizeDomainArg(c.Args().First())
+	if err != nil {
+		return err
+	}
 
 	ing, err := api.GetIngressByDomainName(domain)
 	if err != nil {
@@ -417,4 +523,31 @@ func domainHTTPText(status api.DomainReachabilityStatus) string {
 		return "not reachable - " + status.Message
 	}
 	return "not reachable"
+}
+
+func normalizeDomainArg(domain string) (string, error) {
+	domain = strings.ToLower(strings.TrimSpace(domain))
+	domain = strings.TrimSuffix(domain, ".")
+	if strings.HasPrefix(domain, "http://") || strings.HasPrefix(domain, "https://") || strings.Contains(domain, "/") {
+		return "", utils.NewError("domain must be a hostname, not a URL", nil)
+	}
+	if strings.HasPrefix(domain, "*.") {
+		return "", utils.NewError("wildcard domains are not supported yet because SatuSky custom-domain TLS currently uses HTTP-01 validation", nil)
+	}
+	if err := validator.ValidateDomain(domain); err != nil {
+		return "", err
+	}
+	return domain, nil
+}
+
+func currentOrgUUID() (uuid.UUID, error) {
+	orgID := strings.TrimSpace(context.GetCurrentOrgID())
+	if orgID == "" {
+		return uuid.Nil, utils.NewError("no current organization ID is set. Run: 1ctl org switch --id <org-id>", nil)
+	}
+	parsed, err := api.ParseUUID(orgID)
+	if err != nil {
+		return uuid.Nil, utils.NewError("current organization ID is invalid. Run: 1ctl org switch --id <org-id>", err)
+	}
+	return parsed, nil
 }
