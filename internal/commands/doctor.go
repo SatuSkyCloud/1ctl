@@ -89,26 +89,33 @@ func handleDoctor(c *cli.Context) error {
 	}
 
 	for _, dep := range targets {
+		resolvedDomain := strings.TrimSpace(dep.Domain)
+		if resolvedDomain == "" {
+			if ing, ingErr := api.GetIngressByDeploymentID(dep.DeploymentID.String()); ingErr == nil && ing != nil {
+				resolvedDomain = strings.TrimSpace(ing.DomainName)
+			}
+		}
+
 		entry := doctorDeploymentReport{
 			DeploymentID: dep.DeploymentID.String(),
 			AppLabel:     dep.AppLabel,
-			Domain:       dep.Domain,
+			Domain:       resolvedDomain,
 			Status:       dep.Status,
 		}
 
-		if dep.Domain != "" {
-			if ing, ingErr := api.GetIngressByDomainName(dep.Domain); ingErr != nil {
+		if resolvedDomain != "" {
+			if ing, ingErr := api.GetIngressByDomainName(resolvedDomain); ingErr != nil {
 				report.Issues = append(report.Issues, fmt.Sprintf("%s domain lookup: %s", dep.AppLabel, ingErr.Error()))
-			} else if ds, dsErr := api.GetDomainStatus(ing.IngressID.String(), dep.Domain, true); dsErr != nil {
+			} else if ds, dsErr := api.GetDomainStatus(ing.IngressID.String(), resolvedDomain, true); dsErr != nil {
 				report.Issues = append(report.Issues, fmt.Sprintf("%s domain status: %s", dep.AppLabel, dsErr.Error()))
 			} else {
 				entry.DomainStatus = ds
 			}
 
 			if smokePath != "" || c.String("deployment-id") != "" || c.String("config") != "" {
-				entry.Smoke = smokeDeploymentURL(dep.Domain, smokePath)
+				entry.Smoke = smokeDeploymentURL(resolvedDomain, smokePath)
 			} else {
-				entry.Smoke = smokeDeploymentURL(dep.Domain, "")
+				entry.Smoke = smokeDeploymentURL(resolvedDomain, "")
 			}
 			if entry.Smoke != nil && !entry.Smoke.Ready {
 				report.Issues = append(report.Issues, fmt.Sprintf("%s smoke: %s", dep.AppLabel, entry.Smoke.Reason))
