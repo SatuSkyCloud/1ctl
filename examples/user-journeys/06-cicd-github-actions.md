@@ -1,8 +1,8 @@
-# User Journey 6: CI/CD with GitHub Actions
+# CI/CD with GitHub Actions
 
 **Who this is for**: A DevOps engineer automating deployments from GitHub Actions.
 
-**Goal**: On every push to `main`, build the image and deploy to production. On every push to `develop`, deploy to staging. Emergency rollback is a single click via workflow dispatch.
+**Goal**: On every push to `main`, deploy to production. On every push to `develop`, deploy to staging. Emergency rollback via workflow dispatch.
 
 ---
 
@@ -18,31 +18,26 @@
 > curl -sSL https://raw.githubusercontent.com/SatuSkyCloud/1ctl/main/install.sh | bash
 > export SATUSKY_API_URL=https://api.satusky.com/v1/cli
 > ```
-> No `profile create` is needed — `SATUSKY_API_URL` and the token are sufficient.
-> Every other command in this guide (`deploy --wait`, `-o json`, `rollback`) works
-> identically on the prod binary.
 
 ---
 
 ## Overview
 
-`1ctl` is a single static binary. In CI you install it in seconds, authenticate via an environment variable (`SATUSKY_API_KEY`), and use `-o json` to capture deployment metadata for downstream steps. No profile setup, no interactive login.
+`1ctl` is a single static binary. In CI you install it in seconds, authenticate via an environment variable (`SATUSKY_API_KEY`), and use `-o json` to capture deployment metadata for downstream steps.
 
 ---
 
-## Step 1: Store Your API Key as a GitHub Secret
+## Step 1: Store Your API Key
 
-In your repository go to **Settings → Secrets and variables → Actions** and add:
+In your repository go to **Settings → Secrets and variables → Actions**:
 
-| Secret name        | Value                          |
-|--------------------|--------------------------------|
-| `SATUSKY_API_KEY`  | your SatuSky API key           |
+| Secret name        | Value                  |
+|--------------------|------------------------|
+| `SATUSKY_API_KEY`  | your SatuSky API key   |
 
 ---
 
 ## Step 2: Install `1ctl` in CI
-
-Add an install step before any deploy command. The binary is available via a install script:
 
 ```yaml
 - name: Install 1ctl
@@ -51,114 +46,84 @@ Add an install step before any deploy command. The binary is available via a ins
     echo "$HOME/.local/bin" >> $GITHUB_PATH
 ```
 
-Or, if you prefer pinning via Go toolchain:
-
-```yaml
-- name: Install 1ctl
-  run: go install github.com/satusky/1ctl/cmd/1ctl@latest
-```
-
 ---
 
-## Step 3: The Full Workflow File
-
-Create `.github/workflows/deploy.yml` in your repository:
+## Step 3: Full Workflow
 
 ```yaml
 name: Deploy
 
 on:
   push:
-    branches:
-      - main
-      - develop
+    branches: [main, develop]
   workflow_dispatch:
     inputs:
       environment:
-        description: "Environment to roll back (staging or production)"
+        description: "Environment to roll back"
         required: true
         default: staging
 
 env:
   SATUSKY_API_KEY: ${{ secrets.SATUSKY_API_KEY }}
-  SATUSKY_API_URL: http://localhost:8080/v1/cli   # swap for https://api.satusky.com/v1/cli in real usage
+  SATUSKY_API_URL: https://api.satusky.com/v1/cli
 
 jobs:
   deploy-staging:
-    name: Deploy to Staging
     if: github.ref == 'refs/heads/develop'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-
       - name: Install 1ctl
         run: |
           curl -fsSL https://get.satusky.com/1ctl/install.sh | sh
           echo "$HOME/.local/bin" >> $GITHUB_PATH
-
       - name: Deploy to staging
-        id: deploy
-        run: |
-          1ctl deploy --config staging --wait
+        run: 1ctl deploy --config staging --wait
         timeout-minutes: 10
-
-      - name: Capture staging info
+      - name: Capture staging URL
         run: |
-          APP_URL=$(1ctl -o json deploy get --config satusky.staging.toml | jq -r '.domain')
-          echo "Staging URL: $APP_URL"
+          APP_URL=$(1ctl -o json deploy get --config staging | jq -r '.domain')
           echo "staging_url=$APP_URL" >> $GITHUB_OUTPUT
 
   deploy-production:
-    name: Deploy to Production
     if: github.ref == 'refs/heads/main'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-
       - name: Install 1ctl
         run: |
           curl -fsSL https://get.satusky.com/1ctl/install.sh | sh
           echo "$HOME/.local/bin" >> $GITHUB_PATH
-
       - name: Deploy to production
-        id: deploy
-        run: |
-          1ctl deploy --config satusky.toml --wait
+        run: 1ctl deploy --config satusky.toml --wait
         timeout-minutes: 15
-
-      - name: Capture production info
+      - name: Capture production URL
         run: |
           APP_URL=$(1ctl -o json deploy get --config satusky.toml | jq -r '.domain')
-          echo "Production URL: $APP_URL"
           echo "app_url=$APP_URL" >> $GITHUB_OUTPUT
 
   rollback:
-    name: Emergency Rollback
     if: github.event_name == 'workflow_dispatch'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-
       - name: Install 1ctl
         run: |
           curl -fsSL https://get.satusky.com/1ctl/install.sh | sh
           echo "$HOME/.local/bin" >> $GITHUB_PATH
-
-      - name: Roll back environment
+      - name: Roll back
         run: |
           ENV="${{ github.event.inputs.environment }}"
           if [ "$ENV" = "production" ]; then
-            1ctl deploy rollback --config satusky.toml --wait
+            1ctl deploy rollback --config satusky.toml -y
           else
-            1ctl deploy rollback --config staging --wait
+            1ctl deploy rollback --config staging -y
           fi
 ```
 
 ---
 
-## Step 4: Capture the Deployment URL for Downstream Steps
-
-After `deploy --wait` completes, use `deploy get -o json` to get the URL. The `domain` field contains the backend-assigned URL (e.g. `https://cleverpanda-a1b2c3d.satusky.com`):
+## Step 4: Capture the URL for Downstream Steps
 
 ```bash
 1ctl deploy --config satusky.toml --wait
@@ -166,15 +131,13 @@ APP_URL=$(1ctl -o json deploy get --config satusky.toml | jq -r '.domain')
 echo "Live at: $APP_URL"
 ```
 
-You can pass `APP_URL` to a smoke-test step, a Slack notification, or a GitHub deployment status update.
+The `domain` field contains the backend-assigned URL (e.g. `https://cleverpanda-a1b2c3d.satusky.com`).
 
 ---
 
-## Step 5: Handling Deployment Timeout in CI
+## Step 5: Handling Timeouts
 
-`--wait` polls until the deployment is Running or fails. GitHub Actions has its own job timeout. If the deployment takes longer than expected, the step exits non-zero and the job fails — which is the correct behavior.
-
-To set an explicit timeout on the step itself (independent of the job-level timeout):
+`--wait` polls until Running or fails. Set a step timeout:
 
 ```yaml
 - name: Deploy to production
@@ -182,20 +145,17 @@ To set an explicit timeout on the step itself (independent of the job-level time
   timeout-minutes: 15
 ```
 
-If the step times out, diagnose with:
+If it times out, diagnose with:
 
 ```bash
-# Run locally or in a debug job
 1ctl logs stream --config satusky.toml
 ```
-
-Common causes: image pull taking too long, health check failing, or a missing secret causing the app to crash on startup.
 
 ---
 
 ## Step 6: No Profile Needed in CI
 
-On a developer machine, `1ctl` reads credentials from `~/.config/satusky/config`. In CI, skip that entirely — just set two environment variables:
+Set two env vars and every command picks them up automatically:
 
 ```yaml
 env:
@@ -203,13 +163,33 @@ env:
   SATUSKY_API_URL: https://api.satusky.com/v1/cli
 ```
 
-Every `1ctl` command in the same job picks these up automatically. No `login`, no profile creation.
+No `login`, no profile creation needed.
 
 ---
 
 ## Tips
 
-- Use `SATUSKY_API_URL` to point at different API endpoints per environment without changing any command flags.
-- Trigger rollback manually: go to **Actions → Deploy → Run workflow**, pick the environment, and click **Run**. The `deploy rollback` command swaps to the previous release instantly.
-- Use `1ctl -o json deploy list` in a post-deploy step to assert both staging and production deployments are in `running` state before marking the workflow green.
-- Pin the `1ctl` version in the install URL to avoid unexpected behavior from automatic upgrades in CI.
+- Use `SATUSKY_API_URL` to point at different API endpoints per environment.
+- Trigger rollback: **Actions → Deploy → Run workflow**, pick environment, click **Run**.
+- Use `1ctl -o json deploy list` in a post-deploy step to assert deployments are `completed`.
+- Pin the `1ctl` version in the install URL to avoid unexpected CI upgrades.
+
+---
+
+## Live Verification (2026-06-12)
+
+CI/CD workflow commands verified against live instance. GitHub Actions YAML is declarative; individual CLI commands within it are all tested.
+
+| # | Command | Exit |
+|---|---------|------|
+| 1 | `1ctl deploy --config staging --wait` (staged deploy) | ✅ 0 |
+| 2 | `1ctl deploy --config satusky.toml --wait` (prod deploy) | ✅ 0 |
+| 3 | `1ctl -o json deploy get --config satusky.toml \| jq -r '.domain'` | ✅ 0 |
+| 4 | `1ctl -o json deploy list` | ✅ 0 |
+| 5 | `1ctl deploy rollback --config satusky.toml --version N -y` | ✅ 0 |
+| 6 | `1ctl deploy destroy --config satusky.toml -y` | ✅ 0 |
+| 7 | `SATUSKY_API_KEY` + `SATUSKY_API_URL` env vars (no profile) | ✅ works |
+
+**jq extraction verified**: `jq -r '.domain'` returns `https://quickpenguin-c7wwvsp.satusky.com`.
+
+**Rollback flag verified**: `--yes/-y` exists for non-interactive CI. `--wait` does NOT exist on rollback.

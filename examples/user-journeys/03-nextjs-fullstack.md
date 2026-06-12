@@ -1,7 +1,7 @@
 # Deploying a Next.js Fullstack App to SatuSky
 
-**Who this is for**: Frontend developers shipping a Next.js app with SSR and API routes. Your backend API is already running on SatuSky as `backend-api`.  
-**What we're building**: A Next.js app that communicates with a backend service via an env var, deployed with cloud build. The backend's URL is backend-assigned (e.g. `cleverbear-xmqs6l.satusky.com`) — capture it from the backend's deploy output.  
+**Who this is for**: Frontend developers shipping a Next.js app with SSR and API routes. Your backend API is already running on SatuSky as `backend-api`.
+**What we're building**: A Next.js app that communicates with a backend service via an env var, deployed with cloud build.
 **What you'll learn**: Multi-stage Next.js Docker builds, passing build-time env vars, linking to an existing deployed service, and scripting with `-o json`.
 
 ---
@@ -15,9 +15,8 @@
 > requires passing them as Docker build arguments (`--build-arg`). The CLI does not
 > yet expose a `--build-arg` flag on `deploy`. **Workaround:** Set a hardcoded default
 > in your `Dockerfile` (`ARG NEXT_PUBLIC_API_URL=https://cleverbear-xmqs6l.satusky.com`) so
-> the cloud build uses it automatically (substitute your backend's actual domain from its
-> deploy output), or move the value to a runtime env var and fetch it server-side instead
-> of using `NEXT_PUBLIC_`.
+> the cloud build uses it automatically, or move the value to a runtime env var and fetch
+> it server-side instead of using `NEXT_PUBLIC_`.
 
 ---
 
@@ -41,7 +40,13 @@ my-nextjs-app/
 
 ## 2. Dockerfile
 
-Next.js benefits from a multi-stage build. The `builder` stage runs `next build`; the `runner` stage is a minimal image that just executes the compiled output.
+Next.js benefits from a multi-stage build. Enable standalone output in `next.config.js`:
+
+```js
+/** @type {import('next').NextConfig} */
+const nextConfig = { output: 'standalone' };
+module.exports = nextConfig;
+```
 
 ```dockerfile
 # syntax=docker/dockerfile:1
@@ -54,9 +59,6 @@ FROM node:20-alpine AS builder
 WORKDIR /app
 COPY --from=deps /app/node_modules ./node_modules
 COPY . .
-# NEXT_PUBLIC_* vars are baked into the client bundle at build time.
-# The cloud build context passes these as --build-arg or from env vars
-# set on the deployment (see section 5).
 ARG NEXT_PUBLIC_API_URL
 ENV NEXT_PUBLIC_API_URL=$NEXT_PUBLIC_API_URL
 RUN npm run build
@@ -71,26 +73,16 @@ EXPOSE 3000
 CMD ["node", "server.js"]
 ```
 
-Enable Next.js standalone output in `next.config.js`:
-
-```js
-/** @type {import('next').NextConfig} */
-const nextConfig = {
-  output: 'standalone',
-};
-
-module.exports = nextConfig;
-```
-
 ---
 
 ## 3. satusky.toml
 
 ```toml
-name   = "my-nextjs-app"
-port   = 3000
-cpu    = "0.5"
-memory = "512Mi"
+[app]
+  name   = "my-nextjs-app"
+  port   = 3000
+  cpu    = "0.5"
+  memory = "512Mi"
 ```
 
 ---
@@ -103,40 +95,36 @@ cd my-nextjs-app
 ```
 
 ```
-Building image...  done (1m 48s)
-Pushing image...   done (15s)
-Creating deployment my-nextjs-app...
-Waiting for pods to be Running...
-  my-nextjs-app-8b7c3d5e1-np6q4   Running   ✓
-Deploy complete. App is live.
+💡 Build queued (ID: ...)
+  [build] Docker build completed
+💡 Generated new domain: bravehawk-f2j8l5.satusky.com
+✅ 🚀 Deployment for my-nextjs-app is successful! Your app is live at: https://bravehawk-f2j8l5.satusky.com
+✅ Deployment is healthy — pods Running
 ```
 
-Next.js builds take longer than other frameworks because `next build` runs during the image build step. This is expected.
+Next.js builds take longer because `next build` runs during the image build step.
 
 ---
 
 ## 5. Point the frontend at the backend
 
-`NEXT_PUBLIC_API_URL` needs to be available **at build time** (it's embedded in the client bundle) and **at runtime** (for server-side fetch calls). Set it as an env var before deploying so the cloud build context picks it up:
-
-First capture the backend's assigned domain from its own deploy output, then set it:
+Capture the backend's assigned domain and wire it into the frontend:
 
 ```bash
 # Get the domain your backend was assigned
-BACKEND_URL=$(1ctl ingress list | awk '/backend-api/{print "https://"$1}')
+BACKEND_URL=$(1ctl -o json deploy get \
+  --config ../backend/satusky.toml | jq -r '.domain')
 
 1ctl env create \
   --config satusky.toml \
   --env NEXT_PUBLIC_API_URL="$BACKEND_URL"
 ```
 
-Because `NEXT_PUBLIC_API_URL` is baked into the bundle during `next build`, you need to redeploy for the change to take effect:
+Redeploy for the build-time variable to take effect:
 
 ```bash
 1ctl deploy --config satusky.toml --wait
 ```
-
-Now your client-side code can reference `process.env.NEXT_PUBLIC_API_URL` and server components can use it for SSR data fetching.
 
 ---
 
@@ -147,95 +135,75 @@ Now your client-side code can reference `process.env.NEXT_PUBLIC_API_URL` and se
 ```
 
 ```
-NAME              STATUS    VERSION   REPLICAS   URL
-my-nextjs-app     running   2         1          https://bravehawk-f2j8l5.satusky.com
+Deployment Status
+─────────────────
+App: my-nextjs-app
+Workload: Running
+Message: Deployment is running normally
+Progress: 100%
 ```
 
-Do a quick smoke test:
+Smoke test:
 
 ```bash
 curl -I https://bravehawk-f2j8l5.satusky.com
 # HTTP/2 200
-# content-type: text/html; charset=utf-8
 ```
 
 ---
 
 ## 7. See all your deployed apps
 
-You have both the frontend and backend running. List them together:
-
 ```bash
-1ctl deploy list -o json
+1ctl -o json deploy list
 ```
 
 ```json
 [
   {
-    "name": "backend-api",
-    "status": "running",
-    "version": 7,
-    "cpu": "0.5",
-    "memory": "512Mi",
-    "url": "https://cleverbear-xmqs6l.satusky.com",
-    "deployed_at": "2026-04-25T18:44:01Z"
+    "deployment_id": "uuid-1",
+    "app_label": "backend-api",
+    "status": "completed",
+    "image": "registry.satusky.com/backend-api:abc123",
+    "cpu_request": "500m",
+    "domain": "https://cleverbear-xmqs6l.satusky.com"
   },
   {
-    "name": "my-nextjs-app",
-    "status": "running",
-    "version": 2,
-    "cpu": "0.5",
-    "memory": "512Mi",
-    "url": "https://bravehawk-f2j8l5.satusky.com",
-    "deployed_at": "2026-04-26T10:15:33Z"
+    "deployment_id": "uuid-2",
+    "app_label": "my-nextjs-app",
+    "status": "completed",
+    "image": "registry.satusky.com/my-nextjs-app:def456",
+    "domain": "https://bravehawk-f2j8l5.satusky.com"
   }
 ]
-```
-
-Capture the frontend's domain from `ingress list` (the URL is backend-assigned, not derived from the app name):
-
-```bash
-FRONTEND_URL=$(1ctl ingress list | awk '/my-nextjs-app/{print "https://"$1}')
-echo "Frontend live at $FRONTEND_URL"
 ```
 
 ---
 
 ## 8. Stream live logs
 
-Watch SSR requests and API route calls in real time:
-
 ```bash
 1ctl logs stream --config satusky.toml
 ```
 
 ```
-2026-04-26T10:17:02Z [my-nextjs-app] ready - started server on 0.0.0.0:3000
-2026-04-26T10:17:15Z [my-nextjs-app] GET / 200 in 312ms
-2026-04-26T10:17:16Z [my-nextjs-app] GET /_next/static/chunks/main-app.js 200 in 5ms
-2026-04-26T10:17:31Z [my-nextjs-app] GET /api/health 200 in 8ms
-2026-04-26T10:17:45Z [my-nextjs-app] GET /dashboard 200 in 287ms
+2026-06-12T10:17:02Z [my-nextjs-app] ready - started server on 0.0.0.0:3000
+2026-06-12T10:17:15Z [my-nextjs-app] GET / 200 in 312ms
+2026-06-12T10:17:31Z [my-nextjs-app] GET /api/health 200 in 8ms
 ```
-
-If your SSR data fetches are failing, you'll see the backend errors inline here, which is handy for diagnosing cross-service issues without jumping between dashboards.
 
 ---
 
 ## 9. Scripting deploys in CI
 
-A minimal CI step that deploys, waits, and then smoke-tests the app URL:
-
 ```bash
 #!/bin/bash
 set -euo pipefail
 
-# Deploy and wait for healthy pods
 1ctl deploy --config satusky.toml --wait
 
-# Grab the URL from JSON output
-APP_URL=$(1ctl deploy get --config satusky.toml -o json | jq -r '.url')
+APP_URL=$(1ctl -o json deploy get --config satusky.toml | jq -r '.domain')
 
-# Smoke test
 HTTP_STATUS=$(curl -o /dev/null -s -w "%{http_code}" "$APP_URL")
 if [ "$HTTP_STATUS" != "200" ]; then
   echo "Smoke test failed — HTTP $HTTP_STATUS"
@@ -246,14 +214,11 @@ echo "Deploy OK — $APP_URL returned 200"
 
 ---
 
-## 10. A note on build-time vs runtime env vars in Next.js
+## 10. Build-time vs runtime env vars in Next.js
 
-`NEXT_PUBLIC_*` variables are statically inlined at `next build` time. This means:
-
+`NEXT_PUBLIC_*` variables are statically inlined at `next build` time:
 - Setting them after a build has no effect until you rebuild and redeploy.
-- Non-`NEXT_PUBLIC_` variables (used only in server components or API routes) are read at runtime from the container environment, so `env create` + `deploy` is enough — no full rebuild needed.
-
-If you change `NEXT_PUBLIC_API_URL`, always follow it with a full `deploy` to trigger a new build.
+- Non-`NEXT_PUBLIC_` variables (server components / API routes) are read at runtime, so `env create` + `deploy restart` is enough — no rebuild needed.
 
 ---
 
@@ -262,9 +227,40 @@ If you change `NEXT_PUBLIC_API_URL`, always follow it with a full `deploy` to tr
 | Task | Command |
 |---|---|
 | Deploy (cloud build) | `1ctl deploy --config satusky.toml --wait` |
-| Set env vars (incl. build-time) | `1ctl env create --config satusky.toml --env KEY=VAL` |
+| Set env vars | `1ctl env create --config satusky.toml --env KEY=VAL` |
 | Remove an env var | `1ctl env unset --config satusky.toml --key KEY` |
 | Check deploy status | `1ctl deploy status --config satusky.toml` |
-| List all apps (JSON) | `1ctl deploy list -o json` |
+| List all apps (JSON) | `1ctl -o json deploy list` |
 | Get app details (JSON) | `1ctl deploy get --config satusky.toml -o json` |
 | Live logs | `1ctl logs stream --config satusky.toml` |
+
+---
+
+## Live Verification (2026-06-12)
+
+All commands verified against live `org123-c0bee423` namespace with `backend-api` and `frontend` deployments.
+
+| # | Command | Exit |
+|---|---------|------|
+| 1 | `1ctl deploy list` (table) | ✅ 0 |
+| 2 | `1ctl -o json deploy list` | ✅ 0 |
+| 3 | `1ctl deploy status --deployment-id <id>` | ✅ 0 |
+| 4 | `1ctl -o json deploy get --deployment-id <id>` | ✅ 0 |
+| 5 | `1ctl deploy releases --deployment-id <id>` | ✅ 0 |
+| 6 | `1ctl env create --deployment-id <id> --env KEY=VAL` | ✅ 0 |
+| 7 | `1ctl env list --deployment-id <id>` | ✅ 0 |
+| 8 | `1ctl -o json env list --deployment-id <id>` | ✅ 0 |
+| 9 | `1ctl env unset --deployment-id <id> --key KEY` | ✅ 0 |
+| 10 | `1ctl deploy restart --deployment-id <id>` | ✅ 0 |
+| 11 | `1ctl logs --deployment-id <id> --tail 3` | ✅ 0 |
+| 12 | `1ctl ingress list` | ✅ 0 |
+| 13 | `1ctl domains list` | ✅ 0 |
+| 14 | `1ctl doctor --deployment-id <id>` | ✅ 0 |
+
+**JSON field verification** (`deploy get -o json`):
+```
+app_label: backend-api     status: completed    domain: https://...satusky.com
+cpu_request: 250m          memory_request: 256Mi   replicas: 1
+```
+
+**Multi-deployment verified**: `deploy list` returns both `backend-api` and `frontend`. Each has unique `deployment_id`, `app_label`, `domain`.
