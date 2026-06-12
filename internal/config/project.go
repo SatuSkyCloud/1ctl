@@ -40,6 +40,7 @@ type AppConfig struct {
 	Domain                string   `toml:"domain"`
 	Zone                  string   `toml:"zone"`
 	Organization          string   `toml:"organization"`
+	HealthPath            string   `toml:"health_path"`
 	Strategy              string   `toml:"strategy"`
 	RollingMaxSurge       string   `toml:"rolling_max_surge"`
 	RollingMaxUnavailable string   `toml:"rolling_max_unavailable"`

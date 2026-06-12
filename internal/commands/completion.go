@@ -53,7 +53,7 @@ _satusky_cli_completion() {
 
     # Top level commands
     if [[ $COMP_CWORD == 1 ]]; then
-        opts="auth org deploy secret domains environment machine credits storage logs notifications user token marketplace audit pricing cluster completion --help --version"
+        opts="auth org deploy doctor secret domains environment machine credits storage logs notifications user token marketplace audit pricing cluster completion --help --version"
         COMPREPLY=( $(compgen -W "${opts}" -- ${cur}) )
         return 0
     fi
@@ -159,7 +159,7 @@ _satusky_cli_completion() {
             ;;
         deploy)
             if [[ ${COMP_CWORD} == 2 ]]; then
-                COMPREPLY=( $(compgen -W "list get status --cpu --cpu-request --cpu-limit --memory --machine --domain --image --dockerfile --env --port --volume-size --volume-mount --zone --multicluster --multicluster-mode --backup-enabled --backup-schedule --backup-retention --backup-priority-cluster --replicas --pdb --pdb-type --pdb-min-available --pdb-percent --hpa --hpa-min-replicas --hpa-max-replicas --hpa-cpu-target --hpa-memory-target --vpa --vpa-mode --vpa-min-cpu --vpa-max-cpu --vpa-min-memory --vpa-max-memory --wait-for" -- ${cur}) )
+                COMPREPLY=( $(compgen -W "list get status --cpu --cpu-request --cpu-limit --memory --machine --domain --health-path --image --dockerfile --env --port --volume-size --volume-mount --zone --multicluster --multicluster-mode --backup-enabled --backup-schedule --backup-retention --backup-priority-cluster --replicas --pdb --pdb-type --pdb-min-available --pdb-percent --hpa --hpa-min-replicas --hpa-max-replicas --hpa-cpu-target --hpa-memory-target --vpa --vpa-mode --vpa-min-cpu --vpa-max-cpu --vpa-min-memory --vpa-max-memory --wait-for" -- ${cur}) )
             else
                 case "${subcmd}" in
                     list)
@@ -424,6 +424,7 @@ _satusky_cli() {
                 'auth:Authentication commands'
                 'org:Manage organizations'
                 'deploy:Deploy applications'
+                'doctor:Diagnose live platform state'
                 'secret:Manage secrets'
                 'domains:Manage custom domains for your apps'
                 'environment:Manage environments'
@@ -715,7 +716,7 @@ func handleFishCompletion(c *cli.Context) error {
 
 function __fish_1ctl_no_subcommand
     for i in (commandline -opc)
-        if contains -- $i auth org deploy secret domains domain environment machine credits storage logs notifications user token marketplace audit pricing cluster completion
+        if contains -- $i auth org deploy doctor secret domains domain environment machine credits storage logs notifications user token marketplace audit pricing cluster completion
             return 1
         end
     end
@@ -950,6 +951,7 @@ Register-ArgumentCompleter -Native -CommandName 1ctl -ScriptBlock {
             [CompletionResult]::new('auth', 'auth', [CompletionResultType]::ParameterValue, 'Authentication commands')
             [CompletionResult]::new('org', 'org', [CompletionResultType]::ParameterValue, 'Manage organizations')
             [CompletionResult]::new('deploy', 'deploy', [CompletionResultType]::ParameterValue, 'Deploy applications')
+            [CompletionResult]::new('doctor', 'doctor', [CompletionResultType]::ParameterValue, 'Diagnose live platform state')
             [CompletionResult]::new('secret', 'secret', [CompletionResultType]::ParameterValue, 'Manage secrets')
             [CompletionResult]::new('domains', 'domains', [CompletionResultType]::ParameterValue, 'Manage custom domains for your apps')
             [CompletionResult]::new('environment', 'environment', [CompletionResultType]::ParameterValue, 'Manage environments')

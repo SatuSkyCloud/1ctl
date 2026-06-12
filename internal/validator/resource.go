@@ -94,6 +94,24 @@ func ValidateDomain(domain string) error {
 	return nil
 }
 
+// ValidateURLPath validates an HTTP path that will be used for smoke checks.
+// Empty paths are allowed so callers can fall back to their default probe list.
+func ValidateURLPath(path string) error {
+	if path == "" {
+		return nil
+	}
+	if !strings.HasPrefix(path, "/") {
+		return utils.NewError("health path must start with /", nil)
+	}
+	if strings.Contains(path, "://") {
+		return utils.NewError("health path must be a relative path, not a full URL", nil)
+	}
+	if strings.ContainsAny(path, " \t\r\n") {
+		return utils.NewError("health path cannot contain whitespace", nil)
+	}
+	return nil
+}
+
 // ValidateWaitFor validates a --wait-for value in "host:port" format.
 func ValidateWaitFor(value string) (host string, port int32, err error) {
 	parts := strings.SplitN(value, ":", 2)

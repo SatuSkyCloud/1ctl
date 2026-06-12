@@ -247,12 +247,15 @@ func TestCheckPublicURLSmokeReturnsReadyFor2xx(t *testing.T) {
 	}))
 	t.Cleanup(srv.Close)
 
-	got := checkPublicURLSmoke(srv.URL)
+	got := checkPublicURLSmoke(srv.URL, []string{"/"})
 	if !got.Ready {
 		t.Fatalf("checkPublicURLSmoke() ready = false, reason = %q", got.Reason)
 	}
 	if got.StatusCode != http.StatusOK {
 		t.Fatalf("checkPublicURLSmoke() status = %d, want %d", got.StatusCode, http.StatusOK)
+	}
+	if got.Path != "/" {
+		t.Fatalf("checkPublicURLSmoke() path = %q, want /", got.Path)
 	}
 }
 
@@ -262,11 +265,35 @@ func TestCheckPublicURLSmokeFailsFor4xx(t *testing.T) {
 	}))
 	t.Cleanup(srv.Close)
 
-	got := checkPublicURLSmoke(srv.URL)
+	got := checkPublicURLSmoke(srv.URL, []string{"/"})
 	if got.Ready {
 		t.Fatal("checkPublicURLSmoke() ready = true, want false")
 	}
 	if got.StatusCode != http.StatusForbidden {
 		t.Fatalf("checkPublicURLSmoke() status = %d, want %d", got.StatusCode, http.StatusForbidden)
+	}
+}
+
+func TestCheckPublicURLSmokeFallsBackToNextCandidate(t *testing.T) {
+	var hits []string
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		hits = append(hits, r.URL.Path)
+		if r.URL.Path == "/health" {
+			w.WriteHeader(http.StatusNotFound)
+			return
+		}
+		w.WriteHeader(http.StatusOK)
+	}))
+	t.Cleanup(srv.Close)
+
+	got := checkPublicURLSmoke(srv.URL, []string{"/health", "/"})
+	if !got.Ready {
+		t.Fatalf("checkPublicURLSmoke() ready = false, reason = %q", got.Reason)
+	}
+	if got.Path != "/" {
+		t.Fatalf("checkPublicURLSmoke() path = %q, want /", got.Path)
+	}
+	if len(hits) != 2 {
+		t.Fatalf("expected 2 requests, got %d (%v)", len(hits), hits)
 	}
 }

@@ -86,6 +86,9 @@ func handleInit(c *cli.Context) error {
 	if base.App.Domain != "" {
 		lines = append(lines, fmt.Sprintf("  domain = %q", base.App.Domain))
 	}
+	if base.App.HealthPath != "" {
+		lines = append(lines, fmt.Sprintf("  health_path = %q", base.App.HealthPath))
+	}
 
 	// Commented examples for the v2 schema. Uncomment to use.
 	lines = append(lines, "",
@@ -93,6 +96,7 @@ func handleInit(c *cli.Context) error {
 		"  # cpu_limit = \"1\"        # burst ceiling",
 		"  # memory = \"256Mi\"       # platform default 256Mi",
 		"  # zone = \"my-kul-1b\"     # target marketplace zone",
+		"  # health_path = \"/health\" # app-specific HTTP smoke path used by deploy --wait",
 		"  # strategy = \"rolling\"   # rolling | recreate",
 		"  # rolling_max_surge = \"25%\"",
 		"  # rolling_max_unavailable = \"25%\"",

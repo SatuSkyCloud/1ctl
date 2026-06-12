@@ -28,6 +28,7 @@ cpu = "1"
 memory = "512Mi"
 replicas = 3
 domain = "myapp.example.com"
+health_path = "/healthz"
 zone = "my-kul-1b"
 organization = "my-org-slug"
 strategy = "recreate"
@@ -56,6 +57,12 @@ wait_for = ["postgres:5432", "redis:6379"]
 	}
 	if cfg.App.Memory != "512Mi" {
 		t.Errorf("Memory = %q, want 512Mi", cfg.App.Memory)
+	}
+	if cfg.App.Domain != "myapp.example.com" {
+		t.Errorf("Domain = %q, want myapp.example.com", cfg.App.Domain)
+	}
+	if cfg.App.HealthPath != "/healthz" {
+		t.Errorf("HealthPath = %q, want /healthz", cfg.App.HealthPath)
 	}
 	if cfg.App.Replicas != 3 {
 		t.Errorf("Replicas = %d, want 3 (issue #18: was silently ignored before v2)", cfg.App.Replicas)
