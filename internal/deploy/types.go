@@ -26,6 +26,7 @@ type DeploymentOptions struct {
 	CPULimit       string
 	Memory         string
 	Domain         string
+	SmokePath      string
 	Organization   string
 	Port           int
 	DockerfilePath string
