@@ -8,6 +8,7 @@ import (
 	"1ctl/internal/config"
 	"1ctl/internal/context"
 	"1ctl/internal/utils"
+	"1ctl/internal/validator"
 
 	"github.com/urfave/cli/v2"
 )
@@ -47,7 +48,11 @@ func DoctorCommand() *cli.Command {
 			},
 			&cli.StringFlag{
 				Name:  "health-path",
-				Usage: "Explicit HTTP smoke path to use for all checked deployments (default: tries /health then /)",
+				Usage: "Explicit HTTP path for app-level smoke success (default: tries /health then /). Enforces 2xx/3xx success.",
+			},
+			&cli.BoolFlag{
+				Name:  "smoke",
+				Usage: "Run smoke checks across all namespace deployments (opt-in for namespace-wide doctor)",
 			},
 		},
 		Action: handleDoctor,
@@ -63,6 +68,11 @@ func handleDoctor(c *cli.Context) error {
 	namespace := context.GetCurrentNamespace()
 	if namespace == "" {
 		return utils.NewError("not authenticated or namespace missing", nil)
+	}
+
+	// Validate --health-path like deploy does.
+	if err := validator.ValidateURLPath(c.String("health-path")); err != nil {
+		return utils.NewError(fmt.Sprintf("invalid health path: %v", err), nil)
 	}
 
 	report := doctorReport{
@@ -83,10 +93,17 @@ func handleDoctor(c *cli.Context) error {
 		report.Clusters = len(clusters)
 	}
 
-	targets, smokePath, err := resolveDoctorTargets(c)
+	targets, smokePath, targetedMode, err := resolveDoctorTargets(c)
 	if err != nil {
 		return err
 	}
+
+	// Smoke checks run only when explicitly requested:
+	// - --deployment-id / --config (targeted mode): always smoke
+	// - namespace-wide: only smoke when --smoke flag is set
+	runSmoke := targetedMode || c.Bool("smoke")
+	// Strict smoke (enforce 2xx/3xx) only when --health-path was explicitly set.
+	strictSmoke := c.IsSet("health-path")
 
 	for _, dep := range targets {
 		resolvedDomain := strings.TrimSpace(dep.Domain)
@@ -112,13 +129,11 @@ func handleDoctor(c *cli.Context) error {
 				entry.DomainStatus = ds
 			}
 
-			if smokePath != "" || c.String("deployment-id") != "" || c.String("config") != "" {
-				entry.Smoke = smokeDeploymentURL(resolvedDomain, smokePath)
-			} else {
-				entry.Smoke = smokeDeploymentURL(resolvedDomain, "")
-			}
-			if entry.Smoke != nil && !entry.Smoke.Ready {
-				report.Issues = append(report.Issues, fmt.Sprintf("%s smoke: %s", dep.AppLabel, entry.Smoke.Reason))
+			if runSmoke {
+				entry.Smoke = smokeDeploymentURL(resolvedDomain, smokePath, strictSmoke)
+				if entry.Smoke != nil && !entry.Smoke.Ready {
+					report.Issues = append(report.Issues, fmt.Sprintf("%s smoke: %s", dep.AppLabel, entry.Smoke.Reason))
+				}
 			}
 		}
 
@@ -182,38 +197,40 @@ func handleDoctor(c *cli.Context) error {
 	return nil
 }
 
-func resolveDoctorTargets(c *cli.Context) ([]api.Deployment, string, error) {
+func resolveDoctorTargets(c *cli.Context) ([]api.Deployment, string, bool, error) {
 	healthPath := strings.TrimSpace(c.String("health-path"))
 
 	if c.String("deployment-id") != "" || c.String("config") != "" {
 		deploymentID, err := resolveDeploymentID(c.String("deployment-id"), c.String("config"))
 		if err != nil {
-			return nil, "", err
+			return nil, "", false, err
 		}
 		deployment, err := api.GetDeployment(deploymentID)
 		if err != nil {
-			return nil, "", utils.NewError(fmt.Sprintf("failed to load deployment %s: %s", deploymentID, err.Error()), nil)
+			return nil, "", false, utils.NewError(fmt.Sprintf("failed to load deployment %s: %s", deploymentID, err.Error()), nil)
 		}
 		if healthPath == "" && c.String("config") != "" {
 			if cfg, cfgErr := config.FindConfig(c.String("config")); cfgErr == nil && cfg != nil {
 				healthPath = strings.TrimSpace(cfg.App.HealthPath)
 			}
 		}
-		return []api.Deployment{*deployment}, healthPath, nil
+		// targetedMode: smoke always runs for a specific deployment or config.
+		return []api.Deployment{*deployment}, healthPath, true, nil
 	}
 
 	deployments, err := api.ListDeployments()
 	if err != nil {
-		return nil, "", utils.NewError(fmt.Sprintf("failed to list deployments: %s", err.Error()), nil)
+		return nil, "", false, utils.NewError(fmt.Sprintf("failed to list deployments: %s", err.Error()), nil)
 	}
-	return deployments, healthPath, nil
+	// namespace-wide mode: smoke only when --smoke is explicitly requested.
+	return deployments, healthPath, false, nil
 }
 
-func smokeDeploymentURL(domain, healthPath string) *publicURLSmokeResult {
+func smokeDeploymentURL(domain, healthPath string, strict bool) *publicURLSmokeResult {
 	if domain == "" {
 		return nil
 	}
 	candidates := smokePathCandidates(healthPath)
-	result := checkPublicURLSmoke("https://"+domain, candidates)
+	result := checkPublicURLSmoke("https://"+domain, candidates, strict)
 	return &result
 }

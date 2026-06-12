@@ -247,7 +247,7 @@ func TestCheckPublicURLSmokeReturnsReadyFor2xx(t *testing.T) {
 	}))
 	t.Cleanup(srv.Close)
 
-	got := checkPublicURLSmoke(srv.URL, []string{"/"})
+	got := checkPublicURLSmoke(srv.URL, []string{"/"}, false)
 	if !got.Ready {
 		t.Fatalf("checkPublicURLSmoke() ready = false, reason = %q", got.Reason)
 	}
@@ -259,18 +259,75 @@ func TestCheckPublicURLSmokeReturnsReadyFor2xx(t *testing.T) {
 	}
 }
 
-func TestCheckPublicURLSmokeFailsFor4xx(t *testing.T) {
+func TestCheckPublicURLSmokeFailsFor4xxWhenStrict(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusForbidden)
 	}))
 	t.Cleanup(srv.Close)
 
-	got := checkPublicURLSmoke(srv.URL, []string{"/"})
+	got := checkPublicURLSmoke(srv.URL, []string{"/"}, true)
 	if got.Ready {
-		t.Fatal("checkPublicURLSmoke() ready = true, want false")
+		t.Fatal("checkPublicURLSmoke() strict ready = true, want false")
 	}
 	if got.StatusCode != http.StatusForbidden {
 		t.Fatalf("checkPublicURLSmoke() status = %d, want %d", got.StatusCode, http.StatusForbidden)
+	}
+}
+
+func TestCheckPublicURLSmokeTreats401AsReachableDefault(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusUnauthorized)
+	}))
+	t.Cleanup(srv.Close)
+
+	got := checkPublicURLSmoke(srv.URL, []string{"/"}, false)
+	if !got.Ready {
+		t.Fatalf("checkPublicURLSmoke() non-strict ready = false for 401, reason = %q", got.Reason)
+	}
+	if got.StatusCode != http.StatusUnauthorized {
+		t.Fatalf("checkPublicURLSmoke() status = %d, want %d", got.StatusCode, http.StatusUnauthorized)
+	}
+}
+
+func TestCheckPublicURLSmokeTreats403AsReachableDefault(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusForbidden)
+	}))
+	t.Cleanup(srv.Close)
+
+	got := checkPublicURLSmoke(srv.URL, []string{"/"}, false)
+	if !got.Ready {
+		t.Fatalf("checkPublicURLSmoke() non-strict ready = false for 403, reason = %q", got.Reason)
+	}
+	if got.StatusCode != http.StatusForbidden {
+		t.Fatalf("checkPublicURLSmoke() status = %d, want %d", got.StatusCode, http.StatusForbidden)
+	}
+}
+
+func TestCheckPublicURLSmokeTreats404AsReachableDefault(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusNotFound)
+	}))
+	t.Cleanup(srv.Close)
+
+	got := checkPublicURLSmoke(srv.URL, []string{"/"}, false)
+	if !got.Ready {
+		t.Fatalf("checkPublicURLSmoke() non-strict ready = false for 404, reason = %q", got.Reason)
+	}
+	if got.StatusCode != http.StatusNotFound {
+		t.Fatalf("checkPublicURLSmoke() status = %d, want %d", got.StatusCode, http.StatusNotFound)
+	}
+}
+
+func TestCheckPublicURLSmokeFailsFor5xxEvenNonStrict(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusInternalServerError)
+	}))
+	t.Cleanup(srv.Close)
+
+	got := checkPublicURLSmoke(srv.URL, []string{"/"}, false)
+	if got.Ready {
+		t.Fatal("checkPublicURLSmoke() non-strict ready = true for 500, want false")
 	}
 }
 
@@ -286,7 +343,7 @@ func TestCheckPublicURLSmokeFallsBackToNextCandidate(t *testing.T) {
 	}))
 	t.Cleanup(srv.Close)
 
-	got := checkPublicURLSmoke(srv.URL, []string{"/health", "/"})
+	got := checkPublicURLSmoke(srv.URL, []string{"/health", "/"}, true)
 	if !got.Ready {
 		t.Fatalf("checkPublicURLSmoke() ready = false, reason = %q", got.Reason)
 	}
@@ -295,5 +352,26 @@ func TestCheckPublicURLSmokeFallsBackToNextCandidate(t *testing.T) {
 	}
 	if len(hits) != 2 {
 		t.Fatalf("expected 2 requests, got %d (%v)", len(hits), hits)
+	}
+}
+
+func TestCheckPublicURLSmokeNonStrict404IsReachableNoFallback(t *testing.T) {
+	var hits []string
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		hits = append(hits, r.URL.Path)
+		w.WriteHeader(http.StatusNotFound)
+	}))
+	t.Cleanup(srv.Close)
+
+	got := checkPublicURLSmoke(srv.URL, []string{"/health", "/"}, false)
+	if !got.Ready {
+		t.Fatalf("checkPublicURLSmoke() non-strict ready = false, reason = %q", got.Reason)
+	}
+	// Non-strict mode accepts 404 as reachable on the first candidate; no fallback.
+	if got.Path != "/health" {
+		t.Fatalf("checkPublicURLSmoke() path = %q, want /health (no fallback)", got.Path)
+	}
+	if len(hits) != 1 {
+		t.Fatalf("expected 1 request (no fallback), got %d (%v)", len(hits), hits)
 	}
 }

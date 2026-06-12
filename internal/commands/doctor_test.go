@@ -8,7 +8,7 @@ func TestDoctorCommandStructure(t *testing.T) {
 		t.Fatalf("Name = %q, want doctor", cmd.Name)
 	}
 
-	wantFlags := []string{"deployment-id", "config", "health-path"}
+	wantFlags := []string{"deployment-id", "config", "health-path", "smoke"}
 	gotFlags := make(map[string]bool)
 	for _, flag := range cmd.Flags {
 		for _, name := range flag.Names() {
