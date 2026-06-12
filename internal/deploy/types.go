@@ -20,22 +20,23 @@ type PDBConfig struct {
 }
 
 type DeploymentOptions struct {
-	Name           string // App name (from satusky.toml or git remote fallback)
-	CPU            string // Deprecated: legacy burst CPU flag alias.
-	CPURequest     string
-	CPULimit       string
-	Memory         string
-	Domain         string
-	SmokePath      string
-	Organization   string
-	Port           int
-	DockerfilePath string
-	Hostnames      []string
-	Dependencies   []api.Dependency
-	VolumeEnabled  bool
-	Volume         *api.Volume
-	EnvEnabled     bool
-	Environment    *api.Environment
+	Name              string // App name (from satusky.toml or git remote fallback)
+	CPU               string // Deprecated: legacy burst CPU flag alias.
+	CPURequest        string
+	CPULimit          string
+	Memory            string
+	Domain            string
+	SmokePath         string
+	SmokePathExplicit bool // true when user explicitly set --health-path
+	Organization      string
+	Port              int
+	DockerfilePath    string
+	Hostnames         []string
+	Dependencies      []api.Dependency
+	VolumeEnabled     bool
+	Volume            *api.Volume
+	EnvEnabled        bool
+	Environment       *api.Environment
 	// Multi-cluster deployment options
 	MulticlusterEnabled   bool
 	MulticlusterMode      string // "active-active" or "active-passive"
@@ -77,4 +78,8 @@ type DeploymentOptions struct {
 	TargetArch string
 	// Wait blocks after deploy until pods are Running or timeout is reached.
 	Wait bool
+	// StrictSmoke enforces app-level 2xx/3xx success on the smoke check.
+	// When false, 401/403/404 are treated as platform-reachable and only
+	// 5xx/connection failures fail the check.
+	StrictSmoke bool
 }
