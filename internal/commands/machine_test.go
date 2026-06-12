@@ -20,16 +20,17 @@ func TestMachineCommand(t *testing.T) {
 	// Check subcommands. `vm` was removed in the v1 cleanup (f07d3f8) —
 	// Mac agent VM lifecycle moved to dedicated tooling.
 	expectedSubcommands := map[string]bool{
-		"list":      false,
-		"get":       false,
-		"create":    false,
-		"update":    false,
-		"delete":    false,
-		"inspect":   false,
-		"logs":      false,
-		"events":    false,
-		"available": false,
-		"usage":     false,
+		"list":       false,
+		"get":        false,
+		"update":     false,
+		"visibility": false,
+		"labels":     false,
+		"delete":     false,
+		"inspect":    false,
+		"logs":       false,
+		"events":     false,
+		"available":  false,
+		"usage":      false,
 	}
 
 	for _, subcmd := range cmd.Subcommands {
@@ -51,8 +52,8 @@ func TestMachineCommand(t *testing.T) {
 		t.Errorf("Expected subcommand name 'list', got %s", listCmd.Name)
 	}
 
-	if listCmd.Usage != "List all machines owned by the current user" {
-		t.Errorf("Expected usage 'List all machines owned by the current user', got %s", listCmd.Usage)
+	if listCmd.Usage != "List machines visible to the current user" {
+		t.Errorf("Expected usage 'List machines visible to the current user', got %s", listCmd.Usage)
 	}
 
 	if listCmd.Action == nil {

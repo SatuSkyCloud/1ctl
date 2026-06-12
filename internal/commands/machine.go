@@ -2,9 +2,9 @@ package commands
 
 import (
 	"1ctl/internal/api"
-	"1ctl/internal/context"
 	"1ctl/internal/utils"
 	"fmt"
+	"sort"
 	"strconv"
 	"strings"
 
@@ -18,8 +18,9 @@ func MachineCommand() *cli.Command {
 		Subcommands: []*cli.Command{
 			machineListCommand(),
 			machineGetCommand(),
-			machineCreateCommand(),
 			machineUpdateCommand(),
+			machineVisibilityCommand(),
+			machineLabelsCommand(),
 			machineDeleteCommand(),
 			machineInspectCommand(),
 			machineLogsCommand(),
@@ -33,7 +34,7 @@ func MachineCommand() *cli.Command {
 func machineListCommand() *cli.Command {
 	return &cli.Command{
 		Name:   "list",
-		Usage:  "List all machines owned by the current user",
+		Usage:  "List machines visible to the current user",
 		Action: handleListMachines,
 	}
 }
@@ -47,15 +48,6 @@ func machineGetCommand() *cli.Command {
 	}
 }
 
-func machineCreateCommand() *cli.Command {
-	return &cli.Command{
-		Name:   "create",
-		Usage:  "Create a machine inventory record",
-		Flags:  machineMutationFlags(true),
-		Action: handleCreateMachine,
-	}
-}
-
 func machineUpdateCommand() *cli.Command {
 	return &cli.Command{
 		Name:      "update",
@@ -63,6 +55,42 @@ func machineUpdateCommand() *cli.Command {
 		ArgsUsage: "<machine-id|name|numeric-id>",
 		Flags:     machineMutationFlags(false),
 		Action:    handleUpdateMachine,
+	}
+}
+
+func machineVisibilityCommand() *cli.Command {
+	return &cli.Command{
+		Name:      "visibility",
+		Usage:     "Set machine visibility",
+		ArgsUsage: "<machine-id|name|numeric-id> <owner|organisation|public>",
+		Action:    handleMachineVisibility,
+	}
+}
+
+func machineLabelsCommand() *cli.Command {
+	return &cli.Command{
+		Name:  "labels",
+		Usage: "Manage machine labels",
+		Subcommands: []*cli.Command{
+			{
+				Name:      "list",
+				Usage:     "List machine labels",
+				ArgsUsage: "<machine-id|name|numeric-id>",
+				Action:    handleMachineLabelsList,
+			},
+			{
+				Name:      "set",
+				Usage:     "Set machine labels",
+				ArgsUsage: "<machine-id|name|numeric-id> <key=value>...",
+				Action:    handleMachineLabelsSet,
+			},
+			{
+				Name:      "remove",
+				Usage:     "Remove machine labels",
+				ArgsUsage: "<machine-id|name|numeric-id> <key>...",
+				Action:    handleMachineLabelsRemove,
+			},
+		},
 	}
 }
 
@@ -146,12 +174,7 @@ func machineMutationFlags(create bool) []cli.Flag {
 }
 
 func handleListMachines(c *cli.Context) error {
-	userID := context.GetUserID()
-	if userID == "" {
-		return utils.NewError("user ID not found in context", nil)
-	}
-
-	machines, err := api.GetMachinesByOwnerID(api.ToUUID(userID))
+	machines, err := api.GetVisibleMachines()
 	if err != nil {
 		return utils.NewError(fmt.Sprintf("failed to list machines: %s", err.Error()), nil)
 	}
@@ -165,12 +188,13 @@ func handleListMachines(c *cli.Context) error {
 		return nil
 	}
 
-	headers := []string{"NAME", "MACHINE ID", "REGION/ZONE", "STATUS", "CPU", "MEM(GB)", "HOURLY COST"}
+	headers := []string{"NAME", "MACHINE ID", "VISIBILITY", "REGION/ZONE", "STATUS", "CPU", "MEM(GB)", "HOURLY COST"}
 	rows := make([][]string, 0, len(machines))
 	for _, machine := range machines {
 		rows = append(rows, []string{
 			machine.MachineName,
 			machine.MachineID,
+			machine.MachineVisibility,
 			fmt.Sprintf("%s/%s", machine.MachineRegion, machine.MachineZone),
 			machine.Status,
 			fmt.Sprintf("%d", machine.CPUCores),
@@ -195,20 +219,6 @@ func handleGetMachine(c *cli.Context) error {
 	return nil
 }
 
-func handleCreateMachine(c *cli.Context) error {
-	machine := machineFromFlags(c, nil)
-	id, err := api.CreateMachine(machine)
-	if err != nil {
-		return utils.NewError(fmt.Sprintf("failed to create machine: %s", err.Error()), nil)
-	}
-	if utils.TryPrintJSON(map[string]interface{}{"id": id}) {
-		return nil
-	}
-	utils.PrintSuccess("Machine created")
-	utils.PrintStatusLine("ID", fmt.Sprintf("%d", id))
-	return nil
-}
-
 func handleUpdateMachine(c *cli.Context) error {
 	machine, err := resolveMachineRef(c.Args().First())
 	if err != nil {
@@ -220,6 +230,98 @@ func handleUpdateMachine(c *cli.Context) error {
 	}
 	utils.PrintSuccess("Machine updated")
 	utils.PrintStatusLine("Machine ID", machine.MachineID)
+	return nil
+}
+
+func handleMachineVisibility(c *cli.Context) error {
+	if c.NArg() < 2 {
+		return utils.NewError("usage: 1ctl machine visibility <machine-id|name|numeric-id> <owner|organisation|public>", nil)
+	}
+	machine, err := resolveMachineRef(c.Args().Get(0))
+	if err != nil {
+		return err
+	}
+	visibility := c.Args().Get(1)
+	if !isValidMachineVisibility(visibility) {
+		return utils.NewError("machine_visibility must be one of: owner, organisation, public", nil)
+	}
+	if err := api.UpdateMachineVisibility(machine.MachineID, visibility); err != nil {
+		return utils.NewError(fmt.Sprintf("failed to update machine visibility: %s", err.Error()), nil)
+	}
+	utils.PrintSuccess("Machine visibility updated")
+	utils.PrintStatusLine("Machine ID", machine.MachineID)
+	utils.PrintStatusLine("Visibility", visibility)
+	return nil
+}
+
+func handleMachineLabelsList(c *cli.Context) error {
+	machine, err := resolveMachineRef(c.Args().First())
+	if err != nil {
+		return err
+	}
+	labels, err := api.GetMachineLabels(machine.MachineID)
+	if err != nil {
+		return utils.NewError(fmt.Sprintf("failed to list machine labels: %s", err.Error()), nil)
+	}
+	if utils.TryPrintJSON(labels) {
+		return nil
+	}
+	if len(labels) == 0 {
+		utils.PrintInfo("No machine labels found")
+		return nil
+	}
+	printLabels(labels)
+	return nil
+}
+
+func handleMachineLabelsSet(c *cli.Context) error {
+	if c.NArg() < 2 {
+		return utils.NewError("usage: 1ctl machine labels set <machine-id|name|numeric-id> <key=value>...", nil)
+	}
+	machine, err := resolveMachineRef(c.Args().Get(0))
+	if err != nil {
+		return err
+	}
+	labels, err := parseLabelAssignments(c.Args().Slice()[1:])
+	if err != nil {
+		return err
+	}
+	updated, err := api.UpdateMachineLabels(machine.MachineID, labels)
+	if err != nil {
+		return utils.NewError(fmt.Sprintf("failed to update machine labels: %s", err.Error()), nil)
+	}
+	if utils.TryPrintJSON(updated) {
+		return nil
+	}
+	utils.PrintSuccess("Machine labels updated")
+	printLabels(updated)
+	return nil
+}
+
+func handleMachineLabelsRemove(c *cli.Context) error {
+	if c.NArg() < 2 {
+		return utils.NewError("usage: 1ctl machine labels remove <machine-id|name|numeric-id> <key>...", nil)
+	}
+	machine, err := resolveMachineRef(c.Args().Get(0))
+	if err != nil {
+		return err
+	}
+	labels, err := api.GetMachineNodeLabels(machine.MachineID)
+	if err != nil {
+		return utils.NewError(fmt.Sprintf("failed to read machine labels: %s", err.Error()), nil)
+	}
+	for _, key := range c.Args().Slice()[1:] {
+		delete(labels, normalizeMachineLabelKey(key))
+	}
+	updated, err := api.ReplaceMachineLabels(machine.MachineID, labels)
+	if err != nil {
+		return utils.NewError(fmt.Sprintf("failed to remove machine labels: %s", err.Error()), nil)
+	}
+	if utils.TryPrintJSON(updated) {
+		return nil
+	}
+	utils.PrintSuccess("Machine labels updated")
+	printLabels(updated)
 	return nil
 }
 
@@ -401,19 +503,15 @@ func resolveMachineRef(ref string) (*api.Machine, error) {
 		return nil, utils.NewError("machine reference is required", nil)
 	}
 	if id, err := strconv.ParseInt(ref, 10, 64); err == nil {
-		return findOwnedMachine(func(machine api.Machine) bool { return machine.ID == id }, ref)
+		return findVisibleMachine(func(machine api.Machine) bool { return machine.ID == id }, ref)
 	}
-	return findOwnedMachine(func(machine api.Machine) bool {
+	return findVisibleMachine(func(machine api.Machine) bool {
 		return machine.MachineID == ref || machine.MachineName == ref
 	}, ref)
 }
 
-func findOwnedMachine(match func(api.Machine) bool, ref string) (*api.Machine, error) {
-	userID := context.GetUserID()
-	if userID == "" {
-		return nil, utils.NewError("user ID not found. Please run '1ctl auth login' first", nil)
-	}
-	machines, err := api.GetMachinesByOwnerID(api.ToUUID(userID))
+func findVisibleMachine(match func(api.Machine) bool, ref string) (*api.Machine, error) {
+	machines, err := api.GetVisibleMachines()
 	if err != nil {
 		return nil, utils.NewError(fmt.Sprintf("failed to resolve machine %q: %s", ref, err.Error()), nil)
 	}
@@ -423,6 +521,46 @@ func findOwnedMachine(match func(api.Machine) bool, ref string) (*api.Machine, e
 		}
 	}
 	return nil, utils.NewError(fmt.Sprintf("machine %q not found", ref), nil)
+}
+
+func isValidMachineVisibility(value string) bool {
+	switch value {
+	case "owner", "organisation", "public":
+		return true
+	default:
+		return false
+	}
+}
+
+func parseLabelAssignments(values []string) (map[string]string, error) {
+	labels := make(map[string]string, len(values))
+	for _, value := range values {
+		key, labelValue, ok := strings.Cut(value, "=")
+		if !ok || strings.TrimSpace(key) == "" {
+			return nil, utils.NewError(fmt.Sprintf("invalid label %q: expected key=value", value), nil)
+		}
+		labels[normalizeMachineLabelKey(key)] = strings.ToLower(strings.TrimSpace(labelValue))
+	}
+	return labels, nil
+}
+
+func normalizeMachineLabelKey(key string) string {
+	key = strings.TrimSpace(key)
+	if !strings.Contains(key, "/") {
+		return api.MachineTagLabelPrefix + key
+	}
+	return key
+}
+
+func printLabels(labels map[string]string) {
+	keys := make([]string, 0, len(labels))
+	for key := range labels {
+		keys = append(keys, key)
+	}
+	sort.Strings(keys)
+	for _, key := range keys {
+		utils.PrintStatusLine(key, labels[key])
+	}
 }
 
 func setStringFlag(c *cli.Context, name string, target *string) {
@@ -476,6 +614,7 @@ func printMachineDetails(machine *api.Machine) {
 	utils.PrintStatusLine("Node Type", machine.NodeType)
 	utils.PrintStatusLine("Pricing Tier", machine.PricingTier)
 	utils.PrintStatusLine("Hourly Cost", fmt.Sprintf("$%.4f", machine.HourlyCost))
+	utils.PrintStatusLine("Visibility", machine.MachineVisibility)
 	utils.PrintStatusLine("Monetized", fmt.Sprintf("%v", machine.Monetized))
 	utils.PrintStatusLine("Recommended", fmt.Sprintf("%v", machine.Recommended))
 	if machine.ResourceScore != nil {

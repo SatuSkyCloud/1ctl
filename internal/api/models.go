@@ -451,6 +451,7 @@ type Machine struct {
 	HasNVME             bool       `db:"has_nvme" json:"has_nvme"`
 	PricingTier         string     `db:"pricing_tier" json:"pricing_tier"`
 	HourlyCost          float64    `db:"hourly_cost" json:"hourly_cost"`
+	MachineVisibility   string     `db:"machine_visibility" json:"machine_visibility"`
 	CreatedAt           time.Time  `db:"created_at" json:"created_at"`
 	UpdatedAt           time.Time  `db:"updated_at" json:"updated_at"`
 	CPUArch             string     `json:"cpu_arch"`

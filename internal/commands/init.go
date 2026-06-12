@@ -101,6 +101,8 @@ func handleInit(c *cli.Context) error {
 		"  # rolling_max_surge = \"25%\"",
 		"  # rolling_max_unavailable = \"25%\"",
 		"  # machine_tag = \"production\"  # BYOA: deploy to your labelled machines",
+		"  # machine_labels = [\"env=production\", \"gpu\"]      # AND selectors",
+		"  # machine_label_any = [\"zone=kul\", \"zone=bki\"]   # OR selectors",
 		"  # wait_for = [\"postgres:5432\"]",
 		"",
 		"# [volume]",

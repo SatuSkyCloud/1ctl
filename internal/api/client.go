@@ -815,36 +815,72 @@ func GetEnvironmentsByNamespace(namespace string) ([]Environment, error) {
 // label `satusky.com/production` set on it.
 const MachineTagLabelPrefix = "satusky.com/"
 
-// GetMachineLabels returns the satusky.com/* labels for a machine. Used by
-// the deploy `--machine-tag` resolver to filter owned machines client-side
-// without a new backend endpoint.
+// GetMachineLabels returns the satusky.com/* labels for a visible machine.
 func GetMachineLabels(machineID string) (map[string]string, error) {
+	var resp struct {
+		Error bool `json:"error"`
+		Data  struct {
+			Labels map[string]string `json:"labels"`
+			Custom map[string]string `json:"custom"`
+		} `json:"data"`
+	}
+	if err := makeRequest("GET", fmt.Sprintf("/machines/%s/labels", url.PathEscape(machineID)), nil, &resp); err != nil {
+		return nil, err
+	}
+	if resp.Data.Custom != nil {
+		return resp.Data.Custom, nil
+	}
+	return resp.Data.Labels, nil
+}
+
+func GetMachineNodeLabels(machineID string) (map[string]string, error) {
 	var resp struct {
 		Error bool `json:"error"`
 		Data  struct {
 			Labels map[string]string `json:"labels"`
 		} `json:"data"`
 	}
-	if err := makeRequest("GET", fmt.Sprintf("/machines/%s/labels", machineID), nil, &resp); err != nil {
+	if err := makeMainAPIRequest("GET", fmt.Sprintf("/machines/%s/node/labels", url.PathEscape(machineID)), nil, &resp); err != nil {
 		return nil, err
 	}
 	return resp.Data.Labels, nil
 }
 
-func CreateMachine(machine Machine) (int64, error) {
+func UpdateMachineLabels(machineID string, labels map[string]string) (map[string]string, error) {
 	var resp struct {
-		Error bool  `json:"error"`
-		Data  int64 `json:"data"`
+		Error bool              `json:"error"`
+		Data  map[string]string `json:"data"`
 	}
-	if err := makeRequest("POST", "/machines/create", machine, &resp); err != nil {
-		return 0, err
+	req := map[string]map[string]string{"labels": labels}
+	if err := makeRequest("PATCH", fmt.Sprintf("/machines/%s/labels", url.PathEscape(machineID)), req, &resp); err != nil {
+		return nil, err
 	}
 	return resp.Data, nil
+}
+
+func ReplaceMachineLabels(machineID string, labels map[string]string) (map[string]string, error) {
+	var resp struct {
+		Error bool `json:"error"`
+		Data  struct {
+			Labels map[string]string `json:"labels"`
+		} `json:"data"`
+	}
+	req := map[string]map[string]string{"labels": labels}
+	if err := makeMainAPIRequest("PATCH", fmt.Sprintf("/machines/%s/node/labels", url.PathEscape(machineID)), req, &resp); err != nil {
+		return nil, err
+	}
+	return resp.Data.Labels, nil
 }
 
 func UpdateMachine(machineID string, machine Machine) error {
 	var resp apiResponse
 	return makeRequest("POST", fmt.Sprintf("/machines/update/%s", machineID), machine, &resp)
+}
+
+func UpdateMachineVisibility(machineID, visibility string) error {
+	var resp apiResponse
+	req := map[string]string{"machine_visibility": visibility}
+	return makeRequest("PATCH", fmt.Sprintf("/machines/%s/visibility", url.PathEscape(machineID)), req, &resp)
 }
 
 func DeleteMachine(machineID string) error {
@@ -931,6 +967,34 @@ func MachineHasTag(labels map[string]string, tag string) bool {
 	return ok
 }
 
+type MachineLabelFilter struct {
+	Key      string   `json:"key"`
+	Operator string   `json:"operator"`
+	Value    string   `json:"value,omitempty"`
+	Values   []string `json:"values,omitempty"`
+}
+
+type MachineLabelQueryRequest struct {
+	Filters []MachineLabelFilter `json:"filters"`
+	Match   string               `json:"match"`
+}
+
+func QueryMachinesByLabels(req MachineLabelQueryRequest) ([]Machine, error) {
+	var resp apiResponse
+	if err := makeRequest("POST", "/machines/label-query", req, &resp); err != nil {
+		return nil, err
+	}
+	return machinesFromResponseData(resp.Data)
+}
+
+func GetVisibleMachines() ([]Machine, error) {
+	var resp apiResponse
+	if err := makeRequest("GET", "/machines/visible", nil, &resp); err != nil {
+		return nil, err
+	}
+	return machinesFromResponseData(resp.Data)
+}
+
 func GetMachinesByOwnerID(ownerID uuid.UUID) ([]Machine, error) {
 	var resp apiResponse
 	err := makeRequest("GET", fmt.Sprintf("/machines/ownerId/%s", ownerID), nil, &resp)
@@ -938,16 +1002,7 @@ func GetMachinesByOwnerID(ownerID uuid.UUID) ([]Machine, error) {
 		return nil, err
 	}
 
-	data, err := json.Marshal(resp.Data)
-	if err != nil {
-		return nil, utils.NewError(fmt.Sprintf("failed to marshal response data: %s", err.Error()), nil)
-	}
-
-	var machines []Machine
-	if err := json.Unmarshal(data, &machines); err != nil {
-		return nil, utils.NewError(fmt.Sprintf("failed to unmarshal machines: %s", err.Error()), nil)
-	}
-	return machines, nil
+	return machinesFromResponseData(resp.Data)
 }
 
 func GetMachineByID(machineID uuid.UUID) (*Machine, error) {
@@ -995,7 +1050,11 @@ func GetAvailableMachines() ([]Machine, error) {
 		return nil, err
 	}
 
-	data, err := json.Marshal(resp.Data)
+	return machinesFromResponseData(resp.Data)
+}
+
+func machinesFromResponseData(dataValue interface{}) ([]Machine, error) {
+	data, err := json.Marshal(dataValue)
 	if err != nil {
 		return nil, utils.NewError(fmt.Sprintf("failed to marshal response data: %s", err.Error()), nil)
 	}

@@ -159,7 +159,7 @@ _satusky_cli_completion() {
             ;;
         deploy)
             if [[ ${COMP_CWORD} == 2 ]]; then
-                COMPREPLY=( $(compgen -W "list get status --cpu --cpu-request --cpu-limit --memory --machine --domain --health-path --image --dockerfile --env --port --volume-size --volume-mount --zone --multicluster --multicluster-mode --backup-enabled --backup-schedule --backup-retention --backup-priority-cluster --replicas --pdb --pdb-type --pdb-min-available --pdb-percent --hpa --hpa-min-replicas --hpa-max-replicas --hpa-cpu-target --hpa-memory-target --vpa --vpa-mode --vpa-min-cpu --vpa-max-cpu --vpa-min-memory --vpa-max-memory --wait-for" -- ${cur}) )
+                COMPREPLY=( $(compgen -W "list get status --cpu --cpu-request --cpu-limit --memory --machine --machine-tag --machine-label --machine-label-any --domain --health-path --image --dockerfile --env --port --volume-size --volume-mount --zone --multicluster --multicluster-mode --backup-enabled --backup-schedule --backup-retention --backup-priority-cluster --replicas --pdb --pdb-type --pdb-min-available --pdb-percent --hpa --hpa-min-replicas --hpa-max-replicas --hpa-cpu-target --hpa-memory-target --vpa --vpa-mode --vpa-min-cpu --vpa-max-cpu --vpa-min-memory --vpa-max-memory --wait-for" -- ${cur}) )
             else
                 case "${subcmd}" in
                     list)
@@ -194,7 +194,7 @@ _satusky_cli_completion() {
             ;;
         machine)
             if [[ ${COMP_CWORD} == 2 ]]; then
-                COMPREPLY=( $(compgen -W "list available vm usage" -- ${cur}) )
+                COMPREPLY=( $(compgen -W "list get update visibility labels delete inspect logs events available usage" -- ${cur}) )
             else
                 case "${subcmd}" in
                     list)
@@ -203,9 +203,12 @@ _satusky_cli_completion() {
                     available)
                         COMPREPLY=( $(compgen -W "--quiet --region --zone --min-cpu --min-memory --gpu --recommended --pricing-tier" -- ${cur}) )
                         ;;
-                    vm)
+                    visibility)
+                        COMPREPLY=( $(compgen -W "owner organisation public" -- ${cur}) )
+                        ;;
+                    labels)
                         if [[ ${COMP_CWORD} == 3 ]]; then
-                            COMPREPLY=( $(compgen -W "status start stop reboot resize apply-config console" -- ${cur}) )
+                            COMPREPLY=( $(compgen -W "list set remove" -- ${cur}) )
                         fi
                         ;;
                 esac
@@ -499,23 +502,26 @@ _satusky_cli() {
                 machine)
                     if (( CURRENT == 2 )); then
                         local -a subcommands=(
-                            'list:List owned machines'
+                            'list:List visible machines'
+                            'get:Show machine details'
+                            'update:Update machine inventory'
+                            'visibility:Set machine visibility'
+                            'labels:Manage machine labels'
+                            'delete:Decommission a machine'
+                            'inspect:Inspect a machine'
+                            'logs:Fetch machine logs'
+                            'events:Fetch machine events'
                             'available:List available machines for rent'
-                            'vm:Manage Mac agent VM lifecycle'
                             'usage:View machine usage'
                         )
                         _describe -t subcommands 'machine subcommands' subcommands
-                    elif [[ $words[2] == "vm" ]] && (( CURRENT == 3 )); then
-                        local -a vmcmds=(
-                            'status:Show VM state'
-                            'start:Start a VM'
-                            'stop:Stop a VM'
-                            'reboot:Reboot a VM'
-                            'resize:Resize a VM'
-                            'apply-config:Apply Talos config'
-                            'console:Enable/disable console streaming'
+                    elif [[ $words[2] == "labels" ]] && (( CURRENT == 3 )); then
+                        local -a labelcmds=(
+                            'list:List labels'
+                            'set:Set labels'
+                            'remove:Remove labels'
                         )
-                        _describe -t subcommands 'vm subcommands' vmcmds
+                        _describe -t subcommands 'label subcommands' labelcmds
                     fi
                     ;;
                 org)
@@ -759,6 +765,8 @@ complete -c 1ctl -l cpu-request -xa '63m 125m 250m 500m 1000m 2000m'
 complete -c 1ctl -l cpu-limit -xa '500m 1 2 4 8 16'
 complete -c 1ctl -l memory -xa '512Mi 1Gi 2Gi 4Gi 8Gi 16Gi 32Gi'
 complete -c 1ctl -l machine -xa '(__fish_1ctl_machines)'
+complete -c 1ctl -l machine-label
+complete -c 1ctl -l machine-label-any
 complete -c 1ctl -l hostname -xa '(__fish_1ctl_machines)'
 complete -c 1ctl -l port -xa '80 443 3000 8080 8443'
 complete -c 1ctl -l volume-size -xa '1Gi 5Gi 10Gi 20Gi 50Gi 100Gi'
@@ -832,10 +840,18 @@ complete -c 1ctl -f -n '__fish_1ctl_using_command environment' -a 'list' -d 'Lis
 complete -c 1ctl -f -n '__fish_1ctl_using_command environment' -a 'delete' -d 'Delete an environment'
 
 # Machine subcommands
-complete -c 1ctl -f -n '__fish_1ctl_using_command machine' -a 'list' -d 'List owned machines'
+complete -c 1ctl -f -n '__fish_1ctl_using_command machine' -a 'list' -d 'List visible machines'
+complete -c 1ctl -f -n '__fish_1ctl_using_command machine' -a 'get' -d 'Show machine details'
+complete -c 1ctl -f -n '__fish_1ctl_using_command machine' -a 'update' -d 'Update machine inventory'
+complete -c 1ctl -f -n '__fish_1ctl_using_command machine' -a 'visibility' -d 'Set machine visibility'
+complete -c 1ctl -f -n '__fish_1ctl_using_command machine' -a 'labels' -d 'Manage machine labels'
+complete -c 1ctl -f -n '__fish_1ctl_using_command machine' -a 'delete' -d 'Decommission a machine'
+complete -c 1ctl -f -n '__fish_1ctl_using_command machine' -a 'inspect' -d 'Inspect a machine'
+complete -c 1ctl -f -n '__fish_1ctl_using_command machine' -a 'logs' -d 'Fetch machine logs'
+complete -c 1ctl -f -n '__fish_1ctl_using_command machine' -a 'events' -d 'Fetch machine events'
 complete -c 1ctl -f -n '__fish_1ctl_using_command machine' -a 'available' -d 'List available machines'
-complete -c 1ctl -f -n '__fish_1ctl_using_command machine' -a 'vm' -d 'Manage Mac agent VM lifecycle'
 complete -c 1ctl -f -n '__fish_1ctl_using_command machine' -a 'usage' -d 'View machine usage'
+complete -c 1ctl -f -n '__fish_1ctl_using_command machine; and __fish_seen_subcommand_from labels' -a 'list set remove' -d 'Machine label commands'
 
 # Credits subcommands
 complete -c 1ctl -f -n '__fish_1ctl_using_command credits' -a 'balance' -d 'View credit balance'
@@ -1024,20 +1040,23 @@ Register-ArgumentCompleter -Native -CommandName 1ctl -ScriptBlock {
             break
         }
         '1ctl;machine' {
-            [CompletionResult]::new('list', 'list', [CompletionResultType]::ParameterValue, 'List owned machines')
+            [CompletionResult]::new('list', 'list', [CompletionResultType]::ParameterValue, 'List visible machines')
+            [CompletionResult]::new('get', 'get', [CompletionResultType]::ParameterValue, 'Show machine details')
+            [CompletionResult]::new('update', 'update', [CompletionResultType]::ParameterValue, 'Update machine inventory')
+            [CompletionResult]::new('visibility', 'visibility', [CompletionResultType]::ParameterValue, 'Set machine visibility')
+            [CompletionResult]::new('labels', 'labels', [CompletionResultType]::ParameterValue, 'Manage machine labels')
+            [CompletionResult]::new('delete', 'delete', [CompletionResultType]::ParameterValue, 'Decommission a machine')
+            [CompletionResult]::new('inspect', 'inspect', [CompletionResultType]::ParameterValue, 'Inspect a machine')
+            [CompletionResult]::new('logs', 'logs', [CompletionResultType]::ParameterValue, 'Fetch machine logs')
+            [CompletionResult]::new('events', 'events', [CompletionResultType]::ParameterValue, 'Fetch machine events')
             [CompletionResult]::new('available', 'available', [CompletionResultType]::ParameterValue, 'List available machines')
-            [CompletionResult]::new('vm', 'vm', [CompletionResultType]::ParameterValue, 'Manage Mac agent VM lifecycle')
             [CompletionResult]::new('usage', 'usage', [CompletionResultType]::ParameterValue, 'View machine usage')
             break
         }
-        '1ctl;machine;vm' {
-            [CompletionResult]::new('status', 'status', [CompletionResultType]::ParameterValue, 'Show VM state')
-            [CompletionResult]::new('start', 'start', [CompletionResultType]::ParameterValue, 'Start a VM')
-            [CompletionResult]::new('stop', 'stop', [CompletionResultType]::ParameterValue, 'Stop a VM')
-            [CompletionResult]::new('reboot', 'reboot', [CompletionResultType]::ParameterValue, 'Reboot a VM')
-            [CompletionResult]::new('resize', 'resize', [CompletionResultType]::ParameterValue, 'Resize a VM')
-            [CompletionResult]::new('apply-config', 'apply-config', [CompletionResultType]::ParameterValue, 'Apply Talos config')
-            [CompletionResult]::new('console', 'console', [CompletionResultType]::ParameterValue, 'Enable/disable console streaming')
+        '1ctl;machine;labels' {
+            [CompletionResult]::new('list', 'list', [CompletionResultType]::ParameterValue, 'List labels')
+            [CompletionResult]::new('set', 'set', [CompletionResultType]::ParameterValue, 'Set labels')
+            [CompletionResult]::new('remove', 'remove', [CompletionResultType]::ParameterValue, 'Remove labels')
             break
         }
         '1ctl;credits' {

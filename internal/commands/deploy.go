@@ -49,6 +49,14 @@ func DeployCommand() *cli.Command {
 			Name:  "machine-tag",
 			Usage: "Deploy to your machines labelled with this tag (BYOA). Set the satusky.com/<tag> label via the labels API.",
 		},
+		&cli.StringSliceFlag{
+			Name:  "machine-label",
+			Usage: "Deploy to visible machines matching this label selector (AND). Repeatable. Formats: key, key=value, key!=value.",
+		},
+		&cli.StringSliceFlag{
+			Name:  "machine-label-any",
+			Usage: "Deploy to visible machines matching any of these label selectors (OR). Repeatable. Formats: key, key=value, key!=value.",
+		},
 		&cli.StringFlag{
 			Name:  "domain",
 			Usage: "Custom domain (default: *.satusky.com)",
@@ -738,17 +746,11 @@ func prepareDeploymentOptions(c *cli.Context, cfg *config.ProjectConfig, userSet
 
 	// Handle hostnames if enabled when --machine is set
 	if c.IsSet("machine") {
-		machineNames := c.StringSlice("machine")
 		hostnameSet := make(map[string]bool) // Add deduplication for manually specified machines
-		for _, machineName := range machineNames {
-			machine, err := api.GetMachineByName(machineName)
+		for _, machineRef := range c.StringSlice("machine") {
+			machine, err := resolveMachineRef(machineRef)
 			if err != nil {
-				return deploy.DeploymentOptions{}, utils.NewError(fmt.Sprintf("failed to get machine by name: %s", err.Error()), nil)
-			}
-
-			// check if machine is owned by the current user (monetized machines can be used by anyone)
-			if !machine.Monetized && machine.OwnerID.String() != context.GetUserID() {
-				return deploy.DeploymentOptions{}, utils.NewError(fmt.Sprintf("machine %s is not owned by you", machineName), nil)
+				return deploy.DeploymentOptions{}, err
 			}
 
 			// Only add hostname if we haven't seen it before (using machine ID instead of machine name)
@@ -775,20 +777,37 @@ func prepareDeploymentOptions(c *cli.Context, cfg *config.ProjectConfig, userSet
 		opts.Zone = c.String("zone")
 	}
 
-	// Handle --machine-tag: BYOA targeting by label. Resolves to a list of
-	// owned, online machine IDs matching satusky.com/<tag>. Precedence:
-	// --machine-tag flag > satusky.toml [app].machine_tag.
+	// Handle label-based machine targeting. --machine is explicit and wins.
+	// --machine-tag is kept as a shorthand for an exists selector.
 	tag := c.String("machine-tag")
 	if tag == "" && cfg != nil {
 		tag = cfg.App.MachineTag
 	}
-	if tag != "" && !c.IsSet("machine") {
-		hostnames, err := resolveMachineTag(tag)
-		if err != nil {
-			return deploy.DeploymentOptions{}, err
+	if !c.IsSet("machine") {
+		allSelectors := append([]string{}, c.StringSlice("machine-label")...)
+		if cfg != nil && !c.IsSet("machine-label") {
+			allSelectors = append(allSelectors, cfg.App.MachineLabels...)
 		}
-		opts.Hostnames = hostnames
-		utils.PrintInfo("Resolved --machine-tag %q to %d owned machine(s)", tag, len(hostnames))
+		if tag != "" {
+			allSelectors = append(allSelectors, tag)
+		}
+		anySelectors := c.StringSlice("machine-label-any")
+		if cfg != nil && !c.IsSet("machine-label-any") {
+			anySelectors = append(anySelectors, cfg.App.MachineLabelAny...)
+		}
+		if len(allSelectors) > 0 || len(anySelectors) > 0 {
+			hostnames, err := resolveMachineLabelSelectors(allSelectors, anySelectors)
+			if err != nil {
+				return deploy.DeploymentOptions{}, err
+			}
+			opts.Hostnames = hostnames
+			switch {
+			case tag != "" && len(allSelectors) == 1 && len(anySelectors) == 0:
+				utils.PrintInfo("Resolved --machine-tag %q to %d visible machine(s)", tag, len(hostnames))
+			default:
+				utils.PrintInfo("Resolved machine label selectors to %d visible machine(s)", len(hostnames))
+			}
+		}
 	}
 
 	// Handle multicluster configuration
@@ -911,49 +930,98 @@ func prepareDeploymentOptions(c *cli.Context, cfg *config.ProjectConfig, userSet
 	return opts, nil
 }
 
-// resolveMachineTag fetches the current user's owned machines, then filters
-// them client-side to those tagged with satusky.com/<tag>. Returns the list
-// of online machine IDs to send as hostnames. Errors clearly if no machines
-// are online or tagged.
-//
-// Implementation note: this does N+1 round trips (one to list, one per
-// machine for labels). Acceptable for the small-N owner-machine case;
-// migrate to a server-side filter endpoint if the cost becomes meaningful.
-func resolveMachineTag(tag string) ([]string, error) {
-	userID := context.GetUserID()
-	if userID == "" {
-		return nil, utils.NewError("not authenticated — run '1ctl auth login' first", nil)
-	}
-	userUUID, err := api.ParseUUID(userID)
+func resolveMachineLabelSelectors(allSelectors, anySelectors []string) ([]string, error) {
+	allFilters, err := parseMachineLabelFilters(allSelectors)
 	if err != nil {
-		return nil, utils.NewError(fmt.Sprintf("invalid user ID in context: %s", err.Error()), nil)
+		return nil, err
 	}
-	machines, err := api.GetMachinesByOwnerID(userUUID)
+	anyFilters, err := parseMachineLabelFilters(anySelectors)
 	if err != nil {
-		return nil, utils.NewError(fmt.Sprintf("failed to list owned machines: %s", err.Error()), nil)
-	}
-	if len(machines) == 0 {
-		return nil, utils.NewError("no owned machines found — register a machine before using --machine-tag", nil)
+		return nil, err
 	}
 
-	var hostnames []string
-	for _, m := range machines {
-		if m.Status != "online" {
-			continue
-		}
-		labels, err := api.GetMachineLabels(m.MachineID)
+	var selected []api.Machine
+	switch {
+	case len(allFilters) > 0 && len(anyFilters) > 0:
+		allMatches, err := api.QueryMachinesByLabels(api.MachineLabelQueryRequest{Filters: allFilters, Match: "all"})
 		if err != nil {
-			utils.PrintWarning("Could not read labels for machine %s: %s", m.MachineID, err.Error())
+			return nil, utils.NewError(fmt.Sprintf("failed to resolve AND machine labels: %s", err.Error()), nil)
+		}
+		anyMatches, err := api.QueryMachinesByLabels(api.MachineLabelQueryRequest{Filters: anyFilters, Match: "any"})
+		if err != nil {
+			return nil, utils.NewError(fmt.Sprintf("failed to resolve OR machine labels: %s", err.Error()), nil)
+		}
+		anyIDs := make(map[string]struct{}, len(anyMatches))
+		for _, machine := range anyMatches {
+			anyIDs[machine.MachineID] = struct{}{}
+		}
+		for _, machine := range allMatches {
+			if _, ok := anyIDs[machine.MachineID]; ok {
+				selected = append(selected, machine)
+			}
+		}
+	case len(allFilters) > 0:
+		selected, err = api.QueryMachinesByLabels(api.MachineLabelQueryRequest{Filters: allFilters, Match: "all"})
+		if err != nil {
+			return nil, utils.NewError(fmt.Sprintf("failed to resolve machine labels: %s", err.Error()), nil)
+		}
+	case len(anyFilters) > 0:
+		selected, err = api.QueryMachinesByLabels(api.MachineLabelQueryRequest{Filters: anyFilters, Match: "any"})
+		if err != nil {
+			return nil, utils.NewError(fmt.Sprintf("failed to resolve machine labels: %s", err.Error()), nil)
+		}
+	default:
+		return nil, utils.NewError("at least one machine label selector is required", nil)
+	}
+
+	hostnameSet := make(map[string]struct{}, len(selected))
+	hostnames := make([]string, 0, len(selected))
+	for _, machine := range selected {
+		if machine.Status != "online" {
 			continue
 		}
-		if api.MachineHasTag(labels, tag) {
-			hostnames = append(hostnames, m.MachineID)
+		if _, ok := hostnameSet[machine.MachineID]; ok {
+			continue
 		}
+		hostnameSet[machine.MachineID] = struct{}{}
+		hostnames = append(hostnames, machine.MachineID)
 	}
 	if len(hostnames) == 0 {
-		return nil, utils.NewError(fmt.Sprintf("no machines tagged %q are online — apply the satusky.com/%s label to at least one machine first", tag, tag), nil)
+		return nil, utils.NewError("no visible online machines matched the machine label selectors", nil)
 	}
 	return hostnames, nil
+}
+
+func parseMachineLabelFilters(selectors []string) ([]api.MachineLabelFilter, error) {
+	filters := make([]api.MachineLabelFilter, 0, len(selectors))
+	for _, selector := range selectors {
+		filter, err := parseMachineLabelFilter(selector)
+		if err != nil {
+			return nil, err
+		}
+		filters = append(filters, filter)
+	}
+	return filters, nil
+}
+
+func parseMachineLabelFilter(selector string) (api.MachineLabelFilter, error) {
+	selector = strings.TrimSpace(selector)
+	if selector == "" {
+		return api.MachineLabelFilter{}, utils.NewError("empty machine label selector", nil)
+	}
+	if key, value, ok := strings.Cut(selector, "!="); ok {
+		if strings.TrimSpace(key) == "" {
+			return api.MachineLabelFilter{}, utils.NewError(fmt.Sprintf("invalid machine label selector %q", selector), nil)
+		}
+		return api.MachineLabelFilter{Key: normalizeMachineLabelKey(key), Operator: "!=", Value: strings.TrimSpace(value)}, nil
+	}
+	if key, value, ok := strings.Cut(selector, "="); ok {
+		if strings.TrimSpace(key) == "" {
+			return api.MachineLabelFilter{}, utils.NewError(fmt.Sprintf("invalid machine label selector %q", selector), nil)
+		}
+		return api.MachineLabelFilter{Key: normalizeMachineLabelKey(key), Operator: "=", Value: strings.TrimSpace(value)}, nil
+	}
+	return api.MachineLabelFilter{Key: normalizeMachineLabelKey(selector), Operator: "exists"}, nil
 }
 
 // captureUserSetFlags records which of the named flags the user explicitly

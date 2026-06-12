@@ -45,6 +45,8 @@ type AppConfig struct {
 	RollingMaxSurge       string   `toml:"rolling_max_surge"`
 	RollingMaxUnavailable string   `toml:"rolling_max_unavailable"`
 	MachineTag            string   `toml:"machine_tag"`
+	MachineLabels         []string `toml:"machine_labels"`
+	MachineLabelAny       []string `toml:"machine_label_any"`
 	WaitFor               []string `toml:"wait_for"`
 }
 

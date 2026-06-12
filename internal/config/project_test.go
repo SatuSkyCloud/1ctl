@@ -35,6 +35,8 @@ strategy = "recreate"
 rolling_max_surge = "50%"
 rolling_max_unavailable = "0"
 machine_tag = "production"
+machine_labels = ["env=production", "gpu"]
+machine_label_any = ["zone=kul", "zone=bki"]
 wait_for = ["postgres:5432", "redis:6379"]
 `
 	_, path := writeToml(t, contents)
@@ -84,6 +86,12 @@ wait_for = ["postgres:5432", "redis:6379"]
 	}
 	if cfg.App.MachineTag != "production" {
 		t.Errorf("MachineTag = %q, want production", cfg.App.MachineTag)
+	}
+	if len(cfg.App.MachineLabels) != 2 || cfg.App.MachineLabels[0] != "env=production" || cfg.App.MachineLabels[1] != "gpu" {
+		t.Errorf("MachineLabels = %v, want [env=production gpu]", cfg.App.MachineLabels)
+	}
+	if len(cfg.App.MachineLabelAny) != 2 || cfg.App.MachineLabelAny[0] != "zone=kul" || cfg.App.MachineLabelAny[1] != "zone=bki" {
+		t.Errorf("MachineLabelAny = %v, want [zone=kul zone=bki]", cfg.App.MachineLabelAny)
 	}
 	if len(cfg.App.WaitFor) != 2 || cfg.App.WaitFor[0] != "postgres:5432" || cfg.App.WaitFor[1] != "redis:6379" {
 		t.Errorf("WaitFor = %v, want [postgres:5432 redis:6379]", cfg.App.WaitFor)
