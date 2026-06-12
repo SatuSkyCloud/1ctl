@@ -38,6 +38,12 @@ func DomainsCommand() *cli.Command {
 			domainsRemoveCommand(),
 			domainsCheckCommand(),
 			domainsSetupCommand(),
+			domainsAvailableCommand(),
+			domainsSearchCommand(),
+			domainsManagedCommand(),
+			domainsDNSCommand(),
+			domainsPurchaseCommand(),
+			domainsPurchaseStatusCommand(),
 		},
 	}
 }

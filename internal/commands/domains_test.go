@@ -14,7 +14,7 @@ func TestDomainsCommandStructure(t *testing.T) {
 	if !containsString(cmd.Aliases, "domain") {
 		t.Errorf("Aliases = %v, want to include 'domain'", cmd.Aliases)
 	}
-	wantSubs := []string{"list", "add", "remove", "check", "setup"}
+	wantSubs := []string{"list", "add", "remove", "check", "setup", "available", "search", "managed", "dns", "purchase", "purchase-status"}
 	got := subNames(cmd.Subcommands)
 	for _, w := range wantSubs {
 		if !containsString(got, w) {
@@ -28,6 +28,26 @@ func TestDomainsCommandStructure(t *testing.T) {
 	}
 	if !hasFlag(add, "with-www") {
 		t.Errorf("add command missing with-www flag")
+	}
+
+	managed := findSubcommand(cmd, "managed")
+	if managed == nil {
+		t.Fatalf("managed subcommand missing")
+	}
+	for _, w := range []string{"list", "add", "verify", "delete"} {
+		if findSubcommand(managed, w) == nil {
+			t.Errorf("managed subcommands missing %q", w)
+		}
+	}
+
+	dns := findSubcommand(cmd, "dns")
+	if dns == nil {
+		t.Fatalf("dns subcommand missing")
+	}
+	for _, w := range []string{"list", "create", "update", "delete"} {
+		if findSubcommand(dns, w) == nil {
+			t.Errorf("dns subcommands missing %q", w)
+		}
 	}
 }
 
