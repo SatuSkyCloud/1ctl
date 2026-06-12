@@ -8,6 +8,7 @@ import (
 	"1ctl/internal/utils"
 	"1ctl/internal/validator"
 	"fmt"
+	"net/http"
 	"strings"
 	"time"
 
@@ -542,6 +543,16 @@ func reportDeployResult(resp *api.CreateDeploymentResponse, waitForWorkload bool
 		if workloadReady && !publicURL.Ready && resp.Domain != "" {
 			return utils.NewError(fmt.Sprintf("deployment workload is healthy, but public URL is not ready yet. Run: 1ctl domains check %s --probe", resp.Domain), nil)
 		}
+		if workloadReady && publicURL.Ready && resp.Domain != "" {
+			utils.PrintInfo("Running public URL smoke check against https://%s", resp.Domain)
+			smoke := checkPublicURLSmoke("https://" + resp.Domain)
+			if smoke.Ready {
+				utils.PrintSuccess("Public URL smoke check passed: https://%s", resp.Domain)
+			} else {
+				utils.PrintWarning("Public URL smoke check failed: %s", smoke.Reason)
+				return utils.NewError(fmt.Sprintf("deployment workload is healthy, but the public URL smoke check failed for https://%s: %s", resp.Domain, smoke.Reason), nil)
+			}
+		}
 	}
 
 	return nil
@@ -1054,6 +1065,12 @@ type publicURLReadiness struct {
 	Reason string
 }
 
+type publicURLSmokeResult struct {
+	Ready      bool
+	StatusCode int
+	Reason     string
+}
+
 func checkPublicURLReadiness(resp *api.CreateDeploymentResponse) publicURLReadiness {
 	if resp == nil || resp.IngressID == uuid.Nil || resp.Domain == "" {
 		return publicURLReadiness{Ready: true}
@@ -1109,6 +1126,33 @@ func domainStatusReason(status *api.DomainStatusResponse) string {
 		return fmt.Sprintf("DNS is %s", status.DNS.Status)
 	}
 	return "public URL is not ready"
+}
+
+func checkPublicURLSmoke(url string) publicURLSmokeResult {
+	client := &http.Client{Timeout: 10 * time.Second}
+	req, err := http.NewRequest(http.MethodGet, url, nil)
+	if err != nil {
+		return publicURLSmokeResult{Ready: false, Reason: fmt.Sprintf("failed to build request: %s", err.Error())}
+	}
+
+	resp, err := client.Do(req)
+	if err != nil {
+		return publicURLSmokeResult{Ready: false, Reason: fmt.Sprintf("request failed: %s", err.Error())}
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode >= http.StatusBadRequest {
+		return publicURLSmokeResult{
+			Ready:      false,
+			StatusCode: resp.StatusCode,
+			Reason:     fmt.Sprintf("unexpected HTTP status: %d %s", resp.StatusCode, http.StatusText(resp.StatusCode)),
+		}
+	}
+
+	return publicURLSmokeResult{
+		Ready:      true,
+		StatusCode: resp.StatusCode,
+	}
 }
 
 func deploymentStrategyText(strategy *api.DeploymentStrategyConfig) string {

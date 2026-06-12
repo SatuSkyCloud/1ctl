@@ -2,6 +2,8 @@ package commands
 
 import (
 	"flag"
+	"net/http"
+	"net/http/httptest"
 	"testing"
 
 	"1ctl/internal/config"
@@ -236,5 +238,35 @@ func TestValidateInputs_MulticlusterCustomDomain(t *testing.T) {
 				t.Errorf("validateInputs() unexpected error for multicluster=%v domain=%q: %v", tt.multicluster, tt.domain, err)
 			}
 		})
+	}
+}
+
+func TestCheckPublicURLSmokeReturnsReadyFor2xx(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusOK)
+	}))
+	t.Cleanup(srv.Close)
+
+	got := checkPublicURLSmoke(srv.URL)
+	if !got.Ready {
+		t.Fatalf("checkPublicURLSmoke() ready = false, reason = %q", got.Reason)
+	}
+	if got.StatusCode != http.StatusOK {
+		t.Fatalf("checkPublicURLSmoke() status = %d, want %d", got.StatusCode, http.StatusOK)
+	}
+}
+
+func TestCheckPublicURLSmokeFailsFor4xx(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusForbidden)
+	}))
+	t.Cleanup(srv.Close)
+
+	got := checkPublicURLSmoke(srv.URL)
+	if got.Ready {
+		t.Fatal("checkPublicURLSmoke() ready = true, want false")
+	}
+	if got.StatusCode != http.StatusForbidden {
+		t.Fatalf("checkPublicURLSmoke() status = %d, want %d", got.StatusCode, http.StatusForbidden)
 	}
 }
