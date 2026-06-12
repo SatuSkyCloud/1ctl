@@ -300,10 +300,47 @@ cd your-project
 
 > Top-up, invoices, auto-topup, and billing notifications were moved from the CLI to the SatuSky Control Panel (web UI). The CLI keeps read-only visibility (`balance` / `transactions` / `usage`).
 
-<!-- `1ctl storage` was removed in the v0.7.x cleanup. The CLI surface will
-     return in a follow-up release (#3 T-04) — the api/storage.go backend
-     calls are present, the command handlers aren't wired yet. For now use
-     the SatuSky Control Panel for storage operations. -->
+### Managed Postgres
+
+`1ctl postgres` manages CNPG-backed Postgres clusters exposed by the SatuSky backend storage API.
+
+```bash
+# See available Kubernetes storage classes
+1ctl postgres storage-classes
+
+# Create a managed Postgres cluster
+1ctl postgres create app-db \
+  --database app \
+  --user app \
+  --storage-class local-path \
+  --storage-size 10Gi
+
+# List, inspect, and watch readiness
+1ctl postgres list
+1ctl postgres get <storage-id>
+1ctl postgres status <storage-id>
+
+# Retrieve credentials or connect with psql
+1ctl postgres credentials <storage-id>
+1ctl postgres connect <storage-id>
+
+# Forward a local port to the cluster service
+1ctl postgres proxy <storage-id> --local-port 15432
+
+# Manage database users
+1ctl postgres users list <storage-id>
+1ctl postgres users create <storage-id> reporting --createdb
+1ctl postgres users delete <storage-id> reporting --yes
+
+# Manage external access rules
+1ctl postgres firewall list <storage-id>
+1ctl postgres firewall add <storage-id> --cidr 203.0.113.10/32 --description "office"
+1ctl postgres firewall disable <storage-id> <rule-id>
+
+# Re-apply resources or destroy the cluster
+1ctl postgres redeploy <storage-id>
+1ctl postgres destroy <storage-id> --yes
+```
 
 ### Logs
 

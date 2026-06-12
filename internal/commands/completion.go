@@ -53,7 +53,7 @@ _satusky_cli_completion() {
 
     # Top level commands
     if [[ $COMP_CWORD == 1 ]]; then
-        opts="auth org deploy doctor secret domains environment machine credits storage logs notifications user token marketplace audit pricing cluster completion --help --version"
+        opts="auth org deploy doctor secret domains environment machine credits postgres logs notifications user token marketplace audit pricing cluster completion --help --version"
         COMPREPLY=( $(compgen -W "${opts}" -- ${cur}) )
         return 0
     fi
@@ -232,18 +232,33 @@ _satusky_cli_completion() {
                 esac
             fi
             ;;
-        storage|s3|spaces)
+        postgres|pg)
             if [[ ${COMP_CWORD} == 2 ]]; then
-                COMPREPLY=( $(compgen -W "list get buckets files usage presign delete" -- ${cur}) )
+                COMPREPLY=( $(compgen -W "create list get status credentials connect proxy redeploy destroy users firewall storage-classes" -- ${cur}) )
             else
                 case "${subcmd}" in
-                    buckets)
+                    create)
+                        COMPREPLY=( $(compgen -W "--database --user --version --instances --storage-size --storage-class --wal-storage-size --cpu-request --cpu --memory-request --memory" -- ${cur}) )
+                        ;;
+                    destroy)
+                        COMPREPLY=( $(compgen -W "--yes" -- ${cur}) )
+                        ;;
+                    users)
                         if [[ ${COMP_CWORD} == 3 ]]; then
                             COMPREPLY=( $(compgen -W "list create delete" -- ${cur}) )
+                        else
+                            COMPREPLY=( $(compgen -W "--superuser --createdb --createrole --replication --bypassrls --comment --yes" -- ${cur}) )
                         fi
                         ;;
-                    presign)
-                        COMPREPLY=( $(compgen -W "--file --expires" -- ${cur}) )
+                    firewall|fw)
+                        if [[ ${COMP_CWORD} == 3 ]]; then
+                            COMPREPLY=( $(compgen -W "list add enable disable remove" -- ${cur}) )
+                        else
+                            COMPREPLY=( $(compgen -W "--cidr --description --yes" -- ${cur}) )
+                        fi
+                        ;;
+                    proxy)
+                        COMPREPLY=( $(compgen -W "--bind-addr --local-port" -- ${cur}) )
                         ;;
                 esac
             fi
@@ -430,7 +445,7 @@ _satusky_cli() {
                 'environment:Manage environments'
                 'machine:Manage machines'
                 'credits:Manage credits and billing'
-                'storage:Manage S3/object storage'
+                'postgres:Manage SatuSky managed Postgres clusters'
                 'logs:View and stream pod logs'
                 'notifications:Manage notifications'
                 'user:Manage user profile'
@@ -643,18 +658,23 @@ _satusky_cli() {
                         _describe -t subcommands 'credits subcommands' subcommands
                     fi
                     ;;
-                storage)
+                postgres)
                     if (( CURRENT == 2 )); then
                         local -a subcommands=(
-                            'list:List storage configs'
-                            'get:Get storage details'
-                            'delete:Delete storage'
-                            'buckets:Manage buckets'
-                            'files:List files'
-                            'presign:Get presigned URL'
-                            'usage:View storage usage'
+                            'create:Create a managed Postgres cluster'
+                            'list:List managed Postgres clusters'
+                            'get:Show managed Postgres cluster details'
+                            'status:Show live managed Postgres status'
+                            'credentials:Show database connection credentials'
+                            'connect:Connect using psql'
+                            'proxy:Forward a local TCP port'
+                            'redeploy:Re-apply CNPG resources'
+                            'destroy:Destroy a managed Postgres cluster'
+                            'users:Manage database users'
+                            'firewall:Manage firewall rules'
+                            'storage-classes:List available Kubernetes storage classes'
                         )
-                        _describe -t subcommands 'storage subcommands' subcommands
+                        _describe -t subcommands 'postgres subcommands' subcommands
                     fi
                     ;;
                 logs)
@@ -716,7 +736,7 @@ func handleFishCompletion(c *cli.Context) error {
 
 function __fish_1ctl_no_subcommand
     for i in (commandline -opc)
-        if contains -- $i auth org deploy doctor secret domains domain environment machine credits storage logs notifications user token marketplace audit pricing cluster completion
+        if contains -- $i auth org deploy doctor secret domains domain environment machine credits postgres logs notifications user token marketplace audit pricing cluster completion
             return 1
         end
     end
@@ -782,7 +802,7 @@ complete -c 1ctl -f -n __fish_1ctl_no_subcommand -a domains -d 'Manage custom do
 complete -c 1ctl -f -n __fish_1ctl_no_subcommand -a environment -d 'Manage environments'
 complete -c 1ctl -f -n __fish_1ctl_no_subcommand -a machine -d 'Manage machines'
 complete -c 1ctl -f -n __fish_1ctl_no_subcommand -a credits -d 'Manage credits and billing'
-complete -c 1ctl -f -n __fish_1ctl_no_subcommand -a storage -d 'Manage S3/object storage'
+complete -c 1ctl -f -n __fish_1ctl_no_subcommand -a postgres -d 'Manage SatuSky managed Postgres clusters'
 complete -c 1ctl -f -n __fish_1ctl_no_subcommand -a logs -d 'View and stream pod logs'
 complete -c 1ctl -f -n __fish_1ctl_no_subcommand -a notifications -d 'Manage notifications'
 complete -c 1ctl -f -n __fish_1ctl_no_subcommand -a user -d 'Manage user profile'
@@ -846,14 +866,19 @@ complete -c 1ctl -f -n '__fish_1ctl_using_command credits' -a 'invoices' -d 'Man
 complete -c 1ctl -f -n '__fish_1ctl_using_command credits' -a 'auto-topup' -d 'Manage auto top-up'
 complete -c 1ctl -f -n '__fish_1ctl_using_command credits' -a 'notifications' -d 'Manage billing notifications'
 
-# Storage subcommands
-complete -c 1ctl -f -n '__fish_1ctl_using_command storage' -a 'list' -d 'List storage configs'
-complete -c 1ctl -f -n '__fish_1ctl_using_command storage' -a 'get' -d 'Get storage details'
-complete -c 1ctl -f -n '__fish_1ctl_using_command storage' -a 'delete' -d 'Delete storage'
-complete -c 1ctl -f -n '__fish_1ctl_using_command storage' -a 'buckets' -d 'Manage buckets'
-complete -c 1ctl -f -n '__fish_1ctl_using_command storage' -a 'files' -d 'List files'
-complete -c 1ctl -f -n '__fish_1ctl_using_command storage' -a 'presign' -d 'Get presigned URL'
-complete -c 1ctl -f -n '__fish_1ctl_using_command storage' -a 'usage' -d 'View storage usage'
+# Postgres subcommands
+complete -c 1ctl -f -n '__fish_1ctl_using_command postgres' -a 'create' -d 'Create a managed Postgres cluster'
+complete -c 1ctl -f -n '__fish_1ctl_using_command postgres' -a 'list' -d 'List managed Postgres clusters'
+complete -c 1ctl -f -n '__fish_1ctl_using_command postgres' -a 'get' -d 'Show managed Postgres cluster details'
+complete -c 1ctl -f -n '__fish_1ctl_using_command postgres' -a 'status' -d 'Show live managed Postgres status'
+complete -c 1ctl -f -n '__fish_1ctl_using_command postgres' -a 'credentials' -d 'Show database connection credentials'
+complete -c 1ctl -f -n '__fish_1ctl_using_command postgres' -a 'connect' -d 'Connect using psql'
+complete -c 1ctl -f -n '__fish_1ctl_using_command postgres' -a 'proxy' -d 'Forward a local TCP port'
+complete -c 1ctl -f -n '__fish_1ctl_using_command postgres' -a 'redeploy' -d 'Re-apply CNPG resources'
+complete -c 1ctl -f -n '__fish_1ctl_using_command postgres' -a 'destroy' -d 'Destroy a managed Postgres cluster'
+complete -c 1ctl -f -n '__fish_1ctl_using_command postgres' -a 'users' -d 'Manage database users'
+complete -c 1ctl -f -n '__fish_1ctl_using_command postgres' -a 'firewall' -d 'Manage firewall rules'
+complete -c 1ctl -f -n '__fish_1ctl_using_command postgres' -a 'storage-classes' -d 'List available Kubernetes storage classes'
 
 # Logs subcommands
 complete -c 1ctl -f -n '__fish_1ctl_using_command logs' -a 'stream' -d 'Stream pod logs'
@@ -957,7 +982,7 @@ Register-ArgumentCompleter -Native -CommandName 1ctl -ScriptBlock {
             [CompletionResult]::new('environment', 'environment', [CompletionResultType]::ParameterValue, 'Manage environments')
             [CompletionResult]::new('machine', 'machine', [CompletionResultType]::ParameterValue, 'Manage machines')
             [CompletionResult]::new('credits', 'credits', [CompletionResultType]::ParameterValue, 'Manage credits and billing')
-            [CompletionResult]::new('storage', 'storage', [CompletionResultType]::ParameterValue, 'Manage S3/object storage')
+            [CompletionResult]::new('postgres', 'postgres', [CompletionResultType]::ParameterValue, 'Manage SatuSky managed Postgres clusters')
             [CompletionResult]::new('logs', 'logs', [CompletionResultType]::ParameterValue, 'View and stream pod logs')
             [CompletionResult]::new('notifications', 'notifications', [CompletionResultType]::ParameterValue, 'Manage notifications')
             [CompletionResult]::new('user', 'user', [CompletionResultType]::ParameterValue, 'Manage user profile')
@@ -1050,14 +1075,19 @@ Register-ArgumentCompleter -Native -CommandName 1ctl -ScriptBlock {
             [CompletionResult]::new('notifications', 'notifications', [CompletionResultType]::ParameterValue, 'Manage billing notifications')
             break
         }
-        '1ctl;storage' {
-            [CompletionResult]::new('list', 'list', [CompletionResultType]::ParameterValue, 'List storage configs')
-            [CompletionResult]::new('get', 'get', [CompletionResultType]::ParameterValue, 'Get storage details')
-            [CompletionResult]::new('delete', 'delete', [CompletionResultType]::ParameterValue, 'Delete storage')
-            [CompletionResult]::new('buckets', 'buckets', [CompletionResultType]::ParameterValue, 'Manage buckets')
-            [CompletionResult]::new('files', 'files', [CompletionResultType]::ParameterValue, 'List files')
-            [CompletionResult]::new('presign', 'presign', [CompletionResultType]::ParameterValue, 'Get presigned URL')
-            [CompletionResult]::new('usage', 'usage', [CompletionResultType]::ParameterValue, 'View storage usage')
+        '1ctl;postgres' {
+            [CompletionResult]::new('create', 'create', [CompletionResultType]::ParameterValue, 'Create a managed Postgres cluster')
+            [CompletionResult]::new('list', 'list', [CompletionResultType]::ParameterValue, 'List managed Postgres clusters')
+            [CompletionResult]::new('get', 'get', [CompletionResultType]::ParameterValue, 'Show managed Postgres cluster details')
+            [CompletionResult]::new('status', 'status', [CompletionResultType]::ParameterValue, 'Show live managed Postgres status')
+            [CompletionResult]::new('credentials', 'credentials', [CompletionResultType]::ParameterValue, 'Show database connection credentials')
+            [CompletionResult]::new('connect', 'connect', [CompletionResultType]::ParameterValue, 'Connect using psql')
+            [CompletionResult]::new('proxy', 'proxy', [CompletionResultType]::ParameterValue, 'Forward a local TCP port')
+            [CompletionResult]::new('redeploy', 'redeploy', [CompletionResultType]::ParameterValue, 'Re-apply CNPG resources')
+            [CompletionResult]::new('destroy', 'destroy', [CompletionResultType]::ParameterValue, 'Destroy a managed Postgres cluster')
+            [CompletionResult]::new('users', 'users', [CompletionResultType]::ParameterValue, 'Manage database users')
+            [CompletionResult]::new('firewall', 'firewall', [CompletionResultType]::ParameterValue, 'Manage firewall rules')
+            [CompletionResult]::new('storage-classes', 'storage-classes', [CompletionResultType]::ParameterValue, 'List available Kubernetes storage classes')
             break
         }
         '1ctl;logs' {
