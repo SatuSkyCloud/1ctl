@@ -23,7 +23,8 @@ func run() error {
 // Make createApp function accessible to tests
 func createApp() *cli.App {
 	app := &cli.App{
-		Name:    "1ctl",
+		UseShortOptionHandling: true,
+		Name:                  "1ctl",
 		Usage:   "Deploy and manage applications on SatuSky Cloud",
 		Version: version.GetVersionInfo(),
 		Description: `1ctl is the command-line interface for SatuSky Cloud.

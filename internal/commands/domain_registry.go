@@ -2,6 +2,7 @@ package commands
 
 import (
 	"fmt"
+	"strconv"
 	"strings"
 
 	"1ctl/internal/api"
@@ -77,9 +78,9 @@ func domainsManagedCommand() *cli.Command {
 
 func domainsDNSCommand() *cli.Command {
 	recordFlags := []cli.Flag{
-		&cli.StringFlag{Name: "type", Usage: "DNS record type (A, AAAA, CNAME, MX, TXT, NS, SRV, CAA)", Required: true},
-		&cli.StringFlag{Name: "name", Usage: "Record name, such as @, www, or app", Required: true},
-		&cli.StringFlag{Name: "data", Usage: "Record value", Required: true},
+		&cli.StringFlag{Name: "type", Usage: "DNS record type (A, AAAA, CNAME, MX, TXT, NS, SRV, CAA)"},
+		&cli.StringFlag{Name: "name", Usage: "Record name, such as @, www, or app"},
+		&cli.StringFlag{Name: "data", Usage: "Record value"},
 		&cli.IntFlag{Name: "ttl", Usage: "Record TTL in seconds"},
 		&cli.IntFlag{Name: "priority", Usage: "Record priority"},
 		&cli.IntFlag{Name: "port", Usage: "SRV record port"},
@@ -352,6 +353,17 @@ func handleDNSCreate(c *cli.Context) error {
 	if c.NArg() < 1 {
 		return utils.NewError("domain is required. Usage: 1ctl domains dns create <domain|domain-id>", nil)
 	}
+	// Manually validate required flags (handles flags after positional args that
+	// Go's flag.FlagSet doesn't parse)
+	if flagValueFromArgs(c, "type") == "" {
+		return utils.NewError("--type is required. Usage: 1ctl domains dns create <domain> --type A --name @ --data <value>", nil)
+	}
+	if flagValueFromArgs(c, "name") == "" {
+		return utils.NewError("--name is required. Usage: 1ctl domains dns create <domain> --type A --name @ --data <value>", nil)
+	}
+	if flagValueFromArgs(c, "data") == "" {
+		return utils.NewError("--data is required. Usage: 1ctl domains dns create <domain> --type A --name @ --data <value>", nil)
+	}
 	userID, orgID, err := domainAPIScope()
 	if err != nil {
 		return err
@@ -517,34 +529,85 @@ func resolveManagedDomainID(userID, orgID, value string) (string, error) {
 	return "", utils.NewError(fmt.Sprintf("managed domain %q not found", value), nil)
 }
 
+// flagValueFromArgs extracts a flag's value from the full args slice (including flags
+// that appear after positional args, which Go's flag.FlagSet.Parse() doesn't parse).
+func flagValueFromArgs(c *cli.Context, name string) string {
+	if c.IsSet(name) {
+		return c.String(name)
+	}
+	args := c.Args().Slice()
+	for i := 0; i < len(args); i++ {
+		if args[i] == "--"+name {
+			if i+1 < len(args) {
+				return args[i+1]
+			}
+		}
+		if strings.HasPrefix(args[i], "--"+name+"=") {
+			return strings.SplitN(args[i], "=", 2)[1]
+		}
+	}
+	return ""
+}
+
+// flagIsSetInArgs checks whether a flag was set, scanning both parsed flags
+// and any flags that appear after positional arguments.
+func flagIsSetInArgs(c *cli.Context, name string) bool {
+	if c.IsSet(name) {
+		return true
+	}
+	args := c.Args().Slice()
+	for _, arg := range args {
+		if arg == "--"+name || strings.HasPrefix(arg, "--"+name+"=") {
+			return true
+		}
+	}
+	return false
+}
+
+// flagIntFromArgs extracts an int flag value from full args, falling back to c.Int().
+func flagIntFromArgs(c *cli.Context, name string) int {
+	if c.IsSet(name) {
+		return c.Int(name)
+	}
+	v := flagValueFromArgs(c, name)
+	if v == "" {
+		return 0
+	}
+	n, err := strconv.Atoi(v)
+	if err != nil {
+		return 0
+	}
+	return n
+}
+
 func dnsCreateRequestFromFlags(c *cli.Context) api.DNSRecordCreateRequest {
 	req := api.DNSRecordCreateRequest{
-		Type: strings.ToUpper(c.String("type")),
-		Name: c.String("name"),
-		Data: c.String("data"),
+		Type: strings.ToUpper(flagValueFromArgs(c, "type")),
+		Name: flagValueFromArgs(c, "name"),
+		Data: flagValueFromArgs(c, "data"),
 	}
-	if c.IsSet("ttl") {
-		v := c.Int("ttl")
+	if flagIsSetInArgs(c, "ttl") {
+		v := flagIntFromArgs(c, "ttl")
 		req.TTL = &v
 	}
-	if c.IsSet("priority") {
-		v := c.Int("priority")
+	if flagIsSetInArgs(c, "priority") {
+		v := flagIntFromArgs(c, "priority")
 		req.Priority = &v
 	}
-	if c.IsSet("port") {
-		v := c.Int("port")
+	if flagIsSetInArgs(c, "port") {
+		v := flagIntFromArgs(c, "port")
 		req.Port = &v
 	}
-	if c.IsSet("weight") {
-		v := c.Int("weight")
+	if flagIsSetInArgs(c, "weight") {
+		v := flagIntFromArgs(c, "weight")
 		req.Weight = &v
 	}
-	if c.IsSet("flags") {
-		v := c.Int("flags")
+	if flagIsSetInArgs(c, "flags") {
+		v := flagIntFromArgs(c, "flags")
 		req.Flags = &v
 	}
-	if c.IsSet("tag") {
-		v := c.String("tag")
+	if flagIsSetInArgs(c, "tag") {
+		v := flagValueFromArgs(c, "tag")
 		req.Tag = &v
 	}
 	return req
@@ -552,40 +615,40 @@ func dnsCreateRequestFromFlags(c *cli.Context) api.DNSRecordCreateRequest {
 
 func dnsUpdateRequestFromFlags(c *cli.Context) api.DNSRecordUpdateRequest {
 	req := api.DNSRecordUpdateRequest{}
-	if c.IsSet("type") {
-		v := strings.ToUpper(c.String("type"))
+	if flagIsSetInArgs(c, "type") {
+		v := strings.ToUpper(flagValueFromArgs(c, "type"))
 		req.Type = &v
 	}
-	if c.IsSet("name") {
-		v := c.String("name")
+	if flagIsSetInArgs(c, "name") {
+		v := flagValueFromArgs(c, "name")
 		req.Name = &v
 	}
-	if c.IsSet("data") {
-		v := c.String("data")
+	if flagIsSetInArgs(c, "data") {
+		v := flagValueFromArgs(c, "data")
 		req.Data = &v
 	}
-	if c.IsSet("ttl") {
-		v := c.Int("ttl")
+	if flagIsSetInArgs(c, "ttl") {
+		v := flagIntFromArgs(c, "ttl")
 		req.TTL = &v
 	}
-	if c.IsSet("priority") {
-		v := c.Int("priority")
+	if flagIsSetInArgs(c, "priority") {
+		v := flagIntFromArgs(c, "priority")
 		req.Priority = &v
 	}
-	if c.IsSet("port") {
-		v := c.Int("port")
+	if flagIsSetInArgs(c, "port") {
+		v := flagIntFromArgs(c, "port")
 		req.Port = &v
 	}
-	if c.IsSet("weight") {
-		v := c.Int("weight")
+	if flagIsSetInArgs(c, "weight") {
+		v := flagIntFromArgs(c, "weight")
 		req.Weight = &v
 	}
-	if c.IsSet("flags") {
-		v := c.Int("flags")
+	if flagIsSetInArgs(c, "flags") {
+		v := flagIntFromArgs(c, "flags")
 		req.Flags = &v
 	}
-	if c.IsSet("tag") {
-		v := c.String("tag")
+	if flagIsSetInArgs(c, "tag") {
+		v := flagValueFromArgs(c, "tag")
 		req.Tag = &v
 	}
 	return req
