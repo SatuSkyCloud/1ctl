@@ -2,6 +2,7 @@ package commands
 
 import (
 	"1ctl/internal/api"
+	"1ctl/internal/context"
 	"1ctl/internal/utils"
 	"fmt"
 	"sort"
@@ -217,8 +218,10 @@ func handleGetMachine(c *cli.Context) error {
 	utils.PrintHeader("Machine Details")
 	printMachineDetails(machine)
 
-	// Show deployed workloads for non-monetized machines (BYOA)
-	if !machine.Monetized {
+	// Show deployed workloads for machines the user owns or non-monetized BYOA machines.
+	// Monetized machines owned by others skip workloads for tenant privacy.
+	isOwner := machine.OwnerID.String() == context.GetUserID()
+	if !machine.Monetized || isOwner {
 		deployments, depErr := api.ListDeployments()
 		if depErr == nil {
 			var matched []api.Deployment
