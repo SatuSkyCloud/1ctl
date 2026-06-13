@@ -216,6 +216,36 @@ func handleGetMachine(c *cli.Context) error {
 	}
 	utils.PrintHeader("Machine Details")
 	printMachineDetails(machine)
+
+	// Show deployed workloads for non-monetized machines (BYOA)
+	if !machine.Monetized {
+		deployments, depErr := api.ListDeployments()
+		if depErr == nil {
+			var matched []api.Deployment
+			for _, dep := range deployments {
+				for _, host := range dep.Hostnames {
+					if host == machine.MachineID {
+						matched = append(matched, dep)
+						break
+					}
+				}
+			}
+			if len(matched) > 0 {
+				utils.PrintHeader("Workloads (%d)", len(matched))
+				for _, dep := range matched {
+					utils.PrintStatusLine(dep.AppLabel, fmt.Sprintf("%s CPU, %s Memory", dep.CpuRequest, dep.MemoryRequest))
+				}
+			}
+		}
+	}
+
+	// Show billing info for monetized machines
+	if machine.Monetized {
+		utils.PrintHeader("Billing")
+		utils.PrintStatusLine("Hourly Rate", fmt.Sprintf("$%.4f/hr", machine.HourlyCost))
+		utils.PrintStatusLine("Visibility", machine.MachineVisibility)
+	}
+
 	return nil
 }
 

@@ -455,15 +455,23 @@ func WaitForDeployment(deploymentID string, timeout time.Duration) (*DeploymentS
 	defer ticker.Stop()
 
 	deadline := time.Now().Add(timeout)
+	var lastMessage string
 
 	for {
 		if time.Now().After(deadline) {
-			return nil, utils.NewError("timeout waiting for deployment", nil)
+			msg := "timeout waiting for deployment"
+			if lastMessage != "" {
+				msg = fmt.Sprintf("timeout waiting for deployment — last status: %s", lastMessage)
+			}
+			return nil, utils.NewError(msg, nil)
 		}
 
 		status, err := GetDeploymentStatus(deploymentID)
 		if err != nil {
 			return nil, err
+		}
+		if status.Message != "" {
+			lastMessage = status.Message
 		}
 
 		// Two distinct "running" tokens coexist intentionally:
