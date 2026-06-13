@@ -79,7 +79,7 @@ func domainsAddCommand() *cli.Command {
 			},
 			&cli.BoolFlag{
 				Name:  "wait",
-				Usage: "Wait for DNS and TLS to become ready before returning (default: true)",
+				Usage: "Wait for DNS and TLS to become ready before returning",
 				Value: true,
 			},
 			&cli.BoolFlag{
