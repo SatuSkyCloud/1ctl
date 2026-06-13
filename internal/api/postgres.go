@@ -104,8 +104,11 @@ type CreateDatabaseUserRequest struct {
 }
 
 type CreateDatabaseUserResponse struct {
-	User     CNPGDatabaseUser `json:"data"`
-	Password string           `json:"password"`
+	User                 CNPGDatabaseUser `json:"data"`
+	Password             string           `json:"password"`
+	Ready                bool             `json:"ready"`
+	ReconciliationStatus string           `json:"reconciliation_status,omitempty"`
+	ReadinessMessage     string           `json:"readiness_message,omitempty"`
 }
 
 type CNPGFirewallRule struct {
@@ -273,14 +276,23 @@ func ListPostgresUsers(storageID string) ([]CNPGDatabaseUser, error) {
 
 func CreatePostgresUser(storageID string, req CreateDatabaseUserRequest) (*CreateDatabaseUserResponse, error) {
 	var resp struct {
-		Error    bool             `json:"error"`
-		Data     CNPGDatabaseUser `json:"data"`
-		Password string           `json:"password"`
+		Error                bool             `json:"error"`
+		Data                 CNPGDatabaseUser `json:"data"`
+		Password             string           `json:"password"`
+		Ready                bool             `json:"ready"`
+		ReconciliationStatus string           `json:"reconciliation_status,omitempty"`
+		ReadinessMessage     string           `json:"readiness_message,omitempty"`
 	}
 	if err := makeRequest("POST", fmt.Sprintf("/storage/%s/database-users", url.PathEscape(storageID)), req, &resp); err != nil {
 		return nil, err
 	}
-	return &CreateDatabaseUserResponse{User: resp.Data, Password: resp.Password}, nil
+	return &CreateDatabaseUserResponse{
+		User:                 resp.Data,
+		Password:             resp.Password,
+		Ready:                resp.Ready,
+		ReconciliationStatus: resp.ReconciliationStatus,
+		ReadinessMessage:     resp.ReadinessMessage,
+	}, nil
 }
 
 func DeletePostgresUser(storageID, username string) error {

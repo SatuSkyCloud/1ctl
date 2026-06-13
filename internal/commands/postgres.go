@@ -497,6 +497,12 @@ func handlePostgresUsersCreate(c *cli.Context) error {
 	utils.PrintStatusLine("Username", resp.User.Username)
 	utils.PrintStatusLine("Password", resp.Password)
 	utils.PrintStatusLine("Secret", resp.User.SecretName)
+	if resp.ReconciliationStatus != "" {
+		utils.PrintStatusLine("Role status", resp.ReconciliationStatus)
+	}
+	if resp.ReadinessMessage != "" {
+		utils.PrintInfo("%s", resp.ReadinessMessage)
+	}
 	return nil
 }
 
