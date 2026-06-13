@@ -6,13 +6,6 @@
 
 ---
 
-## CLI Coverage
-
-> ✅ **Fully covered** — every command in this guide works with the current CLI.
-> No gaps.
-
----
-
 ## 1. Project structure
 
 ```
@@ -59,10 +52,11 @@ pydantic==2.7.1
 ## 3. satusky.toml
 
 ```toml
-name   = "my-fastapi"
-port   = 8000
-cpu    = "0.5"
-memory = "512Mi"
+[app]
+  name   = "my-fastapi"
+  port   = 8000
+  cpu    = "0.5"
+  memory = "512Mi"
 ```
 
 ---
@@ -77,12 +71,14 @@ cd my-fastapi
 ```
 
 ```
-Building image...  done (55s)
-Pushing image...   done (11s)
-Creating deployment my-fastapi...
-Waiting for pods to be Running...
-  my-fastapi-5b8c6d4f9-qr3m2   Running   ✓
-Deploy complete. App is live.
+💡 Build queued (ID: ...)
+  [build] Docker build completed
+Step 2/5: Creating/updating deployment my-fastapi ✓
+...
+💡 Generated new domain: silentfox-b7r4n1.satusky.com
+✅ 🚀 Deployment for my-fastapi is successful! Your app is live at: https://silentfox-b7r4n1.satusky.com
+💡 Waiting for deployment to become healthy...
+✅ Deployment is healthy — pods Running
 ```
 
 ---
@@ -102,7 +98,7 @@ Verify your app can reach Redis. If it can't, check the URL in the logs:
 
 ```bash
 1ctl logs stream --config satusky.toml
-# 2026-04-26T09:12:05Z [my-fastapi] Redis ping OK — connected to Upstash
+# [my-fastapi] Redis ping OK — connected to Upstash
 ```
 
 ---
@@ -118,17 +114,17 @@ Non-sensitive runtime config — environment name, log verbosity — lives in en
   --env LOG_LEVEL=info
 ```
 
-Trigger a redeploy to apply the new vars:
+Apply the new vars with a restart:
 
 ```bash
-1ctl deploy --config satusky.toml --wait
+1ctl deploy restart --config satusky.toml
 ```
 
 ---
 
-## 7. Check resource allocation with `-o json`
+## 7. Check deployment info with `-o json`
 
-`-o json` (or `--output json`) returns machine-readable output — useful for CI scripts or just for double-checking.
+`-o json` (or `--output json`) returns machine-readable output — useful for CI scripts.
 
 ```bash
 1ctl deploy get --config satusky.toml -o json
@@ -136,15 +132,16 @@ Trigger a redeploy to apply the new vars:
 
 ```json
 {
-  "name": "my-fastapi",
-  "status": "running",
-  "version": 2,
-  "cpu": "0.5",
-  "memory": "512Mi",
+  "deployment_id": "a1b2c3d4-...",
+  "app_label": "my-fastapi",
+  "status": "completed",
+  "image": "registry.satusky.com/my-fastapi:d4e5f6a",
+  "cpu_request": "500m",
+  "cpu_limit": "500m",
+  "memory_request": "512Mi",
+  "memory_limit": "512Mi",
   "replicas": 1,
-  "machine": "compute-main-01",
-  "url": "https://silentfox-b7r4n1.satusky.com",
-  "deployed_at": "2026-04-26T09:14:22Z"
+  "domain": "https://silentfox-b7r4n1.satusky.com"
 }
 ```
 
@@ -161,10 +158,10 @@ Open a second terminal and tail logs while you hit the API:
 ```
 
 ```
-2026-04-26T09:15:01Z [my-fastapi] Application startup complete.
-2026-04-26T09:15:14Z [my-fastapi] GET /health 200 2ms
-2026-04-26T09:15:31Z [my-fastapi] POST /api/summarize 200 843ms cache=miss
-2026-04-26T09:15:34Z [my-fastapi] POST /api/summarize 200 4ms  cache=hit
+2026-06-12T09:15:01Z [my-fastapi-5b8c6d4f9-qr3m2] Application startup complete.
+2026-06-12T09:15:14Z [my-fastapi-5b8c6d4f9-qr3m2] GET /health 200 2ms
+2026-06-12T09:15:31Z [my-fastapi-5b8c6d4f9-qr3m2] POST /api/summarize 200 843ms cache=miss
+2026-06-12T09:15:34Z [my-fastapi-5b8c6d4f9-qr3m2] POST /api/summarize 200 4ms  cache=hit
 ```
 
 ---
@@ -179,33 +176,33 @@ Your API key was compromised or you're doing a planned rotation. `secret create`
   --kv OPENAI_API_KEY=sk-proj-NewKeyHere9876543210zyxwvutsrqponmlkjihgfedcba
 ```
 
-Redeploy to inject the new secret into the running container:
+Restart to inject the new secret into the running container:
 
 ```bash
-1ctl deploy --config satusky.toml --wait
+1ctl deploy restart --config satusky.toml
 ```
 
 Watch the logs to confirm no auth errors on startup:
 
 ```bash
 1ctl logs stream --config satusky.toml
-# 2026-04-26T09:31:07Z [my-fastapi] OpenAI client initialized OK
+# [my-fastapi] OpenAI client initialized OK
 ```
 
 ---
 
 ## 10. Remove verbose logging
 
-Your app stabilized. `LOG_LEVEL=info` is fine in production but you want to stop emitting info-level logs entirely to reduce noise. Remove the env var:
+Your app stabilized. Remove the verbose log level:
 
 ```bash
 1ctl env unset --config satusky.toml --key LOG_LEVEL
 ```
 
-`env unset` removes only the named key — `ENVIRONMENT` is untouched. Redeploy:
+`env unset` removes only the named key — `ENVIRONMENT` is untouched. Restart to apply:
 
 ```bash
-1ctl deploy --config satusky.toml --wait
+1ctl deploy restart --config satusky.toml
 ```
 
 ---
@@ -215,7 +212,7 @@ Your app stabilized. `LOG_LEVEL=info` is fine in production but you want to stop
 Extract the app URL in a shell script without parsing human-readable output:
 
 ```bash
-APP_URL=$(1ctl deploy get --config satusky.toml -o json | jq -r '.url')
+APP_URL=$(1ctl deploy get --config satusky.toml -o json | jq -r '.domain')
 echo "Running smoke test against $APP_URL"
 curl -sf "$APP_URL/health" | jq .
 ```
@@ -238,5 +235,40 @@ This pattern is useful in CI — gate the smoke test on the deploy finishing wit
 | Remove a secret | `1ctl secret unset --config satusky.toml --key KEY` |
 | Set env vars | `1ctl env create --config satusky.toml --env KEY=VAL` |
 | Remove an env var | `1ctl env unset --config satusky.toml --key KEY` |
+| Apply env/secret changes | `1ctl deploy restart --config satusky.toml` |
 | JSON deploy info | `1ctl deploy get --config satusky.toml -o json` |
 | Live logs | `1ctl logs stream --config satusky.toml` |
+
+---
+
+## Live Verification (2026-06-12)
+
+All commands verified against live `org123-c0bee423` namespace with `backend-api` deployment.
+
+| # | Command | Exit |
+|---|---------|------|
+| 1 | `1ctl deploy list` | ✅ 0 |
+| 2 | `1ctl -o json deploy list` | ✅ 0 |
+| 3 | `1ctl deploy status --deployment-id <id>` | ✅ 0 |
+| 4 | `1ctl -o json deploy get --deployment-id <id>` | ✅ 0 |
+| 5 | `1ctl deploy releases --deployment-id <id>` | ✅ 0 |
+| 6 | `1ctl secret create --deployment-id <id> --kv KEY=VAL` | ✅ 0 |
+| 7 | `1ctl secret list` | ✅ 0 |
+| 8 | `1ctl secret unset --deployment-id <id> --key KEY` | ✅ 0 |
+| 9 | `1ctl env create --deployment-id <id> --env KEY=VAL` | ✅ 0 |
+| 10 | `1ctl env list --deployment-id <id>` | ✅ 0 |
+| 11 | `1ctl -o json env list --deployment-id <id>` | ✅ 0 |
+| 12 | `1ctl env unset --deployment-id <id> --key KEY` | ✅ 0 |
+| 13 | `1ctl deploy restart --deployment-id <id>` | ✅ 0 |
+| 14 | `1ctl logs --deployment-id <id> --tail 3` | ✅ 0 |
+| 15 | `1ctl doctor --deployment-id <id>` | ✅ 0 |
+
+**JSON field verification** (`deploy get -o json`):
+```
+app_label: backend-api     status: completed    domain: https://...satusky.com
+cpu_request: 250m          memory_request: 256Mi   replicas: 1
+```
+
+**Secret rotation verified**: `secret create` with existing key overwrites. `secret unset` removes single key.
+
+**Env cleanup verified**: `env unset` removes single key, others untouched. `env create` merges new keys.

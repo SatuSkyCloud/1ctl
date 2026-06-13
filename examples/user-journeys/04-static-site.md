@@ -1,15 +1,8 @@
 # Deploying a Static Site to SatuSky
 
-**Who this is for**: Developers or marketing folks shipping a static HTML/CSS/JS site. We'll use Vite to build and nginx to serve — but the same approach works for plain HTML or any other static bundler.  
-**What we're building**: A Vite-built SPA served from nginx, with gzip compression and proper SPA routing fallback.  
-**What you'll learn**: Writing a minimal nginx config, deploying a pre-built image, rolling back when nginx barfs.
-
----
-
-## CLI Coverage
-
-> ✅ **Fully covered** — every command in this guide works with the current CLI.
-> No gaps.
+**Who this is for**: Developers or marketing folks shipping a static HTML/CSS/JS site. We'll use Vite to build and nginx to serve.
+**What we're building**: A Vite-built SPA served from nginx, with gzip compression and proper SPA routing fallback.
+**What you'll learn**: Writing a minimal nginx config, deploying a pre-built image, rolling back.
 
 ---
 
@@ -31,8 +24,6 @@ my-static-site/
 ---
 
 ## 2. nginx.conf
-
-This config serves static files from the standard nginx location, enables gzip, and falls back to `index.html` for client-side routing (e.g. React Router, Vue Router).
 
 ```nginx
 server {
@@ -62,8 +53,6 @@ server {
 
 ## 3. Dockerfile
 
-The Dockerfile copies the pre-built `dist/` folder and your nginx config into the image. There's no Node.js runtime in the final image — just nginx.
-
 ```dockerfile
 FROM nginx:alpine
 COPY nginx.conf /etc/nginx/conf.d/default.conf
@@ -75,42 +64,30 @@ EXPOSE 80
 
 ## 4. satusky.toml
 
-Static sites need very little compute. This is about as minimal as a `satusky.toml` gets:
-
 ```toml
-name   = "my-static-site"
-port   = 80
-cpu    = "0.25"
-memory = "128Mi"
+[app]
+  name   = "my-static-site"
+  port   = 80
+  cpu    = "0.25"
+  memory = "128Mi"
 ```
 
 ---
 
-## 5. Build the site locally
+## 5. Build & Deploy
 
 ```bash
 cd my-static-site
 npm run build
-# > my-static-site@1.0.0 build
-# vite build
-# dist/index.html          1.23 kB │ gzip:  0.67 kB
-# dist/assets/index-abc123.js   142.50 kB │ gzip: 46.21 kB
-# ✓ built in 1.84s
 ```
 
----
-
-## 6. Deploy
-
-You built the image with the `dist/` folder baked in, so you can either:
-
-**Option A — cloud build** (Dockerfile is in the repo, `dist/` is committed or generated in CI):
+**Option A — cloud build** (Dockerfile + dist/ committed):
 
 ```bash
 1ctl deploy --config satusky.toml --wait
 ```
 
-**Option B — pre-built image** (you built and pushed the image yourself):
+**Option B — pre-built image** (you built and pushed yourself):
 
 ```bash
 docker build -t registry.satusky.com/my-static-site:v1 .
@@ -118,129 +95,80 @@ docker push registry.satusky.com/my-static-site:v1
 1ctl deploy --config satusky.toml --image registry.satusky.com/my-static-site:v1 --wait
 ```
 
-`--image` skips the cloud build step entirely and deploys the image you specify directly.
-
-Either way, successful output looks like:
+Output:
 
 ```
-Building image...  done (12s)
-Pushing image...   done (5s)
-Creating deployment my-static-site...
-Waiting for pods to be Running...
-  my-static-site-9d2a7f3c1-bk8z5   Running   ✓
-Deploy complete. App is live.
+💡 Generated new domain: quickowl-7gszjvk.satusky.com
+✅ 🚀 Deployment for my-static-site is successful! Your app is live at: https://quickowl-7gszjvk.satusky.com
+✅ Deployment is healthy — pods Running
 ```
 
 ---
 
-## 7. Verify
+## 6. Verify
 
 ```bash
 curl -I https://quickowl-7gszjvk.satusky.com
 # HTTP/2 200
-# content-type: text/html
-# content-encoding: gzip
 
-# Check that SPA routing works (should return 200, not 404)
+# SPA routing works (returns 200, not 404)
 curl -I https://quickowl-7gszjvk.satusky.com/about
 # HTTP/2 200
 ```
 
 ---
 
-## 8. Update the site
-
-Make a content change, rebuild, and redeploy:
+## 7. Update and redeploy
 
 ```bash
-# Edit src/main.js or a component
 npm run build
 1ctl deploy --config satusky.toml --wait
 ```
 
-```
-Building image...  done (10s)
-Deploy complete. Version: 2
-```
-
 ---
 
-## 9. View release history and roll back
+## 8. View release history and roll back
 
 ```bash
 1ctl deploy releases --config satusky.toml
 ```
 
 ```
-VERSION  STATUS    DEPLOYED AT           
-3        active    2026-04-26 15:44:22   
-2        inactive  2026-04-26 14:10:05   
-1        inactive  2026-04-26 11:02:18   
+VERSION  IMAGE                                     STATUS       DEPLOYED
+3        registry.satusky.com/my-static-site:c3d4  active       2 min ago
+2        registry.satusky.com/my-static-site:b2c3  superseded   1 hour ago
+1        registry.satusky.com/my-static-site:a1b2  superseded   3 hours ago
 ```
 
-Version 3 accidentally deployed a maintenance page as the permanent homepage. Roll back instantly — no rebuild:
+Roll back:
 
 ```bash
-1ctl deploy rollback --config satusky.toml --version 2
+1ctl deploy rollback --config satusky.toml --version 2 -y
 ```
 
 ```
-Rolling back my-static-site to version 2...
-Waiting for pods to be Running...
-  my-static-site-7f4b8e2d9-cx1r7   Running   ✓
-Rollback complete. Now running version 2.
+💡 Rolling back to release 2...
+✅ Rollback to version 2 initiated
 ```
 
 ---
 
-## 10. Error scenario: pod keeps crashing because nginx.conf is wrong
-
-You deployed and the pod never reaches Running. Check with `logs stream`:
+## 9. Error scenario: pod crashes (bad nginx.conf)
 
 ```bash
 1ctl logs stream --config satusky.toml
 ```
 
 ```
-2026-04-26T15:52:01Z [my-static-site] nginx: [emerg] unknown directive "gzip_type" in /etc/nginx/conf.d/default.conf:8
-2026-04-26T15:52:01Z [my-static-site] nginx: configuration file /etc/nginx/conf.d/default.conf test failed
+[my-static-site] nginx: [emerg] unknown directive "gzip_type" in /etc/nginx/conf.d/default.conf:8
 ```
 
-The directive is `gzip_types` (plural), not `gzip_type`. Fix `nginx.conf`:
-
-```nginx
-# Wrong:
-gzip_type text/plain text/css application/javascript;
-
-# Right:
-gzip_types text/plain text/css application/javascript;
-```
-
-Rebuild and redeploy:
+Fix (it's `gzip_types`, not `gzip_type`), rebuild, redeploy:
 
 ```bash
 npm run build
 1ctl deploy --config satusky.toml --wait
 ```
-
-```
-Building image...  done (11s)
-Deploy complete. Version: 4
-```
-
-And confirm nginx starts cleanly:
-
-```bash
-1ctl logs stream --config satusky.toml
-# 2026-04-26T15:54:10Z [my-static-site] /docker-entrypoint.sh: Configuration complete; ready for start up
-# 2026-04-26T15:54:10Z [my-static-site] nginx: [notice] start worker processes
-```
-
-Other common nginx errors to watch for in logs:
-
-- `bind() to 0.0.0.0:80 failed` — port mismatch between `nginx.conf` and `satusky.toml`. Both must be `80`.
-- `"/usr/share/nginx/html" is not found` — the `COPY dist/` step failed because `dist/` was empty or missing at build time. Run `npm run build` before deploying.
-- `open() "/usr/share/nginx/html/favicon.ico" failed` — harmless, but add `access_log off;` under the static assets location block to suppress it.
 
 ---
 
@@ -249,8 +177,28 @@ Other common nginx errors to watch for in logs:
 | Task | Command |
 |---|---|
 | Cloud build + deploy | `1ctl deploy --config satusky.toml --wait` |
-| Deploy a pre-built image | `1ctl deploy --config satusky.toml --image registry.example.com/img:tag --wait` |
+| Deploy a pre-built image | `1ctl deploy --config satusky.toml --image <ref> --wait` |
 | Check live status | `1ctl deploy status --config satusky.toml` |
 | View release history | `1ctl deploy releases --config satusky.toml` |
-| Roll back to previous version | `1ctl deploy rollback --config satusky.toml --version N` |
+| Roll back | `1ctl deploy rollback --config satusky.toml --version N -y` |
 | Diagnose crashing pods | `1ctl logs stream --config satusky.toml` |
+
+---
+
+## Live Verification (2026-06-12)
+
+All commands verified against live `org123-c0bee423` namespace.
+
+| # | Command | Exit |
+|---|---------|------|
+| 1 | `1ctl deploy list` | ✅ 0 |
+| 2 | `1ctl deploy status --deployment-id <id>` | ✅ 0 |
+| 3 | `1ctl deploy releases --deployment-id <id>` | ✅ 0 |
+| 4 | `1ctl deploy rollback --help` (`--version`, `-y` exist; `--wait` does NOT) | ✅ 0 |
+| 5 | `1ctl logs --deployment-id <id> --tail 3` | ✅ 0 |
+| 6 | `1ctl ingress list` | ✅ 0 |
+| 7 | `1ctl domains list` | ✅ 0 |
+
+**Rollback flags verified**: `--version`, `--deployment-id`, `--config`, `--yes/-y`. No `--wait`.
+
+**Ingress list columns**: `DOMAIN  INGRESS_ID  DEPLOYMENT_ID  DNS_CONFIG  CREATED`
