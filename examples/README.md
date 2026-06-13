@@ -300,7 +300,17 @@ Use `--kv` for secrets (`--env` is a backward-compatible alias). Like `env unset
 1ctl cluster list
 1ctl cluster zones
 1ctl machine list
+1ctl machine get <machine>
+1ctl machine update <machine>
+1ctl machine visibility <machine> owner|organisation|public
+1ctl machine labels list <machine>
+1ctl machine labels set <machine> key=value ...
+1ctl machine labels remove <machine> key ...
+1ctl machine inspect <machine>
+1ctl machine logs <machine>
+1ctl machine events <machine>
 1ctl machine available
+1ctl machine usage list
 1ctl user me
 1ctl user permissions
 1ctl token list
@@ -308,6 +318,39 @@ Use `--kv` for secrets (`--env` is a backward-compatible alias). Like `env unset
 ```
 
 ---
+
+## Machine Visibility & Labels
+
+Control who can see and deploy to your machines:
+
+```bash
+# Set visibility — who can see and use this machine
+1ctl machine visibility <machine> owner         # only the owner
+1ctl machine visibility <machine> organisation  # owner + org members
+1ctl machine visibility <machine> public        # anyone (monetized machines auto-public)
+
+# Manage labels — used by --machine-label and --machine-tag on deploy
+1ctl machine labels list <machine>
+1ctl machine labels set <machine> env=production gpu=true
+1ctl machine labels remove <machine> gpu
+```
+
+Deploy with label targeting:
+
+```bash
+# Deploy to machines with env=production AND gpu labels
+1ctl deploy --machine-label env=production --machine-label gpu ...
+
+# Shorthand: --machine-tag production → satusky.com/production exists
+1ctl deploy --machine-tag production ...
+
+# OR semantics: deploy to machines matching ANY of these
+1ctl deploy --machine-label-any zone=kul --machine-label-any zone=bki ...
+
+# Combine AND + OR: env=prod AND (zone=kul OR zone=bki)
+1ctl deploy --machine-label env=prod \
+            --machine-label-any zone=kul --machine-label-any zone=bki ...
+```
 
 ## --output json
 
@@ -341,6 +384,8 @@ Use `--kv` for secrets (`--env` is a backward-compatible alias). Like `env unset
 | Wrong directory | `1ctl deploy --image nginx:alpine` (from repo root) | `app name "1ctl" is not a valid K8s service name ... Auto-detected from git remote` |
 | Invalid name | `1ctl deploy` (from `/tmp/1bad`) | `app name "1bad" is not a valid K8s service name (starts with digit — try --name app-1bad)` |
 | `--deployment-id` beats `--config` | `1ctl deploy status --config frontend/satusky.toml --deployment-id <backend-id>` | Shows backend status (ID wins) |
+| No machines match label selectors | `1ctl deploy --machine-label nonexistent=true ...` | `no visible online machines matched the machine label selectors` |
+| Invalid visibility value | `1ctl machine visibility <m> invalid` | `machine_visibility must be one of: owner, organisation, public` |
 
 ---
 
@@ -354,19 +399,72 @@ Cloud builds run on the backend server (macOS arm64 + Podman). Builds produce `l
 
 Multi-arch images used with `--image` (e.g. `nginx:alpine`) have no arch filter — the kubelet picks the right variant automatically.
 
+### Machine label targeting
+
+When `--machine-label`, `--machine-label-any`, or `--machine-tag` is used (or their
+TOML equivalents), the CLI calls `POST /machines/label-query` on the backend. This
+endpoint queries K8s node labels directly and cross-references with the user's
+visible machines. Only online machines are returned. The selected machine IDs are
+set as `requiredDuringSchedulingIgnoredDuringExecution` node affinity on the pod
+spec via `machine.satusky.com/id`.
+
 ---
 
 ## satusky.toml reference
 
 ```toml
 [app]
-  name       = "backend-api"   # K8s app label — identifier for all commands
-  port       = 8080            # container port (required)
-  dockerfile = "Dockerfile"    # path to Dockerfile (default: ./Dockerfile)
-  cpu        = "0.5"           # CPU cores — platform default 0.5 if omitted
-  memory     = "256Mi"         # memory — platform default 256Mi if omitted
-  replicas   = 1               # replica count — default 1 if omitted
-  domain     = ""              # custom domain — empty = auto backend-assigned random name (adjective+animal-XXXXXXX.satusky.com)
+  name                = "backend-api"    # K8s app label — identifier for all commands
+  port                = 8080             # container port (required)
+  dockerfile          = "Dockerfile"     # path to Dockerfile (default: ./Dockerfile)
+  cpu_request         = "250m"           # guaranteed CPU reservation per replica
+  cpu_limit           = "1"              # maximum burst CPU per replica
+  memory              = "256Mi"          # memory allocation (default 256Mi)
+  replicas            = 1                # replica count — default 1 if omitted
+  domain              = ""               # custom domain — empty = auto backend-assigned
+  zone                = "my-kul-1b"      # target deployment zone
+  organization        = "my-org"         # organization slug
+  health_path         = "/healthz"       # HTTP health check path
+  strategy            = "rolling"        # rollout strategy: rolling or recreate
+  rolling_max_surge   = "25%"            # max surge during rolling update
+  rolling_max_unavailable = "25%"        # max unavailable during rolling update
+  machine_tag         = "production"     # deploy to machines with satusky.com/production label
+  machine_labels      = ["env=prod", "gpu"]       # AND label selectors
+  machine_label_any   = ["zone=kul", "zone=bki"]  # OR label selectors
+  wait_for            = ["postgres:5432"]          # TCP dependencies
+
+[volume]
+  size                = "10Gi"
+  mount               = "/data"
+
+[hpa]
+  enabled             = true
+  min_replicas        = 1
+  max_replicas        = 10
+  cpu_target          = 80
+  memory_target       = 0
+
+[vpa]
+  enabled             = false
+  mode                = "Off"
+  min_cpu             = "100m"
+  max_cpu             = "4"
+  min_memory          = "128Mi"
+  max_memory          = "8Gi"
+
+[pdb]
+  enabled             = false
+  type                = "auto"
+  min_available       = 1
+  percent             = 0
+
+[multicluster]
+  enabled             = false
+  mode                = "active-passive"
+  backup_enabled      = true
+  backup_schedule     = "daily"
+  backup_retention    = "168h"
+  backup_priority_cluster = 1
 ```
 
 **Not in the file:** `org` (auth context), `deployment_id` (runtime lookup). Safe to commit as-is.

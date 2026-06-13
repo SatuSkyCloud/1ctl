@@ -807,6 +807,13 @@ func prepareDeploymentOptions(c *cli.Context, cfg *config.ProjectConfig, userSet
 			default:
 				utils.PrintInfo("Resolved machine label selectors to %d visible machine(s)", len(hostnames))
 			}
+			// Auto-set replicas for multi-machine BYOA deploys.
+			// When targeting multiple machines via labels and replicas is not
+			// explicitly set, default to 1 replica per machine so each matched
+			// machine runs one pod.
+			if !c.IsSet("replicas") && len(hostnames) > 1 {
+				opts.Replicas = len(hostnames)
+			}
 		}
 	}
 

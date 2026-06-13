@@ -50,6 +50,14 @@
   zone        = ""            # Target zone, e.g. "my-kul-1b". Empty = auto.
   machine_tag = "compute"     # Only schedule on machines with this tag.
 
+  # machine_labels        AND selectors (all must match). Repeatable.
+  #                       Formats: key, key=value, key!=value.
+  # machine_labels      = ["env=production", "gpu"]
+
+  # machine_label_any     OR selectors (any can match). Repeatable.
+  #                       Useful for multi-zone deploys.
+  # machine_label_any   = ["zone=kul", "zone=bki"]
+
   # ── Upgrade Strategy ──────────────────────────────────────────────────
   # strategy   "rolling" (default) or "recreate"
   strategy    = "rolling"
