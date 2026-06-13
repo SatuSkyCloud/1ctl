@@ -37,7 +37,7 @@ func TestGetStoredLogsReturnsSourceMetadata(t *testing.T) {
 		}
 
 		now := time.Now().UTC().Format(time.RFC3339)
-		fmt.Fprintf(w, `{
+		if _, err := fmt.Fprintf(w, `{
 			"error": false,
 			"message": "Logs retrieved successfully via stored deployment logs",
 			"data": [
@@ -56,7 +56,9 @@ func TestGetStoredLogsReturnsSourceMetadata(t *testing.T) {
 			"fallback_reason": "loki query unavailable; served stored deployment logs",
 			"fallback_source": "loki",
 			"count": 1
-		}`, uuid.New(), uuid.New(), now)
+		}`, uuid.New(), uuid.New(), now); err != nil {
+			t.Fatal(err)
+		}
 	}))
 	defer server.Close()
 
