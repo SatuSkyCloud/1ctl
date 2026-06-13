@@ -368,7 +368,8 @@ func handleDomainsCheck(c *cli.Context) error {
 		return printDetachedDomainStatus(domain, err)
 	}
 
-	status, err := api.GetDomainStatus(ing.IngressID.String(), domain, c.Bool("probe"))
+	probe := c.Bool("probe") || flagIsSetInArgs(c, "probe")
+	status, err := api.GetDomainStatus(ing.IngressID.String(), domain, probe)
 	if err != nil {
 		return utils.NewError(fmt.Sprintf("failed to check domain %q: %s", domain, err.Error()), nil)
 	}
