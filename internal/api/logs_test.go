@@ -37,7 +37,7 @@ func TestGetStoredLogsReturnsSourceMetadata(t *testing.T) {
 		}
 
 		now := time.Now().UTC().Format(time.RFC3339)
-		fmt.Fprintf(w, `{
+		_, _ = fmt.Fprintf(w, `{
 			"error": false,
 			"message": "Logs retrieved successfully via stored deployment logs",
 			"data": [

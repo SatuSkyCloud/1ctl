@@ -1195,7 +1195,7 @@ func checkPublicURLSmokeAtPath(baseURL, path string, strict bool) publicURLSmoke
 	if err != nil {
 		return publicURLSmokeResult{Ready: false, Reason: fmt.Sprintf("request failed: %s", err.Error()), Path: path}
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 
 	// In non-strict mode (default smoke without explicit --health-path),
 	// 401, 403, and 404 prove DNS/TLS/routing worked — the platform is healthy.
