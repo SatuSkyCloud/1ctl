@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"net"
 	"strings"
+	"time"
 
 	"1ctl/internal/api"
 	"1ctl/internal/context"
@@ -75,6 +76,15 @@ func domainsAddCommand() *cli.Command {
 			&cli.BoolFlag{
 				Name:  "custom-dns",
 				Usage: "Treat the hostname as an external custom domain",
+			},
+			&cli.BoolFlag{
+				Name:  "wait",
+				Usage: "Wait for DNS and TLS to become ready before returning (default: true)",
+				Value: true,
+			},
+			&cli.BoolFlag{
+				Name:  "no-wait",
+				Usage: "Skip waiting — return immediately after attaching",
 			},
 			&cli.BoolFlag{
 				Name:  "with-www",
@@ -283,6 +293,15 @@ func handleDomainsAdd(c *cli.Context) error {
 			return utils.NewError(fmt.Sprintf("failed to add domain: %s", err.Error()), nil)
 		}
 		utils.PrintSuccess("Domain %s attached to app %s", alias.DomainName, appName)
+
+		if c.Bool("wait") && !c.Bool("no-wait") {
+			if err := waitForDomainLive(ing.IngressID.String(), domain, 3*time.Minute); err != nil {
+				utils.PrintWarning("Domain is attached but not yet live: %s", err.Error())
+				utils.PrintInfo("Check status later: 1ctl domains check %s --probe", domain)
+			}
+			return nil
+		}
+
 		if status, statusErr := api.GetDomainStatus(ing.IngressID.String(), domain, false); statusErr == nil {
 			printDomainSetup(status)
 		} else {
@@ -530,6 +549,75 @@ func domainHTTPText(status api.DomainReachabilityStatus) string {
 		return "not reachable - " + status.Message
 	}
 	return "not reachable"
+}
+
+func waitForDomainLive(ingressID, domain string, timeout time.Duration) error {
+	deadline := time.Now().Add(timeout)
+	spinner := []string{"⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"}
+	ticker := time.NewTicker(3 * time.Second)
+	defer ticker.Stop()
+
+	utils.PrintInfo("Waiting for domain to become live (DNS + TLS + HTTP)...")
+
+	lastDNS := ""
+	lastTLS := ""
+	lastHTTP := ""
+	i := 0
+
+	for {
+		if time.Now().After(deadline) {
+			return fmt.Errorf("timed out after %v", timeout)
+		}
+
+		status, err := api.GetDomainStatus(ingressID, domain, true)
+		if err != nil {
+			time.Sleep(time.Second)
+			continue
+		}
+
+		dnsText := fmt.Sprintf("resolved %s", strings.Join(status.DNS.ResolvedIPs, ", "))
+		tlsText := string(status.TLS.Status)
+		httpText := "not checked"
+		if status.Reachability.Checked {
+			if status.Reachability.Reachable {
+				httpText = fmt.Sprintf("HTTP %d", status.Reachability.StatusCode)
+			} else {
+				httpText = "not reachable"
+			}
+		}
+
+		// Print status updates only when they change
+		if dnsText != lastDNS {
+			fmt.Printf("\r   %s DNS: %s\n", spinner[i%len(spinner)], dnsText)
+			lastDNS = dnsText
+		}
+		if tlsText != lastTLS {
+			fmt.Printf("\r   %s TLS: %s\n", spinner[i%len(spinner)], tlsText)
+			lastTLS = tlsText
+		}
+		if httpText != lastHTTP {
+			fmt.Printf("\r   %s HTTP: %s\n", spinner[i%len(spinner)], httpText)
+			lastHTTP = httpText
+		}
+
+		// Success condition: DNS resolved + TLS active + HTTP reachable
+		if status.DNS.Status == api.DNSStatusResolved &&
+			status.TLS.Status == api.TLSStatusActive &&
+			status.Reachability.Checked &&
+			status.Reachability.Reachable {
+			fmt.Println()
+			utils.PrintSuccess("Domain is live!")
+			utils.PrintStatusLine("URL", fmt.Sprintf("https://%s", domain))
+			utils.PrintStatusLine("HTTP", fmt.Sprintf("%d %s", status.Reachability.StatusCode, status.Reachability.Message))
+			if status.TLS.ExpiresAt != nil {
+				utils.PrintStatusLine("TLS expires", status.TLS.ExpiresAt.Format("2006-01-02"))
+			}
+			return nil
+		}
+
+		i++
+		<-ticker.C
+	}
 }
 
 func normalizeDomainArg(domain string) (string, error) {
