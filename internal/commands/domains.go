@@ -294,7 +294,7 @@ func handleDomainsAdd(c *cli.Context) error {
 		}
 		utils.PrintSuccess("Domain %s attached to app %s", alias.DomainName, appName)
 
-		if c.Bool("wait") && !c.Bool("no-wait") {
+		if c.Bool("wait") && !c.Bool("no-wait") && !flagIsSetInArgs(c, "no-wait") {
 			if err := waitForDomainLive(ing.IngressID.String(), domain, 3*time.Minute); err != nil {
 				utils.PrintWarning("Domain is attached but not yet live: %s", err.Error())
 				utils.PrintInfo("Check status later: 1ctl domains check %s --probe", domain)
@@ -358,7 +358,7 @@ func handleDomainsRemove(c *cli.Context) error {
 	if ing.AppLabel != appName {
 		return utils.NewError(fmt.Sprintf("domain %q belongs to app %q, not %q — refusing to remove without explicit match", domain, ing.AppLabel, appName), nil)
 	}
-	if !utils.Confirm(fmt.Sprintf("Remove domain %s from app %s?", domain, appName), c.Bool("yes")) {
+	if !utils.Confirm(fmt.Sprintf("Remove domain %s from app %s?", domain, appName), c.Bool("yes") || flagIsSetInArgs(c, "yes") || flagIsSetInArgs(c, "y")) {
 		fmt.Println("Aborted.")
 		return nil
 	}
