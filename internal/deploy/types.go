@@ -27,7 +27,6 @@ type DeploymentOptions struct {
 	Memory            string
 	Domain            string
 	SmokePath         string
-	SmokePathExplicit bool // true when user explicitly set --health-path
 	Organization      string
 	Port              int
 	DockerfilePath    string
