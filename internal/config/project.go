@@ -32,6 +32,7 @@ type AppConfig struct {
 	Name                  string   `toml:"name"`
 	Port                  int      `toml:"port"`
 	Dockerfile            string   `toml:"dockerfile"`
+	FastBuild             bool     `toml:"fast_build"`
 	CPU                   string   `toml:"cpu"` // Deprecated: legacy burst CPU alias.
 	CPURequest            string   `toml:"cpu_request"`
 	CPULimit              string   `toml:"cpu_limit"`

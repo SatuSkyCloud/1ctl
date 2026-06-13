@@ -35,8 +35,9 @@ Quick start:
    1ctl deploy --port 8080
 
 Build & deploy:
-   Images are built in the cloud via Kaniko — no local Docker required.
+   Images are built in the cloud — no local Docker required.
    Run 'satusky.toml' or use --dockerfile to control the build.
+   Use --fast to request the accelerated cloud builder.
    Use --image <ref> to skip the build step with a pre-built image.
 
 Profiles (multi-environment):

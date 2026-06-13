@@ -70,6 +70,10 @@ func DeployCommand() *cli.Command {
 			Name:  "image",
 			Usage: "Pre-built image reference — skips cloud build entirely (e.g. registry.satusky.com/satusky-container-registry/myapp:abc1234)",
 		},
+		&cli.BoolFlag{
+			Name:  "fast",
+			Usage: "Use the accelerated cloud build backend before deploying (ignored when --image is set)",
+		},
 		&cli.IntFlag{
 			Name:  "port",
 			Usage: "Application port (default: 8080)",
@@ -233,7 +237,7 @@ func DeployCommand() *cli.Command {
 		Usage: "Deploy your application to SatuSky Cloud",
 		Description: `Build and deploy your application to SatuSky Cloud.
 
-Images are built in the cloud via Kaniko — no local Docker installation required.
+Images are built in the cloud — no local Docker installation required.
 Your source directory is packaged and sent to the build service, which builds
 and pushes the image directly to the registry.
 
@@ -696,16 +700,21 @@ func prepareDeploymentOptions(c *cli.Context, cfg *config.ProjectConfig, userSet
 		return deploy.DeploymentOptions{}, err
 	}
 	opts := deploy.DeploymentOptions{
-		CPU:               c.String("cpu"),
-		CPURequest:        c.String("cpu-request"),
-		CPULimit:          c.String("cpu-limit"),
-		Memory:            c.String("memory"),
-		Domain:            c.String("domain"),
-		SmokePath:   c.String("health-path"),
-		StrictSmoke: c.IsSet("health-path"),
-		Port:              c.Int("port"),
-		DockerfilePath:    dockerfilePath,
-		PrebuiltImage:     c.String("image"),
+		CPU:            c.String("cpu"),
+		CPURequest:     c.String("cpu-request"),
+		CPULimit:       c.String("cpu-limit"),
+		Memory:         c.String("memory"),
+		Domain:         c.String("domain"),
+		SmokePath:      c.String("health-path"),
+		StrictSmoke:    c.IsSet("health-path"),
+		Port:           c.Int("port"),
+		DockerfilePath: dockerfilePath,
+		PrebuiltImage:  c.String("image"),
+		FastBuild:      c.Bool("fast"),
+	}
+
+	if !c.IsSet("fast") && cfg != nil && cfg.App.FastBuild {
+		opts.FastBuild = true
 	}
 	if userSet["cpu"] && !userSet["cpu-limit"] {
 		opts.CPULimit = c.String("cpu")
