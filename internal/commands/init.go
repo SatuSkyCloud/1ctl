@@ -69,6 +69,9 @@ func handleInit(c *cli.Context) error {
 	if base.App.Dockerfile != "" && base.App.Dockerfile != "Dockerfile" {
 		lines = append(lines, fmt.Sprintf("  dockerfile = %q", base.App.Dockerfile))
 	}
+	if base.App.FastBuild {
+		lines = append(lines, "  fast_build = true")
+	}
 	if base.App.CPURequest != "" {
 		lines = append(lines, fmt.Sprintf("  cpu_request = %q", base.App.CPURequest))
 	}
@@ -92,6 +95,7 @@ func handleInit(c *cli.Context) error {
 		"  # cpu_request = \"250m\"   # guaranteed scheduler reservation",
 		"  # cpu_limit = \"1\"        # burst ceiling",
 		"  # memory = \"256Mi\"       # platform default 256Mi",
+		"  # fast_build = true       # opt into accelerated cloud builds",
 		"  # zone = \"my-kul-1b\"     # target marketplace zone",
 		"  # strategy = \"rolling\"   # rolling | recreate",
 		"  # rolling_max_surge = \"25%\"",

@@ -24,6 +24,17 @@ CPU request and burst semantics are now explicit for shared-resource deploys.
 
 Machine inventory management and diagnostics for BYOA operators.
 
+### Deployment Builds
+
+* **`deploy --fast` added**: requests the accelerated Depot-backed cloud builder before deployment.
+  - The default deploy path still uses the platform build service.
+  - `--fast` sends `builder=depot` to the backend build API; the backend owns the Depot project/token configuration.
+  - `--fast` is ignored when `--image` is supplied because pre-built images skip cloud builds entirely.
+* **`satusky.toml` supports `fast_build = true`** under `[app]` to opt a project into the accelerated builder by default.
+  - CLI precedence remains: explicit `--fast` overrides config; `--image` still skips all build paths.
+  - Pricing for accelerated builds is intentionally not surfaced yet; this is a platform capability flag only.
+* Build documentation and status text now refer to generic cloud builds instead of Kaniko-specific implementation details.
+
 ### New Commands
 
 * **`machine get <machine-id|name|numeric-id>`**: shows the full owned machine inventory record.

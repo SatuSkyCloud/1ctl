@@ -11,7 +11,7 @@ import (
 
 const (
 	// RegistryURL is the SatuSky container registry prefix.
-	// Images built by Kaniko are pushed here: RegistryURL/<project>:<sha>.
+	// Cloud-built images are pushed here: RegistryURL/<project>:<sha>.
 	RegistryURL = "registry.satusky.com/satusky-container-registry"
 )
 

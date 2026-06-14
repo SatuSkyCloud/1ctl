@@ -223,7 +223,7 @@ func TestSubmitRemoteBuild(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			_, _, err := submitRemoteBuild(tt.dockerfilePath, tt.projectName)
+			_, _, err := submitRemoteBuild(tt.dockerfilePath, tt.projectName, false)
 			if (err != nil) != tt.wantErr {
 				t.Errorf("submitRemoteBuild() error = %v, wantErr %v", err, tt.wantErr)
 			}

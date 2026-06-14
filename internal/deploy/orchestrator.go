@@ -77,10 +77,13 @@ func Deploy(opts DeploymentOptions) (*api.CreateDeploymentResponse, error) {
 	} else {
 		progress.step = 1
 		progress.message = "Building image (cloud)"
+		if opts.FastBuild {
+			progress.message = "Building image (fast cloud)"
+		}
 		progress.print()
 
 		var imageArch string
-		image, imageArch, err = submitRemoteBuild(opts.DockerfilePath, projectName)
+		image, imageArch, err = submitRemoteBuild(opts.DockerfilePath, projectName, opts.FastBuild)
 		if err != nil {
 			return nil, utils.NewError("Failed to build image", err)
 		}
@@ -173,9 +176,9 @@ func deployCleanup(cmgr *cleanup.CleanupManager) {
 }
 
 // submitRemoteBuild packages the local build context, uploads it to the backend,
-// and waits for the Kaniko cloud build to complete. No local Docker daemon is required.
+// and waits for the cloud build to complete. No local Docker daemon is required.
 // Returns the image reference, image architecture, and any error.
-func submitRemoteBuild(dockerfilePath, projectName string) (imageRef, imageArch string, err error) {
+func submitRemoteBuild(dockerfilePath, projectName string, fastBuild bool) (imageRef, imageArch string, err error) {
 	// Validate that the Dockerfile exists and is well-formed before shipping anything.
 	if err = validator.ValidateDockerfile(dockerfilePath); err != nil {
 		return "", "", utils.NewError(fmt.Sprintf("invalid Dockerfile: %s", err.Error()), nil)
@@ -189,15 +192,24 @@ func submitRemoteBuild(dockerfilePath, projectName string) (imageRef, imageArch 
 	}
 	defer func() { _ = os.Remove(contextPath) }() //nolint:errcheck
 
+	builder := api.BuildBackendDefault
+	if fastBuild {
+		builder = api.BuildBackendDepot
+	}
+
 	// Submit the context to the backend; it returns a build ID immediately.
-	utils.PrintInfo("Submitting build to cloud...")
-	buildID, err := api.SubmitBuild(contextPath, projectName, dockerfilePath, nil)
+	if fastBuild {
+		utils.PrintInfo("Submitting fast build to cloud...")
+	} else {
+		utils.PrintInfo("Submitting build to cloud...")
+	}
+	buildID, err := api.SubmitBuild(contextPath, projectName, dockerfilePath, builder, nil)
 	if err != nil {
 		return "", "", utils.NewError(fmt.Sprintf("failed to submit build: %s", err.Error()), nil)
 	}
 	utils.PrintInfo("Build queued (ID: %s)", buildID)
 
-	// Poll until the Kaniko job finishes, streaming log output as it arrives.
+	// Poll until the cloud build finishes, streaming log output as it arrives.
 	// TODO: Should we be polling? is there a better way other than polling?
 	result, err := api.WaitForBuildResult(buildID, os.Stdout)
 	if err != nil {

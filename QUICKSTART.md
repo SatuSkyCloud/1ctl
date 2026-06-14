@@ -117,7 +117,7 @@ Or with explicit flags:
 What happens:
 1. `1ctl` packages your source directory into a `.tar.gz` (respects `.dockerignore`)
 2. Context is uploaded to `POST /v1/cli/builds`
-3. The backend spawns a **Kaniko** job — builds your Dockerfile and pushes the image to `registry.satusky.com/satusky-container-registry/backend-api:<build-id>`
+3. The backend runs a cloud build — builds your Dockerfile and pushes the image to `registry.satusky.com/satusky-container-registry/backend-api:<build-id>`
 4. `1ctl` streams build logs until the image is ready
 5. The image ref is handed to the deployment orchestrator
 
@@ -263,7 +263,7 @@ When you run `1ctl deploy`:
 
 1. **Context packaged** — your project directory is compressed into a `.tar.gz` (respects `.dockerignore`)
 2. **Uploaded to SatuSky** — the context is sent to `POST /v1/cli/builds`
-3. **Image built** — the backend spawns a Kaniko job that builds your Dockerfile and pushes the image to `registry.satusky.com/satusky-container-registry/<project>:<sha>`
+3. **Image built** — the backend runs a cloud build that builds your Dockerfile and pushes the image to `registry.satusky.com/satusky-container-registry/<project>:<sha>`
 4. **CLI polls** — `1ctl` streams build logs until the image is ready
 5. **Deployed** — the image ref is handed to the deployment orchestrator which creates/updates K8s Deployment, Service, Ingress, and Environment resources
 
@@ -313,7 +313,7 @@ cd ../frontend
 ```
 
 **What was verified (full 5-step pipeline):**
-- Kaniko cloud builds succeed for both Go and nginx/static apps
+- Cloud builds succeed for both Go and nginx/static apps
 - App name from `satusky.toml` (`backend-api`, `frontend`) is used correctly in the image tag
 - CPU/memory/port defaults are loaded from `satusky.toml` — no CLI flags required
 - Float CPU values (e.g. `0.5`) are accepted by the validator
