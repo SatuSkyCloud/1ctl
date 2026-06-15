@@ -8,7 +8,9 @@ import (
 	"strings"
 )
 
-var memoryPattern = regexp.MustCompile(`^(\d+)(Mi|Gi)?$`)
+// memoryPattern requires the Mi/Gi suffix. Bare numbers like "512" are rejected
+// because Kubernetes interprets them as bytes (512B), which silently OOMKills pods.
+var memoryPattern = regexp.MustCompile(`^(\d+)(Mi|Gi)$`)
 var cpuPattern = regexp.MustCompile(`^(\d+)(m)?$`)
 var cpuFloatPattern = regexp.MustCompile(`^\d+\.\d+$`)
 var domainPattern = regexp.MustCompile(`^(\*\.)?[a-zA-Z0-9][-a-zA-Z0-9]*(\.[a-zA-Z0-9][-a-zA-Z0-9]*)*\.[a-zA-Z]{2,}$`)

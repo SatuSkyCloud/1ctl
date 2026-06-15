@@ -39,7 +39,6 @@ func LogsCommand() *cli.Command {
 	}
 }
 
-
 func handleLogs(c *cli.Context) error {
 	deploymentID, err := resolveDeploymentID(c.String("deployment-id"), c.String("config"))
 	if err != nil {
@@ -87,6 +86,7 @@ func handleLogsStream(c *cli.Context) error {
 	namespace := c.String("namespace")
 	appLabel := c.String("app")
 	batchSize := c.Int("batch-size")
+	resolvedDeploymentID := ""
 
 	// Resolve deployment-id from --config if not provided directly
 	if c.String("deployment-id") == "" && c.String("namespace") == "" {
@@ -106,6 +106,7 @@ func handleLogsStream(c *cli.Context) error {
 		}
 		namespace = deployment.Namespace
 		appLabel = deployment.AppLabel
+		resolvedDeploymentID = deploymentID
 	}
 
 	if namespace == "" || appLabel == "" {
@@ -123,7 +124,6 @@ func handleLogsStream(c *cli.Context) error {
 
 	headers := http.Header{}
 	headers.Set("x-satusky-api-key", context.GetToken())
-	headers.Set("x-satusky-config", context.GetUserConfigKey())
 
 	conn, _, err := gorillaws.DefaultDialer.Dial(wsURL, headers)
 	if err != nil {
@@ -131,7 +131,17 @@ func handleLogsStream(c *cli.Context) error {
 	}
 	defer conn.Close() //nolint:errcheck // cleanup on exit, error unactionable
 
-	utils.PrintInfo("Streaming logs for %s/%s — press Ctrl+C to stop", namespace, appLabel)
+	if resolvedDeploymentID != "" {
+		utils.PrintInfo("Resolved deployment %s to %s/%s", resolvedDeploymentID, namespace, appLabel)
+	} else {
+		utils.PrintInfo("Using explicit log target %s/%s", namespace, appLabel)
+	}
+	if batchSize > 0 {
+		utils.PrintInfo("Showing historical replay from stored logs, then following live logs")
+	} else {
+		utils.PrintInfo("Following live Kubernetes logs only")
+	}
+	utils.PrintInfo("Streaming logs for %s/%s - press Ctrl+C to stop", namespace, appLabel)
 
 	for {
 		_, msg, err := conn.ReadMessage()

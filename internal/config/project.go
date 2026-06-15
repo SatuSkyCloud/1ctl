@@ -11,19 +11,83 @@ import (
 
 const DefaultConfigFile = "satusky.toml"
 
+// ProjectConfig is the in-memory representation of satusky.toml.
+//
+// Field-by-field precedence at deploy time (highest wins):
+//
+//	CLI flag (explicit, c.IsSet) > satusky.toml > platform default (Value: on flag)
+//
+// Fields with the zero value are treated as "not set" by the merge.
 type ProjectConfig struct {
-	App  AppConfig `toml:"app"`
-	Path string    `toml:"-"`
+	App          AppConfig          `toml:"app"`
+	Volume       VolumeConfig       `toml:"volume"`
+	HPA          HPAConfig          `toml:"hpa"`
+	VPA          VPAConfig          `toml:"vpa"`
+	PDB          PDBConfig          `toml:"pdb"`
+	Multicluster MulticlusterConfig `toml:"multicluster"`
+	Path         string             `toml:"-"`
 }
 
 type AppConfig struct {
-	Name       string `toml:"name"`
-	Port       int    `toml:"port"`
-	Dockerfile string `toml:"dockerfile"`
-	CPU        string `toml:"cpu"`
-	Memory     string `toml:"memory"`
-	Replicas   int    `toml:"replicas"`
-	Domain     string `toml:"domain"`
+	Name                  string   `toml:"name"`
+	Port                  int      `toml:"port"`
+	Dockerfile            string   `toml:"dockerfile"`
+	FastBuild             bool     `toml:"fast_build"`
+	CPU                   string   `toml:"cpu"` // Deprecated: legacy burst CPU alias.
+	CPURequest            string   `toml:"cpu_request"`
+	CPULimit              string   `toml:"cpu_limit"`
+	Memory                string   `toml:"memory"`
+	Replicas              int      `toml:"replicas"`
+	Domain                string   `toml:"domain"`
+	Zone                  string   `toml:"zone"`
+	Organization          string   `toml:"organization"`
+	Strategy              string   `toml:"strategy"`
+	RollingMaxSurge       string   `toml:"rolling_max_surge"`
+	RollingMaxUnavailable string   `toml:"rolling_max_unavailable"`
+	MachineTag            string   `toml:"machine_tag"`
+	WaitFor               []string `toml:"wait_for"`
+}
+
+type VolumeConfig struct {
+	Size  string `toml:"size"`
+	Mount string `toml:"mount"`
+}
+
+type HPAConfig struct {
+	Enabled      bool  `toml:"enabled"`
+	MinReplicas  int32 `toml:"min_replicas"`
+	MaxReplicas  int32 `toml:"max_replicas"`
+	CPUTarget    int32 `toml:"cpu_target"`
+	MemoryTarget int32 `toml:"memory_target"`
+}
+
+type VPAConfig struct {
+	Enabled   bool   `toml:"enabled"`
+	Mode      string `toml:"mode"`
+	MinCPU    string `toml:"min_cpu"`
+	MaxCPU    string `toml:"max_cpu"`
+	MinMemory string `toml:"min_memory"`
+	MaxMemory string `toml:"max_memory"`
+}
+
+// PDBConfig fields match the API surface (api.PDBConfig): only MinAvailable
+// and Percent are accepted today. MaxUnavailable is intentionally not on the
+// struct — the platform doesn't yet support it and silently dropping the
+// field would surprise users who set it expecting it to work.
+type PDBConfig struct {
+	Enabled      bool   `toml:"enabled"`
+	Type         string `toml:"type"`
+	MinAvailable int32  `toml:"min_available"`
+	Percent      int32  `toml:"percent"`
+}
+
+type MulticlusterConfig struct {
+	Enabled               bool   `toml:"enabled"`
+	Mode                  string `toml:"mode"`
+	BackupEnabled         bool   `toml:"backup_enabled"`
+	BackupSchedule        string `toml:"backup_schedule"`
+	BackupRetention       string `toml:"backup_retention"`
+	BackupPriorityCluster int    `toml:"backup_priority_cluster"`
 }
 
 // LoadConfig resolves and loads the config file. Returns an error if not found.

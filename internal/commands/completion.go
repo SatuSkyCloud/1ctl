@@ -53,7 +53,7 @@ _satusky_cli_completion() {
 
     # Top level commands
     if [[ $COMP_CWORD == 1 ]]; then
-        opts="auth org deploy service secret ingress issuer environment machine domain credits storage logs notifications user token marketplace audit talos admin pricing cluster completion --help --version"
+        opts="auth org deploy secret domains environment machine credits storage logs notifications user token marketplace audit pricing cluster completion --help --version"
         COMPREPLY=( $(compgen -W "${opts}" -- ${cur}) )
         return 0
     fi
@@ -65,8 +65,12 @@ _satusky_cli_completion() {
             COMPREPLY=( $(compgen -W "${machines}" -- ${cur}) )
             return 0
             ;;
-        --cpu)
-            COMPREPLY=( $(compgen -W "0.5 1 2 4 8 16" -- ${cur}) )
+        --cpu|--cpu-limit)
+            COMPREPLY=( $(compgen -W "500m 1 2 4 8 16" -- ${cur}) )
+            return 0
+            ;;
+        --cpu-request)
+            COMPREPLY=( $(compgen -W "63m 125m 250m 500m 1000m 2000m" -- ${cur}) )
             return 0
             ;;
         --memory)
@@ -155,7 +159,7 @@ _satusky_cli_completion() {
             ;;
         deploy)
             if [[ ${COMP_CWORD} == 2 ]]; then
-                COMPREPLY=( $(compgen -W "list get status --cpu --memory --machine --domain --image --dockerfile --env --port --volume-size --volume-mount --zone --multicluster --multicluster-mode --backup-enabled --backup-schedule --backup-retention --backup-priority-cluster --replicas --pdb --pdb-type --pdb-min-available --pdb-percent --hpa --hpa-min-replicas --hpa-max-replicas --hpa-cpu-target --hpa-memory-target --vpa --vpa-mode --vpa-min-cpu --vpa-max-cpu --vpa-min-memory --vpa-max-memory --wait-for" -- ${cur}) )
+                COMPREPLY=( $(compgen -W "list get status --cpu --cpu-request --cpu-limit --memory --machine --domain --image --dockerfile --fast --env --port --volume-size --volume-mount --zone --multicluster --multicluster-mode --backup-enabled --backup-schedule --backup-retention --backup-priority-cluster --replicas --pdb --pdb-type --pdb-min-available --pdb-percent --hpa --hpa-min-replicas --hpa-max-replicas --hpa-cpu-target --hpa-memory-target --vpa --vpa-mode --vpa-min-cpu --vpa-max-cpu --vpa-min-memory --vpa-max-memory --wait-for" -- ${cur}) )
             else
                 case "${subcmd}" in
                     list)
@@ -167,24 +171,20 @@ _satusky_cli_completion() {
                 esac
             fi
             ;;
-        service)
-            if [[ ${COMP_CWORD} == 2 ]]; then
-                COMPREPLY=( $(compgen -W "list delete" -- ${cur}) )
-            fi
-            ;;
         secret)
             if [[ ${COMP_CWORD} == 2 ]]; then
                 COMPREPLY=( $(compgen -W "create list delete" -- ${cur}) )
             fi
             ;;
-        ingress)
+        domains|domain)
             if [[ ${COMP_CWORD} == 2 ]]; then
-                COMPREPLY=( $(compgen -W "list delete" -- ${cur}) )
-            fi
-            ;;
-        issuer)
-            if [[ ${COMP_CWORD} == 2 ]]; then
-                COMPREPLY=( $(compgen -W "create list delete" -- ${cur}) )
+                COMPREPLY=( $(compgen -W "list add remove check" -- ${cur}) )
+            else
+                case "${subcmd}" in
+                    add|remove|rm)
+                        COMPREPLY=( $(compgen -W "--app --port --custom-dns --yes" -- ${cur}) )
+                        ;;
+                esac
             fi
             ;;
         env|environment)
@@ -209,11 +209,6 @@ _satusky_cli_completion() {
                         fi
                         ;;
                 esac
-            fi
-            ;;
-        domain)
-            if [[ ${COMP_CWORD} == 2 ]]; then
-                COMPREPLY=( $(compgen -W "list get create delete verify check search purchase purchase-status contact dns" -- ${cur}) )
             fi
             ;;
         credits|billing)
@@ -429,13 +424,10 @@ _satusky_cli() {
                 'auth:Authentication commands'
                 'org:Manage organizations'
                 'deploy:Deploy applications'
-                'service:Manage services'
                 'secret:Manage secrets'
-                'ingress:Manage ingresses'
-                'issuer:Manage certificate issuers'
+                'domains:Manage custom domains for your apps'
                 'environment:Manage environments'
                 'machine:Manage machines'
-                'domain:Manage custom domains'
                 'credits:Manage credits and billing'
                 'storage:Manage S3/object storage'
                 'logs:View and stream pod logs'
@@ -472,15 +464,6 @@ _satusky_cli() {
                         _describe -t subcommands 'deploy subcommands' subcommands
                     fi
                     ;;
-                service)
-                    if (( CURRENT == 2 )); then
-                        local -a subcommands=(
-                            'list:List services'
-                            'delete:Delete a service'
-                        )
-                        _describe -t subcommands 'service subcommands' subcommands
-                    fi
-                    ;;
                 secret)
                     if (( CURRENT == 2 )); then
                         local -a subcommands=(
@@ -491,23 +474,15 @@ _satusky_cli() {
                         _describe -t subcommands 'secret subcommands' subcommands
                     fi
                     ;;
-                ingress)
+                domains|domain)
                     if (( CURRENT == 2 )); then
                         local -a subcommands=(
-                            'list:List ingresses'
-                            'delete:Delete an ingress'
+                            'list:List custom domains'
+                            'add:Attach a domain to an app'
+                            'remove:Detach a domain'
+                            'check:Show DNS/TLS status for a domain'
                         )
-                        _describe -t subcommands 'ingress subcommands' subcommands
-                    fi
-                    ;;
-                issuer)
-                    if (( CURRENT == 2 )); then
-                        local -a subcommands=(
-                            'create:Create an issuer'
-                            'list:List issuers'
-                            'delete:Delete an issuer'
-                        )
-                        _describe -t subcommands 'issuer subcommands' subcommands
+                        _describe -t subcommands 'domains subcommands' subcommands
                     fi
                     ;;
                 environment)
@@ -566,17 +541,10 @@ _satusky_cli() {
                 domain)
                     if (( CURRENT == 2 )); then
                         local -a subcommands=(
-                            'list:List domains'
-                            'get:Get domain details'
-                            'create:Register a domain'
-                            'delete:Delete a domain'
-                            'verify:Verify domain ownership'
-                            'check:Check domain availability'
-                            'search:Search available domains'
-                            'purchase:Create purchase intent'
-                            'purchase-status:Check purchase status'
-                            'contact:Manage contact details'
-                            'dns:Manage DNS records'
+                            'list:List custom domains'
+                            'add:Attach a domain to an app'
+                            'remove:Detach a domain'
+                            'check:Show DNS/TLS status'
                         )
                         _describe -t subcommands 'domain subcommands' subcommands
                     fi
@@ -747,7 +715,7 @@ func handleFishCompletion(c *cli.Context) error {
 
 function __fish_1ctl_no_subcommand
     for i in (commandline -opc)
-        if contains -- $i auth org deploy service secret ingress issuer environment machine domain credits storage logs notifications user token marketplace audit talos admin pricing cluster completion
+        if contains -- $i auth org deploy secret domains domain environment machine credits storage logs notifications user token marketplace audit pricing cluster completion
             return 1
         end
     end
@@ -785,7 +753,9 @@ function __fish_1ctl_zones
 end
 
 # Common value completions
-complete -c 1ctl -l cpu -xa '0.5 1 2 4 8 16'
+complete -c 1ctl -l cpu -xa '500m 1 2 4 8 16'
+complete -c 1ctl -l cpu-request -xa '63m 125m 250m 500m 1000m 2000m'
+complete -c 1ctl -l cpu-limit -xa '500m 1 2 4 8 16'
 complete -c 1ctl -l memory -xa '512Mi 1Gi 2Gi 4Gi 8Gi 16Gi 32Gi'
 complete -c 1ctl -l machine -xa '(__fish_1ctl_machines)'
 complete -c 1ctl -l hostname -xa '(__fish_1ctl_machines)'
@@ -806,13 +776,10 @@ complete -c 1ctl -l zone -xa '(__fish_1ctl_zones)'
 complete -c 1ctl -f -n __fish_1ctl_no_subcommand -a auth -d 'Authentication commands'
 complete -c 1ctl -f -n __fish_1ctl_no_subcommand -a org -d 'Manage organizations'
 complete -c 1ctl -f -n __fish_1ctl_no_subcommand -a deploy -d 'Deploy applications'
-complete -c 1ctl -f -n __fish_1ctl_no_subcommand -a service -d 'Manage services'
 complete -c 1ctl -f -n __fish_1ctl_no_subcommand -a secret -d 'Manage secrets'
-complete -c 1ctl -f -n __fish_1ctl_no_subcommand -a ingress -d 'Manage ingresses'
-complete -c 1ctl -f -n __fish_1ctl_no_subcommand -a issuer -d 'Manage certificate issuers'
+complete -c 1ctl -f -n __fish_1ctl_no_subcommand -a domains -d 'Manage custom domains for your apps'
 complete -c 1ctl -f -n __fish_1ctl_no_subcommand -a environment -d 'Manage environments'
 complete -c 1ctl -f -n __fish_1ctl_no_subcommand -a machine -d 'Manage machines'
-complete -c 1ctl -f -n __fish_1ctl_no_subcommand -a domain -d 'Manage custom domains'
 complete -c 1ctl -f -n __fish_1ctl_no_subcommand -a credits -d 'Manage credits and billing'
 complete -c 1ctl -f -n __fish_1ctl_no_subcommand -a storage -d 'Manage S3/object storage'
 complete -c 1ctl -f -n __fish_1ctl_no_subcommand -a logs -d 'View and stream pod logs'
@@ -821,8 +788,6 @@ complete -c 1ctl -f -n __fish_1ctl_no_subcommand -a user -d 'Manage user profile
 complete -c 1ctl -f -n __fish_1ctl_no_subcommand -a token -d 'Manage API tokens'
 complete -c 1ctl -f -n __fish_1ctl_no_subcommand -a marketplace -d 'Browse and deploy marketplace apps'
 complete -c 1ctl -f -n __fish_1ctl_no_subcommand -a audit -d 'View audit logs'
-complete -c 1ctl -f -n __fish_1ctl_no_subcommand -a talos -d 'Talos Linux configuration'
-complete -c 1ctl -f -n __fish_1ctl_no_subcommand -a admin -d 'Admin operations'
 complete -c 1ctl -f -n __fish_1ctl_no_subcommand -a pricing -d 'View machine pricing'
 complete -c 1ctl -f -n __fish_1ctl_no_subcommand -a cluster -d 'View cluster and zone information'
 complete -c 1ctl -f -n __fish_1ctl_no_subcommand -a completion -d 'Generate shell completion scripts'
@@ -845,23 +810,20 @@ complete -c 1ctl -f -n '__fish_1ctl_using_command deploy' -a 'list' -d 'List dep
 complete -c 1ctl -f -n '__fish_1ctl_using_command deploy' -a 'get' -d 'Get deployment details'
 complete -c 1ctl -f -n '__fish_1ctl_using_command deploy' -a 'status' -d 'Check deployment status'
 
-# Service subcommands
-complete -c 1ctl -f -n '__fish_1ctl_using_command service' -a 'list' -d 'List services'
-complete -c 1ctl -f -n '__fish_1ctl_using_command service' -a 'delete' -d 'Delete a service'
-
 # Secret subcommands
 complete -c 1ctl -f -n '__fish_1ctl_using_command secret' -a 'create' -d 'Create a secret'
 complete -c 1ctl -f -n '__fish_1ctl_using_command secret' -a 'list' -d 'List secrets'
 complete -c 1ctl -f -n '__fish_1ctl_using_command secret' -a 'delete' -d 'Delete a secret'
 
-# Ingress subcommands
-complete -c 1ctl -f -n '__fish_1ctl_using_command ingress' -a 'list' -d 'List ingresses'
-complete -c 1ctl -f -n '__fish_1ctl_using_command ingress' -a 'delete' -d 'Delete an ingress'
-
-# Issuer subcommands
-complete -c 1ctl -f -n '__fish_1ctl_using_command issuer' -a 'create' -d 'Create an issuer'
-complete -c 1ctl -f -n '__fish_1ctl_using_command issuer' -a 'list' -d 'List issuers'
-complete -c 1ctl -f -n '__fish_1ctl_using_command issuer' -a 'delete' -d 'Delete an issuer'
+# Domains subcommands
+complete -c 1ctl -f -n '__fish_1ctl_using_command domains' -a 'list' -d 'List custom domains'
+complete -c 1ctl -f -n '__fish_1ctl_using_command domains' -a 'add' -d 'Attach a domain to an app'
+complete -c 1ctl -f -n '__fish_1ctl_using_command domains' -a 'remove' -d 'Detach a domain'
+complete -c 1ctl -f -n '__fish_1ctl_using_command domains' -a 'check' -d 'Show DNS/TLS status'
+complete -c 1ctl -f -n '__fish_1ctl_using_command domain' -a 'list' -d 'List custom domains'
+complete -c 1ctl -f -n '__fish_1ctl_using_command domain' -a 'add' -d 'Attach a domain to an app'
+complete -c 1ctl -f -n '__fish_1ctl_using_command domain' -a 'remove' -d 'Detach a domain'
+complete -c 1ctl -f -n '__fish_1ctl_using_command domain' -a 'check' -d 'Show DNS/TLS status'
 
 # Environment subcommands
 complete -c 1ctl -f -n '__fish_1ctl_using_command environment' -a 'create' -d 'Create an environment'
@@ -873,19 +835,6 @@ complete -c 1ctl -f -n '__fish_1ctl_using_command machine' -a 'list' -d 'List ow
 complete -c 1ctl -f -n '__fish_1ctl_using_command machine' -a 'available' -d 'List available machines'
 complete -c 1ctl -f -n '__fish_1ctl_using_command machine' -a 'vm' -d 'Manage Mac agent VM lifecycle'
 complete -c 1ctl -f -n '__fish_1ctl_using_command machine' -a 'usage' -d 'View machine usage'
-
-# Domain subcommands
-complete -c 1ctl -f -n '__fish_1ctl_using_command domain' -a 'list' -d 'List domains'
-complete -c 1ctl -f -n '__fish_1ctl_using_command domain' -a 'get' -d 'Get domain details'
-complete -c 1ctl -f -n '__fish_1ctl_using_command domain' -a 'create' -d 'Register a domain'
-complete -c 1ctl -f -n '__fish_1ctl_using_command domain' -a 'delete' -d 'Delete a domain'
-complete -c 1ctl -f -n '__fish_1ctl_using_command domain' -a 'verify' -d 'Verify domain ownership'
-complete -c 1ctl -f -n '__fish_1ctl_using_command domain' -a 'check' -d 'Check domain availability'
-complete -c 1ctl -f -n '__fish_1ctl_using_command domain' -a 'search' -d 'Search available domains'
-complete -c 1ctl -f -n '__fish_1ctl_using_command domain' -a 'purchase' -d 'Create purchase intent'
-complete -c 1ctl -f -n '__fish_1ctl_using_command domain' -a 'purchase-status' -d 'Check purchase status'
-complete -c 1ctl -f -n '__fish_1ctl_using_command domain' -a 'contact' -d 'Manage contact details'
-complete -c 1ctl -f -n '__fish_1ctl_using_command domain' -a 'dns' -d 'Manage DNS records'
 
 # Credits subcommands
 complete -c 1ctl -f -n '__fish_1ctl_using_command credits' -a 'balance' -d 'View credit balance'
@@ -1001,13 +950,10 @@ Register-ArgumentCompleter -Native -CommandName 1ctl -ScriptBlock {
             [CompletionResult]::new('auth', 'auth', [CompletionResultType]::ParameterValue, 'Authentication commands')
             [CompletionResult]::new('org', 'org', [CompletionResultType]::ParameterValue, 'Manage organizations')
             [CompletionResult]::new('deploy', 'deploy', [CompletionResultType]::ParameterValue, 'Deploy applications')
-            [CompletionResult]::new('service', 'service', [CompletionResultType]::ParameterValue, 'Manage services')
             [CompletionResult]::new('secret', 'secret', [CompletionResultType]::ParameterValue, 'Manage secrets')
-            [CompletionResult]::new('ingress', 'ingress', [CompletionResultType]::ParameterValue, 'Manage ingresses')
-            [CompletionResult]::new('issuer', 'issuer', [CompletionResultType]::ParameterValue, 'Manage certificate issuers')
+            [CompletionResult]::new('domains', 'domains', [CompletionResultType]::ParameterValue, 'Manage custom domains for your apps')
             [CompletionResult]::new('environment', 'environment', [CompletionResultType]::ParameterValue, 'Manage environments')
             [CompletionResult]::new('machine', 'machine', [CompletionResultType]::ParameterValue, 'Manage machines')
-            [CompletionResult]::new('domain', 'domain', [CompletionResultType]::ParameterValue, 'Manage custom domains')
             [CompletionResult]::new('credits', 'credits', [CompletionResultType]::ParameterValue, 'Manage credits and billing')
             [CompletionResult]::new('storage', 'storage', [CompletionResultType]::ParameterValue, 'Manage S3/object storage')
             [CompletionResult]::new('logs', 'logs', [CompletionResultType]::ParameterValue, 'View and stream pod logs')
@@ -1016,8 +962,6 @@ Register-ArgumentCompleter -Native -CommandName 1ctl -ScriptBlock {
             [CompletionResult]::new('token', 'token', [CompletionResultType]::ParameterValue, 'Manage API tokens')
             [CompletionResult]::new('marketplace', 'marketplace', [CompletionResultType]::ParameterValue, 'Browse and deploy marketplace apps')
             [CompletionResult]::new('audit', 'audit', [CompletionResultType]::ParameterValue, 'View audit logs')
-            [CompletionResult]::new('talos', 'talos', [CompletionResultType]::ParameterValue, 'Talos Linux configuration')
-            [CompletionResult]::new('admin', 'admin', [CompletionResultType]::ParameterValue, 'Admin operations')
             [CompletionResult]::new('pricing', 'pricing', [CompletionResultType]::ParameterValue, 'View machine pricing')
             [CompletionResult]::new('cluster', 'cluster', [CompletionResultType]::ParameterValue, 'View cluster and zone information')
             [CompletionResult]::new('completion', 'completion', [CompletionResultType]::ParameterValue, 'Generate shell completion scripts')
@@ -1051,26 +995,24 @@ Register-ArgumentCompleter -Native -CommandName 1ctl -ScriptBlock {
             [CompletionResult]::new('status', 'status', [CompletionResultType]::ParameterValue, 'Check deployment status')
             break
         }
-        '1ctl;service' {
-            [CompletionResult]::new('list', 'list', [CompletionResultType]::ParameterValue, 'List services')
-            [CompletionResult]::new('delete', 'delete', [CompletionResultType]::ParameterValue, 'Delete a service')
-            break
-        }
         '1ctl;secret' {
             [CompletionResult]::new('create', 'create', [CompletionResultType]::ParameterValue, 'Create a secret')
             [CompletionResult]::new('list', 'list', [CompletionResultType]::ParameterValue, 'List secrets')
             [CompletionResult]::new('delete', 'delete', [CompletionResultType]::ParameterValue, 'Delete a secret')
             break
         }
-        '1ctl;ingress' {
-            [CompletionResult]::new('list', 'list', [CompletionResultType]::ParameterValue, 'List ingresses')
-            [CompletionResult]::new('delete', 'delete', [CompletionResultType]::ParameterValue, 'Delete an ingress')
+        '1ctl;domains' {
+            [CompletionResult]::new('list', 'list', [CompletionResultType]::ParameterValue, 'List custom domains')
+            [CompletionResult]::new('add', 'add', [CompletionResultType]::ParameterValue, 'Attach a domain to an app')
+            [CompletionResult]::new('remove', 'remove', [CompletionResultType]::ParameterValue, 'Detach a domain')
+            [CompletionResult]::new('check', 'check', [CompletionResultType]::ParameterValue, 'Show DNS/TLS status')
             break
         }
-        '1ctl;issuer' {
-            [CompletionResult]::new('create', 'create', [CompletionResultType]::ParameterValue, 'Create an issuer')
-            [CompletionResult]::new('list', 'list', [CompletionResultType]::ParameterValue, 'List issuers')
-            [CompletionResult]::new('delete', 'delete', [CompletionResultType]::ParameterValue, 'Delete an issuer')
+        '1ctl;domain' {
+            [CompletionResult]::new('list', 'list', [CompletionResultType]::ParameterValue, 'List custom domains')
+            [CompletionResult]::new('add', 'add', [CompletionResultType]::ParameterValue, 'Attach a domain to an app')
+            [CompletionResult]::new('remove', 'remove', [CompletionResultType]::ParameterValue, 'Detach a domain')
+            [CompletionResult]::new('check', 'check', [CompletionResultType]::ParameterValue, 'Show DNS/TLS status')
             break
         }
         '1ctl;environment' {
@@ -1094,20 +1036,6 @@ Register-ArgumentCompleter -Native -CommandName 1ctl -ScriptBlock {
             [CompletionResult]::new('resize', 'resize', [CompletionResultType]::ParameterValue, 'Resize a VM')
             [CompletionResult]::new('apply-config', 'apply-config', [CompletionResultType]::ParameterValue, 'Apply Talos config')
             [CompletionResult]::new('console', 'console', [CompletionResultType]::ParameterValue, 'Enable/disable console streaming')
-            break
-        }
-        '1ctl;domain' {
-            [CompletionResult]::new('list', 'list', [CompletionResultType]::ParameterValue, 'List domains')
-            [CompletionResult]::new('get', 'get', [CompletionResultType]::ParameterValue, 'Get domain details')
-            [CompletionResult]::new('create', 'create', [CompletionResultType]::ParameterValue, 'Register a domain')
-            [CompletionResult]::new('delete', 'delete', [CompletionResultType]::ParameterValue, 'Delete a domain')
-            [CompletionResult]::new('verify', 'verify', [CompletionResultType]::ParameterValue, 'Verify domain ownership')
-            [CompletionResult]::new('check', 'check', [CompletionResultType]::ParameterValue, 'Check availability')
-            [CompletionResult]::new('search', 'search', [CompletionResultType]::ParameterValue, 'Search available domains')
-            [CompletionResult]::new('purchase', 'purchase', [CompletionResultType]::ParameterValue, 'Create purchase intent')
-            [CompletionResult]::new('purchase-status', 'purchase-status', [CompletionResultType]::ParameterValue, 'Check purchase status')
-            [CompletionResult]::new('contact', 'contact', [CompletionResultType]::ParameterValue, 'Manage contact details')
-            [CompletionResult]::new('dns', 'dns', [CompletionResultType]::ParameterValue, 'Manage DNS records')
             break
         }
         '1ctl;credits' {

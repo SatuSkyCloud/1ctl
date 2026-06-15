@@ -55,13 +55,29 @@ func FormatTimeAgo(t time.Time) string {
 	}
 }
 
-// Helper function to convert string to UUID
+// ToUUID parses a UUID string, returning uuid.Nil on parse failure.
+//
+// Contract: the caller MUST have validated the input upstream (e.g., from a
+// successful API response or via ParseUUID at the system boundary). Use this
+// only when a parse error is structurally impossible — never on user input,
+// where it would turn a malformed UUID into a silent backend "not found".
 func ToUUID(s string) uuid.UUID {
 	id, err := uuid.Parse(s)
 	if err != nil {
 		return uuid.Nil
 	}
 	return id
+}
+
+// ParseUUID parses a UUID string and returns a descriptive error on failure.
+// Use at system boundaries (CLI args, env vars, context state) where a
+// malformed value should surface as a clear error, not silently degrade.
+func ParseUUID(s string) (uuid.UUID, error) {
+	id, err := uuid.Parse(s)
+	if err != nil {
+		return uuid.Nil, fmt.Errorf("invalid UUID %q: %w", s, err)
+	}
+	return id, nil
 }
 
 // SafeInt32 safely converts an int to int32, checking for overflow

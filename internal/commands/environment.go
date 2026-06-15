@@ -166,4 +166,3 @@ func handleEnvUnset(c *cli.Context) error {
 	utils.PrintSuccess("Key %q removed from environment", key)
 	return nil
 }
-

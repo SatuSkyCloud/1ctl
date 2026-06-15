@@ -1,5 +1,282 @@
 # Release Notes
 
+## Version 0.9.0 (02-06-2026)
+
+CPU request and burst semantics are now explicit for shared-resource deploys.
+
+### Features
+
+* **Explicit CPU fraction flags**:
+  - Added `--cpu-request` for guaranteed scheduler reservation.
+  - Added `--cpu-limit` for burst ceiling.
+  - Kept `--cpu` as a backward-compatible alias for `--cpu-limit`.
+* **Shared-tier defaults**:
+  - Default deploy shape is now `250m` request with `1` vCPU burst.
+  - `1ctl launch` writes `cpu_request` and `cpu_limit` into `satusky.toml`.
+  - Existing `cpu` config entries remain supported as legacy burst limits.
+
+### Documentation
+
+* Updated deploy examples to use `--cpu-request 250m --cpu-limit 1`.
+* Documented that `cpu_request` is the reserved baseline and `cpu_limit` is the burst ceiling.
+
+## Version 0.8.5 (Unreleased)
+
+Machine inventory management and diagnostics for BYOA operators.
+
+### Deployment Builds
+
+* **`deploy --fast` added**: requests the accelerated Depot-backed cloud builder before deployment.
+  - The default deploy path still uses the platform build service.
+  - `--fast` sends `builder=depot` to the backend build API; the backend owns the Depot project/token configuration.
+  - `--fast` is ignored when `--image` is supplied because pre-built images skip cloud builds entirely.
+* **`satusky.toml` supports `fast_build = true`** under `[app]` to opt a project into the accelerated builder by default.
+  - CLI precedence remains: explicit `--fast` overrides config; `--image` still skips all build paths.
+  - Pricing for accelerated builds is intentionally not surfaced yet; this is a platform capability flag only.
+* Build documentation and status text now refer to generic cloud builds instead of Kaniko-specific implementation details.
+
+### New Commands
+
+* **`machine get <machine-id|name|numeric-id>`**: shows the full owned machine inventory record.
+* **`machine create`**: creates an owned machine inventory record with region, zone, hardware specs, pricing tier, monetization, recommendation, Talos/Kubernetes version, and optional organization scope.
+* **`machine update <machine-id|name|numeric-id>`**: updates the same mutable inventory fields while preserving ownership and omitted existing values.
+* **`machine delete <machine-id|name|numeric-id>`**: decommissions an owned machine through the authenticated machine API instead of hard-deleting the database row.
+* **`machine inspect <machine-id|name|numeric-id>`**: combines machine details, hardware inspection, SatuSky node labels, and Talos status in one command.
+* **`machine logs <machine-id|name|numeric-id>`**: fetches SideroLink, Talos, and Kubernetes discovery/config logs with source, component, tail, since, and text filters.
+* **`machine events <machine-id|name|numeric-id>`**: fetches recent runtime events for a machine.
+
+### Reliability And Safety
+
+* Machine references now resolve from the authenticated user's owned machine list, so name-based updates and deletes cannot accidentally target someone else's machine.
+* Main API calls from `1ctl` now preserve the `/v1` API prefix when deriving non-CLI machine endpoints from the configured `/v1/cli` URL.
+* The default machine type for new records is now `worker`, matching backend-supported machine types.
+
+## Version 0.8.4 (19-05-2026)
+
+Urgent CLI reliability and diagnostics fixes for the v1 contract.
+
+### Bug Fixes
+
+* **`deploy --wait` now reports workload readiness separately from public URL readiness**: the command no longer implies that a deployment URL is live when DNS or route attachment is still pending.
+  - Workload health and public URL readiness are rendered as separate final states.
+  - If pods are healthy but the public URL is not ready, `--wait` exits with a clear degraded error and points users to `1ctl domains check <domain> --probe`.
+* **Unknown command errors now include the actual command name**: fixes the malformed `%!q(MISSING)` output and adds a storage/volume hint for legacy command attempts.
+* **Global JSON output flags work after subcommands**: common forms such as `1ctl deploy list -o json` and `1ctl domains check example.com --output=json` are normalized before CLI parsing.
+* **`logs stream` labels target resolution and stream mode**: output now distinguishes explicit namespace/app targets from deployment-ID resolution, and labels historical replay vs live-follow behavior.
+
+### Domain Diagnostics
+
+* **`domains check` now uses backend domain-status diagnostics**:
+  - Shows backend attachment, Kubernetes route attachment, DNS state, TLS state, and optional HTTP reachability.
+  - Stale or detached domains now render as `not attached` instead of an empty successful-looking object.
+* **`domains setup <domain>` added**:
+  - Prints exact DNS record type/name/value when the backend exposes the expected DNS target.
+  - Supports JSON output via the global `--output json` contract.
+
+### Deployment And Volume Lifecycle
+
+* **`deploy status` now shows operational deployment details**:
+  - App, deployment ID, namespace, URL, image, desired replicas, rollout strategy, env/secret/volume attachment, route/DNS/TLS status, and timestamps.
+  - JSON output includes the deployment, workload status, ingress, and domain-status objects.
+* **`deploy destroy` now reports cleanup results**:
+  - Prints deleted deployment resources and PVC retention/deletion status returned by the backend.
+  - JSON output returns the backend deletion result directly.
+* **`volumes` command group added**:
+  - `1ctl volumes list --deployment-id <id>`
+  - `1ctl volumes inspect <volume-id>`
+  - `1ctl volumes detach <volume-id>`
+  - `1ctl volumes destroy <volume-id>`
+  - Human and JSON output make PVC existence, mount state, and destroy policy explicit.
+
+### Tests And Quality
+
+* Added parser tests for trailing `-o/--output` normalization.
+* Added command-structure coverage for `domains setup` and `volumes`.
+* Fixed integration test fixtures so they use isolated temp profiles and current cleanup API signatures.
+
+## Version 0.8.3 (14-05-2026)
+
+Deploy defaults patch for minimal project configs.
+
+### Bug Fixes
+
+* **`deploy` no longer requires CPU/memory in `satusky.toml`**: `1ctl deploy` now honors the built-in `--cpu 0.5` and `--memory 256Mi` defaults instead of printing help when those fields are omitted from the project config.
+  - A minimal config with `[app] name` and `port` can deploy without uncommenting resource defaults.
+  - Explicit CLI flags and active `satusky.toml` values still keep the same precedence.
+
+### Tests
+
+* Added regression coverage for deploy help guard behavior with default CPU/memory values.
+
+## Version 0.8.2 (13-05-2026)
+
+Deploy reliability patch for platform-managed apps.
+
+### Bug Fixes
+
+* **Backend-reported DNS readiness before "live" output**: `1ctl deploy` now waits for the control plane's ingress DNS-status endpoint before saying a `*.satusky.com` deployment is live.
+  - The CLI carries the ingress ID returned by the deploy flow and polls `/ingresses/{ingress_id}/dns-status`.
+  - If DNS is still propagating after the timeout, deploy still succeeds, but the output warns that the app URL is not live yet instead of claiming immediate availability.
+  - DNS readiness is now based on backend state instead of the operator workstation's resolver.
+* **Multi-arch build output no longer becomes a Kubernetes arch selector**: cloud build results such as `linux/amd64,linux/arm64` now normalize to an empty `target_arch`, avoiding invalid `kubernetes.io/arch` nodeSelector values.
+  - Single-arch `amd64`, `arm64`, `linux/amd64`, and `linux/arm64` outputs still map to the expected Kubernetes label values.
+
+### Tests
+
+* Added regression coverage for target-arch normalization.
+* Added deploy flow coverage for returning the ingress ID used by DNS readiness polling.
+
+## Version 0.8.1 (12-05-2026)
+
+Internal refactor. No user-visible behaviour change; CLI surface, on-disk file layout, and command exit codes are all identical to v0.8.0.
+
+### Refactor
+
+* **Closes #9** — replace `internal/context` package-level globals (`configDir`, `profileOverride`, `cachedCtx`) with a `*Store` type holding the same state as fields.
+  - `Store` is constructed once in package `init()` and exposed as `context.Default()`.
+  - All package-level functions (`GetToken`, `SetCurrentNamespace`, `UseProfile`, etc.) are now thin shims around `Default().X()` — the ~80 existing call sites across the codebase keep working unchanged.
+  - `SetConfigDir` (the test-only escape hatch that was exported on the public API) is **removed**. Tests now call `context.SetDefault(context.NewTestStore(tempDir))` instead.
+  - The race-condition concerns in the original issue are resolved architecturally: each `*Store` carries its own `sync.RWMutex` for cache access; tests that construct their own Store via `NewTestStore` can run in parallel without touching shared state.
+
+### Quality gates
+
+* `task lint` — 0 issues
+* `task test` — all packages PASS
+* `go test -race ./...` — clean (race detector confirms concurrency safety)
+* `gosec ./...` — 0 issues across 66 files
+* `task format` / `go vet ./...` — clean
+
+### Migration
+
+None for end users. For contributors:
+
+* Tests that previously called `context.SetConfigDir(dir)` should now call `context.SetDefault(context.NewTestStore(dir))`.
+* New test code that wants total isolation can construct a `*Store` via `NewTestStore` and call methods on it directly (`store.GetToken()`) without touching `Default()`.
+
+## Version 0.8.0 (11-05-2026)
+
+Closes 21 of 23 open issues on the repo (#10–#30) plus the in-scope subset of #3. See PR #31 for the full diff.
+
+**Server compatibility:** this release is backward-compatible with the previous API server version. A coordinated server release (`v0.66.0`) ships alongside; the new server is only required to take advantage of the `--zone` wire-format cleanup and admin-controlled signup gating on alternate deployments.
+
+### Breaking Changes
+
+- **Single `1ctl` binary**: the separate `1ctl-dev` variant is retired. Per-environment isolation is now handled by named profiles, not by binary variant. If you previously ran `1ctl-dev`, configure a profile in your `~/.satusky/` directory (`1ctl profile create --url <server-url> <name>`). Existing `~/.satusky-development/` data is not auto-migrated.
+- **Memory validator requires `Mi`/`Gi` suffix**: `--memory 512` is now rejected; use `--memory 512Mi`. Bare numbers were being interpreted by Kubernetes as bytes (causing silent OOMKills).
+- **`auth login` errors on org-less tokens**: previously wrote a poisoned context silently; now fails at login with a clear message.
+- **`org switch` errors on empty namespace**: previously fell back to the org name (an invalid k8s namespace); now fails fast.
+- **Implicit owner-machine selection removed**: `1ctl deploy` defaults to managed cloud even when you have registered machines. Pass `--machine <name>` or `--machine-tag <tag>` to target BYOA.
+- **`1ctl service` / `1ctl ingress` upsert / `1ctl issuer` hidden from `--help`**: commands still work for scripts; the public surface for these workflows is now `1ctl domains`.
+
+### New commands
+
+- **`1ctl launch`**: interactive wizard. Detects project runtime (Go, Node.js/Bun, Python, Python-Poetry, Rust, Ruby, Java-Maven, Java-Gradle, PHP), suggests CPU/memory/port defaults, writes a minimal `satusky.toml`. `--non-interactive` accepts all defaults.
+- **`1ctl domains`** (alias: `domain`): custom-domain management without UUIDs.
+  - `1ctl domains add <domain> --app <app>` — auto-picks Let's Encrypt TLS for non-`*.satusky.com` hosts
+  - `1ctl domains list`
+  - `1ctl domains remove <domain> --app <app> [--yes]` — refuses cross-app removal even when the domain matches
+  - `1ctl domains check <domain>` — shows DNS/TLS state from the ingress record
+- **`1ctl deploy open`**: opens the deployment's primary URL in the default browser (`open` / `xdg-open` / `cmd /c start`).
+- **`1ctl deploy scale --replicas N`**: replica-count shorthand. Refuses to scale HPA/VPA-managed deployments.
+
+### New flags
+
+- **`--name` on `deploy`**: explicit override; precedence is `--name` > `satusky.toml [app] name` > git-remote auto-detect.
+- **`--machine-tag <tag>` on `deploy`**: BYOA targeting by Kubernetes node label `satusky.com/<tag>`. The CLI resolves owned-machine IDs client-side via the existing labels API.
+
+### `satusky.toml` v2 schema
+
+Major expansion of the project manifest. Old `[app]` files still parse identically.
+
+- `[app]` adds: `zone`, `organization`, `strategy`, `rolling_max_surge`, `rolling_max_unavailable`, `machine_tag`, `wait_for`.
+- `[app]` fixes: `dockerfile` and `replicas` were declared in v1 but silently ignored; they now wire through.
+- New sub-sections: `[volume]`, `[hpa]`, `[vpa]`, `[pdb]`, `[multicluster]`. See `1ctl init` for the full template.
+
+Resolution precedence per field: **CLI flag (explicit) > `satusky.toml` > flag `Value:` default**.
+
+### Improvements
+
+- **`profile use` / `profile current`** now show the resolved API URL (full precedence chain) rather than the raw profile field.
+- **`deploy get`** no longer panics on untagged images.
+- **`deploy list`** gains a `NAME` column as the first column (sourced from `app_label`); `TYPE` column dropped.
+- **`WaitForDeployment`** treats unknown statuses as non-terminal — keeps `--wait` forward-compatible with new backend status strings.
+- **CleanupManager** now tracks env (auto-cleaned on partial-deploy failure) and ingress (auto-cleaned) and registers volumes for audit logs (manual PVC cleanup still required pending backend DELETE support).
+- **`UpsertEnvironment` / `CreateSecret`** stop overriding caller-supplied namespace — `--organization` finally routes resources to the right place.
+- **Context loads cached** with `sync.Once`; a typical deploy now reads `~/.satusky/...` once instead of ~30 times.
+- **`x-satusky-config` header dropped** from API requests; backend `K8sClientMiddleware` already had a DB fallback in production.
+- **Repo cleaned up for open-source release**: alternate-deployment URLs removed from `.goreleaser.yml`, `CLAUDE.md`, `CONTRIBUTING.md`, and the user-journey example docs. Anyone running their own SatuSky deployment configures access via a named profile pointing at their server.
+
+### Tests
+
+12 new test files / suites totalling 50+ new test cases. Notable:
+
+- `TestParseV2Schema_*` (8) — toml v2 every section + v1 backwards compat
+- `TestBuildStrategyConfig` — explicit-defaults preservation (issue #27 sub-5)
+- `TestCaptureUserSetFlags_NotPoisonedByCSet` — locks down the c.Set/c.IsSet trap that broke `RollingFlagsExplicit` pre-review
+- `TestDetectRuntime` — all 9 runtimes + unknown-stack fallback + first-match-wins ordering
+- `TestMachineHasTag` — label-match predicate for `--machine-tag`
+
+### Migration
+
+1. Drop `1ctl-dev`. A single `1ctl` binary covers every environment. To target a non-production server, configure a profile once: `1ctl profile create --url <server-url> <name>` then `1ctl profile use <name>`.
+2. Run `1ctl deploy` with `--memory <N>Mi` not bare numbers.
+3. If you relied on implicit owner-machine selection: pass `--machine-tag <tag>` or `--machine <name>`, or add `machine_tag = "..."` to `satusky.toml`.
+4. Existing `~/.satusky/context.json` files load unchanged (the deprecated `user_config_key` field is silently dropped).
+
+### Deferred
+
+- **#9 Store struct refactor** — separate follow-up PR.
+- **G-01 streaming logs** — needs backend WS endpoint.
+- **F-03 sibling-pod `1ctl run`** — needs backend Job spawn.
+- **D-05 table output across all list commands, F-06 env diff, T-04 storage handlers** — separate DX-focused PRs.
+
+### Permanently out (Cloud Run security stance)
+
+- **G-02 SSH/exec into containers**, **F-02 port-forwarding**, **F-01 managed databases**.
+
+### Also bundled (development work between v0.7.3 and the bundle PR)
+
+These commits had merged to the `development` branch between v0.7.3 and the cut of PR #31 but were never tagged for a release. They ship in 0.8.0:
+
+- **`feat: implement 6 CLI gaps`** (5b0a215). `logs stream --config` flag; `init` writes only non-empty fields (cleaner template); new global `--output/-o json` flag for `deploy list/get/status`, `env list`, `secret list`, `machine list`, `token list`; new `--wait/-w` on `deploy` that polls until pods are Running; new `env unset` / `secret unset` for per-key removal (replacing the old wholesale `env delete` / `secret delete`).
+- **`feat: arch-aware cloud build routing`** (7e3aadb). The build pipeline now detects the produced image's CPU architecture and the orchestrator filters owner machines whose `CPUArch` doesn't match. The backend sets `nodeSelector: {"kubernetes.io/arch": <arch>}` on the pod spec so cross-arch deploys can't land on incompatible nodes. Also fixes "no existing environment/secret found" on the first `env create` / `secret create` against a fresh deployment.
+- **`feat(config): name-based deployment resolution (Fly.io style)`** (3e811b3). Removed `deployment_id` from `satusky.toml` — the app `name` is the identifier; the CLI resolves the deployment via `GET /deployments/namespace/:namespace/app/:appLabel` at command time. Add `internal/commands/resolve.go` as the single resolution helper.
+- **`feat(config): org field removed; platform defaults for cpu/memory`** (6d9aea4). `org` no longer in `AppConfig` — the namespace comes from the auth context. `--cpu` / `--memory` get platform defaults (`0.5` / `256Mi`) instead of hard-erroring when neither flag nor toml supplied them.
+- **`fix(deploy): DNS-1035 app name validation`** (ddf029d). `validateAppName` rejects names that wouldn't be valid Kubernetes Service names BEFORE any resource is created.
+- **`fix+chore: remove analytics/billing/wholesale-delete commands`** (db4cf7a). Removed: `logs stats`, `logs delete`, `audit export`, `credits topup`, `credits invoices`, `credits auto-topup`, `credits notifications` (web-dashboard concerns), `env delete`, `secret delete` (wrong semantics — use `env unset` / `secret unset`). Also fixed two backend-route mismatches in `user permissions` and `token create/state` paths.
+- **`fix(domain): delegate domain generation to backend`** (d43986b). Removed client-side domain generation; the backend is the single source of truth for `*.satusky.com` allocation. Avoids drift between CLI guesses and backend reality.
+- **`fix(deploy): domain in deploy get -o json + configmap env dedup`** (8f49f04). Closes a JSON-output gap and a duplicate-env-var bug in the env ConfigMap upsert.
+- **`chore(cli): remove admin/talos/domain/storage/machine vm for v1`** (f07d3f8). Top-level commands that didn't belong in a user-facing CLI surface for v1. Note: my v0.8.0 work brings `domains` back (different scope — custom-domain attachment, not the legacy purchase flow).
+- **`feat: architectural hardening — HTTP safety, auth, deploy reliability`** (2e0809d). Enforces HTTPS for non-localhost API URLs (anti-token-leakage), tightens auth error paths, and tightens deploy retries / cleanup.
+- **`feat: add 1ctl-dev build variant for dev backend testing`** (986b938). Note: this commit is **retired in the same release** by commit `0aa7a37` above — the dev binary lived for ~4 weeks on development before being replaced by named profiles. Net effect for end users: dev binary never existed in a tagged release.
+- **Examples + user-journey docs** (2bccaaa, ff67f1f, 0415203, 9dd610c, 3d12e1d, f57df86, 2b6bd88, 5eb094f, 5ad215f). 12 user-journey guides under `examples/user-journeys/` covering real-world deployment scenarios, plus a comprehensive `REPORT.md` walking through 64 commands tested.
+
+These commits live in the `development` branch already and will arrive in `main` together with the bundle when the standing `development → main` PR (#6) merges and `v0.8.0` is tagged. See `git log v0.7.3..v0.8.0 --oneline` after the tag is cut for the complete enumeration.
+
+## Version 0.7.3 (16-04-2026)
+
+> **Superseded:** the v0.7.3 dev-binary variant has been retired. See the [Unreleased] section above for the replacement (named profiles).
+
+### New Features
+
+- **Build variant for dev-backend testing**: shipped a second `1ctl` binary variant that baked an alternate API URL via `-ldflags`. Internal testing only; not published to Homebrew.
+- **Credential isolation**: the dev variant used a separate config directory so dev and prod tokens didn't clobber each other.
+
+### Improvements
+
+- **Build-time URL overrides**: `defaultAPIURL` and `defaultDockerUploadURL` in `internal/config/config.go` are now `var` (not `const`) so GoReleaser can override them via `-ldflags`. Runtime `SATUSKY_API_URL` / `SATUSKY_DOCKER_API_URL` env vars still win for per-invocation overrides.
+- **`--version` output**: now routes through `GetVersionInfo()` so commit hash and build date show consistently.
+
+### Bug Fixes
+
+- **README token URL**: fixed hallucinated `https://cloud.satusky.com/token` → correct path is `https://cloud.satusky.com/<org-id>/token`.
+
+### Known Issues
+
+- **Homebrew formula not refreshed for v0.7.3**: The `HOMEBREW_TAP_TOKEN` returned 401 during publish. Tarballs on the GitHub release are complete; brew users remain on v0.7.2 until the tap token is rotated and the formula re-published. Unrelated to the dev-binary work.
+
+---
+
 ## Version 0.7.2 (06-04-2026)
 
 ### Bug Fixes
@@ -7,7 +284,7 @@
 - **Reject `--multicluster` combined with custom domains**: Combining `--multicluster` with a `--domain` value that doesn't end in `.satusky.com` is now rejected at the client side with a friendly error before any backend round trip. Previously the deployment would succeed superficially but the platform's satusky-operator silently blocked replication of the custom-domain ingress to the secondary cluster, leaving the user with broken HA expectations.
   - The check is case-insensitive and tolerates a leading `*.` wildcard.
   - 9 unit test cases added in `internal/commands/deploy_test.go`.
-  - Backend (satusky-core_backend v0.47.2) and frontend (satusky-cpanel_front v0.11.1) enforce the same constraint.
+  - The server (v0.47.2) and Control Panel (v0.11.1) enforce the same constraint.
 
 ---
 

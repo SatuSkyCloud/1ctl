@@ -71,7 +71,7 @@ SatuSky builds the image for you in the cloud — no local Docker daemon needed.
 
 ```bash
 cd my-api
-1ctl-dev deploy --config satusky.toml --wait
+1ctl deploy --config satusky.toml --wait
 ```
 
 `--wait` blocks until pods are Running and healthy. You'll see output like:
@@ -89,7 +89,7 @@ If you skip `--wait` and check status immediately, the deployment may still be i
 
 ```bash
 # Checking too early — pods may show Pending or ContainerCreating
-1ctl-dev deploy status --config satusky.toml
+1ctl deploy status --config satusky.toml
 # STATUS: Pending  (image pull in progress)
 ```
 
@@ -102,7 +102,7 @@ Wait a few seconds and run it again, or just use `--wait` from the start to avoi
 Database URL and JWT secret are credentials — store them as secrets, not env vars. Secrets are encrypted at rest and injected into the container at startup.
 
 ```bash
-1ctl-dev secret create \
+1ctl secret create \
   --config satusky.toml \
   --kv DB_URL=postgresql://alice:s3cr3t@ep-cool-cloud-123456.us-east-2.aws.neon.tech/mydb?sslmode=require \
   --kv JWT_SECRET=hs256-super-long-random-string-change-me-in-prod
@@ -113,7 +113,7 @@ Database URL and JWT secret are credentials — store them as secrets, not env v
 To remove a secret you no longer need:
 
 ```bash
-1ctl-dev secret unset --config satusky.toml --key JWT_SECRET
+1ctl secret unset --config satusky.toml --key JWT_SECRET
 ```
 
 ---
@@ -123,7 +123,7 @@ To remove a secret you no longer need:
 Non-sensitive config lives in env vars. These are visible in deploy metadata, so keep credentials in secrets.
 
 ```bash
-1ctl-dev env create \
+1ctl env create \
   --config satusky.toml \
   --env CORS_ORIGIN=https://app.example.com \
   --env NODE_ENV=production
@@ -132,7 +132,7 @@ Non-sensitive config lives in env vars. These are visible in deploy metadata, so
 Changes take effect on the next deploy. Trigger a redeploy to pick them up:
 
 ```bash
-1ctl-dev deploy --config satusky.toml --wait
+1ctl deploy --config satusky.toml --wait
 ```
 
 ---
@@ -142,7 +142,7 @@ Changes take effect on the next deploy. Trigger a redeploy to pick them up:
 In a second terminal, tail the log stream while you test:
 
 ```bash
-1ctl-dev logs stream --config satusky.toml
+1ctl logs stream --config satusky.toml
 ```
 
 You'll see structured output like:
@@ -183,7 +183,7 @@ Edit `src/index.js`, commit, and deploy again. The platform upserts — it creat
 ```bash
 git add src/index.js
 git commit -m "fix: return 404 when user not found"
-1ctl-dev deploy --config satusky.toml --wait
+1ctl deploy --config satusky.toml --wait
 ```
 
 Output shows the new version number:
@@ -198,7 +198,7 @@ Deploy complete. Version: 4
 ## 10. View release history
 
 ```bash
-1ctl-dev deploy releases --config satusky.toml
+1ctl deploy releases --config satusky.toml
 ```
 
 ```
@@ -216,7 +216,7 @@ VERSION  STATUS    DEPLOYED AT           MESSAGE
 Version 4 broke something — let's roll back to version 3 immediately.
 
 ```bash
-1ctl-dev deploy rollback --config satusky.toml --version 3
+1ctl deploy rollback --config satusky.toml --version 3
 ```
 
 ```
@@ -234,10 +234,10 @@ No image rebuild needed — the platform reruns the already-built image from ver
 
 | Task | Command |
 |---|---|
-| First deploy (cloud build) | `1ctl-dev deploy --config satusky.toml --wait` |
-| Set credentials | `1ctl-dev secret create --config satusky.toml --kv KEY=VAL` |
-| Remove a secret | `1ctl-dev secret unset --config satusky.toml --key KEY` |
-| Set config vars | `1ctl-dev env create --config satusky.toml --env KEY=VAL` |
-| Live logs | `1ctl-dev logs stream --config satusky.toml` |
-| Release history | `1ctl-dev deploy releases --config satusky.toml` |
-| Roll back | `1ctl-dev deploy rollback --config satusky.toml --version N` |
+| First deploy (cloud build) | `1ctl deploy --config satusky.toml --wait` |
+| Set credentials | `1ctl secret create --config satusky.toml --kv KEY=VAL` |
+| Remove a secret | `1ctl secret unset --config satusky.toml --key KEY` |
+| Set config vars | `1ctl env create --config satusky.toml --env KEY=VAL` |
+| Live logs | `1ctl logs stream --config satusky.toml` |
+| Release history | `1ctl deploy releases --config satusky.toml` |
+| Roll back | `1ctl deploy rollback --config satusky.toml --version N` |

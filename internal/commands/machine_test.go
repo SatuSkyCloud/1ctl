@@ -17,11 +17,18 @@ func TestMachineCommand(t *testing.T) {
 		t.Errorf("Expected usage 'Manage machines and check availability', got %s", cmd.Usage)
 	}
 
-	// Check subcommands
+	// Check subcommands. `vm` was removed in the v1 cleanup (f07d3f8) —
+	// Mac agent VM lifecycle moved to dedicated tooling.
 	expectedSubcommands := map[string]bool{
 		"list":      false,
+		"get":       false,
+		"create":    false,
+		"update":    false,
+		"delete":    false,
+		"inspect":   false,
+		"logs":      false,
+		"events":    false,
 		"available": false,
-		"vm":        false,
 		"usage":     false,
 	}
 

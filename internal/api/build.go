@@ -36,14 +36,19 @@ type BuildStatusResponse struct {
 	Status       string `json:"status"`        // queued | building | completed | failed
 	ImageRef     string `json:"image_ref"`     // populated when Status == "completed"
 	ImageArch    string `json:"image_arch"`    // "amd64", "arm64", or "" if detection failed
-	Logs         string `json:"logs"`          // accumulated Kaniko stdout
+	Logs         string `json:"logs"`          // accumulated build stdout
 	ErrorMessage string `json:"error_message"` // populated when Status == "failed"
 }
 
+const (
+	BuildBackendDefault = ""
+	BuildBackendDepot   = "depot"
+)
+
 // SubmitBuild uploads the gzipped build context to the backend and returns the
-// build ID. The backend spawns a Kaniko job that builds the image and pushes it
+// build ID. The backend selects a cloud builder, builds the image, and pushes it
 // to the internal registry.
-func SubmitBuild(contextTarPath, projectName, dockerfilePath string, buildArgs map[string]string) (string, error) {
+func SubmitBuild(contextTarPath, projectName, dockerfilePath, builder string, buildArgs map[string]string) (string, error) {
 	token := context.GetToken()
 	if token == "" {
 		return "", utils.NewError("not authenticated. Please run '1ctl auth login' to authenticate", nil)
@@ -72,6 +77,11 @@ func SubmitBuild(contextTarPath, projectName, dockerfilePath string, buildArgs m
 	} {
 		if err := w.WriteField(pair.key, pair.val); err != nil {
 			return "", utils.NewError(fmt.Sprintf("failed to write %s field: %s", pair.key, err.Error()), nil)
+		}
+	}
+	if builder != "" {
+		if err := w.WriteField("builder", builder); err != nil {
+			return "", utils.NewError(fmt.Sprintf("failed to write builder field: %s", err.Error()), nil)
 		}
 	}
 	for k, v := range buildArgs {
@@ -144,65 +154,15 @@ func GetBuildStatus(buildID string) (*BuildStatusResponse, error) {
 	return &resp.Data, nil
 }
 
-// WaitForBuild polls until the build completes or fails, streaming any new log
-// lines to progressWriter. Returns the full image reference on success.
-func WaitForBuild(buildID string, progressWriter io.Writer) (string, error) {
-	const (
-		pollInterval = 3 * time.Second
-		maxWait      = 15 * time.Minute
-	)
-
-	deadline := time.Now().Add(maxWait)
-	ticker := time.NewTicker(pollInterval)
-	defer ticker.Stop()
-
-	var logOffset int // byte offset into the accumulated Logs string
-
-	for time.Now().Before(deadline) {
-		<-ticker.C
-
-		status, err := GetBuildStatus(buildID)
-		if err != nil {
-			// Transient network error — keep polling.
-			continue
-		}
-
-		// Print any new log lines since the last poll.
-		if len(status.Logs) > logOffset {
-			newLogs := status.Logs[logOffset:]
-			scanner := bufio.NewScanner(strings.NewReader(newLogs))
-			for scanner.Scan() {
-				if _, err := fmt.Fprintf(progressWriter, "  %s\n", scanner.Text()); err != nil {
-					return "", utils.NewError(fmt.Sprintf("failed to write build log: %s", err.Error()), nil)
-				}
-			}
-			logOffset = len(status.Logs)
-		}
-
-		switch status.Status {
-		case "completed":
-			return status.ImageRef, nil
-		case "failed":
-			msg := status.ErrorMessage
-			if msg == "" {
-				msg = "unknown error"
-			}
-			return "", utils.NewError(fmt.Sprintf("cloud build failed: %s", msg), nil)
-		}
-		// queued | building → keep polling
-	}
-
-	return "", utils.NewError(fmt.Sprintf("cloud build timed out after %v", maxWait), nil)
-}
-
 // BuildResult holds the outcome of a completed cloud build.
 type BuildResult struct {
 	ImageRef  string
 	ImageArch string // "amd64", "arm64", or "" if detection failed
 }
 
-// WaitForBuildResult is like WaitForBuild but returns the full BuildResult,
-// including the detected image architecture.
+// WaitForBuildResult polls the cloud-build job until completion, streaming
+// new log lines to progressWriter, and returns the BuildResult (image ref +
+// detected image architecture).
 func WaitForBuildResult(buildID string, progressWriter io.Writer) (*BuildResult, error) {
 	const (
 		pollInterval = 3 * time.Second

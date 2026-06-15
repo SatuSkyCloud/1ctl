@@ -119,6 +119,7 @@ type Deployment struct {
 	AppLabel           string                    `json:"app_label"`
 	Port               int32                     `json:"port"`
 	CpuRequest         string                    `json:"cpu_request"`
+	CPULimit           string                    `json:"cpu_limit,omitempty"`
 	MemoryRequest      string                    `json:"memory_request"`
 	MemoryLimit        string                    `json:"memory_limit"`
 	RepoURL            string                    `json:"repo_url,omitempty"`
@@ -144,6 +145,7 @@ type Deployment struct {
 
 type CreateDeploymentResponse struct {
 	DeploymentID uuid.UUID `json:"deployment_id"`
+	IngressID    uuid.UUID `json:"ingress_id,omitempty"`
 	AppLabel     string    `json:"app_label"`
 	Domain       string    `json:"domain"`
 }
@@ -189,6 +191,69 @@ type Ingress struct {
 	UpdatedAt    time.Time     `json:"updated_at"`
 }
 
+type DNSStatus string
+
+const (
+	DNSStatusResolved      DNSStatus = "resolved"
+	DNSStatusPropagating   DNSStatus = "propagating"
+	DNSStatusNotConfigured DNSStatus = "not_configured"
+)
+
+type DNSStatusResponse struct {
+	Status      DNSStatus `json:"status"`
+	Domain      string    `json:"domain"`
+	ExpectedIP  string    `json:"expected_ip,omitempty"`
+	ResolvedIPs []string  `json:"resolved_ips,omitempty"`
+	Message     string    `json:"message,omitempty"`
+}
+
+type TLSStatus string
+
+const (
+	TLSStatusProvisioning  TLSStatus = "provisioning"
+	TLSStatusActive        TLSStatus = "active"
+	TLSStatusExpiringSoon  TLSStatus = "expiring_soon"
+	TLSStatusError         TLSStatus = "error"
+	TLSStatusNotApplicable TLSStatus = "not_applicable"
+)
+
+type TLSStatusResponse struct {
+	Status    TLSStatus  `json:"status"`
+	ExpiresAt *time.Time `json:"expires_at,omitempty"`
+	Message   string     `json:"message,omitempty"`
+}
+
+type DomainRouteStatus struct {
+	Attached     bool     `json:"attached"`
+	ResourceKind string   `json:"resource_kind,omitempty"`
+	ResourceName string   `json:"resource_name,omitempty"`
+	Namespace    string   `json:"namespace,omitempty"`
+	Hostnames    []string `json:"hostnames,omitempty"`
+	Message      string   `json:"message,omitempty"`
+}
+
+type DomainReachabilityStatus struct {
+	Checked    bool   `json:"checked"`
+	Reachable  bool   `json:"reachable"`
+	StatusCode int    `json:"status_code,omitempty"`
+	URL        string `json:"url,omitempty"`
+	Message    string `json:"message,omitempty"`
+}
+
+type DomainStatusResponse struct {
+	IngressID    uuid.UUID                `json:"ingress_id"`
+	DeploymentID uuid.UUID                `json:"deployment_id"`
+	AppLabel     string                   `json:"app_label"`
+	Namespace    string                   `json:"namespace"`
+	DomainName   string                   `json:"domain_name"`
+	DnsConfig    DnsConfigType            `json:"dns_config"`
+	Attached     bool                     `json:"attached"`
+	Route        DomainRouteStatus        `json:"route"`
+	DNS          DNSStatusResponse        `json:"dns"`
+	TLS          TLSStatusResponse        `json:"tls"`
+	Reachability DomainReachabilityStatus `json:"reachability"`
+}
+
 type Dependency struct {
 	Name    string   `json:"name"`
 	Image   string   `json:"image"`
@@ -206,6 +271,48 @@ type Volume struct {
 	MountPath    string    `json:"mount_path"`
 	CreatedAt    time.Time `json:"created_at"`
 	UpdatedAt    time.Time `json:"updated_at"`
+}
+
+type VolumePVCStatus struct {
+	Name         string `json:"name"`
+	Namespace    string `json:"namespace"`
+	Exists       bool   `json:"exists"`
+	Phase        string `json:"phase,omitempty"`
+	StorageClass string `json:"storage_class,omitempty"`
+	Capacity     string `json:"capacity,omitempty"`
+	Message      string `json:"message,omitempty"`
+}
+
+type VolumeMountStatus struct {
+	Attached bool   `json:"attached"`
+	Mounted  bool   `json:"mounted"`
+	Path     string `json:"path,omitempty"`
+	Message  string `json:"message,omitempty"`
+}
+
+type VolumeLifecycleStatus struct {
+	Volume        Volume            `json:"volume"`
+	PVC           VolumePVCStatus   `json:"pvc"`
+	Mount         VolumeMountStatus `json:"mount"`
+	DestroyPolicy string            `json:"destroy_policy"`
+}
+
+type VolumeDestroyResult struct {
+	VolumeID      uuid.UUID `json:"volume_id"`
+	VolumeName    string    `json:"volume_name"`
+	ClaimName     string    `json:"claim_name"`
+	Namespace     string    `json:"namespace"`
+	Status        string    `json:"status"`
+	DestroyPolicy string    `json:"destroy_policy"`
+	Message       string    `json:"message,omitempty"`
+}
+
+type DeletionResult struct {
+	DeletedDeployments []string              `json:"deleted_deployments"`
+	Namespace          string                `json:"namespace"`
+	AppLabel           string                `json:"app_label"`
+	IsCNPGDeployment   bool                  `json:"is_cnpg_deployment"`
+	Volumes            []VolumeDestroyResult `json:"volumes,omitempty"`
 }
 
 type Service struct {
@@ -347,6 +454,7 @@ type Machine struct {
 	CreatedAt           time.Time  `db:"created_at" json:"created_at"`
 	UpdatedAt           time.Time  `db:"updated_at" json:"updated_at"`
 	CPUArch             string     `json:"cpu_arch"`
+	OrganizationID      string     `json:"organization_id,omitempty"`
 }
 
 type MachineIDs struct {
@@ -661,4 +769,50 @@ type SendCommandRequest struct {
 type SendCommandResponse struct {
 	CommandID string `json:"command_id"`
 	Status    string `json:"status"`
+}
+
+type MachineLabelsResponse struct {
+	Labels map[string]string `json:"labels"`
+}
+
+type MachineLogFetchRequest struct {
+	MachineID      string   `json:"machine_id,omitempty"`
+	Sources        []string `json:"sources,omitempty"`
+	Follow         bool     `json:"follow,omitempty"`
+	TailLines      int      `json:"tail_lines,omitempty"`
+	Since          string   `json:"since,omitempty"`
+	Filter         string   `json:"filter,omitempty"`
+	Components     []string `json:"components,omitempty"`
+	IncludePrevLog bool     `json:"include_prev_log,omitempty"`
+}
+
+type MachineLogEntry struct {
+	Timestamp string `json:"timestamp"`
+	Source    string `json:"source"`
+	Stage     string `json:"stage"`
+	Message   string `json:"message"`
+	Severity  string `json:"severity,omitempty"`
+	Component string `json:"component,omitempty"`
+}
+
+type MachineLogsResponse struct {
+	MachineID string            `json:"machine_id"`
+	Entries   []MachineLogEntry `json:"entries"`
+	Count     int               `json:"count"`
+	Stage     string            `json:"stage"`
+	FetchedAt string            `json:"fetched_at"`
+}
+
+type MachineEvent struct {
+	ID      string `json:"id"`
+	TypeURL string `json:"type_url"`
+	ActorID string `json:"actor_id,omitempty"`
+	Node    string `json:"node,omitempty"`
+	Payload string `json:"payload,omitempty"`
+}
+
+type MachineEventsResponse struct {
+	MachineID string         `json:"machine_id"`
+	Events    []MachineEvent `json:"events"`
+	Count     int            `json:"count"`
 }

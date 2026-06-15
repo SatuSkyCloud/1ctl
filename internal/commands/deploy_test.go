@@ -4,8 +4,68 @@ import (
 	"flag"
 	"testing"
 
+	"1ctl/internal/config"
+
 	"github.com/urfave/cli/v2"
 )
+
+// TestCaptureUserSetFlags_BeforeAndAfterCSet locks down the invariant that
+// applyConfigScalar's c.Set call should NOT make the captured snapshot
+// report a user-set flag. This regression existed in pre-review code: a
+// satusky.toml carrying rolling_max_surge would flip
+// opts.RollingFlagsExplicit and force strategy config onto requests that
+// would otherwise have been omitted. The fix moved the IsSet capture to
+// the top of handleDeploy. Test guards that.
+func TestCaptureUserSetFlags_NotPoisonedByCSet(t *testing.T) {
+	fs := flag.NewFlagSet("test", flag.ContinueOnError)
+	fs.String("rolling-max-surge", "25%", "")
+	// Do NOT call fs.Set / c.Set for "rolling-max-surge" — simulating the
+	// "user did not pass --rolling-max-surge" case.
+	ctx := cli.NewContext(nil, fs, nil)
+
+	snapshot := captureUserSetFlags(ctx, "rolling-max-surge")
+	if snapshot["rolling-max-surge"] {
+		t.Fatalf("snapshot pre-c.Set: want false, got true")
+	}
+
+	// Simulate applyConfigScalar's effect.
+	if err := ctx.Set("rolling-max-surge", "50%"); err != nil {
+		t.Fatalf("ctx.Set: %v", err)
+	}
+
+	// The snapshot must still report user did not set it. c.IsSet would
+	// return true here — that's exactly the trap the snapshot avoids.
+	if snapshot["rolling-max-surge"] {
+		t.Errorf("snapshot post-c.Set mutated: want false, got true")
+	}
+	if !ctx.IsSet("rolling-max-surge") {
+		t.Log("note: c.IsSet returns true after c.Set — this is the trap captureUserSetFlags exists to side-step")
+	}
+}
+
+func TestShouldShowDeployHelp_UsesFlagDefaults(t *testing.T) {
+	fs := flag.NewFlagSet("test", flag.ContinueOnError)
+	fs.String("cpu-request", "250m", "")
+	fs.String("memory", "256Mi", "")
+	fs.String("image", "", "")
+	ctx := cli.NewContext(nil, fs, nil)
+
+	if shouldShowDeployHelp(ctx, &config.ProjectConfig{}) {
+		t.Fatal("deploy help guard ignored cpu/memory flag defaults")
+	}
+}
+
+func TestShouldShowDeployHelp_EmptyResourceDefaults(t *testing.T) {
+	fs := flag.NewFlagSet("test", flag.ContinueOnError)
+	fs.String("cpu-request", "", "")
+	fs.String("memory", "", "")
+	fs.String("image", "", "")
+	ctx := cli.NewContext(nil, fs, nil)
+
+	if !shouldShowDeployHelp(ctx, &config.ProjectConfig{}) {
+		t.Fatal("deploy help guard should show help when no image, cpu, or memory defaults exist")
+	}
+}
 
 func TestDeployCommand(t *testing.T) {
 	cmd := DeployCommand()
@@ -24,6 +84,8 @@ func TestDeployCommand(t *testing.T) {
 		"restart":  false,
 		"releases": false,
 		"rollback": false,
+		"open":     false, // #3 D-02
+		"scale":    false, // #3 F-05
 	}
 
 	for _, subcmd := range cmd.Subcommands {
@@ -130,6 +192,8 @@ func TestValidateInputs_MulticlusterCustomDomain(t *testing.T) {
 			flags := flag.NewFlagSet("test", flag.ContinueOnError)
 			// Required flags so we don't trip the earlier validations.
 			flags.String("cpu", "1", "")
+			flags.String("cpu-request", "250m", "")
+			flags.String("cpu-limit", "1", "")
 			flags.String("memory", "512Mi", "")
 			flags.String("image", "registry.example.com/myapp:latest", "")
 			flags.Bool("multicluster", tt.multicluster, "")
@@ -140,6 +204,12 @@ func TestValidateInputs_MulticlusterCustomDomain(t *testing.T) {
 			ctx := cli.NewContext(app, flags, nil)
 			if err := ctx.Set("cpu", "1"); err != nil {
 				t.Fatalf("set cpu: %v", err)
+			}
+			if err := ctx.Set("cpu-request", "250m"); err != nil {
+				t.Fatalf("set cpu-request: %v", err)
+			}
+			if err := ctx.Set("cpu-limit", "1"); err != nil {
+				t.Fatalf("set cpu-limit: %v", err)
 			}
 			if err := ctx.Set("memory", "512Mi"); err != nil {
 				t.Fatalf("set memory: %v", err)

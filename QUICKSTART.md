@@ -111,13 +111,13 @@ cd examples/backend
 
 Or with explicit flags:
 ```bash
-./1ctl deploy --cpu 0.5 --memory 256Mi --port 8080
+./1ctl deploy --cpu-request 250m --cpu-limit 1 --memory 256Mi --port 8080
 ```
 
 What happens:
 1. `1ctl` packages your source directory into a `.tar.gz` (respects `.dockerignore`)
 2. Context is uploaded to `POST /v1/cli/builds`
-3. The backend spawns a **Kaniko** job — builds your Dockerfile and pushes the image to `registry.satusky.com/satusky-container-registry/backend-api:<build-id>`
+3. The backend runs a cloud build — builds your Dockerfile and pushes the image to `registry.satusky.com/satusky-container-registry/backend-api:<build-id>`
 4. `1ctl` streams build logs until the image is ready
 5. The image ref is handed to the deployment orchestrator
 
@@ -263,7 +263,7 @@ When you run `1ctl deploy`:
 
 1. **Context packaged** — your project directory is compressed into a `.tar.gz` (respects `.dockerignore`)
 2. **Uploaded to SatuSky** — the context is sent to `POST /v1/cli/builds`
-3. **Image built** — the backend spawns a Kaniko job that builds your Dockerfile and pushes the image to `registry.satusky.com/satusky-container-registry/<project>:<sha>`
+3. **Image built** — the backend runs a cloud build that builds your Dockerfile and pushes the image to `registry.satusky.com/satusky-container-registry/<project>:<sha>`
 4. **CLI polls** — `1ctl` streams build logs until the image is ready
 5. **Deployed** — the image ref is handed to the deployment orchestrator which creates/updates K8s Deployment, Service, Ingress, and Environment resources
 
@@ -273,15 +273,14 @@ No local Docker installation required.
 
 ## Local end-to-end test (verified 2026-04-09)
 
-The following steps were run against a local backend (`http://localhost:8080`) to verify the full flow:
+The following steps were run against a local API server (`http://localhost:8080`) to verify the full flow:
 
 ```bash
 # 1. Build CLI from source
 go build -o 1ctl ./cmd/...
 
-# 2. Start the local backend
-cd /path/to/satusky-core_backend
-sudo task dev > logs.txt
+# 2. Start the local API server in another terminal
+#    (refer to the server's own README for the exact command)
 
 # 3. Switch to local profile and authenticate
 ./1ctl profile use local
@@ -314,7 +313,7 @@ cd ../frontend
 ```
 
 **What was verified (full 5-step pipeline):**
-- Kaniko cloud builds succeed for both Go and nginx/static apps
+- Cloud builds succeed for both Go and nginx/static apps
 - App name from `satusky.toml` (`backend-api`, `frontend`) is used correctly in the image tag
 - CPU/memory/port defaults are loaded from `satusky.toml` — no CLI flags required
 - Float CPU values (e.g. `0.5`) are accepted by the validator
@@ -336,12 +335,14 @@ All of these are valid CPU values:
 | Integer | `1`    | 1 core |
 | Millicores | `500m` | 500 millicores (0.5 cores) |
 
+`--cpu-request` is the guaranteed scheduler reservation. `--cpu-limit` is the burst ceiling. The default shared tier is `250m` request with `1` vCPU burst.
+
 ---
 
 ## Next steps
 
 - Browse available machines: `1ctl machine list`
 - View logs: `1ctl logs --deployment-id <uuid>`
-- Set up autoscaling: `1ctl deploy --hpa --hpa-min-replicas 2 --hpa-max-replicas 10 --cpu 1 --memory 512Mi --port 8080`
+- Set up autoscaling: `1ctl deploy --hpa --hpa-min-replicas 2 --hpa-max-replicas 10 --cpu-request 250m --cpu-limit 1 --memory 512Mi --port 8080`
 - Explore all commands: `1ctl --help`
 - Full docs: [docs.satusky.com/cli](https://docs.satusky.com/cli)

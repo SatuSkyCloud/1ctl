@@ -107,7 +107,7 @@ You built the image with the `dist/` folder baked in, so you can either:
 **Option A — cloud build** (Dockerfile is in the repo, `dist/` is committed or generated in CI):
 
 ```bash
-1ctl-dev deploy --config satusky.toml --wait
+1ctl deploy --config satusky.toml --wait
 ```
 
 **Option B — pre-built image** (you built and pushed the image yourself):
@@ -115,7 +115,7 @@ You built the image with the `dist/` folder baked in, so you can either:
 ```bash
 docker build -t registry.satusky.com/my-static-site:v1 .
 docker push registry.satusky.com/my-static-site:v1
-1ctl-dev deploy --config satusky.toml --image registry.satusky.com/my-static-site:v1 --wait
+1ctl deploy --config satusky.toml --image registry.satusky.com/my-static-site:v1 --wait
 ```
 
 `--image` skips the cloud build step entirely and deploys the image you specify directly.
@@ -155,7 +155,7 @@ Make a content change, rebuild, and redeploy:
 ```bash
 # Edit src/main.js or a component
 npm run build
-1ctl-dev deploy --config satusky.toml --wait
+1ctl deploy --config satusky.toml --wait
 ```
 
 ```
@@ -168,7 +168,7 @@ Deploy complete. Version: 2
 ## 9. View release history and roll back
 
 ```bash
-1ctl-dev deploy releases --config satusky.toml
+1ctl deploy releases --config satusky.toml
 ```
 
 ```
@@ -181,7 +181,7 @@ VERSION  STATUS    DEPLOYED AT
 Version 3 accidentally deployed a maintenance page as the permanent homepage. Roll back instantly — no rebuild:
 
 ```bash
-1ctl-dev deploy rollback --config satusky.toml --version 2
+1ctl deploy rollback --config satusky.toml --version 2
 ```
 
 ```
@@ -198,7 +198,7 @@ Rollback complete. Now running version 2.
 You deployed and the pod never reaches Running. Check with `logs stream`:
 
 ```bash
-1ctl-dev logs stream --config satusky.toml
+1ctl logs stream --config satusky.toml
 ```
 
 ```
@@ -220,7 +220,7 @@ Rebuild and redeploy:
 
 ```bash
 npm run build
-1ctl-dev deploy --config satusky.toml --wait
+1ctl deploy --config satusky.toml --wait
 ```
 
 ```
@@ -231,7 +231,7 @@ Deploy complete. Version: 4
 And confirm nginx starts cleanly:
 
 ```bash
-1ctl-dev logs stream --config satusky.toml
+1ctl logs stream --config satusky.toml
 # 2026-04-26T15:54:10Z [my-static-site] /docker-entrypoint.sh: Configuration complete; ready for start up
 # 2026-04-26T15:54:10Z [my-static-site] nginx: [notice] start worker processes
 ```
@@ -248,9 +248,9 @@ Other common nginx errors to watch for in logs:
 
 | Task | Command |
 |---|---|
-| Cloud build + deploy | `1ctl-dev deploy --config satusky.toml --wait` |
-| Deploy a pre-built image | `1ctl-dev deploy --config satusky.toml --image registry.example.com/img:tag --wait` |
-| Check live status | `1ctl-dev deploy status --config satusky.toml` |
-| View release history | `1ctl-dev deploy releases --config satusky.toml` |
-| Roll back to previous version | `1ctl-dev deploy rollback --config satusky.toml --version N` |
-| Diagnose crashing pods | `1ctl-dev logs stream --config satusky.toml` |
+| Cloud build + deploy | `1ctl deploy --config satusky.toml --wait` |
+| Deploy a pre-built image | `1ctl deploy --config satusky.toml --image registry.example.com/img:tag --wait` |
+| Check live status | `1ctl deploy status --config satusky.toml` |
+| View release history | `1ctl deploy releases --config satusky.toml` |
+| Roll back to previous version | `1ctl deploy rollback --config satusky.toml --version N` |
+| Diagnose crashing pods | `1ctl logs stream --config satusky.toml` |

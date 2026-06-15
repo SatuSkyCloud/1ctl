@@ -9,6 +9,8 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+
+	"1ctl/internal/utils"
 )
 
 // PackageContext creates a gzipped tar of the build context directory,
@@ -61,8 +63,15 @@ func PackageContext(contextDir string) (string, error) {
 			return err
 		}
 
-		// Skip directories and symlinks; only tar regular files.
-		if info.IsDir() || info.Mode()&os.ModeSymlink != 0 {
+		// Skip directories silently.
+		if info.IsDir() {
+			return nil
+		}
+		// Symlinks aren't followed in the build context tar today. Warn
+		// loudly: monorepos using pnpm/yarn/Go workspaces will produce
+		// confusing "module not found" errors at build time otherwise.
+		if info.Mode()&os.ModeSymlink != 0 {
+			utils.PrintWarning("Symlink %s skipped — symlinks are not supported in the build context.", relSlash)
 			return nil
 		}
 

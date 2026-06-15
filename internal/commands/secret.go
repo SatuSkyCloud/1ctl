@@ -113,7 +113,6 @@ func handleCreateSecret(c *cli.Context) error {
 	return nil
 }
 
-
 func handleListSecrets(c *cli.Context) error {
 	secrets, err := api.ListSecrets()
 	if err != nil {

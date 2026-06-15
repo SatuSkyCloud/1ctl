@@ -59,6 +59,24 @@ task build
 task run -- <command>
 ```
 
+## Testing against alternate backends
+
+The CLI is a single binary that defaults to the production backend. To target a staging environment or a local backend, configure a named profile:
+
+```bash
+1ctl profile create --url <env-api-url> staging
+1ctl profile use staging
+```
+
+Or override per-invocation:
+
+```bash
+1ctl --api-url http://localhost:8080/v1/cli deploy
+SATUSKY_PROFILE=staging 1ctl deploy
+```
+
+Each profile stores its own token and org context under `~/.satusky/profiles/<name>.json`, so switching environments doesn't clobber credentials.
+
 ## Code Style
 
 - Follow standard Go code style and conventions
@@ -105,15 +123,17 @@ git rebase upstream/main
 
 ## Release Process
 
-1. Update version in `internal/version/version.go`
+1. Update `RELEASE_NOTES.md` with changes for the new version
 
-2. Update RELEASE_NOTES.md with changes
-
-3. Create and push a new tag:
+2. Create and push a new tag (version string is injected at build time via `-ldflags`, no source edit needed):
 ```bash
-git tag v0.1.0
-git push origin v0.1.0
+git tag v0.X.Y
+git push origin v0.X.Y
 ```
+
+3. GoReleaser (triggered by the tag) produces a single `1ctl` binary family for linux/darwin/windows on amd64/arm64, defaults to `https://api.satusky.com/v1/cli`, and publishes to Homebrew (`satuctl`).
+
+4. Update the GitHub release description with the relevant `RELEASE_NOTES.md` entry.
 
 ## Getting Help
 
