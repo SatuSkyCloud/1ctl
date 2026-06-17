@@ -128,9 +128,10 @@ func domainsDNSCommand() *cli.Command {
 				Name:      "delete",
 				Aliases:   []string{"rm"},
 				Usage:     "Delete a DNS record",
-				ArgsUsage: "<domain|domain-id> <record-id>",
+				ArgsUsage: "<domain|domain-id> [<record-id>]",
 				Flags: []cli.Flag{
 					&cli.BoolFlag{Name: "yes", Aliases: []string{"y"}, Usage: "Skip confirmation prompt"},
+					&cli.StringFlag{Name: "record-id", Usage: "DNS record ID (alternative to positional arg)"},
 				},
 				Action: handleDNSDelete,
 			},
@@ -409,8 +410,8 @@ func handleDNSUpdate(c *cli.Context) error {
 }
 
 func handleDNSDelete(c *cli.Context) error {
-	if c.NArg() < 2 {
-		return utils.NewError("domain and record ID are required. Usage: 1ctl domains dns delete <domain|domain-id> <record-id>", nil)
+	if c.NArg() < 1 {
+		return utils.NewError("domain is required. Usage: 1ctl domains dns delete <domain|domain-id> [<record-id>] [--record-id <id>]", nil)
 	}
 	userID, orgID, err := domainAPIScope()
 	if err != nil {
@@ -420,7 +421,13 @@ func handleDNSDelete(c *cli.Context) error {
 	if err != nil {
 		return err
 	}
-	recordID := c.Args().Get(1)
+	recordID := flagValueFromArgs(c, "record-id")
+	if recordID == "" {
+		if c.NArg() < 2 {
+			return utils.NewError("record ID is required. Usage: 1ctl domains dns delete <domain|domain-id> [<record-id>] [--record-id <id>]", nil)
+		}
+		recordID = c.Args().Get(1)
+	}
 	if !utils.Confirm(fmt.Sprintf("Delete DNS record %s?", recordID), c.Bool("yes")) {
 		fmt.Println("Aborted.")
 		return nil

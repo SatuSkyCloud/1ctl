@@ -151,13 +151,10 @@ curl -F "file=@main.go" https://<domain>/api/upload
 curl https://<domain>/api/files/main.go
 
 # 4. Detach volume (data preserved, mount removed)
-1ctl volumes detach --deployment-id <id> --volume-id <vid>
+1ctl volumes detach <volume-id> -y
 
-# 5. Re-attach (data comes back)
-1ctl volumes attach --deployment-id <id> --volume-id <vid>
-
-# 6. Destroy volume permanently
-1ctl volumes destroy --deployment-id <id> --volume-id <vid> -y
+# 5. Destroy volume permanently
+1ctl volumes destroy <volume-id> -y
 ```
 
 ## Local Testing (without SatuSky)
@@ -497,11 +494,14 @@ kubectl -n org123-c0bee423 get gateway     # Gateway resources (cluster-level)
 Run these commands in order to clean up every resource created above.
 
 ```bash
+# Work from the project directory so --config satusky.toml resolves
+cd examples/fullstack-api
+
 # 1. Remove the DNS record (if created via OpenProvider)
-1ctl domains dns delete flyingchicken.xyz \
-  --record-id <RECORD_ID>
-# Or list records to find the ID:
+#    List records to find the ID, then delete.
+#    Put -y BEFORE positional args (urfave/cli ignores flags after them).
 1ctl domains dns list flyingchicken.xyz
+1ctl domains dns delete -y flyingchicken.xyz <RECORD_ID>
 
 # 2. Remove the custom domain
 1ctl domains remove --app fullstack-api fullstack.flyingchicken.xyz -y
@@ -513,14 +513,16 @@ Run these commands in order to clean up every resource created above.
 1ctl secret unset --config satusky.toml --key JWT_SECRET
 
 # 4. Destroy the persistent volume
+#    List volumes to get the ID, then destroy by volume ID directly.
+#    Put -y BEFORE the volume ID (urfave/cli ignores flags after positional args).
 1ctl volumes list --config satusky.toml
-1ctl volumes destroy --deployment-id <DEPLOYMENT_ID> --volume-id <VOLUME_ID> -y
+1ctl volumes destroy -y <VOLUME_ID>
 
 # 5. Destroy the deployment (also cleans up service, ingress/HTTPRoute, env)
 1ctl deploy destroy --config satusky.toml -y
 
 # 6. Destroy the Postgres cluster
-1ctl postgres destroy fullstack-db -y
+1ctl postgres destroy fullstack-db   # confirm with 'y'
 
 # 7. Confirm everything is gone
 1ctl deploy list
@@ -544,3 +546,4 @@ These were discovered during live testing of the merged feature branches:
 | 6 | `AttachDomain` hard-failed when OpenProvider was unavailable | Patched to warn + skip DNS, still attach alias |
 | 7 | `machine_tag = "compute"` in satusky.toml requires matching node labels — no BYOA machine had them | Override with `--machine <name>` or comment out tag |
 | 8 | Loki unavailable in local dev — logs fall back to stored deployment logs (may be empty) | Use `kubectl logs` directly |
+| 9 | `-y`/`--yes` after a positional arg is silently ignored by urfave/cli v2 in most subcommands (volumes destroy, postgres destroy, domains dns delete) | Put `-y` BEFORE the positional arg: `1ctl volumes destroy -y <id>` |

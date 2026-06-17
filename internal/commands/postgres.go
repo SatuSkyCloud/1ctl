@@ -2,6 +2,7 @@ package commands
 
 import (
 	"1ctl/internal/api"
+	"1ctl/internal/context"
 	"1ctl/internal/utils"
 	"fmt"
 	"io"
@@ -136,7 +137,7 @@ func postgresDestroyCommand() *cli.Command {
 		Name:      "destroy",
 		Aliases:   []string{"delete", "rm"},
 		Usage:     "Destroy a managed Postgres cluster",
-		ArgsUsage: "<storage-id>",
+		ArgsUsage: "<name|storage-id>",
 		Flags: []cli.Flag{
 			&cli.BoolFlag{Name: "yes", Aliases: []string{"y"}, Usage: "Skip confirmation prompt"},
 		},
@@ -427,7 +428,7 @@ func handlePostgresRedeploy(c *cli.Context) error {
 }
 
 func handlePostgresDestroy(c *cli.Context) error {
-	storageID, err := requiredPostgresStorageID(c)
+	storageID, err := resolvePostgresStorageID(c)
 	if err != nil {
 		return err
 	}
@@ -644,6 +645,34 @@ func requiredPostgresStorageID(c *cli.Context) (string, error) {
 		return "", utils.NewError("storage ID is required", nil)
 	}
 	return c.Args().First(), nil
+}
+
+// resolvePostgresStorageID returns a UUID for the postgres cluster.
+// Accepts a UUID directly, or resolves a cluster name by listing clusters.
+func resolvePostgresStorageID(c *cli.Context) (string, error) {
+	arg, err := requiredPostgresStorageID(c)
+	if err != nil {
+		return "", err
+	}
+	// If it already looks like a UUID, return as-is.
+	if _, uuidErr := api.ParseUUID(arg); uuidErr == nil {
+		return arg, nil
+	}
+	// Resolve by name.
+	ns := context.GetCurrentNamespace()
+	if ns == "" {
+		return "", utils.NewError("not authenticated — run '1ctl auth login' first", nil)
+	}
+	clusters, err := api.ListPostgresClusters(ns)
+	if err != nil {
+		return "", utils.NewError(fmt.Sprintf("failed to list postgres clusters: %s", err.Error()), nil)
+	}
+	for _, cluster := range clusters {
+		if cluster.ClusterName != nil && strings.EqualFold(*cluster.ClusterName, arg) {
+			return cluster.StorageID.String(), nil
+		}
+	}
+	return "", utils.NewError(fmt.Sprintf("postgres cluster %q not found — pass the storage ID from '1ctl postgres list'", arg), nil)
 }
 
 func validatePostgresName(name string) error {
