@@ -530,24 +530,38 @@ func handleEnvironmentAndVolumes(opts DeploymentOptions, deploymentID, projectNa
 				volChan <- volResult{err: utils.NewError(fmt.Sprintf("failed to create volume: %s", e.Error()), nil)}
 				return
 			}
-			// Poll for PVC readiness — PVC reconciliation is async and may take
-			// 1-2 minutes. Block until the PVC is Bound so the user sees actual
-			// PVC status in 1ctl volumes list instead of "missing".
-			for i := 0; i < 24; i++ {
+			// Poll for PVC readiness. The storage provisioner (Ceph RBD) typically
+			// binds PVCs in under 30 seconds. We poll for up to 60s with a fast
+			// initial interval then exponential backoff so the deploy doesn't
+			// block unnecessarily while the PVC is provisioning.
+			//
+			// Check both PVC.Exists AND PVC.Phase == "Bound" — a PVC can exist
+			// (created by the backend) but still be Pending while the provisioner
+			// creates the backing volume.
+			bound := false
+			for i := 0; i < 30; i++ {
 				statuses, sErr := api.GetDeploymentVolumeLifecycleStatuses(deploymentID)
 				if sErr == nil {
-					allReady := true
 					for _, s := range statuses {
-						if !s.PVC.Exists {
-							allReady = false
+						if s.PVC.Exists && s.PVC.Phase == "Bound" {
+							bound = true
 							break
 						}
 					}
-					if allReady {
+					if bound {
 						break
 					}
 				}
-				time.Sleep(5 * time.Second)
+				// 2s for first 10 attempts, then 5s — provisions usually
+				// complete quickly and we don't want to hold up deploy.
+				delay := 2 * time.Second
+				if i >= 10 {
+					delay = 5 * time.Second
+				}
+				time.Sleep(delay)
+			}
+			if !bound {
+				utils.PrintWarning("PVC %s is still provisioning after 60s — storage will be available shortly", opts.Volume.ClaimName)
 			}
 			volChan <- volResult{name: opts.Volume.VolumeName}
 			return
