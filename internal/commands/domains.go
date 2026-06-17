@@ -98,8 +98,8 @@ func domainsAddCommand() *cli.Command {
 
 func domainsRemoveCommand() *cli.Command {
 	return &cli.Command{
-		Name:      "remove",
-		Aliases:   []string{"rm"},
+		Name:      "delete",
+		Aliases:   []string{"remove", "rm"},
 		Usage:     "Remove a custom domain from an app",
 		ArgsUsage: "<domain>",
 		Flags: []cli.Flag{

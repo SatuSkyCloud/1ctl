@@ -20,7 +20,7 @@ func TestPostgresCommandStructure(t *testing.T) {
 		"connect",
 		"proxy",
 		"redeploy",
-		"destroy",
+		"delete",
 		"users",
 		"firewall",
 		"storage-classes",

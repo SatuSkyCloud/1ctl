@@ -80,7 +80,7 @@ func TestDeployCommand(t *testing.T) {
 		"list":     false,
 		"get":      false,
 		"status":   false,
-		"destroy":  false,
+		"delete":   false,
 		"restart":  false,
 		"releases": false,
 		"rollback": false,

@@ -60,8 +60,8 @@ func volumesDetachCommand() *cli.Command {
 
 func volumesDestroyCommand() *cli.Command {
 	return &cli.Command{
-		Name:      "destroy",
-		Aliases:   []string{"delete", "rm"},
+		Name:      "delete",
+		Aliases:   []string{"destroy", "rm"},
 		Usage:     "Detach and delete a persistent volume claim",
 		ArgsUsage: "<volume-id>",
 		Flags: []cli.Flag{

@@ -260,7 +260,7 @@ Subcommands manage existing deployments:
    1ctl deploy restart --deployment-id <id>  [or --app <name>]
    1ctl deploy releases --deployment-id <id> [or --app <name>]
    1ctl deploy rollback --deployment-id <id> [or --app <name>]
-   1ctl deploy destroy --deployment-id <id>  [or --app <name>]`,
+   1ctl deploy delete --deployment-id <id>   [or --app <name>]`,
 		Flags: deployFlags,
 		Commands: []*cli.Command{
 			{
@@ -317,8 +317,9 @@ Subcommands manage existing deployments:
 				Action: handleDeploymentStatus,
 			},
 			{
-				Name:  "destroy",
-				Usage: "Delete a deployment and all associated resources",
+				Name:    "delete",
+				Aliases: []string{"destroy", "rm"},
+				Usage:   "Delete a deployment and all associated resources",
 				Flags: []cli.Flag{
 					&cli.StringFlag{
 						Name:  "deployment-id",

@@ -135,8 +135,8 @@ func postgresRedeployCommand() *cli.Command {
 
 func postgresDestroyCommand() *cli.Command {
 	return &cli.Command{
-		Name:      "destroy",
-		Aliases:   []string{"delete", "rm"},
+		Name:      "delete",
+		Aliases:   []string{"destroy", "rm"},
 		Usage:     "Destroy a managed Postgres cluster",
 		ArgsUsage: "<name|storage-id>",
 		Flags: []cli.Flag{
@@ -223,8 +223,8 @@ func postgresFirewallCommand() *cli.Command {
 				Action:    handlePostgresFirewallDisable,
 			},
 			{
-				Name:      "remove",
-				Aliases:   []string{"delete", "rm"},
+				Name:      "delete",
+				Aliases:   []string{"remove", "rm"},
 				Usage:     "Remove a firewall rule",
 				ArgsUsage: "<storage-id> <rule-id>",
 				Flags: []cli.Flag{

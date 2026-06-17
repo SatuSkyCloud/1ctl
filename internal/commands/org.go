@@ -130,7 +130,8 @@ func orgTeamCommand() *cli.Command {
 				Action: handleOrgTeamRole,
 			},
 			{
-				Name:      "remove",
+				Name:      "delete",
+				Aliases:   []string{"remove", "rm"},
 				Usage:     "Remove a team member",
 				ArgsUsage: "<org-user-id>",
 				Action:    handleOrgTeamRemove,
