@@ -50,7 +50,10 @@ degraded in-memory task list.
 
 | Section | Fields | Notes |
 |---------|--------|-------|
-| `[app]` | `name`, `port`, `dockerfile`, `cpu_request`, `cpu_limit`, `memory`, `replicas`, `health_path`, `strategy`, `rolling_max_surge`, `rolling_max_unavailable`, `zone`, `machine_tag`, `wait_for` | Full compute + networking + scheduling |
+| `[app]` | `name`, `port`, `cpu_request`, `cpu_limit`, `memory`, `replicas`, `domain`, `zone`, `organization` | App identity + compute resources |
+| `[build]` | `dockerfile`, `fast_build` | How the container image is built |
+| `[checks]` | `health_path` | Post-deploy smoke check path |
+| `[deploy]` | `strategy`, `rolling_max_surge`, `rolling_max_unavailable`, `machine_tag`, `wait_for` | Deployment strategy + scheduling |
 | `[volume]` | `size`, `mount` | Persistent 1 Gi block storage at `/data/uploads` |
 | `[hpa]` | `enabled`, `min_replicas`, `max_replicas`, `cpu_target`, `memory_target` | Auto-scale 2–10 pods |
 | `[vpa]` | `enabled`, `mode`, `min_cpu`, `max_cpu`, `min_memory`, `max_memory` | Vertical autoscaling (disabled by default) |
@@ -154,7 +157,7 @@ curl https://<domain>/api/files/main.go
 1ctl volumes detach <volume-id> -y
 
 # 5. Destroy volume permanently
-1ctl volumes destroy <volume-id> -y
+1ctl volumes delete <volume-id> -y
 ```
 
 ## Local Testing (without SatuSky)
@@ -178,25 +181,31 @@ curl -X POST http://localhost:8080/api/tasks -d '{"title":"test"}'
 |-----------|----------|-----------|---------|
 | `app.name` | `--name` | `name` | dirname |
 | `app.port` | `--port` | `port` | (required) |
-| `app.dockerfile` | `--dockerfile` | `dockerfile_path` | `Dockerfile` |
 | `app.cpu_request` | `--cpu-request` | `cpu_request` | `"0.5"` |
 | `app.cpu_limit` | `--cpu-limit` | `cpu_limit` | equals cpu_request |
 | `app.memory` | `--memory` | `memory` | `"256Mi"` |
 | `app.replicas` | `--replicas` | `replicas` | `1` |
 | `app.domain` | `--domain` | `domain` | auto-generated |
-| `app.health_path` | `--health-path` | `smoke_path` | tries `/health` then `/` |
 | `app.zone` | `--zone` | `zone` | auto |
-| `app.machine_tag` | — | `machine_tag` | — |
-| `app.strategy` | `--strategy` | `strategy` | `"rolling"` |
-| `app.rolling_max_surge` | `--rolling-max-surge` | `rolling_max_surge` | `"25%"` |
-| `app.rolling_max_unavailable` | `--rolling-max-unavailable` | `rolling_max_unavailable` | `"25%"` |
-| `app.wait_for` | — | `wait_for` | — |
+| `build.dockerfile` | `--dockerfile` | `dockerfile_path` | `Dockerfile` |
+| `build.fast_build` | `--fast-build` | `fast_build` | `false` |
+| `checks.health_path` | `--health-path` | `smoke_path` | tries `/health` then `/` |
+| `deploy.strategy` | `--strategy` | `strategy` | `"rolling"` |
+| `deploy.rolling_max_surge` | `--rolling-max-surge` | `rolling_max_surge` | `"25%"` |
+| `deploy.rolling_max_unavailable` | `--rolling-max-unavailable` | `rolling_max_unavailable` | `"25%"` |
+| `deploy.machine_tag` | — | `machine_tag` | — |
+| `deploy.wait_for` | — | `wait_for` | — |
 | `volume.size` | `--volume-size` | `volume.size` | — |
 | `volume.mount` | `--volume-mount` | `volume.mount_path` | — |
 | `hpa.*` | `--hpa`, `--hpa-min-replicas`, etc. | `hpa_config.*` | disabled |
 | `vpa.*` | `--vpa`, `--vpa-mode`, etc. | `vpa_config.*` | disabled |
 | `pdb.*` | `--pdb`, `--pdb-type`, etc. | `pdb_config.*` | disabled |
 | `multicluster.*` | `--multicluster` etc. | `multicluster_*` | disabled |
+
+> **v3 migration note**: `dockerfile`, `health_path`, `strategy`, `rolling_max_surge`,
+> `rolling_max_unavailable`, `machine_tag`, and `wait_for` were moved from `[app]`
+> to `[build]`, `[checks]`, and `[deploy]` sections. Old `[app]` placement still
+> works for backward compatibility — values are auto-migrated to the new sections.
 
 ---
 
@@ -494,41 +503,40 @@ kubectl -n org123-c0bee423 get gateway     # Gateway resources (cluster-level)
 Run these commands in order to clean up every resource created above.
 
 ```bash
-# Work from the project directory so --config satusky.toml resolves
+# Work from the project directory so --app resolves
 cd examples/fullstack-api
 
 # 1. Remove the DNS record (if created via OpenProvider)
-#    List records to find the ID, then delete.
-#    Put -y BEFORE positional args (urfave/cli ignores flags after them).
 1ctl domains dns list flyingchicken.xyz
 1ctl domains dns delete -y flyingchicken.xyz <RECORD_ID>
 
-# 2. Remove the custom domain
-1ctl domains remove --app fullstack-api fullstack.flyingchicken.xyz -y
+# 2. Remove the custom domain (--app flag resolves the deployment)
+1ctl domains delete --app fullstack-api fullstack.flyingchicken.xyz -y
 
-# 3. Unset all secrets
-1ctl secret unset --config satusky.toml --key DB_PASSWORD
-1ctl secret unset --config satusky.toml --key API_KEY
-1ctl secret unset --config satusky.toml --key SMTP_PASSWORD
-1ctl secret unset --config satusky.toml --key JWT_SECRET
+# 3. Unset all secrets (--app flag replaces --config)
+1ctl secret unset --app fullstack-api --key DB_PASSWORD
+1ctl secret unset --app fullstack-api --key API_KEY
+1ctl secret unset --app fullstack-api --key SMTP_PASSWORD
+1ctl secret unset --app fullstack-api --key JWT_SECRET
 
-# 4. Destroy the persistent volume
-#    List volumes to get the ID, then destroy by volume ID directly.
-#    Put -y BEFORE the volume ID (urfave/cli ignores flags after positional args).
-1ctl volumes list --config satusky.toml
-1ctl volumes destroy -y <VOLUME_ID>
+# 4. Delete the persistent volume
+1ctl volumes list --app fullstack-api
+1ctl volumes delete -y <VOLUME_ID>
 
-# 5. Destroy the deployment (also cleans up service, ingress/HTTPRoute, env)
-1ctl deploy destroy --config satusky.toml -y
+# 5. Delete the deployment (cascade: also cleans up service, ingress, env)
+1ctl deploy delete --app fullstack-api -y
 
-# 6. Destroy the Postgres cluster
-1ctl postgres destroy fullstack-db   # confirm with 'y'
+# 6. Delete the Postgres cluster
+1ctl postgres delete fullstack-db   # confirm with 'y'
 
 # 7. Confirm everything is gone
 1ctl deploy list
 1ctl postgres list
 1ctl domain list | grep fullstack
 ```
+
+> **v3 note**: `-y` / `--yes` can now go anywhere — interspersed flags work natively in urfave/cli v3.
+> Use `--app <name>` instead of `--config satusky.toml` for deployment-targeting commands.
 
 ---
 
@@ -541,9 +549,16 @@ These were discovered during live testing of the merged feature branches:
 | 1 | `secret create` makes the K8s Secret but doesn't auto-patch the Deployment to add `secretKeyRef` env vars | Manual `kubectl patch deployment` or redeploy |
 | 2 | `CreateVolume` creates a DB record but PVC reconciliation is async — PVC shows "missing" initially | Wait for reconciliation job (~1-2 min) |
 | 3 | New Postgres `app` user lacks `CREATE TABLE` permission — app auto-migration fails silently | Run migration as superuser via `kubectl exec` (Phase 6) |
-| 4 | `POST /volumes/create` route was missing in `cli_route.go` | Added in this integration session |
-| 5 | `--volume-storage-class` flag + `ceph-block` default were missing in deploy command | Added in this integration session |
-| 6 | `AttachDomain` hard-failed when OpenProvider was unavailable | Patched to warn + skip DNS, still attach alias |
-| 7 | `machine_tag = "compute"` in satusky.toml requires matching node labels — no BYOA machine had them | Override with `--machine <name>` or comment out tag |
-| 8 | Loki unavailable in local dev — logs fall back to stored deployment logs (may be empty) | Use `kubectl logs` directly |
-| 9 | `-y`/`--yes` after a positional arg is silently ignored by urfave/cli v2 in most subcommands (volumes destroy, postgres destroy, domains dns delete) | Put `-y` BEFORE the positional arg: `1ctl volumes destroy -y <id>` |
+
+## urfave/cli v3 Migration Notes (2026-06-17)
+
+The CLI was migrated from urfave/cli v2 → v3. Key user-facing changes:
+
+| Change | Before (v2) | After (v3) |
+|---|---|---|
+| Primary delete command | `destroy` / `remove` | `delete` (old names kept as aliases) |
+| App name resolution | `--config satusky.toml` only | `--app <name>` works everywhere |
+| Flag position | `-y` must be before positional arg | `-y` can go anywhere (interspersed flags) |
+| JSON output | Some commands lacked `-o json` | All list/get commands support `-o json` |
+| Config structure | Flat `[app]` section | `[build]`, `[checks]`, `[deploy]` sections |
+| Cascade preview | Generic "delete all" prompt | Enumerates Ingress, Volume, Service before confirming |
