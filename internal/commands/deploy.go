@@ -91,6 +91,11 @@ func DeployCommand() *cli.Command {
 			Name:  "volume-mount",
 			Usage: "Storage mount path",
 		},
+		&cli.StringFlag{
+			Name:  "volume-storage-class",
+			Usage: "Storage class for volumes (e.g., 'ceph-block')",
+			Value: "ceph-block",
+		},
 		// Zone targeting flag
 		&cli.StringFlag{
 			Name:  "zone",
@@ -770,9 +775,14 @@ func prepareDeploymentOptions(c *cli.Context, cfg *config.ProjectConfig, userSet
 	// Handle volume if enabled when --volume-size and --volume-mount are set
 	if c.IsSet("volume-size") || c.IsSet("volume-mount") {
 		opts.VolumeEnabled = true
+		storageClass := c.String("volume-storage-class")
+		if storageClass == "" {
+			storageClass = "ceph-block" // default to the cluster default
+		}
 		vol := &api.Volume{
-			StorageSize: c.String("volume-size"),
-			MountPath:   c.String("volume-mount"),
+			StorageSize:  c.String("volume-size"),
+			MountPath:    c.String("volume-mount"),
+			StorageClass: storageClass,
 		}
 		opts.Volume = vol
 	}

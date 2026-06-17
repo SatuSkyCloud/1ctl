@@ -48,7 +48,7 @@
 
   # ── Scheduling ────────────────────────────────────────────────────────
   zone        = ""            # Target zone, e.g. "my-kul-1b". Empty = auto.
-  machine_tag = "compute"     # Only schedule on machines with this tag.
+  # machine_tag = "compute"     # Only schedule on machines with this tag.
 
   # ── Upgrade Strategy ──────────────────────────────────────────────────
   # strategy   "rolling" (default) or "recreate"
