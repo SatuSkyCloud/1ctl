@@ -54,8 +54,8 @@ func handleInit(ctx context.Context, cmd *cli.Command) error {
 	if base.App.Name == "" {
 		base.App.Name = filepath.Base(dir)
 	}
-	if base.App.Dockerfile == "" {
-		base.App.Dockerfile = "Dockerfile"
+	if base.Build.Dockerfile == "" {
+		base.Build.Dockerfile = "Dockerfile"
 	}
 	if base.App.Port == 0 {
 		base.App.Port = 8080
@@ -67,10 +67,10 @@ func handleInit(ctx context.Context, cmd *cli.Command) error {
 	if base.App.Port != 0 {
 		lines = append(lines, fmt.Sprintf("  port = %d", base.App.Port))
 	}
-	if base.App.Dockerfile != "" && base.App.Dockerfile != "Dockerfile" {
-		lines = append(lines, fmt.Sprintf("  dockerfile = %q", base.App.Dockerfile))
+	if base.Build.Dockerfile != "" && base.Build.Dockerfile != "Dockerfile" {
+		lines = append(lines, fmt.Sprintf("  dockerfile = %q", base.Build.Dockerfile))
 	}
-	if base.App.FastBuild {
+	if base.Build.FastBuild {
 		lines = append(lines, "  fast_build = true")
 	}
 	if base.App.CPURequest != "" {
@@ -90,7 +90,7 @@ func handleInit(ctx context.Context, cmd *cli.Command) error {
 	if base.App.Domain != "" {
 		lines = append(lines, fmt.Sprintf("  domain = %q", base.App.Domain))
 	}
-	if base.App.HealthPath != "" {
+	if base.Checks.HealthPath != "" {
 		lines = append(lines, fmt.Sprintf("  health_path = %q", base.App.HealthPath))
 	}
 
@@ -99,13 +99,19 @@ func handleInit(ctx context.Context, cmd *cli.Command) error {
 		"  # cpu_request = \"250m\"   # guaranteed scheduler reservation",
 		"  # cpu_limit = \"1\"        # burst ceiling",
 		"  # memory = \"256Mi\"       # platform default 256Mi",
-		"  # fast_build = true       # opt into accelerated cloud builds",
-		"  # zone = \"my-kul-1b\"     # target marketplace zone",
-		"  # health_path = \"/health\" # app-specific HTTP smoke path used by deploy --wait",
-		"  # strategy = \"rolling\"   # rolling | recreate",
+		"",
+		"[build]",
+		"  # dockerfile = \"Dockerfile\"",
+		"  # fast_build = false       # opt into accelerated cloud builds",
+		"",
+		"[checks]",
+		"  # health_path = \"/health\"  # app-specific HTTP smoke path (used by deploy --wait)",
+		"",
+		"[deploy]",
+		"  # strategy = \"rolling\"    # rolling | recreate",
 		"  # rolling_max_surge = \"25%\"",
 		"  # rolling_max_unavailable = \"25%\"",
-		"  # machine_tag = \"production\"  # BYOA: deploy to your labelled machines",
+		"  # machine_tag = \"production\"",
 		"  # wait_for = [\"postgres:5432\"]",
 		"",
 		"# [volume]",

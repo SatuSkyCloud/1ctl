@@ -50,7 +50,10 @@ wait_for = ["postgres:5432", "redis:6379"]
 		t.Errorf("Port = %d, want 3000", cfg.App.Port)
 	}
 	if cfg.App.Dockerfile != "Dockerfile.prod" {
-		t.Errorf("Dockerfile = %q, want Dockerfile.prod (issue #18: was silently ignored before v2)", cfg.App.Dockerfile)
+		t.Errorf("App.Dockerfile (backward-compat) = %q, want Dockerfile.prod", cfg.App.Dockerfile)
+	}
+	if cfg.Build.Dockerfile != "Dockerfile.prod" {
+		t.Errorf("Build.Dockerfile = %q, want Dockerfile.prod (issue #18: was silently ignored before v2)", cfg.Build.Dockerfile)
 	}
 	if cfg.App.CPU != "1" {
 		t.Errorf("CPU = %q, want 1", cfg.App.CPU)
@@ -61,8 +64,8 @@ wait_for = ["postgres:5432", "redis:6379"]
 	if cfg.App.Domain != "myapp.example.com" {
 		t.Errorf("Domain = %q, want myapp.example.com", cfg.App.Domain)
 	}
-	if cfg.App.HealthPath != "/healthz" {
-		t.Errorf("HealthPath = %q, want /healthz", cfg.App.HealthPath)
+	if cfg.Checks.HealthPath != "/healthz" {
+		t.Errorf("HealthPath = %q, want /healthz", cfg.Checks.HealthPath)
 	}
 	if cfg.App.Replicas != 3 {
 		t.Errorf("Replicas = %d, want 3 (issue #18: was silently ignored before v2)", cfg.App.Replicas)
@@ -73,20 +76,20 @@ wait_for = ["postgres:5432", "redis:6379"]
 	if cfg.App.Organization != "my-org-slug" {
 		t.Errorf("Organization = %q, want my-org-slug", cfg.App.Organization)
 	}
-	if cfg.App.Strategy != "recreate" {
-		t.Errorf("Strategy = %q, want recreate", cfg.App.Strategy)
+	if cfg.Deploy.Strategy != "recreate" {
+		t.Errorf("Strategy = %q, want recreate", cfg.Deploy.Strategy)
 	}
-	if cfg.App.RollingMaxSurge != "50%" {
-		t.Errorf("RollingMaxSurge = %q, want 50%%", cfg.App.RollingMaxSurge)
+	if cfg.Deploy.RollingMaxSurge != "50%" {
+		t.Errorf("RollingMaxSurge = %q, want 50%%", cfg.Deploy.RollingMaxSurge)
 	}
-	if cfg.App.RollingMaxUnavailable != "0" {
-		t.Errorf("RollingMaxUnavailable = %q, want 0", cfg.App.RollingMaxUnavailable)
+	if cfg.Deploy.RollingMaxUnavailable != "0" {
+		t.Errorf("RollingMaxUnavailable = %q, want 0", cfg.Deploy.RollingMaxUnavailable)
 	}
-	if cfg.App.MachineTag != "production" {
-		t.Errorf("MachineTag = %q, want production", cfg.App.MachineTag)
+	if cfg.Deploy.MachineTag != "production" {
+		t.Errorf("MachineTag = %q, want production", cfg.Deploy.MachineTag)
 	}
-	if len(cfg.App.WaitFor) != 2 || cfg.App.WaitFor[0] != "postgres:5432" || cfg.App.WaitFor[1] != "redis:6379" {
-		t.Errorf("WaitFor = %v, want [postgres:5432 redis:6379]", cfg.App.WaitFor)
+	if len(cfg.Deploy.WaitFor) != 2 || cfg.Deploy.WaitFor[0] != "postgres:5432" || cfg.Deploy.WaitFor[1] != "redis:6379" {
+		t.Errorf("WaitFor = %v, want [postgres:5432 redis:6379]", cfg.Deploy.WaitFor)
 	}
 }
 
@@ -253,7 +256,18 @@ cpu = "1"
 memory = "1Gi"
 replicas = 3
 zone = "my-bki-1a"
+
+[build]
+dockerfile = "Dockerfile.prod"
+fast_build = true
+
+[checks]
+health_path = "/health"
+
+[deploy]
 strategy = "rolling"
+machine_tag = "production"
+wait_for = ["postgres:5432"]
 
 [volume]
 size = "20Gi"
@@ -278,7 +292,25 @@ enabled = false
 	if err != nil {
 		t.Fatalf("LoadConfig: %v", err)
 	}
-	if cfg.App.Name != "fullapp" || cfg.Volume.Size != "20Gi" || !cfg.HPA.Enabled || cfg.PDB.Type != "fixed" || cfg.Multicluster.Enabled {
+	if cfg.App.Name != "fullapp" {
+		t.Errorf("App.Name = %q, want fullapp", cfg.App.Name)
+	}
+	if cfg.Build.Dockerfile != "Dockerfile.prod" {
+		t.Errorf("Build.Dockerfile = %q, want Dockerfile.prod", cfg.Build.Dockerfile)
+	}
+	if !cfg.Build.FastBuild {
+		t.Error("Build.FastBuild = false, want true")
+	}
+	if cfg.Checks.HealthPath != "/health" {
+		t.Errorf("Checks.HealthPath = %q, want /health", cfg.Checks.HealthPath)
+	}
+	if cfg.Deploy.Strategy != "rolling" {
+		t.Errorf("Deploy.Strategy = %q, want rolling", cfg.Deploy.Strategy)
+	}
+	if cfg.Deploy.MachineTag != "production" {
+		t.Errorf("Deploy.MachineTag = %q, want production", cfg.Deploy.MachineTag)
+	}
+	if cfg.Volume.Size != "20Gi" || !cfg.HPA.Enabled || cfg.PDB.Type != "fixed" || cfg.Multicluster.Enabled {
 		t.Errorf("Combined parse mismatch: %+v", cfg)
 	}
 }
@@ -304,5 +336,96 @@ domain = "v1.example.com"
 	}
 	if cfg.HPA.Enabled || cfg.Volume.Size != "" || cfg.Multicluster.Enabled {
 		t.Errorf("v2 sections should be zero-valued on v1 input: %+v", cfg)
+	}
+}
+
+func TestParseV2Schema_NormalizeBackwardCompat(t *testing.T) {
+	// Old-style satusky.toml with build/check/deploy fields under [app]
+	// must Normalize() them into the canonical new sections.
+	contents := `
+[app]
+name = "oldapp"
+dockerfile = "Dockerfile.old"
+fast_build = true
+health_path = "/oldhealth"
+strategy = "recreate"
+rolling_max_surge = "30%"
+rolling_max_unavailable = "10%"
+machine_tag = "staging"
+wait_for = ["redis:6379"]
+`
+	_, path := writeToml(t, contents)
+	cfg, err := LoadConfig(path)
+	if err != nil {
+		t.Fatalf("LoadConfig: %v", err)
+	}
+	if cfg.Build.Dockerfile != "Dockerfile.old" {
+		t.Errorf("Build.Dockerfile = %q, want Dockerfile.old (not forwarded from [app])", cfg.Build.Dockerfile)
+	}
+	if !cfg.Build.FastBuild {
+		t.Error("Build.FastBuild = false, want true (not forwarded from [app])")
+	}
+	if cfg.Checks.HealthPath != "/oldhealth" {
+		t.Errorf("Checks.HealthPath = %q, want /oldhealth (not forwarded from [app])", cfg.Checks.HealthPath)
+	}
+	if cfg.Deploy.Strategy != "recreate" {
+		t.Errorf("Deploy.Strategy = %q, want recreate (not forwarded from [app])", cfg.Deploy.Strategy)
+	}
+	if cfg.Deploy.RollingMaxSurge != "30%" {
+		t.Errorf("Deploy.RollingMaxSurge = %q, want 30%% (not forwarded from [app])", cfg.Deploy.RollingMaxSurge)
+	}
+	if cfg.Deploy.RollingMaxUnavailable != "10%" {
+		t.Errorf("Deploy.RollingMaxUnavailable = %q, want 10%% (not forwarded from [app])", cfg.Deploy.RollingMaxUnavailable)
+	}
+	if cfg.Deploy.MachineTag != "staging" {
+		t.Errorf("Deploy.MachineTag = %q, want staging (not forwarded from [app])", cfg.Deploy.MachineTag)
+	}
+	if len(cfg.Deploy.WaitFor) != 1 || cfg.Deploy.WaitFor[0] != "redis:6379" {
+		t.Errorf("Deploy.WaitFor = %v, want [redis:6379] (not forwarded from [app])", cfg.Deploy.WaitFor)
+	}
+}
+
+func TestParseV2Schema_NewSectionsTakePrecedence(t *testing.T) {
+	// When both [app].dockerfile and [build].dockerfile are set,
+	// [build] wins after Normalize().
+	contents := `
+[app]
+name = "app"
+dockerfile = "old.Dockerfile"
+health_path = "/old"
+strategy = "recreate"
+
+[build]
+dockerfile = "new.Dockerfile"
+
+[checks]
+health_path = "/new"
+
+[deploy]
+strategy = "rolling"
+`
+	_, path := writeToml(t, contents)
+	cfg, err := LoadConfig(path)
+	if err != nil {
+		t.Fatalf("LoadConfig: %v", err)
+	}
+	if cfg.Build.Dockerfile != "new.Dockerfile" {
+		t.Errorf("Build.Dockerfile = %q, want new.Dockerfile (new section did not take precedence)", cfg.Build.Dockerfile)
+	}
+	if cfg.Checks.HealthPath != "/new" {
+		t.Errorf("Checks.HealthPath = %q, want /new (new section did not take precedence)", cfg.Checks.HealthPath)
+	}
+	if cfg.Deploy.Strategy != "rolling" {
+		t.Errorf("Deploy.Strategy = %q, want rolling (new section did not take precedence)", cfg.Deploy.Strategy)
+	}
+	// Backward-compat fields in AppConfig should still have the original [app] values.
+	if cfg.App.Dockerfile != "old.Dockerfile" {
+		t.Errorf("App.Dockerfile = %q, want old.Dockerfile (backward-compat field changed)", cfg.App.Dockerfile)
+	}
+	if cfg.App.HealthPath != "/old" {
+		t.Errorf("App.HealthPath = %q, want /old (backward-compat field changed)", cfg.App.HealthPath)
+	}
+	if cfg.App.Strategy != "recreate" {
+		t.Errorf("App.Strategy = %q, want recreate (backward-compat field changed)", cfg.App.Strategy)
 	}
 }

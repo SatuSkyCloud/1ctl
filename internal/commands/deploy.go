@@ -451,7 +451,7 @@ func handleDeploy(ctx context.Context, cmd *cli.Command) error {
 		if err := applyConfigScalar(cmd, "domain", cfg.App.Domain); err != nil {
 			return err
 		}
-		if err := applyConfigScalar(cmd, "dockerfile", cfg.App.Dockerfile); err != nil {
+		if err := applyConfigScalar(cmd, "dockerfile", cfg.Build.Dockerfile); err != nil {
 			return err
 		}
 		if cfg.App.Replicas > 0 {
@@ -465,16 +465,16 @@ func handleDeploy(ctx context.Context, cmd *cli.Command) error {
 		if err := applyConfigScalar(cmd, "organization", cfg.App.Organization); err != nil {
 			return err
 		}
-		if err := applyConfigScalar(cmd, "health-path", cfg.App.HealthPath); err != nil {
+		if err := applyConfigScalar(cmd, "health-path", cfg.Checks.HealthPath); err != nil {
 			return err
 		}
-		if err := applyConfigScalar(cmd, "strategy", cfg.App.Strategy); err != nil {
+		if err := applyConfigScalar(cmd, "strategy", cfg.Deploy.Strategy); err != nil {
 			return err
 		}
-		if err := applyConfigScalar(cmd, "rolling-max-surge", cfg.App.RollingMaxSurge); err != nil {
+		if err := applyConfigScalar(cmd, "rolling-max-surge", cfg.Deploy.RollingMaxSurge); err != nil {
 			return err
 		}
-		if err := applyConfigScalar(cmd, "rolling-max-unavailable", cfg.App.RollingMaxUnavailable); err != nil {
+		if err := applyConfigScalar(cmd, "rolling-max-unavailable", cfg.Deploy.RollingMaxUnavailable); err != nil {
 			return err
 		}
 		// Volume scalars wire through the existing --volume-size / --volume-mount
@@ -486,8 +486,8 @@ func handleDeploy(ctx context.Context, cmd *cli.Command) error {
 			return err
 		}
 		// wait-for is a StringSliceFlag, merged below.
-		if len(cfg.App.WaitFor) > 0 && !cmd.IsSet("wait-for") {
-			for _, v := range cfg.App.WaitFor {
+		if len(cfg.Deploy.WaitFor) > 0 && !cmd.IsSet("wait-for") {
+			for _, v := range cfg.Deploy.WaitFor {
 				if err := cmd.Set("wait-for", v); err != nil {
 					return utils.NewError(fmt.Sprintf("failed to set wait-for from config: %s", err.Error()), nil)
 				}
@@ -719,7 +719,7 @@ func prepareDeploymentOptions(cmd *cli.Command, cfg *config.ProjectConfig, userS
 		FastBuild:         cmd.Bool("fast"),
 	}
 
-	if !cmd.IsSet("fast") && cfg != nil && cfg.App.FastBuild {
+	if !cmd.IsSet("fast") && cfg != nil && cfg.Build.FastBuild {
 		opts.FastBuild = true
 	}
 	if userSet["cpu"] && !userSet["cpu-limit"] {
@@ -796,10 +796,10 @@ func prepareDeploymentOptions(cmd *cli.Command, cfg *config.ProjectConfig, userS
 
 	// Handle --machine-tag: BYOA targeting by label. Resolves to a list of
 	// owned, online machine IDs matching satusky.com/<tag>. Precedence:
-	// --machine-tag flag > satusky.toml [app].machine_tag.
+	// --machine-tag flag > satusky.toml [deploy].machine_tag.
 	tag := cmd.String("machine-tag")
 	if tag == "" && cfg != nil {
-		tag = cfg.App.MachineTag
+		tag = cfg.Deploy.MachineTag
 	}
 	if tag != "" && !cmd.IsSet("machine") {
 		hostnames, err := resolveMachineTag(tag)

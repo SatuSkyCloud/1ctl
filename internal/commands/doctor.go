@@ -212,7 +212,7 @@ func resolveDoctorTargets(cmd *cli.Command) ([]api.Deployment, string, bool, err
 		}
 		if healthPath == "" && cmd.String("config") != "" {
 			if cfg, cfgErr := config.FindConfig(cmd.String("config")); cfgErr == nil && cfg != nil {
-				healthPath = strings.TrimSpace(cfg.App.HealthPath)
+				healthPath = strings.TrimSpace(cfg.Checks.HealthPath)
 			}
 		}
 		// targetedMode: smoke always runs for a specific deployment or config.
