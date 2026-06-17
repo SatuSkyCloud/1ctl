@@ -162,12 +162,7 @@ func handleListIngresses(ctx context.Context, cmd *cli.Command) error {
 		return utils.NewError(fmt.Sprintf("failed to list ingresses: %s", err.Error()), nil)
 	}
 
-	if len(ingresses) == 0 {
-		utils.PrintInfo("No ingresses found")
-		return nil
-	}
-
-	if utils.TryPrintJSON(ingresses) {
+	if utils.PrintListOrJSON(ingresses, "No ingresses found") {
 		return nil
 	}
 

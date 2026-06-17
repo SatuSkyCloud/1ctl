@@ -116,8 +116,7 @@ func handleMarketList(ctx context.Context, cmd *cli.Command) error {
 		return utils.NewError(fmt.Sprintf("failed to list marketplace apps: %s", err.Error()), nil)
 	}
 
-	if len(apps) == 0 {
-		utils.PrintInfo("No marketplace apps available")
+	if utils.PrintListOrJSON(apps, "No marketplace apps available") {
 		return nil
 	}
 

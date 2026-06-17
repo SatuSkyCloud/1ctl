@@ -45,12 +45,7 @@ func handleListZones(ctx context.Context, cmd *cli.Command) error {
 		return utils.NewError(fmt.Sprintf("failed to list zones: %s", err.Error()), nil)
 	}
 
-	if len(zones) == 0 {
-		utils.PrintInfo("No zones available")
-		return nil
-	}
-
-	if utils.TryPrintJSON(zones) {
+	if utils.PrintListOrJSON(zones, "No zones available") {
 		return nil
 	}
 
@@ -71,12 +66,7 @@ func handleListClusters(ctx context.Context, cmd *cli.Command) error {
 		return utils.NewError(fmt.Sprintf("failed to list clusters: %s", err.Error()), nil)
 	}
 
-	if len(clusters) == 0 {
-		utils.PrintInfo("No clusters available")
-		return nil
-	}
-
-	if utils.TryPrintJSON(clusters) {
+	if utils.PrintListOrJSON(clusters, "No clusters available") {
 		return nil
 	}
 

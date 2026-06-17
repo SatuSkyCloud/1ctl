@@ -304,11 +304,7 @@ func handlePostgresList(ctx context.Context, cmd *cli.Command) error {
 	if err != nil {
 		return utils.NewError(fmt.Sprintf("failed to list Postgres clusters: %s", err.Error()), nil)
 	}
-	if utils.TryPrintJSON(clusters) {
-		return nil
-	}
-	if len(clusters) == 0 {
-		utils.PrintInfo("No Postgres clusters found")
+	if utils.PrintListOrJSON(clusters, "No Postgres clusters found") {
 		return nil
 	}
 

@@ -146,8 +146,7 @@ func handleOrgList(ctx context.Context, cmd *cli.Command) error {
 		return utils.NewError(fmt.Sprintf("failed to list organizations: %s", err.Error()), nil)
 	}
 
-	if len(orgs) == 0 {
-		utils.PrintInfo("No organizations found")
+	if utils.PrintListOrJSON(orgs, "No organizations found") {
 		return nil
 	}
 

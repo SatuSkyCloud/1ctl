@@ -127,12 +127,7 @@ func handleListServices(ctx context.Context, cmd *cli.Command) error {
 		return utils.NewError(fmt.Sprintf("failed to list services: %s", err.Error()), nil)
 	}
 
-	if len(services) == 0 {
-		utils.PrintInfo("No services found")
-		return nil
-	}
-
-	if utils.TryPrintJSON(services) {
+	if utils.PrintListOrJSON(services, "No services found") {
 		return nil
 	}
 

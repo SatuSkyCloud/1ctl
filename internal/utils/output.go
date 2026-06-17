@@ -3,6 +3,7 @@ package utils
 import (
 	"encoding/json"
 	"fmt"
+	"reflect"
 )
 
 var outputFormat = "table"
@@ -30,4 +31,29 @@ func TryPrintJSON(data interface{}) bool {
 		fmt.Println(string(b))
 	}
 	return true
+}
+
+// PrintListOrJSON handles both JSON and table output for list commands.
+//
+//	When --output json is set: prints items as JSON (empty array or populated) and returns true.
+//	In table mode with empty items: prints emptyMsg and returns true.
+//	In table mode with non-empty items: returns false so the caller can render the table.
+//
+// Usage:
+//
+//	items, _ := api.ListThings()
+//	if utils.PrintListOrJSON(items, "No things found") {
+//	    return nil
+//	}
+//	utils.PrintTable(headers, rows)
+func PrintListOrJSON(items interface{}, emptyMsg string) bool {
+	if TryPrintJSON(items) {
+		return true
+	}
+	v := reflect.ValueOf(items)
+	if v.Kind() == reflect.Slice && v.Len() == 0 && emptyMsg != "" {
+		fmt.Println(emptyMsg)
+		return true
+	}
+	return false
 }

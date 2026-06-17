@@ -108,12 +108,7 @@ func handlePricingList(ctx context.Context, cmd *cli.Command) error {
 		return utils.NewError(fmt.Sprintf("failed to list pricing configs: %s", err.Error()), nil)
 	}
 
-	if len(configs) == 0 {
-		utils.PrintInfo("No pricing configurations found")
-		return nil
-	}
-
-	if utils.TryPrintJSON(configs) {
+	if utils.PrintListOrJSON(configs, "No pricing configurations found") {
 		return nil
 	}
 

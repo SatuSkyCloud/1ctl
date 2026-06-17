@@ -31,9 +31,10 @@ func UserCommand() *cli.Command {
 
 func userMeCommand() *cli.Command {
 	return &cli.Command{
-		Name:   "me",
-		Usage:  "Show current user profile",
-		Action: handleUserMe,
+		Name:    "me",
+		Aliases: []string{"info"},
+		Usage:   "Show current user profile",
+		Action:  handleUserMe,
 	}
 }
 
@@ -89,6 +90,10 @@ func handleUserMe(ctx context.Context, cmd *cli.Command) error {
 	user, err := api.GetCurrentUser()
 	if err != nil {
 		return utils.NewError(fmt.Sprintf("failed to get user profile: %s", err.Error()), nil)
+	}
+
+	if utils.TryPrintJSON(user) {
+		return nil
 	}
 
 	utils.PrintHeader("User Profile")
@@ -211,6 +216,10 @@ func handleUserPermissions(ctx context.Context, cmd *cli.Command) error {
 	permsList, err := api.GetUserPermissions(orgID)
 	if err != nil {
 		return utils.NewError(fmt.Sprintf("failed to get permissions: %s", err.Error()), nil)
+	}
+
+	if utils.TryPrintJSON(permsList) {
+		return nil
 	}
 
 	utils.PrintHeader("User Permissions")

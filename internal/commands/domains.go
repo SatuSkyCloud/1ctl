@@ -180,12 +180,7 @@ func handleDomainsList(ctx context.Context, cmd *cli.Command) error {
 		}
 	}
 
-	if len(entries) == 0 {
-		utils.PrintInfo("No domains yet. Add one with: 1ctl domains add <domain> --app <app>")
-		return nil
-	}
-
-	if utils.TryPrintJSON(entries) {
+	if utils.PrintListOrJSON(entries, "No domains yet. Add one with: 1ctl domains add <domain> --app <app>") {
 		return nil
 	}
 

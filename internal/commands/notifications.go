@@ -79,6 +79,7 @@ func notifDeleteCommand() *cli.Command {
 				Usage:    "Notification ID to delete",
 				Required: true,
 			},
+			&cli.BoolFlag{Name: "yes", Aliases: []string{"y"}, Usage: "Skip confirmation prompt"},
 		},
 		Action: handleNotifDelete,
 	}
@@ -98,12 +99,7 @@ func handleNotifList(ctx context.Context, cmd *cli.Command) error {
 		return utils.NewError(fmt.Sprintf("failed to get notifications: %s", err.Error()), nil)
 	}
 
-	if len(notifications) == 0 {
-		utils.PrintInfo("No notifications found")
-		return nil
-	}
-
-	if utils.TryPrintJSON(notifications) {
+	if utils.PrintListOrJSON(notifications, "No notifications found") {
 		return nil
 	}
 
@@ -178,6 +174,11 @@ func handleNotifDelete(ctx context.Context, cmd *cli.Command) error {
 	notifID := cmd.String("id")
 	if notifID == "" {
 		return utils.NewError("--id is required", nil)
+	}
+
+	if !utils.Confirm(fmt.Sprintf("Delete notification %s?", notifID), cmd.Bool("yes")) {
+		fmt.Println("Aborted.")
+		return nil
 	}
 
 	if err := api.DeleteNotification(orgID, notifID); err != nil {

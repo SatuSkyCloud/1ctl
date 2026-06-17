@@ -68,12 +68,7 @@ func handleAuditList(ctx context.Context, cmd *cli.Command) error {
 		return utils.NewError(fmt.Sprintf("failed to get audit logs: %s", err.Error()), nil)
 	}
 
-	if len(logs) == 0 {
-		utils.PrintInfo("No audit logs found")
-		return nil
-	}
-
-	if utils.TryPrintJSON(logs) {
+	if utils.PrintListOrJSON(logs, "No audit logs found") {
 		return nil
 	}
 

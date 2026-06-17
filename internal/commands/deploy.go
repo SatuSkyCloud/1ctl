@@ -276,6 +276,9 @@ Subcommands manage existing deployments:
 			},
 			{
 				Name:  "get",
+				Arguments: []cli.Argument{
+					&cli.StringArgs{Name: "deployment-id", Min: 0, Max: 1},
+				},
 				Usage: "Get deployment details",
 				Flags: []cli.Flag{
 					&cli.StringFlag{
@@ -295,6 +298,9 @@ Subcommands manage existing deployments:
 			},
 			{
 				Name:  "status",
+				Arguments: []cli.Argument{
+					&cli.StringArgs{Name: "deployment-id", Min: 0, Max: 1},
+				},
 				Usage: "Check deployment status",
 				Flags: []cli.Flag{
 					&cli.StringFlag{
@@ -1298,7 +1304,14 @@ func parseEnvVars(envVars []string) []api.KeyValuePair {
 }
 
 func handleDeploymentStatus(ctx context.Context, cmd *cli.Command) error {
-	deploymentID, err := resolveDeploymentID(cmd.String("deployment-id"), cmd.String("app"), cmd.String("config"))
+	depID := cmd.String("deployment-id")
+	if depID == "" {
+		args := cmd.StringArgs("deployment-id")
+		if len(args) > 0 {
+			depID = args[0]
+		}
+	}
+	deploymentID, err := resolveDeploymentID(depID, cmd.String("app"), cmd.String("config"))
 	if err != nil {
 		return err
 	}
@@ -1395,12 +1408,7 @@ func handleListDeployments(ctx context.Context, cmd *cli.Command) error {
 		return utils.NewError(fmt.Sprintf("failed to list deployments: %s", err.Error()), nil)
 	}
 
-	if len(deployments) == 0 {
-		utils.PrintInfo("No deployments found")
-		return nil
-	}
-
-	if utils.TryPrintJSON(deployments) {
+	if utils.PrintListOrJSON(deployments, "No deployments found") {
 		return nil
 	}
 
@@ -1427,7 +1435,14 @@ func handleListDeployments(ctx context.Context, cmd *cli.Command) error {
 }
 
 func handleGetDeployment(ctx context.Context, cmd *cli.Command) error {
-	deploymentID, err := resolveDeploymentID(cmd.String("deployment-id"), cmd.String("app"), cmd.String("config"))
+	depID := cmd.String("deployment-id")
+	if depID == "" {
+		args := cmd.StringArgs("deployment-id")
+		if len(args) > 0 {
+			depID = args[0]
+		}
+	}
+	deploymentID, err := resolveDeploymentID(depID, cmd.String("app"), cmd.String("config"))
 	if err != nil {
 		return err
 	}
@@ -1622,8 +1637,7 @@ func handleListReleases(ctx context.Context, cmd *cli.Command) error {
 	if err != nil {
 		return utils.NewError(fmt.Sprintf("failed to list releases: %s", err.Error()), nil)
 	}
-	if len(versions) == 0 {
-		utils.PrintInfo("No releases found")
+	if utils.PrintListOrJSON(versions, "No releases found") {
 		return nil
 	}
 	headers := []string{"VERSION", "IMAGE", "STATUS", "DEPLOYED"}

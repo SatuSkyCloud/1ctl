@@ -109,12 +109,16 @@ func handleTokenList(ctx context.Context, cmd *cli.Command) error {
 		return utils.NewError(fmt.Sprintf("failed to list tokens: %s", err.Error()), nil)
 	}
 
-	if len(tokens) == 0 {
-		utils.PrintInfo("No API tokens found")
-		return nil
+	// Redact tokens in JSON output — never expose full JWTs in machine-readable output
+	if utils.IsJSONOutput() {
+		for i := range tokens {
+			if len(tokens[i].Token) > 20 {
+				tokens[i].Token = tokens[i].Token[:10] + "..." + tokens[i].Token[len(tokens[i].Token)-5:]
+			}
+		}
 	}
 
-	if utils.TryPrintJSON(tokens) {
+	if utils.PrintListOrJSON(tokens, "No API tokens found") {
 		return nil
 	}
 
@@ -163,6 +167,11 @@ func handleTokenCreate(ctx context.Context, cmd *cli.Command) error {
 		return utils.NewError(fmt.Sprintf("failed to create token: %s", err.Error()), nil)
 	}
 
+	// Redact token in JSON output — never expose full JWTs in machine-readable output
+	if utils.IsJSONOutput() && token != nil && len(token.Token) > 20 {
+		token.Token = token.Token[:10] + "..." + token.Token[len(token.Token)-5:]
+	}
+
 	utils.PrintSuccess("API token created successfully")
 	utils.PrintStatusLine("ID", token.ID.String())
 	utils.PrintStatusLine("Name", token.Name)
@@ -192,6 +201,11 @@ func handleTokenGet(ctx context.Context, cmd *cli.Command) error {
 	token, err := api.GetCLIToken(userID, tokenID)
 	if err != nil {
 		return utils.NewError(fmt.Sprintf("failed to get token: %s", err.Error()), nil)
+	}
+
+	// Redact token in JSON output — never expose full JWTs in machine-readable output
+	if utils.IsJSONOutput() && token != nil && len(token.Token) > 20 {
+		token.Token = token.Token[:10] + "..." + token.Token[len(token.Token)-5:]
 	}
 
 	status := "Enabled"

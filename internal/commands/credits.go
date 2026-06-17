@@ -153,12 +153,7 @@ func handleCreditsTransactions(ctx context.Context, cmd *cli.Command) error {
 		return utils.NewError(fmt.Sprintf("failed to get transactions: %s", err.Error()), nil)
 	}
 
-	if len(transactions) == 0 {
-		utils.PrintInfo("No transactions found")
-		return nil
-	}
-
-	if utils.TryPrintJSON(transactions) {
+	if utils.PrintListOrJSON(transactions, "No transactions found") {
 		return nil
 	}
 
@@ -191,12 +186,7 @@ func handleCreditsUsage(ctx context.Context, cmd *cli.Command) error {
 		return utils.NewError(fmt.Sprintf("failed to get machine usage: %s", err.Error()), nil)
 	}
 
-	if len(usages) == 0 {
-		utils.PrintInfo("No machine usage found for the last %d days", days)
-		return nil
-	}
-
-	if utils.TryPrintJSON(usages) {
+	if utils.PrintListOrJSON(usages, "No machine usage found for the last 7 days") {
 		return nil
 	}
 

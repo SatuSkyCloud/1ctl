@@ -82,11 +82,7 @@ func handleVolumesList(ctx context.Context, cmd *cli.Command) error {
 	if err != nil {
 		return utils.NewError(fmt.Sprintf("failed to list volumes: %s", err.Error()), nil)
 	}
-	if utils.TryPrintJSON(statuses) {
-		return nil
-	}
-	if len(statuses) == 0 {
-		utils.PrintInfo("No persistent volumes found for deployment %s", deploymentID)
+	if utils.PrintListOrJSON(statuses, "No persistent volumes found for this deployment") {
 		return nil
 	}
 

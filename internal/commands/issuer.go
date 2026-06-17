@@ -107,12 +107,7 @@ func handleListIssuers(ctx context.Context, cmd *cli.Command) error {
 		return utils.NewError(fmt.Sprintf("failed to list issuers: %s", err.Error()), nil)
 	}
 
-	if len(issuers) == 0 {
-		utils.PrintInfo("No certificate issuers found")
-		return nil
-	}
-
-	if utils.TryPrintJSON(issuers) {
+	if utils.PrintListOrJSON(issuers, "No certificate issuers found") {
 		return nil
 	}
 

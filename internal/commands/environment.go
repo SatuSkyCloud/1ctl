@@ -48,6 +48,10 @@ func EnvironmentCommand() *cli.Command {
 						Name:  "deployment-id",
 						Usage: "Filter by deployment ID",
 					},
+					&cli.StringFlag{
+						Name:  "app",
+						Usage: "App name to resolve (alternative to --deployment-id)",
+					},
 				},
 				Action: handleListEnvironments,
 			},
@@ -57,6 +61,7 @@ func EnvironmentCommand() *cli.Command {
 				Flags: []cli.Flag{
 					&cli.StringFlag{Name: "config", Usage: "Config name or path"},
 					&cli.StringFlag{Name: "deployment-id", Aliases: []string{"d"}, Usage: "Deployment ID"},
+					&cli.StringFlag{Name: "app", Usage: "App name to resolve (alternative to --deployment-id)"},
 					&cli.StringFlag{Name: "key", Aliases: []string{"k"}, Usage: "Key to remove", Required: true},
 				},
 				Action: handleEnvUnset,
@@ -66,7 +71,7 @@ func EnvironmentCommand() *cli.Command {
 }
 
 func handleCreateEnvironment(ctx context.Context, cmd *cli.Command) error {
-	deploymentIDStr, err := resolveDeploymentID(cmd.String("deployment-id"), "", cmd.String("config"))
+	deploymentIDStr, err := resolveDeploymentID(cmd.String("deployment-id"), cmd.String("app"), cmd.String("config"))
 	if err != nil {
 		return err
 	}
@@ -124,12 +129,7 @@ func handleListEnvironments(ctx context.Context, cmd *cli.Command) error {
 		return utils.NewError(fmt.Sprintf("failed to list environments: %s", err.Error()), nil)
 	}
 
-	if len(environments) == 0 {
-		utils.PrintInfo("No environments found")
-		return nil
-	}
-
-	if utils.TryPrintJSON(environments) {
+	if utils.PrintListOrJSON(environments, "No environments found") {
 		return nil
 	}
 
@@ -150,7 +150,7 @@ func handleListEnvironments(ctx context.Context, cmd *cli.Command) error {
 func handleEnvUnset(ctx context.Context, cmd *cli.Command) error {
 	key := cmd.String("key")
 
-	deploymentID, err := resolveDeploymentID(cmd.String("deployment-id"), "", cmd.String("config"))
+	deploymentID, err := resolveDeploymentID(cmd.String("deployment-id"), cmd.String("app"), cmd.String("config"))
 	if err != nil {
 		return utils.NewError(fmt.Sprintf("failed to resolve deployment: %s", err.Error()), nil)
 	}

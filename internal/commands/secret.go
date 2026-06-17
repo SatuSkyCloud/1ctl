@@ -135,12 +135,7 @@ func handleListSecrets(ctx context.Context, cmd *cli.Command) error {
 		return utils.NewError(fmt.Sprintf("failed to list secrets: %s", err.Error()), nil)
 	}
 
-	if len(secrets) == 0 {
-		utils.PrintInfo("No secrets found")
-		return nil
-	}
-
-	if utils.TryPrintJSON(secrets) {
+	if utils.PrintListOrJSON(secrets, "No secrets found") {
 		return nil
 	}
 
