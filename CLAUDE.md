@@ -40,8 +40,8 @@ gosec ./...
 - **Auth**: All requests send `x-satusky-api-key` header via `makeRequest()`. `LoginCLI()` also sends it.
 - **Safe int conversions**: Use `api.SafeInt32()` for all `int` to `int32` conversions (gosec G115).
 - **Upsert pattern**: Deploy/service/ingress use upsert endpoints, not separate create/update.
-- **CLI framework**: `github.com/urfave/cli/v2`.
-- **Post-deploy smoke testing**: After `deploy --wait` reports workload healthy, `reportDeployResult()` probes the public URL. Default (no `--health-path`): 401/403/404 are accepted as proof of platform reachability (DNS/TLS/routing worked). With `--health-path` set: only 2xx/3xx pass. Non-strict smoke failures are warnings; strict failures block the deploy. `health_path` can be set in `satusky.toml` `[app]` or via `--health-path` flag. Path validated by `ValidateURLPath()` — must start with `/`.
+- **CLI framework**: `github.com/urfave/cli/v3` (migrated June 2026). See TEST_REPORT.md for migration verification.
+- **Post-deploy smoke testing**: After `deploy --wait` reports workload healthy, `reportDeployResult()` probes the public URL. Default (no `--health-path`): 401/403/404 are accepted as proof of platform reachability (DNS/TLS/routing worked). With `--health-path` set: only 2xx/3xx pass. Non-strict smoke failures are warnings; strict failures block the deploy. `health_path` can be set in `satusky.toml` `[checks]` section or via `--health-path` flag. Legacy `[app].health_path` still works (auto-migrated by Normalize()). Path validated by `ValidateURLPath()` — must start with `/`.
 - **Logs metadata**: `GetStoredLogs` returns `(*DeploymentLogsMeta, error)` alongside logs. Check `meta.Degraded` for Loki unavailability; surface `FallbackReason`/`FallbackSource` to the user. The `logs` command prints a warning when Loki is degraded and response fell back to stored deployment logs.
 - **Doctor command**: `--deployment-id`/`--config` = targeted mode (always runs smoke). `--smoke` = opt-in for namespace-wide smoke. `--health-path` enforces strict 2xx/3xx in doctor smoke too. Smoke failures in doctor are always warnings, never hard errors.
 
@@ -81,4 +81,12 @@ Resolution order at runtime (highest wins): `--api-url` flag → `SATUSKY_API_UR
 - Backend struct field names often differ from what you'd expect (e.g., `user_email` not `email`, `token_id` not `id`) — always check backend model JSON tags before adding/changing structs
 - `--wait` flag does NOT exist on `deploy rollback` — use `-y`/`--yes` for non-interactive rollback
 - `secret list` does NOT accept `--config` flag
-- `-o json` is NOT wired for `ingress list` or `service list` (works for deploy, env, secret, machine, token)
+- -o json — most list commands support it. Exceptions (table-only):
+  - marketplace list, user me, user permissions, issuer list, credits usage
+  - pricing list -o json returns error while table mode succeeds
+- --app flag — supported on deploy subcommands, volumes list, logs, doctor, secret
+  - NOT supported on env list / env unset (use --deployment-id)
+- user info subcommand does not exist — use user me
+- notifications delete does not support -y flag (deletes immediately with --id)
+- Full JWT token exposed in token list -o json output — security concern
+- See TEST_REPORT.md for full test results and known issues

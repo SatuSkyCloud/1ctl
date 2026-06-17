@@ -1,5 +1,14 @@
+# Frontend — static site served with nginx
+# Demonstrates: custom port, minimal resources
+
 [app]
-  name = "frontend"
-  port = 80
-  cpu  = "0.25"
-  memory = "128Mi"
+  name    = "frontend"
+  port    = 80
+  cpu     = "0.25"
+  memory  = "128Mi"
+
+[build]
+  dockerfile = "Dockerfile"
+
+[checks]
+  health_path = "/"
