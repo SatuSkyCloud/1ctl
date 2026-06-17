@@ -3,6 +3,11 @@ package commands
 import (
 	"context"
 	"fmt"
+	"os"
+	"path/filepath"
+	"strings"
+
+	"1ctl/internal/utils"
 
 	"github.com/urfave/cli/v3"
 )
@@ -13,13 +18,17 @@ import (
 // outputs commands/flags/descriptions based on the live command tree.
 // No manual updates needed when commands are added or removed.
 //
-// Unlike v3's built-in embedded scripts (which have a zsh syntax bug in
-// v3.10.0), these use proper zsh array syntax.
+// Use `1ctl completion install` to auto-detect your shell and install.
 func CompletionCommand() *cli.Command {
 	return &cli.Command{
 		Name:  "completion",
-		Usage: "Generate shell completion scripts",
+		Usage: "Generate and install shell completion scripts",
 		Commands: []*cli.Command{
+			{
+				Name:  "install",
+				Usage: "Auto-detect shell and install completion (add one line to shell config)",
+				Action: handleCompletionInstall,
+			},
 			{
 				Name:   "bash",
 				Usage:  "Generate bash completion script",
@@ -206,4 +215,94 @@ Register-ArgumentCompleter -Native -CommandName '%[1]s' -ScriptBlock {
 `, appName)
 	_, err := fmt.Fprint(cmd.Root().Writer, script)
 	return err
+}
+
+func handleCompletionInstall(ctx context.Context, cmd *cli.Command) error {
+	appName := cmd.Root().Name
+	shell := os.Getenv("SHELL")
+	home, _ := os.UserHomeDir()
+
+	type shellInfo struct {
+		name        string
+		dir         string
+		file        string
+		config      string
+		scriptFunc  func(context.Context, *cli.Command) error
+		postInstall string
+	}
+
+	var si shellInfo
+
+	switch {
+	case strings.Contains(shell, "zsh"):
+		si = shellInfo{
+			name:       "zsh",
+			dir:        filepath.Join(home, ".zsh", "completions"),
+			file:       "_" + appName,
+			config:     fmt.Sprintf("fpath=(%s $fpath)", filepath.Join(home, ".zsh", "completions")),
+			scriptFunc: handleZshCompletion,
+			postInstall: "rm -f ~/.zcompdump && compinit",
+		}
+	case strings.Contains(shell, "bash"):
+		si = shellInfo{
+			name:       "bash",
+			dir:        filepath.Join(home, ".bash_completion.d"),
+			file:       appName,
+			config:     fmt.Sprintf("source %s/%s", filepath.Join(home, ".bash_completion.d"), appName),
+			scriptFunc: handleBashCompletion,
+			postInstall: fmt.Sprintf("source %s/%s", filepath.Join(home, ".bash_completion.d"), appName),
+		}
+	case strings.Contains(shell, "fish"):
+		installDir := filepath.Join(home, ".config", "fish", "completions")
+		si = shellInfo{
+			name:       "fish",
+			dir:        installDir,
+			file:       appName + ".fish",
+			config:     "(auto-loaded by fish, nothing to add)",
+			scriptFunc: handleFishCompletion,
+		}
+	case strings.Contains(shell, "pwsh") || strings.Contains(shell, "powershell"):
+		utils.PrintInfo("PowerShell detected. Use:")
+		fmt.Println()
+		fmt.Println("  1ctl completion powershell >> $PROFILE")
+		fmt.Println()
+		utils.PrintInfo("Or run in zsh, bash, or fish.")
+		return nil
+	default:
+		utils.PrintWarning("Cannot detect shell from SHELL=%s", shell)
+		utils.PrintInfo("Supported: zsh, bash, fish. Use 1ctl completion <shell> to generate manually.")
+		return nil
+	}
+
+	if err := os.MkdirAll(si.dir, 0755); err != nil {
+		return utils.NewError(fmt.Sprintf("failed to create %s: %s", si.dir, err.Error()), nil)
+	}
+
+	installPath := filepath.Join(si.dir, si.file)
+	f, err := os.Create(installPath)
+	if err != nil {
+		return utils.NewError(fmt.Sprintf("failed to write %s: %s", installPath, err.Error()), nil)
+	}
+	defer f.Close()
+
+	// Swap writer temporarily to write script into file
+	origWriter := cmd.Root().Writer
+	cmd.Root().Writer = f
+	err = si.scriptFunc(ctx, cmd)
+	cmd.Root().Writer = origWriter
+	if err != nil {
+		return err
+	}
+
+	utils.PrintSuccess("Installed %s completion at %s", si.name, installPath)
+	fmt.Println()
+	fmt.Printf("  # Add this ONE line to your ~/.%src and never touch it again:\n", si.name)
+	fmt.Printf("  %s\n", si.config)
+	fmt.Println()
+	if si.postInstall != "" {
+		utils.PrintInfo("Then run: %s", si.postInstall)
+	}
+	fmt.Println()
+	utils.PrintInfo("Completions auto-update when 1ctl changes — no re-install needed.")
+	return nil
 }
