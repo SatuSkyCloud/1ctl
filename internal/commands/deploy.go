@@ -1473,13 +1473,76 @@ func handleGetDeployment(ctx context.Context, cmd *cli.Command) error {
 	return nil
 }
 
+func previewDeletion(deploymentID string) ([]string, error) {
+	var lines []string
+
+	// Get deployment details for app name
+	dep, err := api.GetDeployment(deploymentID)
+	if err != nil {
+		return nil, err
+	}
+
+	lines = append(lines, fmt.Sprintf("App: %s (ID: %s)", dep.AppLabel, deploymentID))
+	lines = append(lines, "")
+	lines = append(lines, "Resources that will be deleted:")
+
+	// Ingress
+	ing, err := api.GetIngressByDeploymentID(deploymentID)
+	if err == nil && ing != nil {
+		domainDisplay := ing.DomainName
+		if domainDisplay == "" {
+			domainDisplay = "(no domain attached)"
+		}
+		lines = append(lines, fmt.Sprintf("  • Ingress  — %s", domainDisplay))
+	}
+
+	// Volumes
+	volumes, err := api.GetDeploymentVolumeLifecycleStatuses(deploymentID)
+	if err == nil {
+		for _, v := range volumes {
+			policy := v.DestroyPolicy
+			if policy == "" {
+				policy = "default"
+			}
+			lines = append(lines, fmt.Sprintf("  • Volume   — %s (%s, destroy: %s)", v.Volume.ClaimName, v.Volume.StorageSize, policy))
+		}
+	}
+
+	// Services
+	services, err := api.ListServices()
+	if err == nil {
+		for _, s := range services {
+			if s.DeploymentID.String() == deploymentID {
+				lines = append(lines, fmt.Sprintf("  • Service  — %s (port: %d)", s.ServiceName, s.Port))
+			}
+		}
+	}
+
+	if len(lines) == 2 {
+		lines = append(lines, "  (no additional resources found)")
+	}
+
+	return lines, nil
+}
+
 func handleDestroyDeployment(ctx context.Context, cmd *cli.Command) error {
 	deploymentID, err := resolveDeploymentID(cmd.String("deployment-id"), cmd.String("app"), cmd.String("config"))
 	if err != nil {
 		return err
 	}
+
+	// Show what will be deleted
+	preview, err := previewDeletion(deploymentID)
+	if err == nil {
+		fmt.Println(strings.Join(preview, "\n"))
+		fmt.Println()
+	} else {
+		// Fallback to simple message if preview fails
+		utils.PrintWarning("Could not preview resources: %s", err.Error())
+	}
+
 	if !utils.Confirm(
-		fmt.Sprintf("Destroy deployment %s? This will delete all associated services, ingresses, and volumes. This cannot be undone.", deploymentID),
+		"This will permanently destroy the deployment and all its associated resources. This cannot be undone.",
 		cmd.Bool("yes"),
 	) {
 		fmt.Println("Aborted.")
