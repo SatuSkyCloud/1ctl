@@ -23,8 +23,7 @@ func run() error {
 // Make createCommand function accessible to tests
 func createCommand() *cli.Command {
 	cmd := &cli.Command{
-		UseShortOptionHandling: true,
-		EnableShellCompletion:  true,
+		EnableShellCompletion: true,
 		Name:                  "1ctl",
 		Usage:   "Deploy and manage applications on SatuSky Cloud",
 		Version: version.GetVersionInfo(),
