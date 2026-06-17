@@ -178,6 +178,10 @@ func postgresUsersCommand() *cli.Command {
 				Aliases:   []string{"rm"},
 				Usage:     "Delete a database user",
 				ArgsUsage: "<storage-id> <username>",
+				Arguments: []cli.Argument{
+					&cli.StringArgs{Name: "storage-id", Min: 1, Max: 1},
+					&cli.StringArgs{Name: "username", Min: 1, Max: 1},
+				},
 				Flags: []cli.Flag{
 					&cli.BoolFlag{Name: "yes", Aliases: []string{"y"}, Usage: "Skip confirmation prompt"},
 				},
@@ -227,6 +231,10 @@ func postgresFirewallCommand() *cli.Command {
 				Aliases:   []string{"remove", "rm"},
 				Usage:     "Remove a firewall rule",
 				ArgsUsage: "<storage-id> <rule-id>",
+				Arguments: []cli.Argument{
+					&cli.StringArgs{Name: "storage-id", Min: 1, Max: 1},
+					&cli.StringArgs{Name: "rule-id", Min: 1, Max: 1},
+				},
 				Flags: []cli.Flag{
 					&cli.BoolFlag{Name: "yes", Aliases: []string{"y"}, Usage: "Skip confirmation prompt"},
 				},
@@ -509,11 +517,8 @@ func handlePostgresUsersCreate(ctx context.Context, cmd *cli.Command) error {
 }
 
 func handlePostgresUsersDelete(ctx context.Context, cmd *cli.Command) error {
-	if cmd.NArg() < 2 {
-		return utils.NewError("usage: 1ctl postgres users delete <storage-id> <username>", nil)
-	}
-	storageID := cmd.Args().Get(0)
-	username := cmd.Args().Get(1)
+	storageID := cmd.StringArgs("storage-id")[0]
+	username := cmd.StringArgs("username")[0]
 	if !utils.Confirm(fmt.Sprintf("Delete database user %s from Postgres cluster %s?", username, storageID), cmd.Bool("yes")) {
 		fmt.Println("Aborted.")
 		return nil
@@ -604,11 +609,8 @@ func handlePostgresFirewallSetEnabled(cmd *cli.Command, enabled bool) error {
 }
 
 func handlePostgresFirewallRemove(ctx context.Context, cmd *cli.Command) error {
-	if cmd.NArg() < 2 {
-		return utils.NewError("usage: 1ctl postgres firewall remove <storage-id> <rule-id>", nil)
-	}
-	storageID := cmd.Args().Get(0)
-	ruleID := cmd.Args().Get(1)
+	storageID := cmd.StringArgs("storage-id")[0]
+	ruleID := cmd.StringArgs("rule-id")[0]
 	if !utils.Confirm(fmt.Sprintf("Remove firewall rule %s from Postgres cluster %s?", ruleID, storageID), cmd.Bool("yes")) {
 		fmt.Println("Aborted.")
 		return nil

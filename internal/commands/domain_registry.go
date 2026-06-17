@@ -121,6 +121,10 @@ func domainsDNSCommand() *cli.Command {
 				Name:      "update",
 				Usage:     "Update a DNS record",
 				ArgsUsage: "<domain|domain-id> <record-id>",
+				Arguments: []cli.Argument{
+					&cli.StringArgs{Name: "domain", Min: 1, Max: 1},
+					&cli.StringArgs{Name: "record-id", Min: 1, Max: 1},
+				},
 				Flags:     updateFlags,
 				Action:    handleDNSUpdate,
 			},
@@ -386,18 +390,17 @@ func handleDNSCreate(ctx context.Context, cmd *cli.Command) error {
 }
 
 func handleDNSUpdate(ctx context.Context, cmd *cli.Command) error {
-	if cmd.NArg() < 2 {
-		return utils.NewError("domain and record ID are required. Usage: 1ctl domains dns update <domain|domain-id> <record-id>", nil)
-	}
 	userID, orgID, err := domainAPIScope()
 	if err != nil {
 		return err
 	}
-	domainID, err := resolveManagedDomainID(userID, orgID, cmd.Args().First())
+	domain := cmd.StringArgs("domain")
+	recordID := cmd.StringArgs("record-id")
+	domainID, err := resolveManagedDomainID(userID, orgID, domain[0])
 	if err != nil {
 		return err
 	}
-	record, err := api.UpdateDNSRecord(userID, orgID, domainID, cmd.Args().Get(1), dnsUpdateRequestFromFlags(cmd))
+	record, err := api.UpdateDNSRecord(userID, orgID, domainID, recordID[0], dnsUpdateRequestFromFlags(cmd))
 	if err != nil {
 		return utils.NewError(fmt.Sprintf("failed to update DNS record: %s", err.Error()), nil)
 	}
@@ -410,23 +413,22 @@ func handleDNSUpdate(ctx context.Context, cmd *cli.Command) error {
 }
 
 func handleDNSDelete(ctx context.Context, cmd *cli.Command) error {
-	if cmd.NArg() < 1 {
-		return utils.NewError("domain is required. Usage: 1ctl domains dns delete <domain|domain-id> [<record-id>] [--record-id <id>]", nil)
-	}
 	userID, orgID, err := domainAPIScope()
 	if err != nil {
 		return err
 	}
-	domainID, err := resolveManagedDomainID(userID, orgID, cmd.Args().First())
+	domain := cmd.StringArgs("domain")
+	domainID, err := resolveManagedDomainID(userID, orgID, domain[0])
 	if err != nil {
 		return err
 	}
 	recordID := cmd.String("record-id")
 	if recordID == "" {
-		if cmd.NArg() < 2 {
+		posRecord := cmd.StringArgs("record-id")
+		if len(posRecord) == 0 {
 			return utils.NewError("record ID is required. Usage: 1ctl domains dns delete <domain|domain-id> [<record-id>] [--record-id <id>]", nil)
 		}
-		recordID = cmd.Args().Get(1)
+		recordID = posRecord[0]
 	}
 	if !utils.Confirm(fmt.Sprintf("Delete DNS record %s?", recordID), cmd.Bool("yes")) {
 		fmt.Println("Aborted.")
