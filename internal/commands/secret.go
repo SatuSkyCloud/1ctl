@@ -50,6 +50,7 @@ func SecretCommand() *cli.Command {
 				Name:  "unset",
 				Usage: "Remove a specific key from a secret",
 				Flags: []cli.Flag{
+					&cli.StringFlag{Name: "app", Usage: "App name to resolve (alternative to --deployment-id)"},
 					&cli.StringFlag{Name: "config", Usage: "Config name or path"},
 					&cli.StringFlag{Name: "deployment-id", Aliases: []string{"d"}, Usage: "Deployment ID"},
 					&cli.StringFlag{Name: "key", Aliases: []string{"k"}, Usage: "Key to remove", Required: true},
@@ -61,7 +62,7 @@ func SecretCommand() *cli.Command {
 }
 
 func handleCreateSecret(ctx context.Context, cmd *cli.Command) error {
-	deploymentIDStr, err := resolveDeploymentID(cmd.String("deployment-id"), "", cmd.String("config"))
+	deploymentIDStr, err := resolveDeploymentID(cmd.String("deployment-id"), cmd.String("app"), cmd.String("config"))
 	if err != nil {
 		return err
 	}
@@ -146,7 +147,7 @@ func handleListSecrets(ctx context.Context, cmd *cli.Command) error {
 func handleSecretUnset(ctx context.Context, cmd *cli.Command) error {
 	key := cmd.String("key")
 
-	deploymentID, err := resolveDeploymentID(cmd.String("deployment-id"), "", cmd.String("config"))
+	deploymentID, err := resolveDeploymentID(cmd.String("deployment-id"), cmd.String("app"), cmd.String("config"))
 	if err != nil {
 		return utils.NewError(fmt.Sprintf("failed to resolve deployment: %s", err.Error()), nil)
 	}

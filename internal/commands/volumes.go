@@ -30,6 +30,7 @@ func volumesListCommand() *cli.Command {
 		Usage: "List persistent volumes for a deployment",
 		Flags: []cli.Flag{
 			&cli.StringFlag{Name: "deployment-id", Usage: "Deployment ID"},
+			&cli.StringFlag{Name: "app", Usage: "App name to resolve (alternative to --deployment-id)"},
 			&cli.StringFlag{Name: "config", Usage: "Config name or path. Default: satusky.toml"},
 		},
 		Action: handleVolumesList,
@@ -72,7 +73,7 @@ func volumesDestroyCommand() *cli.Command {
 }
 
 func handleVolumesList(ctx context.Context, cmd *cli.Command) error {
-	deploymentID, err := resolveDeploymentID(cmd.String("deployment-id"), "", cmd.String("config"))
+	deploymentID, err := resolveDeploymentID(cmd.String("deployment-id"), cmd.String("app"), cmd.String("config"))
 	if err != nil {
 		return err
 	}

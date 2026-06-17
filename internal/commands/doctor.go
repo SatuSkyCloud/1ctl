@@ -44,6 +44,10 @@ func DoctorCommand() *cli.Command {
 				Usage:   "Check one deployment instead of the whole namespace",
 			},
 			&cli.StringFlag{
+				Name:  "app",
+				Usage: "App name to resolve (alternative to --deployment-id)",
+			},
+			&cli.StringFlag{
 				Name:  "config",
 				Usage: "Config name or path (e.g. staging, satusky.staging.toml). Used to resolve a deployment ID when not provided.",
 			},
@@ -202,7 +206,7 @@ func resolveDoctorTargets(cmd *cli.Command) ([]api.Deployment, string, bool, err
 	healthPath := strings.TrimSpace(cmd.String("health-path"))
 
 	if cmd.String("deployment-id") != "" || cmd.String("config") != "" {
-		deploymentID, err := resolveDeploymentID(cmd.String("deployment-id"), "", cmd.String("config"))
+		deploymentID, err := resolveDeploymentID(cmd.String("deployment-id"), cmd.String("app"), cmd.String("config"))
 		if err != nil {
 			return nil, "", false, err
 		}

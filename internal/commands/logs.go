@@ -23,6 +23,10 @@ func LogsCommand() *cli.Command {
 				Usage:   "Deployment ID to view logs for",
 			},
 			&cli.StringFlag{
+				Name:  "app",
+				Usage: "App name to resolve (alternative to --deployment-id)",
+			},
+			&cli.StringFlag{
 				Name:  "config",
 				Usage: "Config name or path (e.g. staging, satusky.staging.toml). Default: satusky.toml",
 			},
@@ -41,7 +45,7 @@ func LogsCommand() *cli.Command {
 }
 
 func handleLogs(ctx context.Context, cmd *cli.Command) error {
-	deploymentID, err := resolveDeploymentID(cmd.String("deployment-id"), "", cmd.String("config"))
+	deploymentID, err := resolveDeploymentID(cmd.String("deployment-id"), cmd.String("app"), cmd.String("config"))
 	if err != nil {
 		return err
 	}
@@ -103,7 +107,7 @@ func handleLogsStream(ctx context.Context, cmd *cli.Command) error {
 
 	// Resolve deployment-id from --config if not provided directly
 	if cmd.String("deployment-id") == "" && cmd.String("namespace") == "" {
-		id, err := resolveDeploymentID("", "", cmd.String("config"))
+		id, err := resolveDeploymentID("", cmd.String("app"), cmd.String("config"))
 		if err == nil && id != "" {
 			if err := cmd.Set("deployment-id", id); err != nil {
 				return utils.NewError(fmt.Sprintf("failed to set deployment-id: %s", err.Error()), nil)
