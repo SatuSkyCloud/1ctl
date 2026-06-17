@@ -155,7 +155,8 @@ func FindConfig(configArg string) (*ProjectConfig, error) {
 // Normalize applies backward-compatible field migrations.
 // When the preferred section ([build], [checks], [deploy]) is empty/zero,
 // values are copied from the legacy [app] location so old satusky.toml files
-// continue to work without changes.
+// continue to work without changes. The legacy [app] fields are then cleared
+// so downstream consumers always read from the canonical v2 sections.
 func (cfg *ProjectConfig) Normalize() {
 	// Build: prefer [build] over [app].
 	if cfg.Build.Dockerfile == "" {
@@ -184,6 +185,17 @@ func (cfg *ProjectConfig) Normalize() {
 	if len(cfg.Deploy.WaitFor) == 0 {
 		cfg.Deploy.WaitFor = cfg.App.WaitFor
 	}
+
+	// Clear legacy [app] fields so downstream consumers always read from
+	// the canonical v2 sections.
+	cfg.App.Dockerfile = ""
+	cfg.App.FastBuild = false
+	cfg.App.HealthPath = ""
+	cfg.App.Strategy = ""
+	cfg.App.RollingMaxSurge = ""
+	cfg.App.RollingMaxUnavailable = ""
+	cfg.App.MachineTag = ""
+	cfg.App.WaitFor = nil
 }
 
 // Save writes the config back to its original path.

@@ -49,8 +49,8 @@ wait_for = ["postgres:5432", "redis:6379"]
 	if cfg.App.Port != 3000 {
 		t.Errorf("Port = %d, want 3000", cfg.App.Port)
 	}
-	if cfg.App.Dockerfile != "Dockerfile.prod" {
-		t.Errorf("App.Dockerfile (backward-compat) = %q, want Dockerfile.prod", cfg.App.Dockerfile)
+	if cfg.App.Dockerfile != "" {
+		t.Errorf("App.Dockerfile = %q, want empty (cleared by Normalize)", cfg.App.Dockerfile)
 	}
 	if cfg.Build.Dockerfile != "Dockerfile.prod" {
 		t.Errorf("Build.Dockerfile = %q, want Dockerfile.prod (issue #18: was silently ignored before v2)", cfg.Build.Dockerfile)
@@ -419,13 +419,15 @@ strategy = "rolling"
 		t.Errorf("Deploy.Strategy = %q, want rolling (new section did not take precedence)", cfg.Deploy.Strategy)
 	}
 	// Backward-compat fields in AppConfig should still have the original [app] values.
-	if cfg.App.Dockerfile != "old.Dockerfile" {
-		t.Errorf("App.Dockerfile = %q, want old.Dockerfile (backward-compat field changed)", cfg.App.Dockerfile)
+	// After Normalize(), legacy [app] fields should be cleared since the
+	// canonical values now live in [build]/[checks]/[deploy].
+	if cfg.App.Dockerfile != "" {
+		t.Errorf("App.Dockerfile = %q, want empty (legacy field should be cleared after Normalize)", cfg.App.Dockerfile)
 	}
-	if cfg.App.HealthPath != "/old" {
-		t.Errorf("App.HealthPath = %q, want /old (backward-compat field changed)", cfg.App.HealthPath)
+	if cfg.App.HealthPath != "" {
+		t.Errorf("App.HealthPath = %q, want empty (legacy field should be cleared after Normalize)", cfg.App.HealthPath)
 	}
-	if cfg.App.Strategy != "recreate" {
-		t.Errorf("App.Strategy = %q, want recreate (backward-compat field changed)", cfg.App.Strategy)
+	if cfg.App.Strategy != "" {
+		t.Errorf("App.Strategy = %q, want empty (legacy field should be cleared after Normalize)", cfg.App.Strategy)
 	}
 }

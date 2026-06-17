@@ -67,12 +67,6 @@ func handleInit(ctx context.Context, cmd *cli.Command) error {
 	if base.App.Port != 0 {
 		lines = append(lines, fmt.Sprintf("  port = %d", base.App.Port))
 	}
-	if base.Build.Dockerfile != "" && base.Build.Dockerfile != "Dockerfile" {
-		lines = append(lines, fmt.Sprintf("  dockerfile = %q", base.Build.Dockerfile))
-	}
-	if base.Build.FastBuild {
-		lines = append(lines, "  fast_build = true")
-	}
 	if base.App.CPURequest != "" {
 		lines = append(lines, fmt.Sprintf("  cpu_request = %q", base.App.CPURequest))
 	}
@@ -90,30 +84,64 @@ func handleInit(ctx context.Context, cmd *cli.Command) error {
 	if base.App.Domain != "" {
 		lines = append(lines, fmt.Sprintf("  domain = %q", base.App.Domain))
 	}
-	if base.Checks.HealthPath != "" {
-		lines = append(lines, fmt.Sprintf("  health_path = %q", base.App.HealthPath))
-	}
 
-	// Commented examples for the v2 schema. Uncomment to use.
+	// Commented examples for the [app] section.
 	lines = append(lines, "",
 		"  # cpu_request = \"250m\"   # guaranteed scheduler reservation",
 		"  # cpu_limit = \"1\"        # burst ceiling",
-		"  # memory = \"256Mi\"       # platform default 256Mi",
-		"",
-		"[build]",
-		"  # dockerfile = \"Dockerfile\"",
-		"  # fast_build = false       # opt into accelerated cloud builds",
-		"",
-		"[checks]",
-		"  # health_path = \"/health\"  # app-specific HTTP smoke path (used by deploy --wait)",
-		"",
-		"[deploy]",
-		"  # strategy = \"rolling\"    # rolling | recreate",
-		"  # rolling_max_surge = \"25%\"",
-		"  # rolling_max_unavailable = \"25%\"",
-		"  # machine_tag = \"production\"",
-		"  # wait_for = [\"postgres:5432\"]",
-		"",
+		"  # memory = \"256Mi\"       # platform default 256Mi")
+
+	// [build] section
+	lines = append(lines, "", "[build]")
+	if base.Build.Dockerfile != "" && base.Build.Dockerfile != "Dockerfile" {
+		lines = append(lines, fmt.Sprintf("  dockerfile = %q", base.Build.Dockerfile))
+	} else {
+		lines = append(lines, "  # dockerfile = \"Dockerfile\"")
+	}
+	if base.Build.FastBuild {
+		lines = append(lines, "  fast_build = true")
+	} else {
+		lines = append(lines, "  # fast_build = false       # opt into accelerated cloud builds")
+	}
+
+	// [checks] section
+	lines = append(lines, "", "[checks]")
+	if base.Checks.HealthPath != "" {
+		lines = append(lines, fmt.Sprintf("  health_path = %q", base.Checks.HealthPath))
+	} else {
+		lines = append(lines, "  # health_path = \"/health\"  # app-specific HTTP smoke path (used by deploy --wait)")
+	}
+
+	// [deploy] section
+	lines = append(lines, "", "[deploy]")
+	if base.Deploy.Strategy != "" && base.Deploy.Strategy != "rolling" {
+		lines = append(lines, fmt.Sprintf("  strategy = %q", base.Deploy.Strategy))
+	} else {
+		lines = append(lines, "  # strategy = \"rolling\"    # rolling | recreate")
+	}
+	if base.Deploy.RollingMaxSurge != "" && base.Deploy.RollingMaxSurge != "25%" {
+		lines = append(lines, fmt.Sprintf("  rolling_max_surge = %q", base.Deploy.RollingMaxSurge))
+	} else {
+		lines = append(lines, "  # rolling_max_surge = \"25%\"")
+	}
+	if base.Deploy.RollingMaxUnavailable != "" && base.Deploy.RollingMaxUnavailable != "25%" {
+		lines = append(lines, fmt.Sprintf("  rolling_max_unavailable = %q", base.Deploy.RollingMaxUnavailable))
+	} else {
+		lines = append(lines, "  # rolling_max_unavailable = \"25%\"")
+	}
+	if base.Deploy.MachineTag != "" {
+		lines = append(lines, fmt.Sprintf("  machine_tag = %q", base.Deploy.MachineTag))
+	} else {
+		lines = append(lines, "  # machine_tag = \"production\"")
+	}
+	if len(base.Deploy.WaitFor) > 0 {
+		lines = append(lines, "  wait_for = ["+strings.Join(quoteEach(base.Deploy.WaitFor), ", ")+"]")
+	} else {
+		lines = append(lines, "  # wait_for = [\"postgres:5432\"]")
+	}
+
+	// Other optional sections (commented out).
+	lines = append(lines, "",
 		"# [volume]",
 		"#   size = \"10Gi\"",
 		"#   mount = \"/data\"",
@@ -158,4 +186,13 @@ func handleInit(ctx context.Context, cmd *cli.Command) error {
 		utils.PrintInfo("Edit satusky.toml, then run: 1ctl deploy")
 	}
 	return nil
+}
+
+// quoteEach wraps each string in double quotes.
+func quoteEach(vals []string) []string {
+	out := make([]string, len(vals))
+	for i, v := range vals {
+		out[i] = fmt.Sprintf("%q", v)
+	}
+	return out
 }
