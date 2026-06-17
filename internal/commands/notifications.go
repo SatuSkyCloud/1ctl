@@ -103,6 +103,10 @@ func handleNotifList(ctx context.Context, cmd *cli.Command) error {
 		return nil
 	}
 
+	if utils.TryPrintJSON(notifications) {
+		return nil
+	}
+
 	headers := []string{"TYPE", "SUBJECT", "PRIORITY", "STATUS", "CREATED"}
 	rows := make([][]string, 0, len(notifications))
 	for _, notif := range notifications {

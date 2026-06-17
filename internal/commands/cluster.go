@@ -50,6 +50,10 @@ func handleListZones(ctx context.Context, cmd *cli.Command) error {
 		return nil
 	}
 
+	if utils.TryPrintJSON(zones) {
+		return nil
+	}
+
 	w := tabwriter.NewWriter(os.Stdout, 0, 0, 3, ' ', 0)
 	_, _ = fmt.Fprintln(w, "ZONE\tLABEL\tCLUSTER") //nolint:errcheck
 	_, _ = fmt.Fprintln(w, "----\t-----\t-------") //nolint:errcheck
@@ -69,6 +73,10 @@ func handleListClusters(ctx context.Context, cmd *cli.Command) error {
 
 	if len(clusters) == 0 {
 		utils.PrintInfo("No clusters available")
+		return nil
+	}
+
+	if utils.TryPrintJSON(clusters) {
 		return nil
 	}
 

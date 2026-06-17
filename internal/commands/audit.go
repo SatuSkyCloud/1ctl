@@ -73,6 +73,10 @@ func handleAuditList(ctx context.Context, cmd *cli.Command) error {
 		return nil
 	}
 
+	if utils.TryPrintJSON(logs) {
+		return nil
+	}
+
 	utils.PrintHeader("Audit Logs")
 	for _, log := range logs {
 		utils.PrintStatusLine("ID", log.ID.String())
@@ -106,6 +110,10 @@ func handleAuditGet(ctx context.Context, cmd *cli.Command) error {
 	log, err := api.GetAuditLog(orgID, logID)
 	if err != nil {
 		return utils.NewError(fmt.Sprintf("failed to get audit log: %s", err.Error()), nil)
+	}
+
+	if utils.TryPrintJSON(log) {
+		return nil
 	}
 
 	utils.PrintHeader("Audit Log Details")

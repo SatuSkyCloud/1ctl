@@ -112,6 +112,10 @@ func handleListIssuers(ctx context.Context, cmd *cli.Command) error {
 		return nil
 	}
 
+	if utils.TryPrintJSON(issuers) {
+		return nil
+	}
+
 	utils.PrintHeader("Certificate Issuers")
 	for _, issuer := range issuers {
 		utils.PrintStatusLine("Issuer", issuer.IssuerName)

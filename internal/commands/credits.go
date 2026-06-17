@@ -78,6 +78,10 @@ func handleCreditsBalance(ctx context.Context, cmd *cli.Command) error {
 		return utils.NewError(fmt.Sprintf("failed to get credit balance: %s", err.Error()), nil)
 	}
 
+	if utils.TryPrintJSON(balance) {
+		return nil
+	}
+
 	utils.PrintHeader("Credit Balance")
 	utils.PrintStatusLine("Organization ID", balance.OrganizationID.String())
 	utils.PrintStatusLine("Balance", fmt.Sprintf("$%.2f %s", balance.Balance, balance.Currency))
@@ -154,6 +158,10 @@ func handleCreditsTransactions(ctx context.Context, cmd *cli.Command) error {
 		return nil
 	}
 
+	if utils.TryPrintJSON(transactions) {
+		return nil
+	}
+
 	utils.PrintHeader("Transaction History")
 	for _, tx := range transactions {
 		amountStr := fmt.Sprintf("$%.2f", tx.Amount)
@@ -185,6 +193,10 @@ func handleCreditsUsage(ctx context.Context, cmd *cli.Command) error {
 
 	if len(usages) == 0 {
 		utils.PrintInfo("No machine usage found for the last %d days", days)
+		return nil
+	}
+
+	if utils.TryPrintJSON(usages) {
 		return nil
 	}
 

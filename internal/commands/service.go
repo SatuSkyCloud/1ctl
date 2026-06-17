@@ -132,6 +132,10 @@ func handleListServices(ctx context.Context, cmd *cli.Command) error {
 		return nil
 	}
 
+	if utils.TryPrintJSON(services) {
+		return nil
+	}
+
 	headers := []string{"NAME", "SERVICE ID", "DEPLOYMENT ID", "PORT", "UPDATED"}
 	rows := make([][]string, 0, len(services))
 	for _, svc := range services {

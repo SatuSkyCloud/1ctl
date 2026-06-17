@@ -167,6 +167,10 @@ func handleListIngresses(ctx context.Context, cmd *cli.Command) error {
 		return nil
 	}
 
+	if utils.TryPrintJSON(ingresses) {
+		return nil
+	}
+
 	headers := []string{"DOMAIN", "INGRESS ID", "DEPLOYMENT ID", "DNS CONFIG", "CREATED"}
 	rows := make([][]string, 0, len(ingresses))
 	for _, ing := range ingresses {

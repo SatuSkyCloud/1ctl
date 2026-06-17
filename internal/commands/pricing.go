@@ -113,6 +113,10 @@ func handlePricingList(ctx context.Context, cmd *cli.Command) error {
 		return nil
 	}
 
+	if utils.TryPrintJSON(configs) {
+		return nil
+	}
+
 	utils.PrintHeader("Pricing Configurations")
 	for _, c := range configs {
 		printPricingConfig(&c)
@@ -129,6 +133,10 @@ func handlePricingGet(ctx context.Context, cmd *cli.Command) error {
 		return utils.NewError(fmt.Sprintf("failed to get pricing config: %s", err.Error()), nil)
 	}
 
+	if utils.TryPrintJSON(config) {
+		return nil
+	}
+
 	utils.PrintHeader("Pricing Configuration")
 	printPricingConfig(config)
 	return nil
@@ -142,6 +150,10 @@ func handlePricingLookup(ctx context.Context, cmd *cli.Command) error {
 	config, err := api.GetPricingByRegionAndType(region, machineType, sla)
 	if err != nil {
 		return utils.NewError(fmt.Sprintf("failed to look up pricing: %s", err.Error()), nil)
+	}
+
+	if utils.TryPrintJSON(config) {
+		return nil
 	}
 
 	utils.PrintHeader("Pricing Configuration")
@@ -160,6 +172,10 @@ func handlePricingCalculate(ctx context.Context, cmd *cli.Command) error {
 	result, err := api.CalculateMachineCost(machineRefID, machineID, req)
 	if err != nil {
 		return utils.NewError(fmt.Sprintf("failed to calculate cost: %s", err.Error()), nil)
+	}
+
+	if utils.TryPrintJSON(result) {
+		return nil
 	}
 
 	utils.PrintHeader("Cost Calculation")
