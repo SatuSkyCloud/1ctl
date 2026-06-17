@@ -146,7 +146,8 @@ cd your-project
 # Block until pods are Running (5min default timeout)
 1ctl deploy --cpu-request 250m --cpu-limit 1 --memory 1Gi --wait
 
-# JSON output (global flag — works on deploy list/get/status, env list, secret list, machine list, token list)
+# JSON output (global flag — works on deploy, env, secret, machine, token, ingress, service,
+# credits, audit, notifications, pricing, cluster, domain, postgres, issuer, volumes)
 1ctl --output json deploy list | jq '.[] | select(.status == "Running")'
 
 # List deployments (NAME column shows the app label as of v0.8.0)
@@ -171,7 +172,7 @@ cd your-project
 1ctl deploy restart --deployment-id=123
 
 # Tear down a deployment (prompts for confirmation; use --yes to skip)
-1ctl deploy destroy --deployment-id=123 --yes
+1ctl deploy delete --deployment-id=123 --yes
 ```
 
 > **Default targeting is managed cloud.** Even if you have registered machines, `1ctl deploy` (with no `--machine*` flag) goes to the marketplace. To use your own hardware pass `--machine` or `--machine-tag` explicitly. This changed in v0.8.0.
@@ -253,7 +254,7 @@ cd your-project
 1ctl domains check app.example.com
 
 # Detach a domain (refuses cross-app removal even when the domain matches)
-1ctl domains remove app.example.com --app myapp --yes
+1ctl domains delete app.example.com --app myapp --yes
 ```
 
 > **`1ctl ingress` and `1ctl issuer` were hidden from `--help` in v0.8.0.** Custom-domain workflows go through `1ctl domains`, which resolves IDs internally from `--app <name>` — no more passing deployment / service UUIDs by hand. The hidden commands still work for scripts that depend on them.
@@ -281,7 +282,7 @@ cd your-project
 1ctl org team list
 1ctl org team add --email user@example.com --role member
 1ctl org team role <org-user-id> --role admin
-1ctl org team remove <org-user-id>
+1ctl org team delete <org-user-id>
 ```
 
 ### Credits & Billing
@@ -339,7 +340,7 @@ cd your-project
 
 # Re-apply resources or destroy the cluster
 1ctl postgres redeploy <storage-id>
-1ctl postgres destroy <storage-id> --yes
+1ctl postgres delete <storage-id> --yes
 ```
 
 ### Logs
@@ -457,6 +458,35 @@ cd your-project
 
 # Get machine info
 1ctl machine info --machine-name=my-machine
+```
+
+### Shell Completion
+
+Auto-complete commands, flags, and app names with TAB — works across zsh, bash, fish, and PowerShell:
+
+```bash
+# One command to install — auto-detects your shell
+1ctl completion install
+```
+
+This installs a script to the right location for your shell and prints the one config line to add to your `~/.zshrc` / `~/.bashrc`. Completions auto-update when `1ctl` changes — no re-install needed.
+
+Manual generation (if you prefer):
+```bash
+# Zsh (recommended: fpath, lazy-loaded)
+1ctl completion zsh > ~/.zsh/completions/_1ctl
+echo 'fpath=(~/.zsh/completions $fpath)' >> ~/.zshrc
+rm -f ~/.zcompdump && compinit
+
+# Bash
+1ctl completion bash > ~/.bash_completion.d/1ctl
+echo 'source ~/.bash_completion.d/1ctl' >> ~/.bashrc
+
+# Fish (auto-loaded from ~/.config/fish/completions/)
+1ctl completion fish > ~/.config/fish/completions/1ctl.fish
+
+# PowerShell
+1ctl completion powershell >> $PROFILE
 ```
 
 ### Help & Version
