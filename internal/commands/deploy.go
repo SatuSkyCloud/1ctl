@@ -323,7 +323,7 @@ Subcommands manage existing deployments:
 				Flags: []cli.Flag{
 					&cli.StringFlag{
 						Name:  "deployment-id",
-						Usage: "Deployment ID to destroy",
+						Usage: "Deployment ID to delete",
 					},
 					&cli.StringFlag{
 						Name:  "app",
@@ -1552,7 +1552,7 @@ func handleDestroyDeployment(ctx context.Context, cmd *cli.Command) error {
 	utils.PrintInfo("Destroying deployment %s...", deploymentID)
 	result, err := api.DeleteDeployment(deploymentID)
 	if err != nil {
-		return utils.NewError(fmt.Sprintf("failed to destroy deployment: %s", err.Error()), nil)
+		return utils.NewError(fmt.Sprintf("failed to delete deployment: %s", err.Error()), nil)
 	}
 	if utils.TryPrintJSON(result) {
 		return nil
@@ -1562,7 +1562,7 @@ func handleDestroyDeployment(ctx context.Context, cmd *cli.Command) error {
 }
 
 func printDeletionResult(deploymentID string, result *api.DeletionResult) {
-	utils.PrintSuccess("Deployment %s destroy completed", deploymentID)
+	utils.PrintSuccess("Deployment %s delete completed", deploymentID)
 	if result == nil {
 		return
 	}
