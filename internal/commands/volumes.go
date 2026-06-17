@@ -72,7 +72,7 @@ func volumesDestroyCommand() *cli.Command {
 }
 
 func handleVolumesList(ctx context.Context, cmd *cli.Command) error {
-	deploymentID, err := resolveDeploymentID(cmd.String("deployment-id"), cmd.String("config"))
+	deploymentID, err := resolveDeploymentID(cmd.String("deployment-id"), "", cmd.String("config"))
 	if err != nil {
 		return err
 	}

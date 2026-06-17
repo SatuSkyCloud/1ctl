@@ -9,13 +9,25 @@ import (
 )
 
 // resolveDeploymentID returns the deployment ID to use for a command.
-// Precedence: explicit --deployment-id flag > lookup by app name from satusky.toml.
+// Precedence: explicit --deployment-id flag > --app flag > lookup by app name from satusky.toml.
 // When using the config path, derives namespace from the active auth context and
 // calls the backend to resolve the name → ID. This mirrors how Fly.io resolves
 // app names from fly.toml without storing generated IDs in the config file.
-func resolveDeploymentID(flagValue, configArg string) (string, error) {
-	if flagValue != "" {
-		return flagValue, nil
+func resolveDeploymentID(depIDFlag, appFlag, configArg string) (string, error) {
+	if depIDFlag != "" {
+		return depIDFlag, nil
+	}
+
+	if appFlag != "" {
+		ns := context.GetCurrentNamespace()
+		if ns == "" {
+			return "", fmt.Errorf("not authenticated — run '1ctl auth login' first")
+		}
+		dep, err := api.GetDeploymentByAppLabel(ns, appFlag)
+		if err != nil {
+			return "", fmt.Errorf("app %q not found in namespace %s", appFlag, ns)
+		}
+		return dep.DeploymentID.String(), nil
 	}
 
 	cfg, err := config.FindConfig(configArg)

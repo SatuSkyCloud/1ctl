@@ -202,7 +202,7 @@ func resolveDoctorTargets(cmd *cli.Command) ([]api.Deployment, string, bool, err
 	healthPath := strings.TrimSpace(cmd.String("health-path"))
 
 	if cmd.String("deployment-id") != "" || cmd.String("config") != "" {
-		deploymentID, err := resolveDeploymentID(cmd.String("deployment-id"), cmd.String("config"))
+		deploymentID, err := resolveDeploymentID(cmd.String("deployment-id"), "", cmd.String("config"))
 		if err != nil {
 			return nil, "", false, err
 		}

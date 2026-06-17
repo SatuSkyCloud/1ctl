@@ -256,11 +256,11 @@ Run '1ctl init' to create one.
 
 Subcommands manage existing deployments:
    1ctl deploy list
-   1ctl deploy status --deployment-id <id>
-   1ctl deploy restart --deployment-id <id>
-   1ctl deploy releases --deployment-id <id>
-   1ctl deploy rollback --deployment-id <id>
-   1ctl deploy destroy --deployment-id <id>`,
+   1ctl deploy status --deployment-id <id>   [or --app <name>]
+   1ctl deploy restart --deployment-id <id>  [or --app <name>]
+   1ctl deploy releases --deployment-id <id> [or --app <name>]
+   1ctl deploy rollback --deployment-id <id> [or --app <name>]
+   1ctl deploy destroy --deployment-id <id>  [or --app <name>]`,
 		Flags: deployFlags,
 		Commands: []*cli.Command{
 			{
@@ -283,6 +283,10 @@ Subcommands manage existing deployments:
 						Usage: "Deployment ID to get details for",
 					},
 					&cli.StringFlag{
+						Name:  "app",
+						Usage: "App name to resolve (alternative to --deployment-id)",
+					},
+					&cli.StringFlag{
 						Name:  "config",
 						Usage: "Config name or path (e.g. staging, satusky.staging.toml). Default: satusky.toml",
 					},
@@ -296,6 +300,10 @@ Subcommands manage existing deployments:
 					&cli.StringFlag{
 						Name:  "deployment-id",
 						Usage: "Deployment ID to check",
+					},
+					&cli.StringFlag{
+						Name:  "app",
+						Usage: "App name to resolve (alternative to --deployment-id)",
 					},
 					&cli.StringFlag{
 						Name:  "config",
@@ -315,6 +323,10 @@ Subcommands manage existing deployments:
 					&cli.StringFlag{
 						Name:  "deployment-id",
 						Usage: "Deployment ID to destroy",
+					},
+					&cli.StringFlag{
+						Name:  "app",
+						Usage: "App name to resolve (alternative to --deployment-id)",
 					},
 					&cli.StringFlag{
 						Name:  "config",
@@ -337,6 +349,10 @@ Subcommands manage existing deployments:
 						Usage: "Deployment ID to restart",
 					},
 					&cli.StringFlag{
+						Name:  "app",
+						Usage: "App name to resolve (alternative to --deployment-id)",
+					},
+					&cli.StringFlag{
 						Name:  "config",
 						Usage: "Config name or path. Default: satusky.toml",
 					},
@@ -348,6 +364,7 @@ Subcommands manage existing deployments:
 				Usage: "List release history for a deployment",
 				Flags: []cli.Flag{
 					&cli.StringFlag{Name: "deployment-id", Usage: "Deployment ID"},
+					&cli.StringFlag{Name: "app", Usage: "App name to resolve (alternative to --deployment-id)"},
 					&cli.StringFlag{Name: "config", Usage: "Config name or path. Default: satusky.toml"},
 				},
 				Action: handleListReleases,
@@ -357,6 +374,7 @@ Subcommands manage existing deployments:
 				Usage: "Roll back to a previous release",
 				Flags: []cli.Flag{
 					&cli.StringFlag{Name: "deployment-id", Usage: "Deployment ID"},
+					&cli.StringFlag{Name: "app", Usage: "App name to resolve (alternative to --deployment-id)"},
 					&cli.StringFlag{Name: "config", Usage: "Config name or path. Default: satusky.toml"},
 					&cli.IntFlag{Name: "version", Usage: "Version number to roll back to (default: previous version)"},
 					&cli.BoolFlag{Name: "yes", Aliases: []string{"y"}, Usage: "Skip confirmation prompt"},
@@ -368,6 +386,7 @@ Subcommands manage existing deployments:
 				Usage: "Open a deployment's URL in the default browser",
 				Flags: []cli.Flag{
 					&cli.StringFlag{Name: "deployment-id", Usage: "Deployment ID"},
+					&cli.StringFlag{Name: "app", Usage: "App name to resolve (alternative to --deployment-id)"},
 					&cli.StringFlag{Name: "config", Usage: "Config name or path. Default: satusky.toml"},
 				},
 				Action: handleOpenDeployment,
@@ -377,6 +396,7 @@ Subcommands manage existing deployments:
 				Usage: "Set the replica count for a deployment without redeploying",
 				Flags: []cli.Flag{
 					&cli.StringFlag{Name: "deployment-id", Usage: "Deployment ID"},
+					&cli.StringFlag{Name: "app", Usage: "App name to resolve (alternative to --deployment-id)"},
 					&cli.StringFlag{Name: "config", Usage: "Config name or path. Default: satusky.toml"},
 					&cli.IntFlag{Name: "replicas", Usage: "Target replica count", Required: true},
 				},
@@ -1277,7 +1297,7 @@ func parseEnvVars(envVars []string) []api.KeyValuePair {
 }
 
 func handleDeploymentStatus(ctx context.Context, cmd *cli.Command) error {
-	deploymentID, err := resolveDeploymentID(cmd.String("deployment-id"), cmd.String("config"))
+	deploymentID, err := resolveDeploymentID(cmd.String("deployment-id"), cmd.String("app"), cmd.String("config"))
 	if err != nil {
 		return err
 	}
@@ -1406,7 +1426,7 @@ func handleListDeployments(ctx context.Context, cmd *cli.Command) error {
 }
 
 func handleGetDeployment(ctx context.Context, cmd *cli.Command) error {
-	deploymentID, err := resolveDeploymentID(cmd.String("deployment-id"), cmd.String("config"))
+	deploymentID, err := resolveDeploymentID(cmd.String("deployment-id"), cmd.String("app"), cmd.String("config"))
 	if err != nil {
 		return err
 	}
@@ -1454,7 +1474,7 @@ func handleGetDeployment(ctx context.Context, cmd *cli.Command) error {
 }
 
 func handleDestroyDeployment(ctx context.Context, cmd *cli.Command) error {
-	deploymentID, err := resolveDeploymentID(cmd.String("deployment-id"), cmd.String("config"))
+	deploymentID, err := resolveDeploymentID(cmd.String("deployment-id"), cmd.String("app"), cmd.String("config"))
 	if err != nil {
 		return err
 	}
@@ -1516,7 +1536,7 @@ func printDeletionResult(deploymentID string, result *api.DeletionResult) {
 }
 
 func handleRestartDeployment(ctx context.Context, cmd *cli.Command) error {
-	deploymentID, err := resolveDeploymentID(cmd.String("deployment-id"), cmd.String("config"))
+	deploymentID, err := resolveDeploymentID(cmd.String("deployment-id"), cmd.String("app"), cmd.String("config"))
 	if err != nil {
 		return err
 	}
@@ -1530,7 +1550,7 @@ func handleRestartDeployment(ctx context.Context, cmd *cli.Command) error {
 }
 
 func handleListReleases(ctx context.Context, cmd *cli.Command) error {
-	deploymentID, err := resolveDeploymentID(cmd.String("deployment-id"), cmd.String("config"))
+	deploymentID, err := resolveDeploymentID(cmd.String("deployment-id"), cmd.String("app"), cmd.String("config"))
 	if err != nil {
 		return err
 	}
@@ -1557,7 +1577,7 @@ func handleListReleases(ctx context.Context, cmd *cli.Command) error {
 }
 
 func handleRollback(ctx context.Context, cmd *cli.Command) error {
-	deploymentID, err := resolveDeploymentID(cmd.String("deployment-id"), cmd.String("config"))
+	deploymentID, err := resolveDeploymentID(cmd.String("deployment-id"), cmd.String("app"), cmd.String("config"))
 	if err != nil {
 		return err
 	}
@@ -1593,7 +1613,7 @@ func handleRollback(ctx context.Context, cmd *cli.Command) error {
 // default browser. Resolves the URL from the ingress record, falling back
 // to a clear error when no ingress is attached yet.
 func handleOpenDeployment(ctx context.Context, cmd *cli.Command) error {
-	deploymentID, err := resolveDeploymentID(cmd.String("deployment-id"), cmd.String("config"))
+	deploymentID, err := resolveDeploymentID(cmd.String("deployment-id"), cmd.String("app"), cmd.String("config"))
 	if err != nil {
 		return err
 	}
@@ -1615,7 +1635,7 @@ func handleOpenDeployment(ctx context.Context, cmd *cli.Command) error {
 // without rebuilding the image. Uses UpsertDeployment after fetching the
 // current state so all other fields are preserved.
 func handleScaleDeployment(ctx context.Context, cmd *cli.Command) error {
-	deploymentID, err := resolveDeploymentID(cmd.String("deployment-id"), cmd.String("config"))
+	deploymentID, err := resolveDeploymentID(cmd.String("deployment-id"), cmd.String("app"), cmd.String("config"))
 	if err != nil {
 		return err
 	}

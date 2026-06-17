@@ -66,7 +66,7 @@ func EnvironmentCommand() *cli.Command {
 }
 
 func handleCreateEnvironment(ctx context.Context, cmd *cli.Command) error {
-	deploymentIDStr, err := resolveDeploymentID(cmd.String("deployment-id"), cmd.String("config"))
+	deploymentIDStr, err := resolveDeploymentID(cmd.String("deployment-id"), "", cmd.String("config"))
 	if err != nil {
 		return err
 	}
@@ -150,7 +150,7 @@ func handleListEnvironments(ctx context.Context, cmd *cli.Command) error {
 func handleEnvUnset(ctx context.Context, cmd *cli.Command) error {
 	key := cmd.String("key")
 
-	deploymentID, err := resolveDeploymentID(cmd.String("deployment-id"), cmd.String("config"))
+	deploymentID, err := resolveDeploymentID(cmd.String("deployment-id"), "", cmd.String("config"))
 	if err != nil {
 		return utils.NewError(fmt.Sprintf("failed to resolve deployment: %s", err.Error()), nil)
 	}
