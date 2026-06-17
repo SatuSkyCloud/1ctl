@@ -26,6 +26,10 @@ func SecretCommand() *cli.Command {
 						Usage: "Deployment ID",
 					},
 					&cli.StringFlag{
+						Name:  "app",
+						Usage: "App name to resolve (alternative to --deployment-id)",
+					},
+					&cli.StringFlag{
 						Name:  "config",
 						Usage: "Config name or path (e.g. staging, satusky.staging.toml). Default: satusky.toml",
 					},
@@ -112,6 +116,16 @@ func handleCreateSecret(ctx context.Context, cmd *cli.Command) error {
 		displayName = appLabel
 	}
 	utils.PrintSuccess("Secret %s created successfully\n", displayName)
+
+	// Auto-restart the deployment so new secrets are picked up immediately.
+	// This follows Kubernetes best practice: kubectl create secret + kubectl rollout restart.
+	utils.PrintInfo("Restarting deployment to activate secrets...")
+	if err := api.RestartDeployment(deploymentIDStr); err != nil {
+		utils.PrintWarning("Secret created, but restart failed: %s", err.Error())
+		utils.PrintInfo("Run: 1ctl deploy restart --app %s", displayName)
+	} else {
+		utils.PrintSuccess("Deployment restarting — secrets will be available shortly")
+	}
 	return nil
 }
 

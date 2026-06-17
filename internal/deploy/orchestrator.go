@@ -12,6 +12,7 @@ import (
 	"os"
 	"regexp"
 	"strings"
+	"time"
 )
 
 type deploymentProgress struct {
@@ -529,9 +530,25 @@ func handleEnvironmentAndVolumes(opts DeploymentOptions, deploymentID, projectNa
 				volChan <- volResult{err: utils.NewError(fmt.Sprintf("failed to create volume: %s", e.Error()), nil)}
 				return
 			}
-			// CreateVolume returns no ID today; track by volume name so the
-			// CleanupManager can list it even though the backend doesn't yet
-			// support volume deletion.
+			// Poll for PVC readiness — PVC reconciliation is async and may take
+			// 1-2 minutes. Block until the PVC is Bound so the user sees actual
+			// PVC status in 1ctl volumes list instead of "missing".
+			for i := 0; i < 24; i++ {
+				statuses, sErr := api.GetDeploymentVolumeLifecycleStatuses(deploymentID)
+				if sErr == nil {
+					allReady := true
+					for _, s := range statuses {
+						if !s.PVC.Exists {
+							allReady = false
+							break
+						}
+					}
+					if allReady {
+						break
+					}
+				}
+				time.Sleep(5 * time.Second)
+			}
 			volChan <- volResult{name: opts.Volume.VolumeName}
 			return
 		}
