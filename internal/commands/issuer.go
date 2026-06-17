@@ -1,13 +1,14 @@
 package commands
 
 import (
+	"context"
 	"1ctl/internal/api"
-	"1ctl/internal/context"
+	satuskyctx "1ctl/internal/context"
 	"1ctl/internal/utils"
 	"fmt"
 
 	"github.com/google/uuid"
-	"github.com/urfave/cli/v2"
+	"github.com/urfave/cli/v3"
 )
 
 func IssuerCommand() *cli.Command {
@@ -19,7 +20,7 @@ func IssuerCommand() *cli.Command {
 		// automatically when `1ctl domains add` resolves a non-*.satusky.com
 		// host. The command still works for scripts that depend on it.
 		Hidden: true,
-		Subcommands: []*cli.Command{
+		Commands: []*cli.Command{
 			{
 				Name:  "create",
 				Usage: "Create a new certificate issuer",
@@ -64,8 +65,8 @@ func IssuerCommand() *cli.Command {
 	}
 }
 
-func handleCreateIssuer(c *cli.Context) error {
-	deploymentIDStr := c.String("deployment-id")
+func handleCreateIssuer(ctx context.Context, cmd *cli.Command) error {
+	deploymentIDStr := cmd.String("deployment-id")
 	if deploymentIDStr == "" {
 		return utils.NewError("deployment-id is required", nil)
 	}
@@ -77,9 +78,9 @@ func handleCreateIssuer(c *cli.Context) error {
 
 	issuer := api.Issuer{
 		DeploymentID: deploymentID,
-		UserEmail:    c.String("email"),
-		Environment:  c.String("environment"),
-		Namespace:    context.GetCurrentNamespace(),
+		UserEmail:    cmd.String("email"),
+		Environment:  cmd.String("environment"),
+		Namespace:    satuskyctx.GetCurrentNamespace(),
 	}
 
 	resp, err := api.CreateIssuer(issuer)
@@ -91,8 +92,8 @@ func handleCreateIssuer(c *cli.Context) error {
 	return nil
 }
 
-func handleDeleteIssuer(c *cli.Context) error {
-	issuerID := c.String("issuer-id")
+func handleDeleteIssuer(ctx context.Context, cmd *cli.Command) error {
+	issuerID := cmd.String("issuer-id")
 	if err := api.DeleteIssuer(issuerID); err != nil {
 		return utils.NewError(fmt.Sprintf("failed to delete issuer: %s", err.Error()), nil)
 	}
@@ -100,7 +101,7 @@ func handleDeleteIssuer(c *cli.Context) error {
 	return nil
 }
 
-func handleListIssuers(c *cli.Context) error {
+func handleListIssuers(ctx context.Context, cmd *cli.Command) error {
 	issuers, err := api.ListIssuers()
 	if err != nil {
 		return utils.NewError(fmt.Sprintf("failed to list issuers: %s", err.Error()), nil)

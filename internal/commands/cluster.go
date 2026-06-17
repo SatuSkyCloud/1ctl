@@ -1,13 +1,14 @@
 package commands
 
 import (
+	"context"
 	"1ctl/internal/api"
 	"1ctl/internal/utils"
 	"fmt"
 	"os"
 	"text/tabwriter"
 
-	"github.com/urfave/cli/v2"
+	"github.com/urfave/cli/v3"
 )
 
 // ClusterCommand returns the cluster management command group.
@@ -15,7 +16,7 @@ func ClusterCommand() *cli.Command {
 	return &cli.Command{
 		Name:  "cluster",
 		Usage: "View cluster and zone information",
-		Subcommands: []*cli.Command{
+		Commands: []*cli.Command{
 			clusterZonesCommand(),
 			clusterListCommand(),
 		},
@@ -38,7 +39,7 @@ func clusterListCommand() *cli.Command {
 	}
 }
 
-func handleListZones(_ *cli.Context) error {
+func handleListZones(ctx context.Context, cmd *cli.Command) error {
 	zones, err := api.GetAvailableZones()
 	if err != nil {
 		return utils.NewError(fmt.Sprintf("failed to list zones: %s", err.Error()), nil)
@@ -60,7 +61,7 @@ func handleListZones(_ *cli.Context) error {
 	return nil
 }
 
-func handleListClusters(_ *cli.Context) error {
+func handleListClusters(ctx context.Context, cmd *cli.Command) error {
 	clusters, err := api.GetClusters()
 	if err != nil {
 		return utils.NewError(fmt.Sprintf("failed to list clusters: %s", err.Error()), nil)

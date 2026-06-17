@@ -1,14 +1,14 @@
 package commands
 
 import (
-	"1ctl/internal/context"
-	"1ctl/internal/testing/helpers"
-	"flag"
 	"os"
 	"path/filepath"
 	"testing"
 
-	"github.com/urfave/cli/v2"
+	"1ctl/internal/context"
+	"1ctl/internal/testing/helpers"
+
+	"github.com/urfave/cli/v3"
 )
 
 func TestAuthCommand(t *testing.T) {
@@ -20,22 +20,22 @@ func TestAuthCommand(t *testing.T) {
 	}
 
 	// Check subcommands
-	expectedSubcommands := map[string]bool{
+	expectedCommands := map[string]bool{
 		"login":  false,
 		"logout": false,
 		"status": false,
 	}
 
-	for _, subcmd := range cmd.Subcommands {
-		if _, exists := expectedSubcommands[subcmd.Name]; !exists {
-			t.Errorf("Unexpected subcommand: %s", subcmd.Name)
+	for _, subcmd := range cmd.Commands {
+		if _, exists := expectedCommands[subcmd.Name]; !exists {
+			t.Errorf("Unexpected command: %s", subcmd.Name)
 		}
-		expectedSubcommands[subcmd.Name] = true
+		expectedCommands[subcmd.Name] = true
 	}
 
-	for name, found := range expectedSubcommands {
+	for name, found := range expectedCommands {
 		if !found {
-			t.Errorf("Missing subcommand: %s", name)
+			t.Errorf("Missing command: %s", name)
 		}
 	}
 }
@@ -46,13 +46,8 @@ func TestHandleLogin(t *testing.T) {
 		token   string
 		wantErr bool
 	}{
-		// {
-		// 	name:    "valid token",
-		// 	token:   "test-token",
-		// 	wantErr: false,
-		// },
 		{
-			name:    "empty token",
+			name:    "no token",
 			token:   "",
 			wantErr: true,
 		},
@@ -65,18 +60,19 @@ func TestHandleLogin(t *testing.T) {
 			defer func() { _ = os.RemoveAll(dir) }() //nolint:errcheck
 			context.SetDefault(context.NewTestStore(filepath.Join(dir, ".satusky")))
 
-			// Set up CLI context
-			app := cli.NewApp()
-			flags := flag.NewFlagSet("test", flag.ContinueOnError)
-			flags.String("token", tt.token, "test token flag")
-			ctx := cli.NewContext(app, flags, nil)
+			// Set up CLI command with flags
+			cmd := &cli.Command{
+				Flags: []cli.Flag{
+					&cli.StringFlag{Name: "token"},
+				},
+			}
 			if tt.token != "" {
-				if err := ctx.Set("token", tt.token); err != nil {
+				if err := cmd.Set("token", tt.token); err != nil {
 					t.Fatalf("failed to set token flag: %v", err)
 				}
 			}
 
-			err := handleLogin(ctx)
+			err := handleLogin(t.Context(), cmd)
 			if (err != nil) != tt.wantErr {
 				t.Errorf("handleLogin() error = %v, wantErr %v", err, tt.wantErr)
 			}
@@ -114,7 +110,7 @@ func TestHandleLogout(t *testing.T) {
 			defer func() { _ = os.RemoveAll(dir) }() //nolint:errcheck
 			// Point context package at the temp dir so writes go to the test profile
 			context.SetDefault(context.NewTestStore(filepath.Join(dir, ".satusky")))
-			err := handleLogout(cli.NewContext(nil, nil, nil))
+			err := handleLogout(t.Context(), &cli.Command{})
 			if (err != nil) != tt.wantErr {
 				t.Errorf("handleLogout() error = %v, wantErr %v", err, tt.wantErr)
 			}
@@ -122,40 +118,30 @@ func TestHandleLogout(t *testing.T) {
 	}
 }
 
-func TestHandleStatus(t *testing.T) {
+func TestHandleAuthStatus(t *testing.T) {
 	tests := []struct {
-		name       string
-		wantErr    bool
-		wantOutput string
+		name    string
+		setup   func(t *testing.T) string
+		wantErr bool
 	}{
-		// {
-		// 	name:       "authenticated status",
-		// 	wantErr:    false,
-		// 	wantOutput: "Authenticated as test@example.com in organization test-org",
-		// },
-		// {
-		// 	name:       "authenticated status",
-		// 	wantErr:    false,
-		// 	wantOutput: "Authenticated as test@example.com in organization test-org",
-		// },
 		{
-			name:       "not authenticated status",
-			wantErr:    true,
-			wantOutput: "Not authenticated",
+			name: "no token",
+			setup: func(t *testing.T) string {
+				return helpers.SetupTestContext(t)
+			},
+			wantErr: true,
 		},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-
-			// Run test
-			err := handleAuthStatus(cli.NewContext(nil, nil, nil))
-
-			// Check error
+			dir := tt.setup(t)
+			defer func() { _ = os.RemoveAll(dir) }() //nolint:errcheck
+			context.SetDefault(context.NewTestStore(filepath.Join(dir, ".satusky")))
+			err := handleAuthStatus(t.Context(), &cli.Command{})
 			if (err != nil) != tt.wantErr {
-				t.Errorf("handleStatus() error = %v, wantErr %v", err, tt.wantErr)
+				t.Errorf("handleAuthStatus() error = %v, wantErr %v", err, tt.wantErr)
 			}
-
 		})
 	}
 }

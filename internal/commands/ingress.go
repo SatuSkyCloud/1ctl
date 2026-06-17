@@ -1,12 +1,13 @@
 package commands
 
 import (
+	"context"
 	"1ctl/internal/api"
 	"1ctl/internal/utils"
 	"fmt"
 
 	"github.com/google/uuid"
-	"github.com/urfave/cli/v2"
+	"github.com/urfave/cli/v3"
 )
 
 func IngressCommand() *cli.Command {
@@ -55,7 +56,7 @@ func IngressCommand() *cli.Command {
 		// The command still works for scripts that depend on it.
 		Hidden: true,
 		Flags:  ingressFlags,
-		Subcommands: []*cli.Command{
+		Commands: []*cli.Command{
 			{
 				Name:   "list",
 				Usage:  "List all ingresses",
@@ -79,45 +80,45 @@ func IngressCommand() *cli.Command {
 				Action: handleDeleteIngress,
 			},
 		},
-		Action: func(c *cli.Context) error {
+		Action: func(ctx context.Context, cmd *cli.Command) error {
 			// If no subcommand is provided and no flags, show help
-			if c.NArg() == 0 && !c.IsSet("deployment-id") && !c.IsSet("domain") {
-				return cli.ShowCommandHelp(c, "ingress")
+			if cmd.NArg() == 0 && !cmd.IsSet("deployment-id") && !cmd.IsSet("domain") {
+				return cli.ShowCommandHelp(ctx, cmd, "ingress")
 			}
 
 			// If subcommand is provided, let it handle
-			if c.NArg() > 0 {
-				return cli.ShowSubcommandHelp(c)
+			if cmd.NArg() > 0 {
+				return cli.ShowSubcommandHelp(cmd)
 			}
 
 			// Otherwise, handle ingress upsert
-			return handleUpsertIngress(c)
+			return handleUpsertIngress(ctx, cmd)
 		},
 	}
 }
 
-func handleUpsertIngress(c *cli.Context) error {
+func handleUpsertIngress(ctx context.Context, cmd *cli.Command) error {
 	// Check required flags for ingress upsert
-	if c.String("deployment-id") == "" {
+	if cmd.String("deployment-id") == "" {
 		return utils.NewError("--deployment-id flag is required for ingress", nil)
 	}
-	if c.String("domain") == "" {
+	if cmd.String("domain") == "" {
 		return utils.NewError("--domain flag is required for ingress", nil)
 	}
-	if c.String("app-label") == "" {
+	if cmd.String("app-label") == "" {
 		return utils.NewError("--app-label flag is required for ingress", nil)
 	}
-	if c.String("namespace") == "" {
+	if cmd.String("namespace") == "" {
 		return utils.NewError("--namespace flag is required for ingress", nil)
 	}
 
-	deploymentIDStr := c.String("deployment-id")
+	deploymentIDStr := cmd.String("deployment-id")
 	deploymentID, err := uuid.Parse(deploymentIDStr)
 	if err != nil {
 		return utils.NewError(fmt.Sprintf("invalid deployment-id: %s", err.Error()), nil)
 	}
 
-	serviceIDStr := c.String("service-id")
+	serviceIDStr := cmd.String("service-id")
 	if serviceIDStr == "" {
 		return utils.NewError("--service-id flag is required for ingress", nil)
 	}
@@ -126,22 +127,22 @@ func handleUpsertIngress(c *cli.Context) error {
 		return utils.NewError(fmt.Sprintf("invalid service-id: %s", err.Error()), nil)
 	}
 
-	port, err := api.SafeInt32(c.Int("port"))
+	port, err := api.SafeInt32(cmd.Int("port"))
 	if err != nil {
 		return utils.NewError("Invalid port number", err)
 	}
 
 	dnsConfig := api.DnsConfigDefault
-	if c.Bool("custom-dns") {
+	if cmd.Bool("custom-dns") {
 		dnsConfig = api.DnsConfigCustom
 	}
 
 	ingress := api.Ingress{
 		DeploymentID: deploymentID,
 		ServiceID:    serviceID,
-		AppLabel:     c.String("app-label"),
-		Namespace:    c.String("namespace"),
-		DomainName:   c.String("domain"),
+		AppLabel:     cmd.String("app-label"),
+		Namespace:    cmd.String("namespace"),
+		DomainName:   cmd.String("domain"),
 		Port:         port,
 		DnsConfig:    dnsConfig,
 	}
@@ -155,7 +156,7 @@ func handleUpsertIngress(c *cli.Context) error {
 	return nil
 }
 
-func handleListIngresses(c *cli.Context) error {
+func handleListIngresses(ctx context.Context, cmd *cli.Command) error {
 	ingresses, err := api.ListIngresses()
 	if err != nil {
 		return utils.NewError(fmt.Sprintf("failed to list ingresses: %s", err.Error()), nil)
@@ -181,9 +182,9 @@ func handleListIngresses(c *cli.Context) error {
 	return nil
 }
 
-func handleDeleteIngress(c *cli.Context) error {
-	ingressID := c.String("ingress-id")
-	if !utils.Confirm(fmt.Sprintf("Delete ingress %s? This cannot be undone.", ingressID), c.Bool("yes")) {
+func handleDeleteIngress(ctx context.Context, cmd *cli.Command) error {
+	ingressID := cmd.String("ingress-id")
+	if !utils.Confirm(fmt.Sprintf("Delete ingress %s? This cannot be undone.", ingressID), cmd.Bool("yes")) {
 		fmt.Println("Aborted.")
 		return nil
 	}

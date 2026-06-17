@@ -3,7 +3,7 @@ package commands
 import (
 	"testing"
 
-	"github.com/urfave/cli/v2"
+	"github.com/urfave/cli/v3"
 )
 
 func TestDomainsCommandStructure(t *testing.T) {
@@ -15,7 +15,7 @@ func TestDomainsCommandStructure(t *testing.T) {
 		t.Errorf("Aliases = %v, want to include 'domain'", cmd.Aliases)
 	}
 	wantSubs := []string{"list", "add", "remove", "check", "setup", "available", "search", "managed", "dns", "purchase", "purchase-status"}
-	got := subNames(cmd.Subcommands)
+	got := subNames(cmd.Commands)
 	for _, w := range wantSubs {
 		if !containsString(got, w) {
 			t.Errorf("Subcommands missing %q (have %v)", w, got)
@@ -115,7 +115,7 @@ func subNames(subs []*cli.Command) []string {
 }
 
 func findSubcommand(cmd *cli.Command, name string) *cli.Command {
-	for _, sub := range cmd.Subcommands {
+	for _, sub := range cmd.Commands {
 		if sub.Name == name {
 			return sub
 		}

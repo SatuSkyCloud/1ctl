@@ -1,21 +1,22 @@
 package commands
 
 import (
+	"context"
 	"1ctl/internal/api"
-	"1ctl/internal/context"
+	satuskyctx "1ctl/internal/context"
 	"1ctl/internal/utils"
 	"fmt"
 	"strconv"
 	"strings"
 
-	"github.com/urfave/cli/v2"
+	"github.com/urfave/cli/v3"
 )
 
 func MachineCommand() *cli.Command {
 	return &cli.Command{
 		Name:  "machine",
 		Usage: "Manage machines and check availability",
-		Subcommands: []*cli.Command{
+		Commands: []*cli.Command{
 			machineListCommand(),
 			machineGetCommand(),
 			machineCreateCommand(),
@@ -122,7 +123,7 @@ func machineEventsCommand() *cli.Command {
 func machineMutationFlags(create bool) []cli.Flag {
 	return []cli.Flag{
 		&cli.StringFlag{Name: "name", Usage: "Machine name", Required: create},
-		&cli.StringSliceFlag{Name: "type", Usage: "Machine type. Repeatable. Valid values include worker and storage.", Value: cli.NewStringSlice("worker")},
+		&cli.StringSliceFlag{Name: "type", Usage: "Machine type. Repeatable. Valid values include worker and storage.", Value: []string{"worker"}},
 		&cli.StringFlag{Name: "region", Usage: "Machine region", Required: create},
 		&cli.StringFlag{Name: "zone", Usage: "Machine zone", Required: create},
 		&cli.StringFlag{Name: "ip", Usage: "Machine IP address"},
@@ -145,8 +146,8 @@ func machineMutationFlags(create bool) []cli.Flag {
 	}
 }
 
-func handleListMachines(c *cli.Context) error {
-	userID := context.GetUserID()
+func handleListMachines(ctx context.Context, cmd *cli.Command) error {
+	userID := satuskyctx.GetUserID()
 	if userID == "" {
 		return utils.NewError("user ID not found in context", nil)
 	}
@@ -182,8 +183,8 @@ func handleListMachines(c *cli.Context) error {
 	return nil
 }
 
-func handleGetMachine(c *cli.Context) error {
-	machine, err := resolveMachineRef(c.Args().First())
+func handleGetMachine(ctx context.Context, cmd *cli.Command) error {
+	machine, err := resolveMachineRef(cmd.Args().First())
 	if err != nil {
 		return err
 	}
@@ -195,8 +196,8 @@ func handleGetMachine(c *cli.Context) error {
 	return nil
 }
 
-func handleCreateMachine(c *cli.Context) error {
-	machine := machineFromFlags(c, nil)
+func handleCreateMachine(ctx context.Context, cmd *cli.Command) error {
+	machine := machineFromFlags(cmd, nil)
 	id, err := api.CreateMachine(machine)
 	if err != nil {
 		return utils.NewError(fmt.Sprintf("failed to create machine: %s", err.Error()), nil)
@@ -209,12 +210,12 @@ func handleCreateMachine(c *cli.Context) error {
 	return nil
 }
 
-func handleUpdateMachine(c *cli.Context) error {
-	machine, err := resolveMachineRef(c.Args().First())
+func handleUpdateMachine(ctx context.Context, cmd *cli.Command) error {
+	machine, err := resolveMachineRef(cmd.Args().First())
 	if err != nil {
 		return err
 	}
-	updated := machineFromFlags(c, machine)
+	updated := machineFromFlags(cmd, machine)
 	if err := api.UpdateMachine(machine.MachineID, updated); err != nil {
 		return utils.NewError(fmt.Sprintf("failed to update machine: %s", err.Error()), nil)
 	}
@@ -223,12 +224,12 @@ func handleUpdateMachine(c *cli.Context) error {
 	return nil
 }
 
-func handleDeleteMachine(c *cli.Context) error {
-	machine, err := resolveMachineRef(c.Args().First())
+func handleDeleteMachine(ctx context.Context, cmd *cli.Command) error {
+	machine, err := resolveMachineRef(cmd.Args().First())
 	if err != nil {
 		return err
 	}
-	if !utils.Confirm(fmt.Sprintf("Decommission machine %s (%s)?", machine.MachineName, machine.MachineID), c.Bool("yes")) {
+	if !utils.Confirm(fmt.Sprintf("Decommission machine %s (%s)?", machine.MachineName, machine.MachineID), cmd.Bool("yes")) {
 		fmt.Println("Aborted.")
 		return nil
 	}
@@ -239,13 +240,13 @@ func handleDeleteMachine(c *cli.Context) error {
 	return nil
 }
 
-func handleInspectMachine(c *cli.Context) error {
-	machine, err := resolveMachineRef(c.Args().First())
+func handleInspectMachine(ctx context.Context, cmd *cli.Command) error {
+	machine, err := resolveMachineRef(cmd.Args().First())
 	if err != nil {
 		return err
 	}
 	var hardware map[string]interface{}
-	if c.Bool("refresh") {
+	if cmd.Bool("refresh") {
 		hardware, err = api.RefreshMachineHardware(machine.MachineID)
 	} else {
 		hardware, err = api.GetMachineHardware(machine.MachineID)
@@ -300,22 +301,22 @@ func handleInspectMachine(c *cli.Context) error {
 	return nil
 }
 
-func handleMachineLogs(c *cli.Context) error {
-	machine, err := resolveMachineRef(c.Args().First())
+func handleMachineLogs(ctx context.Context, cmd *cli.Command) error {
+	machine, err := resolveMachineRef(cmd.Args().First())
 	if err != nil {
 		return err
 	}
-	sources := c.StringSlice("source")
+	sources := cmd.StringSlice("source")
 	if len(sources) == 0 {
 		sources = []string{"siderolink", "talos", "kubernetes"}
 	}
 	logs, err := api.FetchMachineLogs(machine.MachineID, api.MachineLogFetchRequest{
 		Sources:        sources,
-		TailLines:      c.Int("tail"),
-		Since:          c.String("since"),
-		Filter:         c.String("filter"),
-		Components:     c.StringSlice("component"),
-		IncludePrevLog: c.Bool("previous"),
+		TailLines:      cmd.Int("tail"),
+		Since:          cmd.String("since"),
+		Filter:         cmd.String("filter"),
+		Components:     cmd.StringSlice("component"),
+		IncludePrevLog: cmd.Bool("previous"),
 	})
 	if err != nil {
 		return utils.NewError(fmt.Sprintf("failed to fetch machine logs: %s", err.Error()), nil)
@@ -340,12 +341,12 @@ func handleMachineLogs(c *cli.Context) error {
 	return nil
 }
 
-func handleMachineEvents(c *cli.Context) error {
-	machine, err := resolveMachineRef(c.Args().First())
+func handleMachineEvents(ctx context.Context, cmd *cli.Command) error {
+	machine, err := resolveMachineRef(cmd.Args().First())
 	if err != nil {
 		return err
 	}
-	events, err := api.GetMachineEvents(machine.MachineID, c.Int("tail"))
+	events, err := api.GetMachineEvents(machine.MachineID, cmd.Int("tail"))
 	if err != nil {
 		return utils.NewError(fmt.Sprintf("failed to fetch machine events: %s", err.Error()), nil)
 	}
@@ -365,34 +366,34 @@ func handleMachineEvents(c *cli.Context) error {
 	return nil
 }
 
-func machineFromFlags(c *cli.Context, current *api.Machine) api.Machine {
+func machineFromFlags(cmd *cli.Command, current *api.Machine) api.Machine {
 	machine := api.Machine{}
 	if current != nil {
 		machine = *current
 	}
-	setStringFlag(c, "name", &machine.MachineName)
-	if current == nil || c.IsSet("type") {
-		machine.MachineTypes = c.StringSlice("type")
+	setStringFlag(cmd, "name", &machine.MachineName)
+	if current == nil || cmd.IsSet("type") {
+		machine.MachineTypes = cmd.StringSlice("type")
 	}
-	setStringFlag(c, "region", &machine.MachineRegion)
-	setStringFlag(c, "zone", &machine.MachineZone)
-	setStringFlag(c, "ip", &machine.IpAddr)
-	setStringFlag(c, "talos-version", &machine.TalosVersion)
-	setStringFlag(c, "kubernetes-version", &machine.KubernetesVersion)
-	setIntFlag(c, "cpu", &machine.CPUCores)
-	setIntFlag(c, "memory", &machine.MemoryGB)
-	setIntFlag(c, "storage", &machine.StorageGB)
-	setIntFlag(c, "gpu-count", &machine.GPUCount)
-	setStringFlag(c, "gpu-type", &machine.GPUType)
-	setIntFlag(c, "bandwidth", &machine.BandwidthGbps)
-	setStringFlag(c, "brand", &machine.Brand)
-	setStringFlag(c, "model", &machine.Model)
-	setStringFlag(c, "manufacturer", &machine.Manufacturer)
-	setStringFlag(c, "form-factor", &machine.FormFactor)
-	setBoolFlag(c, "monetized", &machine.Monetized)
-	setBoolFlag(c, "recommended", &machine.Recommended)
-	setStringFlag(c, "pricing-tier", &machine.PricingTier)
-	setStringFlag(c, "organization-id", &machine.OrganizationID)
+	setStringFlag(cmd, "region", &machine.MachineRegion)
+	setStringFlag(cmd, "zone", &machine.MachineZone)
+	setStringFlag(cmd, "ip", &machine.IpAddr)
+	setStringFlag(cmd, "talos-version", &machine.TalosVersion)
+	setStringFlag(cmd, "kubernetes-version", &machine.KubernetesVersion)
+	setIntFlag(cmd, "cpu", &machine.CPUCores)
+	setIntFlag(cmd, "memory", &machine.MemoryGB)
+	setIntFlag(cmd, "storage", &machine.StorageGB)
+	setIntFlag(cmd, "gpu-count", &machine.GPUCount)
+	setStringFlag(cmd, "gpu-type", &machine.GPUType)
+	setIntFlag(cmd, "bandwidth", &machine.BandwidthGbps)
+	setStringFlag(cmd, "brand", &machine.Brand)
+	setStringFlag(cmd, "model", &machine.Model)
+	setStringFlag(cmd, "manufacturer", &machine.Manufacturer)
+	setStringFlag(cmd, "form-factor", &machine.FormFactor)
+	setBoolFlag(cmd, "monetized", &machine.Monetized)
+	setBoolFlag(cmd, "recommended", &machine.Recommended)
+	setStringFlag(cmd, "pricing-tier", &machine.PricingTier)
+	setStringFlag(cmd, "organization-id", &machine.OrganizationID)
 	return machine
 }
 
@@ -409,7 +410,7 @@ func resolveMachineRef(ref string) (*api.Machine, error) {
 }
 
 func findOwnedMachine(match func(api.Machine) bool, ref string) (*api.Machine, error) {
-	userID := context.GetUserID()
+	userID := satuskyctx.GetUserID()
 	if userID == "" {
 		return nil, utils.NewError("user ID not found. Please run '1ctl auth login' first", nil)
 	}
@@ -425,21 +426,21 @@ func findOwnedMachine(match func(api.Machine) bool, ref string) (*api.Machine, e
 	return nil, utils.NewError(fmt.Sprintf("machine %q not found", ref), nil)
 }
 
-func setStringFlag(c *cli.Context, name string, target *string) {
-	if c.IsSet(name) {
-		*target = c.String(name)
+func setStringFlag(cmd *cli.Command, name string, target *string) {
+	if cmd.IsSet(name) {
+		*target = cmd.String(name)
 	}
 }
 
-func setIntFlag(c *cli.Context, name string, target *int) {
-	if c.IsSet(name) {
-		*target = c.Int(name)
+func setIntFlag(cmd *cli.Command, name string, target *int) {
+	if cmd.IsSet(name) {
+		*target = cmd.Int(name)
 	}
 }
 
-func setBoolFlag(c *cli.Context, name string, target *bool) {
-	if c.IsSet(name) {
-		*target = c.Bool(name)
+func setBoolFlag(cmd *cli.Command, name string, target *bool) {
+	if cmd.IsSet(name) {
+		*target = cmd.Bool(name)
 	}
 }
 
@@ -538,14 +539,14 @@ func machineAvailableCommand() *cli.Command {
 	}
 }
 
-func handleListAvailableMachines(c *cli.Context) error {
+func handleListAvailableMachines(ctx context.Context, cmd *cli.Command) error {
 	machines, err := api.GetAvailableMachines()
 	if err != nil {
 		return utils.NewError(fmt.Sprintf("failed to list available machines: %s", err.Error()), nil)
 	}
 
 	// Apply filters
-	filteredMachines := filterMachines(machines, c)
+	filteredMachines := filterMachines(machines, cmd)
 
 	if len(filteredMachines) == 0 {
 		utils.PrintInfo("No available machines found matching your criteria")
@@ -560,42 +561,42 @@ func handleListAvailableMachines(c *cli.Context) error {
 	return nil
 }
 
-func filterMachines(machines []api.Machine, c *cli.Context) []api.Machine {
+func filterMachines(machines []api.Machine, cmd *cli.Command) []api.Machine {
 	var filtered []api.Machine
 
 	for _, machine := range machines {
 		// Apply region filter
-		if c.IsSet("region") && machine.MachineRegion != c.String("region") {
+		if cmd.IsSet("region") && machine.MachineRegion != cmd.String("region") {
 			continue
 		}
 
 		// Apply zone filter
-		if c.IsSet("zone") && machine.MachineZone != c.String("zone") {
+		if cmd.IsSet("zone") && machine.MachineZone != cmd.String("zone") {
 			continue
 		}
 
 		// Apply minimum CPU filter
-		if c.IsSet("min-cpu") && machine.CPUCores < c.Int("min-cpu") {
+		if cmd.IsSet("min-cpu") && machine.CPUCores < cmd.Int("min-cpu") {
 			continue
 		}
 
 		// Apply minimum memory filter
-		if c.IsSet("min-memory") && machine.MemoryGB < c.Int("min-memory") {
+		if cmd.IsSet("min-memory") && machine.MemoryGB < cmd.Int("min-memory") {
 			continue
 		}
 
 		// Apply GPU filter
-		if c.Bool("gpu") && !machine.HasGPU {
+		if cmd.Bool("gpu") && !machine.HasGPU {
 			continue
 		}
 
 		// Apply recommended filter
-		if c.Bool("recommended") && !machine.Recommended {
+		if cmd.Bool("recommended") && !machine.Recommended {
 			continue
 		}
 
 		// Apply pricing tier filter
-		if c.IsSet("pricing-tier") && machine.PricingTier != c.String("pricing-tier") {
+		if cmd.IsSet("pricing-tier") && machine.PricingTier != cmd.String("pricing-tier") {
 			continue
 		}
 
@@ -644,7 +645,7 @@ func machineUsageCommand() *cli.Command {
 	return &cli.Command{
 		Name:  "usage",
 		Usage: "View machine usage records",
-		Subcommands: []*cli.Command{
+		Commands: []*cli.Command{
 			machineUsageListCommand(),
 			machineUsageGetCommand(),
 			machineUsageCostCommand(),
@@ -690,7 +691,7 @@ func machineUsageCostCommand() *cli.Command {
 	}
 }
 
-func handleMachineUsageList(c *cli.Context) error {
+func handleMachineUsageList(ctx context.Context, cmd *cli.Command) error {
 	userID, err := requireUserContext()
 	if err != nil {
 		return err
@@ -722,8 +723,8 @@ func handleMachineUsageList(c *cli.Context) error {
 	return nil
 }
 
-func handleMachineUsageGet(c *cli.Context) error {
-	usageID := c.String("usage-id")
+func handleMachineUsageGet(ctx context.Context, cmd *cli.Command) error {
+	usageID := cmd.String("usage-id")
 
 	usage, err := api.GetMachineUsageByID(usageID)
 	if err != nil {
@@ -749,8 +750,8 @@ func handleMachineUsageGet(c *cli.Context) error {
 	return nil
 }
 
-func handleMachineUsageCost(c *cli.Context) error {
-	usageID := c.String("usage-id")
+func handleMachineUsageCost(ctx context.Context, cmd *cli.Command) error {
+	usageID := cmd.String("usage-id")
 
 	cost, err := api.GetUsageCost(usageID)
 	if err != nil {

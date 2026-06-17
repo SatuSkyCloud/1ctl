@@ -1,13 +1,14 @@
 package commands
 
 import (
+	"context"
 	"1ctl/internal/api"
-	"1ctl/internal/context"
+	satuskyctx "1ctl/internal/context"
 	"1ctl/internal/utils"
 	"fmt"
 	"time"
 
-	"github.com/urfave/cli/v2"
+	"github.com/urfave/cli/v3"
 )
 
 func CreditsCommand() *cli.Command {
@@ -15,7 +16,7 @@ func CreditsCommand() *cli.Command {
 		Name:    "credits",
 		Aliases: []string{"billing"},
 		Usage:   "Manage credits and billing",
-		Subcommands: []*cli.Command{
+		Commands: []*cli.Command{
 			creditsBalanceCommand(),
 			creditsTransactionsCommand(),
 			creditsUsageCommand(),
@@ -66,8 +67,8 @@ func creditsUsageCommand() *cli.Command {
 	}
 }
 
-func handleCreditsBalance(c *cli.Context) error {
-	orgID := context.GetCurrentOrgID()
+func handleCreditsBalance(ctx context.Context, cmd *cli.Command) error {
+	orgID := satuskyctx.GetCurrentOrgID()
 	if orgID == "" {
 		return utils.NewError("organization ID not found. Please run '1ctl auth login' first", nil)
 	}
@@ -134,14 +135,14 @@ func formatTierDisplayName(tier string) string {
 	}
 }
 
-func handleCreditsTransactions(c *cli.Context) error {
-	orgID := context.GetCurrentOrgID()
+func handleCreditsTransactions(ctx context.Context, cmd *cli.Command) error {
+	orgID := satuskyctx.GetCurrentOrgID()
 	if orgID == "" {
 		return utils.NewError("organization ID not found. Please run '1ctl auth login' first", nil)
 	}
 
-	limit := c.Int("limit")
-	offset := c.Int("offset")
+	limit := cmd.Int("limit")
+	offset := cmd.Int("offset")
 
 	transactions, err := api.GetCreditTransactions(orgID, limit, offset)
 	if err != nil {
@@ -169,13 +170,13 @@ func handleCreditsTransactions(c *cli.Context) error {
 	return nil
 }
 
-func handleCreditsUsage(c *cli.Context) error {
-	orgID := context.GetCurrentOrgID()
+func handleCreditsUsage(ctx context.Context, cmd *cli.Command) error {
+	orgID := satuskyctx.GetCurrentOrgID()
 	if orgID == "" {
 		return utils.NewError("organization ID not found. Please run '1ctl auth login' first", nil)
 	}
 
-	days := c.Int("days")
+	days := cmd.Int("days")
 
 	usages, err := api.GetMachineUsageHistory(orgID, days)
 	if err != nil {

@@ -1,8 +1,9 @@
 package commands
 
 import (
+	"context"
 	"1ctl/internal/api"
-	"1ctl/internal/context"
+	satuskyctx "1ctl/internal/context"
 	"1ctl/internal/utils"
 	"fmt"
 	"io"
@@ -14,7 +15,7 @@ import (
 	"strings"
 	"syscall"
 
-	"github.com/urfave/cli/v2"
+	"github.com/urfave/cli/v3"
 )
 
 var postgresNamePattern = regexp.MustCompile(`^[a-z0-9]([-a-z0-9]*[a-z0-9])?$`)
@@ -24,7 +25,7 @@ func PostgresCommand() *cli.Command {
 		Name:    "postgres",
 		Aliases: []string{"pg"},
 		Usage:   "Manage SatuSky managed Postgres clusters",
-		Subcommands: []*cli.Command{
+		Commands: []*cli.Command{
 			postgresCreateCommand(),
 			postgresListCommand(),
 			postgresGetCommand(),
@@ -150,7 +151,7 @@ func postgresUsersCommand() *cli.Command {
 		Name:    "users",
 		Aliases: []string{"user"},
 		Usage:   "Manage database users",
-		Subcommands: []*cli.Command{
+		Commands: []*cli.Command{
 			{
 				Name:      "list",
 				Aliases:   []string{"ls"},
@@ -191,7 +192,7 @@ func postgresFirewallCommand() *cli.Command {
 		Name:    "firewall",
 		Aliases: []string{"fw"},
 		Usage:   "Manage Postgres firewall rules",
-		Subcommands: []*cli.Command{
+		Commands: []*cli.Command{
 			{
 				Name:      "list",
 				Aliases:   []string{"ls"},
@@ -243,17 +244,17 @@ func postgresStorageClassesCommand() *cli.Command {
 	}
 }
 
-func handlePostgresCreate(c *cli.Context) error {
-	if c.NArg() < 1 {
+func handlePostgresCreate(ctx context.Context, cmd *cli.Command) error {
+	if cmd.NArg() < 1 {
 		return utils.NewError("cluster name is required. Usage: 1ctl postgres create <name>", nil)
 	}
 
-	name := normalizePostgresName(c.Args().First())
+	name := normalizePostgresName(cmd.Args().First())
 	if err := validatePostgresName(name); err != nil {
 		return err
 	}
 
-	database := c.String("database")
+	database := cmd.String("database")
 	if database == "" {
 		database = strings.ReplaceAll(name, "-", "_")
 	}
@@ -261,16 +262,16 @@ func handlePostgresCreate(c *cli.Context) error {
 	opts := api.PostgresCreateOptions{
 		Name:           name,
 		Database:       database,
-		Username:       c.String("user"),
-		Version:        c.String("version"),
-		Instances:      c.Int("instances"),
-		StorageSize:    c.String("storage-size"),
-		StorageClass:   c.String("storage-class"),
-		WALStorageSize: c.String("wal-storage-size"),
-		CPURequest:     c.String("cpu-request"),
-		CPULimit:       c.String("cpu"),
-		MemoryRequest:  c.String("memory-request"),
-		MemoryLimit:    c.String("memory"),
+		Username:       cmd.String("user"),
+		Version:        cmd.String("version"),
+		Instances:      cmd.Int("instances"),
+		StorageSize:    cmd.String("storage-size"),
+		StorageClass:   cmd.String("storage-class"),
+		WALStorageSize: cmd.String("wal-storage-size"),
+		CPURequest:     cmd.String("cpu-request"),
+		CPULimit:       cmd.String("cpu"),
+		MemoryRequest:  cmd.String("memory-request"),
+		MemoryLimit:    cmd.String("memory"),
 	}
 	if opts.Instances < 1 {
 		return utils.NewError("instances must be at least 1", nil)
@@ -290,7 +291,7 @@ func handlePostgresCreate(c *cli.Context) error {
 	return nil
 }
 
-func handlePostgresList(c *cli.Context) error {
+func handlePostgresList(ctx context.Context, cmd *cli.Command) error {
 	clusters, err := api.ListPostgresClusters("")
 	if err != nil {
 		return utils.NewError(fmt.Sprintf("failed to list Postgres clusters: %s", err.Error()), nil)
@@ -319,8 +320,8 @@ func handlePostgresList(c *cli.Context) error {
 	return nil
 }
 
-func handlePostgresGet(c *cli.Context) error {
-	storageID, err := requiredPostgresStorageID(c)
+func handlePostgresGet(ctx context.Context, cmd *cli.Command) error {
+	storageID, err := requiredPostgresStorageID(cmd)
 	if err != nil {
 		return err
 	}
@@ -335,8 +336,8 @@ func handlePostgresGet(c *cli.Context) error {
 	return nil
 }
 
-func handlePostgresStatus(c *cli.Context) error {
-	storageID, err := requiredPostgresStorageID(c)
+func handlePostgresStatus(ctx context.Context, cmd *cli.Command) error {
+	storageID, err := requiredPostgresStorageID(cmd)
 	if err != nil {
 		return err
 	}
@@ -351,8 +352,8 @@ func handlePostgresStatus(c *cli.Context) error {
 	return nil
 }
 
-func handlePostgresCredentials(c *cli.Context) error {
-	storageID, err := requiredPostgresStorageID(c)
+func handlePostgresCredentials(ctx context.Context, cmd *cli.Command) error {
+	storageID, err := requiredPostgresStorageID(cmd)
 	if err != nil {
 		return err
 	}
@@ -367,8 +368,8 @@ func handlePostgresCredentials(c *cli.Context) error {
 	return nil
 }
 
-func handlePostgresConnect(c *cli.Context) error {
-	storageID, err := requiredPostgresStorageID(c)
+func handlePostgresConnect(ctx context.Context, cmd *cli.Command) error {
+	storageID, err := requiredPostgresStorageID(cmd)
 	if err != nil {
 		return err
 	}
@@ -384,18 +385,18 @@ func handlePostgresConnect(c *cli.Context) error {
 		return utils.NewError("no connection URI available for this Postgres cluster", nil)
 	}
 
-	cmd := exec.Command("psql", uri)
-	cmd.Stdin = os.Stdin
-	cmd.Stdout = os.Stdout
-	cmd.Stderr = os.Stderr
-	if err := cmd.Run(); err != nil {
+	psqlCmd := exec.Command("psql", uri)
+	psqlCmd.Stdin = os.Stdin
+	psqlCmd.Stdout = os.Stdout
+	psqlCmd.Stderr = os.Stderr
+	if err := psqlCmd.Run(); err != nil {
 		return utils.NewError(fmt.Sprintf("failed to run psql: %s", err.Error()), nil)
 	}
 	return nil
 }
 
-func handlePostgresProxy(c *cli.Context) error {
-	storageID, err := requiredPostgresStorageID(c)
+func handlePostgresProxy(ctx context.Context, cmd *cli.Command) error {
+	storageID, err := requiredPostgresStorageID(cmd)
 	if err != nil {
 		return err
 	}
@@ -410,13 +411,13 @@ func handlePostgresProxy(c *cli.Context) error {
 		return utils.NewError("no remote host/port available for this Postgres cluster", nil)
 	}
 
-	localAddr := net.JoinHostPort(c.String("bind-addr"), c.String("local-port"))
+	localAddr := net.JoinHostPort(cmd.String("bind-addr"), cmd.String("local-port"))
 	remoteAddr := net.JoinHostPort(remoteHost, remotePort)
 	return runTCPProxy(localAddr, remoteAddr)
 }
 
-func handlePostgresRedeploy(c *cli.Context) error {
-	storageID, err := requiredPostgresStorageID(c)
+func handlePostgresRedeploy(ctx context.Context, cmd *cli.Command) error {
+	storageID, err := requiredPostgresStorageID(cmd)
 	if err != nil {
 		return err
 	}
@@ -427,12 +428,12 @@ func handlePostgresRedeploy(c *cli.Context) error {
 	return nil
 }
 
-func handlePostgresDestroy(c *cli.Context) error {
-	storageID, err := resolvePostgresStorageID(c)
+func handlePostgresDestroy(ctx context.Context, cmd *cli.Command) error {
+	storageID, err := resolvePostgresStorageID(cmd)
 	if err != nil {
 		return err
 	}
-	if !utils.Confirm(fmt.Sprintf("Destroy Postgres cluster %s and delete its data?", storageID), c.Bool("yes")) {
+	if !utils.Confirm(fmt.Sprintf("Destroy Postgres cluster %s and delete its data?", storageID), cmd.Bool("yes")) {
 		fmt.Println("Aborted.")
 		return nil
 	}
@@ -443,8 +444,8 @@ func handlePostgresDestroy(c *cli.Context) error {
 	return nil
 }
 
-func handlePostgresUsersList(c *cli.Context) error {
-	storageID, err := requiredPostgresStorageID(c)
+func handlePostgresUsersList(ctx context.Context, cmd *cli.Command) error {
+	storageID, err := requiredPostgresStorageID(cmd)
 	if err != nil {
 		return err
 	}
@@ -473,20 +474,20 @@ func handlePostgresUsersList(c *cli.Context) error {
 	return nil
 }
 
-func handlePostgresUsersCreate(c *cli.Context) error {
-	if c.NArg() < 2 {
+func handlePostgresUsersCreate(ctx context.Context, cmd *cli.Command) error {
+	if cmd.NArg() < 2 {
 		return utils.NewError("usage: 1ctl postgres users create <storage-id> <username>", nil)
 	}
-	storageID := c.Args().Get(0)
-	username := c.Args().Get(1)
+	storageID := cmd.Args().Get(0)
+	username := cmd.Args().Get(1)
 	if username == "" {
 		return utils.NewError("username is required", nil)
 	}
 
 	resp, err := api.CreatePostgresUser(storageID, api.CreateDatabaseUserRequest{
 		Username:       username,
-		RoleAttributes: postgresRoleAttributes(c),
-		Comment:        c.String("comment"),
+		RoleAttributes: postgresRoleAttributes(cmd),
+		Comment:        cmd.String("comment"),
 	})
 	if err != nil {
 		return utils.NewError(fmt.Sprintf("failed to create Postgres user: %s", err.Error()), nil)
@@ -507,13 +508,13 @@ func handlePostgresUsersCreate(c *cli.Context) error {
 	return nil
 }
 
-func handlePostgresUsersDelete(c *cli.Context) error {
-	if c.NArg() < 2 {
+func handlePostgresUsersDelete(ctx context.Context, cmd *cli.Command) error {
+	if cmd.NArg() < 2 {
 		return utils.NewError("usage: 1ctl postgres users delete <storage-id> <username>", nil)
 	}
-	storageID := c.Args().Get(0)
-	username := c.Args().Get(1)
-	if !utils.Confirm(fmt.Sprintf("Delete database user %s from Postgres cluster %s?", username, storageID), c.Bool("yes")) {
+	storageID := cmd.Args().Get(0)
+	username := cmd.Args().Get(1)
+	if !utils.Confirm(fmt.Sprintf("Delete database user %s from Postgres cluster %s?", username, storageID), cmd.Bool("yes")) {
 		fmt.Println("Aborted.")
 		return nil
 	}
@@ -524,8 +525,8 @@ func handlePostgresUsersDelete(c *cli.Context) error {
 	return nil
 }
 
-func handlePostgresFirewallList(c *cli.Context) error {
-	storageID, err := requiredPostgresStorageID(c)
+func handlePostgresFirewallList(ctx context.Context, cmd *cli.Command) error {
+	storageID, err := requiredPostgresStorageID(cmd)
 	if err != nil {
 		return err
 	}
@@ -554,14 +555,14 @@ func handlePostgresFirewallList(c *cli.Context) error {
 	return nil
 }
 
-func handlePostgresFirewallAdd(c *cli.Context) error {
-	storageID, err := requiredPostgresStorageID(c)
+func handlePostgresFirewallAdd(ctx context.Context, cmd *cli.Command) error {
+	storageID, err := requiredPostgresStorageID(cmd)
 	if err != nil {
 		return err
 	}
 	rule, err := api.CreatePostgresFirewallRule(storageID, api.CreateFirewallRuleRequest{
-		Cidr:        c.String("cidr"),
-		Description: c.String("description"),
+		Cidr:        cmd.String("cidr"),
+		Description: cmd.String("description"),
 	})
 	if err != nil {
 		return utils.NewError(fmt.Sprintf("failed to add firewall rule: %s", err.Error()), nil)
@@ -575,20 +576,20 @@ func handlePostgresFirewallAdd(c *cli.Context) error {
 	return nil
 }
 
-func handlePostgresFirewallEnable(c *cli.Context) error {
-	return handlePostgresFirewallSetEnabled(c, true)
+func handlePostgresFirewallEnable(ctx context.Context, cmd *cli.Command) error {
+	return handlePostgresFirewallSetEnabled(cmd, true)
 }
 
-func handlePostgresFirewallDisable(c *cli.Context) error {
-	return handlePostgresFirewallSetEnabled(c, false)
+func handlePostgresFirewallDisable(ctx context.Context, cmd *cli.Command) error {
+	return handlePostgresFirewallSetEnabled(cmd, false)
 }
 
-func handlePostgresFirewallSetEnabled(c *cli.Context, enabled bool) error {
-	if c.NArg() < 2 {
+func handlePostgresFirewallSetEnabled(cmd *cli.Command, enabled bool) error {
+	if cmd.NArg() < 2 {
 		return utils.NewError("usage: 1ctl postgres firewall enable|disable <storage-id> <rule-id>", nil)
 	}
-	storageID := c.Args().Get(0)
-	ruleID := c.Args().Get(1)
+	storageID := cmd.Args().Get(0)
+	ruleID := cmd.Args().Get(1)
 	rule, err := api.UpdatePostgresFirewallRule(storageID, ruleID, api.UpdateFirewallRuleRequest{Enabled: &enabled})
 	if err != nil {
 		return utils.NewError(fmt.Sprintf("failed to update firewall rule: %s", err.Error()), nil)
@@ -602,13 +603,13 @@ func handlePostgresFirewallSetEnabled(c *cli.Context, enabled bool) error {
 	return nil
 }
 
-func handlePostgresFirewallRemove(c *cli.Context) error {
-	if c.NArg() < 2 {
+func handlePostgresFirewallRemove(ctx context.Context, cmd *cli.Command) error {
+	if cmd.NArg() < 2 {
 		return utils.NewError("usage: 1ctl postgres firewall remove <storage-id> <rule-id>", nil)
 	}
-	storageID := c.Args().Get(0)
-	ruleID := c.Args().Get(1)
-	if !utils.Confirm(fmt.Sprintf("Remove firewall rule %s from Postgres cluster %s?", ruleID, storageID), c.Bool("yes")) {
+	storageID := cmd.Args().Get(0)
+	ruleID := cmd.Args().Get(1)
+	if !utils.Confirm(fmt.Sprintf("Remove firewall rule %s from Postgres cluster %s?", ruleID, storageID), cmd.Bool("yes")) {
 		fmt.Println("Aborted.")
 		return nil
 	}
@@ -619,7 +620,7 @@ func handlePostgresFirewallRemove(c *cli.Context) error {
 	return nil
 }
 
-func handlePostgresStorageClasses(c *cli.Context) error {
+func handlePostgresStorageClasses(ctx context.Context, cmd *cli.Command) error {
 	classes, err := api.ListStorageClasses()
 	if err != nil {
 		return utils.NewError(fmt.Sprintf("failed to list storage classes: %s", err.Error()), nil)
@@ -640,17 +641,17 @@ func handlePostgresStorageClasses(c *cli.Context) error {
 	return nil
 }
 
-func requiredPostgresStorageID(c *cli.Context) (string, error) {
-	if c.NArg() < 1 {
+func requiredPostgresStorageID(cmd *cli.Command) (string, error) {
+	if cmd.NArg() < 1 {
 		return "", utils.NewError("storage ID is required", nil)
 	}
-	return c.Args().First(), nil
+	return cmd.Args().First(), nil
 }
 
 // resolvePostgresStorageID returns a UUID for the postgres cluster.
 // Accepts a UUID directly, or resolves a cluster name by listing clusters.
-func resolvePostgresStorageID(c *cli.Context) (string, error) {
-	arg, err := requiredPostgresStorageID(c)
+func resolvePostgresStorageID(cmd *cli.Command) (string, error) {
+	arg, err := requiredPostgresStorageID(cmd)
 	if err != nil {
 		return "", err
 	}
@@ -659,7 +660,7 @@ func resolvePostgresStorageID(c *cli.Context) (string, error) {
 		return arg, nil
 	}
 	// Resolve by name.
-	ns := context.GetCurrentNamespace()
+	ns := satuskyctx.GetCurrentNamespace()
 	if ns == "" {
 		return "", utils.NewError("not authenticated — run '1ctl auth login' first", nil)
 	}
@@ -764,7 +765,7 @@ func boolStatus(value bool) string {
 	return "no"
 }
 
-func postgresRoleAttributes(c *cli.Context) []string {
+func postgresRoleAttributes(cmd *cli.Command) []string {
 	attrs := []string{}
 	for _, attr := range []struct {
 		flag string
@@ -776,7 +777,7 @@ func postgresRoleAttributes(c *cli.Context) []string {
 		{"replication", "REPLICATION"},
 		{"bypassrls", "BYPASSRLS"},
 	} {
-		if c.Bool(attr.flag) {
+		if cmd.Bool(attr.flag) {
 			attrs = append(attrs, attr.name)
 		}
 	}

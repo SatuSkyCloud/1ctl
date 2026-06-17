@@ -1,12 +1,13 @@
 package commands
 
 import (
+	"context"
 	"1ctl/internal/api"
-	"1ctl/internal/context"
+	satuskyctx "1ctl/internal/context"
 	"1ctl/internal/utils"
 	"fmt"
 
-	"github.com/urfave/cli/v2"
+	"github.com/urfave/cli/v3"
 )
 
 func NotificationsCommand() *cli.Command {
@@ -14,7 +15,7 @@ func NotificationsCommand() *cli.Command {
 		Name:    "notifications",
 		Aliases: []string{"notif"},
 		Usage:   "Manage notifications",
-		Subcommands: []*cli.Command{
+		Commands: []*cli.Command{
 			notifListCommand(),
 			notifCountCommand(),
 			notifReadCommand(),
@@ -83,14 +84,14 @@ func notifDeleteCommand() *cli.Command {
 	}
 }
 
-func handleNotifList(c *cli.Context) error {
-	orgID := context.GetCurrentOrgID()
+func handleNotifList(ctx context.Context, cmd *cli.Command) error {
+	orgID := satuskyctx.GetCurrentOrgID()
 	if orgID == "" {
 		return utils.NewError("organization ID not found. Please run '1ctl auth login' first", nil)
 	}
 
-	unreadOnly := c.Bool("unread")
-	limit := c.Int("limit")
+	unreadOnly := cmd.Bool("unread")
+	limit := cmd.Int("limit")
 
 	notifications, err := api.GetNotifications(orgID, unreadOnly, limit)
 	if err != nil {
@@ -121,8 +122,8 @@ func handleNotifList(c *cli.Context) error {
 	return nil
 }
 
-func handleNotifCount(c *cli.Context) error {
-	orgID := context.GetCurrentOrgID()
+func handleNotifCount(ctx context.Context, cmd *cli.Command) error {
+	orgID := satuskyctx.GetCurrentOrgID()
 	if orgID == "" {
 		return utils.NewError("organization ID not found. Please run '1ctl auth login' first", nil)
 	}
@@ -137,14 +138,14 @@ func handleNotifCount(c *cli.Context) error {
 	return nil
 }
 
-func handleNotifRead(c *cli.Context) error {
-	orgID := context.GetCurrentOrgID()
+func handleNotifRead(ctx context.Context, cmd *cli.Command) error {
+	orgID := satuskyctx.GetCurrentOrgID()
 	if orgID == "" {
 		return utils.NewError("organization ID not found. Please run '1ctl auth login' first", nil)
 	}
 
-	notifID := c.String("id")
-	markAll := c.Bool("all")
+	notifID := cmd.String("id")
+	markAll := cmd.Bool("all")
 
 	if !markAll && notifID == "" {
 		return utils.NewError("either --id or --all is required", nil)
@@ -164,13 +165,13 @@ func handleNotifRead(c *cli.Context) error {
 	return nil
 }
 
-func handleNotifDelete(c *cli.Context) error {
-	orgID := context.GetCurrentOrgID()
+func handleNotifDelete(ctx context.Context, cmd *cli.Command) error {
+	orgID := satuskyctx.GetCurrentOrgID()
 	if orgID == "" {
 		return utils.NewError("organization ID not found. Please run '1ctl auth login' first", nil)
 	}
 
-	notifID := c.String("id")
+	notifID := cmd.String("id")
 	if notifID == "" {
 		return utils.NewError("--id is required", nil)
 	}

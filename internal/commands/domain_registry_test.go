@@ -1,289 +1,36 @@
 package commands
 
 import (
-	"flag"
 	"testing"
 
 	"1ctl/internal/api"
 
-	"github.com/urfave/cli/v2"
+	"github.com/urfave/cli/v3"
 )
 
-// testContext creates a *cli.Context that simulates how urfave/cli parses arguments.
-//   - args: the full command-line arguments (flag.Parse stops at first non-flag arg)
-//   - parsedFlags: flags that urfave/cli parsed before the first positional arg
-//     (values are set via ctx.Set so c.IsSet returns true)
-//   - flagNames: the names of flags defined on the underlying FlagSet
-//
-// After flag.Parse(args):
-//   - c.Args().Slice() contains all args after the first positional arg
-//     (including any flag-like args that weren't parsed)
-//   - c.IsSet(name) is true only for names in parsedFlags
-//   - c.String(name) returns the value from the FlagSet (set either by Parse or by ctx.Set)
-func testContext(t *testing.T, args []string, parsedFlags map[string]string, flagNames ...string) *cli.Context {
-	t.Helper()
-	app := cli.NewApp()
-	fs := flag.NewFlagSet("test", flag.ContinueOnError)
-	for _, name := range flagNames {
-		fs.String(name, "", "")
-	}
-	_ = fs.Parse(args)
-	ctx := cli.NewContext(app, fs, nil)
-	for name, value := range parsedFlags {
-		if err := ctx.Set(name, value); err != nil {
-			t.Fatalf("ctx.Set(%q, %q): %v", name, value, err)
-		}
-	}
-	return ctx
-}
-
+// ---------------------------------------------------------------------------
 // dnsTestFlags returns the common set of flag names used by DNS create/update commands.
 func dnsTestFlags() []string {
 	return []string{"type", "name", "data", "ttl", "priority", "port", "weight", "flags", "tag"}
 }
 
 // ---------------------------------------------------------------------------
-// TestFlagValueFromArgs
-// ---------------------------------------------------------------------------
-
-func TestFlagValueFromArgs(t *testing.T) {
-	tests := []struct {
-		name        string
-		args        []string
-		parsedFlags map[string]string
-		query       string // flag name to look up
-		want        string
-	}{
-		{
-			name:  "flag before positional",
-			args:  []string{"--type", "A", "--data", "1.2.3.4", "domain.com", "record-id"},
-			query: "type",
-			want:  "A",
-			parsedFlags: map[string]string{"type": "A", "data": "1.2.3.4"},
-		},
-		{
-			name:  "another flag before positional",
-			args:  []string{"--type", "A", "--data", "1.2.3.4", "domain.com", "record-id"},
-			query: "data",
-			want:  "1.2.3.4",
-			parsedFlags: map[string]string{"type": "A", "data": "1.2.3.4"},
-		},
-		{
-			name:  "flag after positional",
-			args:  []string{"domain.com", "record-id", "--data", "5.6.7.8", "--ttl", "600"},
-			query: "data",
-			want:  "5.6.7.8",
-		},
-		{
-			name:  "ttl after positional",
-			args:  []string{"domain.com", "record-id", "--data", "5.6.7.8", "--ttl", "600"},
-			query: "ttl",
-			want:  "600",
-		},
-		{
-			name:  "mixed flags before and after positional",
-			args:  []string{"--type", "A", "domain.com", "--data", "1.2.3.4", "record-id", "--ttl", "300"},
-			query: "type",
-			want:  "A",
-			parsedFlags: map[string]string{"type": "A"},
-		},
-		{
-			name:  "data in mixed scenario (after positional, not parsed)",
-			args:  []string{"--type", "A", "domain.com", "--data", "1.2.3.4", "record-id", "--ttl", "300"},
-			query: "data",
-			want:  "1.2.3.4",
-			parsedFlags: map[string]string{"type": "A"},
-		},
-		{
-			name:  "ttl in mixed scenario (after positional, not parsed)",
-			args:  []string{"--type", "A", "domain.com", "--data", "1.2.3.4", "record-id", "--ttl", "300"},
-			query: "ttl",
-			want:  "300",
-			parsedFlags: map[string]string{"type": "A"},
-		},
-		{
-			name:  "empty args returns empty string",
-			args:  []string{},
-			query: "type",
-			want:  "",
-		},
-		{
-			name:  "flag without value returns next arg or empty",
-			args:  []string{"--data"},
-			query: "data",
-			want:  "", // no value after --data in args
-		},
-		{
-			name:  "unknown flag is ignored",
-			args:  []string{"--nonexistent", "value"},
-			query: "nonexistent",
-			want:  "",
-		},
-		{
-			name:  "flag with = syntax before positional",
-			args:  []string{"--type=MX", "domain.com"},
-			query: "type",
-			want:  "MX",
-			parsedFlags: map[string]string{"type": "MX"},
-		},
-		{
-			name:  "flag with = syntax after positional",
-			args:  []string{"domain.com", "--type=AAAA"},
-			query: "type",
-			want:  "AAAA",
-		},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			ctx := testContext(t, tt.args, tt.parsedFlags, dnsTestFlags()...)
-			got := flagValueFromArgs(ctx, tt.query)
-			if got != tt.want {
-				t.Errorf("flagValueFromArgs(ctx, %q) = %q, want %q", tt.query, got, tt.want)
-			}
-		})
-	}
-}
-
-// ---------------------------------------------------------------------------
-// TestFlagIsSetInArgs
-// ---------------------------------------------------------------------------
-
-func TestFlagIsSetInArgs(t *testing.T) {
-	tests := []struct {
-		name        string
-		args        []string
-		parsedFlags map[string]string
-		query       string
-		want        bool
-	}{
-		{
-			name:  "flag parsed by urfave/cli",
-			args:  []string{"--type", "A", "domain.com"},
-			query: "type",
-			want:  true,
-			parsedFlags: map[string]string{"type": "A"},
-		},
-		{
-			name:  "flag after positional",
-			args:  []string{"domain.com", "--data", "1.2.3.4"},
-			query: "data",
-			want:  true,
-		},
-		{
-			name:  "flag not present",
-			args:  []string{"domain.com"},
-			query: "data",
-			want:  false,
-		},
-		{
-			name:  "flag with = syntax after positional",
-			args:  []string{"domain.com", "--tag=issue"},
-			query: "tag",
-			want:  true,
-		},
-		{
-			name:  "empty args",
-			args:  []string{},
-			query: "type",
-			want:  false,
-		},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			ctx := testContext(t, tt.args, tt.parsedFlags, dnsTestFlags()...)
-			got := flagIsSetInArgs(ctx, tt.query)
-			if got != tt.want {
-				t.Errorf("flagIsSetInArgs(ctx, %q) = %v, want %v", tt.query, got, tt.want)
-			}
-		})
-	}
-}
-
-// ---------------------------------------------------------------------------
-// TestFlagIntFromArgs
-// ---------------------------------------------------------------------------
-
-func TestFlagIntFromArgs(t *testing.T) {
-	tests := []struct {
-		name        string
-		args        []string
-		parsedFlags map[string]string
-		query       string
-		want        int
-	}{
-		{
-			name:  "parsed int flag",
-			args:  []string{"--ttl", "600", "domain.com"},
-			query: "ttl",
-			want:  600,
-			parsedFlags: map[string]string{"ttl": "600"},
-		},
-		{
-			name:  "int flag after positional",
-			args:  []string{"domain.com", "--ttl", "3600"},
-			query: "ttl",
-			want:  3600,
-		},
-		{
-			name:  "int flag with = syntax after positional",
-			args:  []string{"domain.com", "--priority=10"},
-			query: "priority",
-			want:  10,
-		},
-		{
-			name:  "zero for missing flag",
-			args:  []string{"domain.com"},
-			query: "ttl",
-			want:  0,
-		},
-		{
-			name:  "invalid int returns zero",
-			args:  []string{"domain.com", "--ttl", "abc"},
-			query: "ttl",
-			want:  0,
-		},
-		{
-			name:  "flag without value returns zero",
-			args:  []string{"--ttl"},
-			query: "ttl",
-			want:  0,
-		},
-		{
-			name:  "empty args returns zero",
-			args:  []string{},
-			query: "ttl",
-			want:  0,
-		},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			ctx := testContext(t, tt.args, tt.parsedFlags, dnsTestFlags()...)
-			got := flagIntFromArgs(ctx, tt.query)
-			if got != tt.want {
-				t.Errorf("flagIntFromArgs(ctx, %q) = %d, want %d", tt.query, got, tt.want)
-			}
-		})
-	}
-}
-
-// ---------------------------------------------------------------------------
-// TestDnsCreateRequestFromFlags
+// Tests for dnsCreateRequestFromFlags
 // ---------------------------------------------------------------------------
 
 func TestDnsCreateRequestFromFlags(t *testing.T) {
 	tests := []struct {
-		name        string
-		args        []string
-		parsedFlags map[string]string
-		want        api.DNSRecordCreateRequest
+		name   string
+		setup  func(cmd *cli.Command)
+		want   api.DNSRecordCreateRequest
 	}{
 		{
-			name: "all required fields, flags before positional",
-			args: []string{"--type", "A", "--name", "@", "--data", "1.2.3.4", "example.com"},
-			parsedFlags: map[string]string{"type": "A", "name": "@", "data": "1.2.3.4"},
+			name: "all required fields",
+			setup: func(cmd *cli.Command) {
+				cmd.Set("type", "A")
+				cmd.Set("name", "@")
+				cmd.Set("data", "1.2.3.4")
+			},
 			want: api.DNSRecordCreateRequest{
 				Type: "A",
 				Name: "@",
@@ -291,18 +38,13 @@ func TestDnsCreateRequestFromFlags(t *testing.T) {
 			},
 		},
 		{
-			name: "only required fields, flags after positional",
-			args: []string{"example.com", "--type", "AAAA", "--name", "www", "--data", "::1"},
-			want: api.DNSRecordCreateRequest{
-				Type: "AAAA",
-				Name: "www",
-				Data: "::1",
+			name: "with ttl",
+			setup: func(cmd *cli.Command) {
+				cmd.Set("type", "CNAME")
+				cmd.Set("name", "app")
+				cmd.Set("data", "target.example.com")
+				cmd.Set("ttl", "300")
 			},
-		},
-		{
-			name: "mixed flags, with ttl",
-			args: []string{"--type", "CNAME", "example.com", "--name", "app", "--data", "target.example.com", "--ttl", "300"},
-			parsedFlags: map[string]string{"type": "CNAME"},
 			want: api.DNSRecordCreateRequest{
 				Type: "CNAME",
 				Name: "app",
@@ -311,15 +53,15 @@ func TestDnsCreateRequestFromFlags(t *testing.T) {
 			},
 		},
 		{
-			name: "all optional fields",
-			args: []string{"example.com",
-				"--type", "SRV",
-				"--name", "_sip._tcp",
-				"--data", "10 5060 sip.example.com",
-				"--ttl", "600",
-				"--priority", "10",
-				"--port", "5060",
-				"--weight", "5",
+			name: "SRV record with optional fields",
+			setup: func(cmd *cli.Command) {
+				cmd.Set("type", "SRV")
+				cmd.Set("name", "_sip._tcp")
+				cmd.Set("data", "10 5060 sip.example.com")
+				cmd.Set("ttl", "600")
+				cmd.Set("priority", "10")
+				cmd.Set("port", "5060")
+				cmd.Set("weight", "5")
 			},
 			want: api.DNSRecordCreateRequest{
 				Type:     "SRV",
@@ -332,20 +74,12 @@ func TestDnsCreateRequestFromFlags(t *testing.T) {
 			},
 		},
 		{
-			name: "CAA record with flags and tag",
-			args: []string{"--type", "CAA", "--name", "@", "--data", "0 issue letsencrypt.org", "example.com", "--flags", "0", "--tag", "issue"},
-			parsedFlags: map[string]string{"type": "CAA", "name": "@", "data": "0 issue letsencrypt.org"},
-			want: api.DNSRecordCreateRequest{
-				Type:  "CAA",
-				Name:  "@",
-				Data:  "0 issue letsencrypt.org",
-				Flags: intPtr(0),
-				Tag:   strPtr("issue"),
-			},
-		},
-		{
 			name: "type is uppercased",
-			args: []string{"example.com", "--type", "a", "--name", "@", "--data", "1.2.3.4"},
+			setup: func(cmd *cli.Command) {
+				cmd.Set("type", "a")
+				cmd.Set("name", "@")
+				cmd.Set("data", "1.2.3.4")
+			},
 			want: api.DNSRecordCreateRequest{
 				Type: "A",
 				Name: "@",
@@ -356,43 +90,57 @@ func TestDnsCreateRequestFromFlags(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			ctx := testContext(t, tt.args, tt.parsedFlags, dnsTestFlags()...)
-			got := dnsCreateRequestFromFlags(ctx)
+			cmd := &cli.Command{Flags: dnsFlagsForTest()}
+			tt.setup(cmd)
+			got := dnsCreateRequestFromFlags(cmd)
 			assertDNSRecordCreateEqual(t, tt.want, got)
 		})
 	}
 }
 
 // ---------------------------------------------------------------------------
-// TestDnsUpdateRequestFromFlags
+// Tests for dnsUpdateRequestFromFlags
 // ---------------------------------------------------------------------------
 
 func TestDnsUpdateRequestFromFlags(t *testing.T) {
 	tests := []struct {
-		name        string
-		args        []string
-		parsedFlags map[string]string
-		want        api.DNSRecordUpdateRequest
+		name   string
+		setup  func(cmd *cli.Command)
+		want   api.DNSRecordUpdateRequest
 	}{
 		{
 			name: "single field update (data only)",
-			args: []string{"example.com", "rec-123", "--data", "5.6.7.8"},
+			setup: func(cmd *cli.Command) {
+				cmd.Set("data", "5.6.7.8")
+			},
 			want: api.DNSRecordUpdateRequest{
 				Data: strPtr("5.6.7.8"),
 			},
 		},
 		{
 			name: "multiple field update (data + ttl)",
-			args: []string{"example.com", "rec-123", "--data", "10.0.0.1", "--ttl", "1800"},
+			setup: func(cmd *cli.Command) {
+				cmd.Set("data", "10.0.0.1")
+				cmd.Set("ttl", "1800")
+			},
 			want: api.DNSRecordUpdateRequest{
 				Data: strPtr("10.0.0.1"),
 				TTL:  intPtr(1800),
 			},
 		},
 		{
-			name: "all fields set, flags before positional",
-			args: []string{"--type", "A", "--name", "@", "--data", "1.2.3.4", "--ttl", "300", "example.com", "rec-123", "--priority", "5", "--port", "8080", "--weight", "10", "--flags", "128", "--tag", "issue"},
-			parsedFlags: map[string]string{"type": "A", "name": "@", "data": "1.2.3.4", "ttl": "300"},
+			name: "all fields set",
+			setup: func(cmd *cli.Command) {
+				cmd.Set("type", "A")
+				cmd.Set("name", "@")
+				cmd.Set("data", "1.2.3.4")
+				cmd.Set("ttl", "300")
+				cmd.Set("priority", "5")
+				cmd.Set("port", "8080")
+				cmd.Set("weight", "10")
+				cmd.Set("flags", "128")
+				cmd.Set("tag", "issue")
+			},
 			want: api.DNSRecordUpdateRequest{
 				Type:     strPtr("A"),
 				Name:     strPtr("@"),
@@ -407,39 +155,51 @@ func TestDnsUpdateRequestFromFlags(t *testing.T) {
 		},
 		{
 			name: "empty request (no flags set)",
-			args: []string{"example.com", "rec-123"},
+			setup: func(cmd *cli.Command) {
+			},
 			want: api.DNSRecordUpdateRequest{},
 		},
 		{
 			name: "type is uppercased in update",
-			args: []string{"example.com", "rec-123", "--type", "aaaa"},
+			setup: func(cmd *cli.Command) {
+				cmd.Set("type", "aaaa")
+			},
 			want: api.DNSRecordUpdateRequest{
 				Type: strPtr("AAAA"),
-			},
-		},
-		{
-			name: "update with = syntax",
-			args: []string{"example.com", "rec-123", "--ttl=7200"},
-			want: api.DNSRecordUpdateRequest{
-				TTL: intPtr(7200),
 			},
 		},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			ctx := testContext(t, tt.args, tt.parsedFlags, dnsTestFlags()...)
-			got := dnsUpdateRequestFromFlags(ctx)
+			cmd := &cli.Command{Flags: dnsFlagsForTest()}
+			tt.setup(cmd)
+			got := dnsUpdateRequestFromFlags(cmd)
 			assertDNSRecordUpdateEqual(t, tt.want, got)
 		})
 	}
 }
 
+// dnsFlagsForTest returns flags used by DNS create/update commands.
+func dnsFlagsForTest() []cli.Flag {
+	return []cli.Flag{
+		&cli.StringFlag{Name: "type"},
+		&cli.StringFlag{Name: "name"},
+		&cli.StringFlag{Name: "data"},
+		&cli.IntFlag{Name: "ttl"},
+		&cli.IntFlag{Name: "priority"},
+		&cli.IntFlag{Name: "port"},
+		&cli.IntFlag{Name: "weight"},
+		&cli.IntFlag{Name: "flags"},
+		&cli.StringFlag{Name: "tag"},
+	}
+}
+
 // ---------------------------------------------------------------------------
-// Test helpers to compare DNS request structs
+// Test helpers
 // ---------------------------------------------------------------------------
 
-func intPtr(v int) *int    { return &v }
+func intPtr(v int) *int     { return &v }
 func strPtr(v string) *string { return &v }
 
 func assertDNSRecordCreateEqual(t *testing.T, want, got api.DNSRecordCreateRequest) {

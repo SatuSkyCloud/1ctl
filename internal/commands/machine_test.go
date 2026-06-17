@@ -32,7 +32,7 @@ func TestMachineCommand(t *testing.T) {
 		"usage":     false,
 	}
 
-	for _, subcmd := range cmd.Subcommands {
+	for _, subcmd := range cmd.Commands {
 		if _, exists := expectedSubcommands[subcmd.Name]; !exists {
 			t.Errorf("Unexpected subcommand: %s", subcmd.Name)
 		}
@@ -46,7 +46,7 @@ func TestMachineCommand(t *testing.T) {
 	}
 
 	// Test list subcommand structure
-	listCmd := cmd.Subcommands[0]
+	listCmd := cmd.Commands[0]
 	if listCmd.Name != "list" {
 		t.Errorf("Expected subcommand name 'list', got %s", listCmd.Name)
 	}

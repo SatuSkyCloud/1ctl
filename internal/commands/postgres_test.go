@@ -25,7 +25,7 @@ func TestPostgresCommandStructure(t *testing.T) {
 		"firewall",
 		"storage-classes",
 	}
-	got := subNames(cmd.Subcommands)
+	got := subNames(cmd.Commands)
 	for _, want := range wantSubs {
 		if !containsString(got, want) {
 			t.Errorf("Subcommands missing %q (have %v)", want, got)

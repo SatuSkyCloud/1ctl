@@ -1,13 +1,14 @@
 package commands
 
 import (
+	"context"
 	"1ctl/internal/api"
 	"1ctl/internal/utils"
 	"fmt"
 	"strings"
 
 	"github.com/google/uuid"
-	"github.com/urfave/cli/v2"
+	"github.com/urfave/cli/v3"
 )
 
 func EnvironmentCommand() *cli.Command {
@@ -15,7 +16,7 @@ func EnvironmentCommand() *cli.Command {
 		Name:    "env",
 		Aliases: []string{"environment"},
 		Usage:   "Manage environments for a deployment",
-		Subcommands: []*cli.Command{
+		Commands: []*cli.Command{
 			{
 				Name:  "create",
 				Usage: "Create a new environment",
@@ -64,8 +65,8 @@ func EnvironmentCommand() *cli.Command {
 	}
 }
 
-func handleCreateEnvironment(c *cli.Context) error {
-	deploymentIDStr, err := resolveDeploymentID(c.String("deployment-id"), c.String("config"))
+func handleCreateEnvironment(ctx context.Context, cmd *cli.Command) error {
+	deploymentIDStr, err := resolveDeploymentID(cmd.String("deployment-id"), cmd.String("config"))
 	if err != nil {
 		return err
 	}
@@ -75,7 +76,7 @@ func handleCreateEnvironment(c *cli.Context) error {
 		return utils.NewError(fmt.Sprintf("invalid deployment-id: %s", err.Error()), nil)
 	}
 
-	envVars := c.StringSlice("env")
+	envVars := cmd.StringSlice("env")
 	keyValues := make([]api.KeyValuePair, 0, len(envVars))
 
 	for _, env := range envVars {
@@ -89,7 +90,7 @@ func handleCreateEnvironment(c *cli.Context) error {
 		})
 	}
 
-	appLabel := c.String("name")
+	appLabel := cmd.String("name")
 	if appLabel == "" {
 		deployment, err := api.GetDeployment(deploymentIDStr)
 		if err != nil {
@@ -117,7 +118,7 @@ func handleCreateEnvironment(c *cli.Context) error {
 	return nil
 }
 
-func handleListEnvironments(c *cli.Context) error {
+func handleListEnvironments(ctx context.Context, cmd *cli.Command) error {
 	environments, err := api.ListEnvironments()
 	if err != nil {
 		return utils.NewError(fmt.Sprintf("failed to list environments: %s", err.Error()), nil)
@@ -146,10 +147,10 @@ func handleListEnvironments(c *cli.Context) error {
 	return nil
 }
 
-func handleEnvUnset(c *cli.Context) error {
-	key := c.String("key")
+func handleEnvUnset(ctx context.Context, cmd *cli.Command) error {
+	key := cmd.String("key")
 
-	deploymentID, err := resolveDeploymentID(c.String("deployment-id"), c.String("config"))
+	deploymentID, err := resolveDeploymentID(cmd.String("deployment-id"), cmd.String("config"))
 	if err != nil {
 		return utils.NewError(fmt.Sprintf("failed to resolve deployment: %s", err.Error()), nil)
 	}

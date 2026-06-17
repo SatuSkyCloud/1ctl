@@ -1,6 +1,7 @@
 package commands
 
 import (
+	"context"
 	"bufio"
 	"fmt"
 	"os"
@@ -10,7 +11,7 @@ import (
 	"1ctl/internal/config"
 	"1ctl/internal/utils"
 
-	"github.com/urfave/cli/v2"
+	"github.com/urfave/cli/v3"
 )
 
 // LaunchCommand is the onboarding wizard. It detects the project runtime,
@@ -78,7 +79,7 @@ func hasDockerfile(dir string) bool {
 	return false
 }
 
-func handleLaunch(c *cli.Context) error {
+func handleLaunch(ctx context.Context, cmd *cli.Command) error {
 	dir, err := os.Getwd()
 	if err != nil {
 		return utils.NewError("failed to read working directory", err)
@@ -90,7 +91,7 @@ func handleLaunch(c *cli.Context) error {
 
 	rt := detectRuntime(dir)
 	appName := filepath.Base(dir)
-	nonInteractive := c.Bool("non-interactive")
+	nonInteractive := cmd.Bool("non-interactive")
 
 	utils.PrintHeader("1ctl launch")
 	if rt.Name != "" {

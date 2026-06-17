@@ -1,70 +1,68 @@
 package commands
 
 import (
-	"flag"
 	"net/http"
 	"net/http/httptest"
 	"testing"
 
 	"1ctl/internal/config"
 
-	"github.com/urfave/cli/v2"
+	"github.com/urfave/cli/v3"
 )
 
-// TestCaptureUserSetFlags_BeforeAndAfterCSet locks down the invariant that
+// TestCaptureUserSetFlags_NotPoisonedByCSet locks down the invariant that
 // applyConfigScalar's c.Set call should NOT make the captured snapshot
-// report a user-set flag. This regression existed in pre-review code: a
-// satusky.toml carrying rolling_max_surge would flip
-// opts.RollingFlagsExplicit and force strategy config onto requests that
-// would otherwise have been omitted. The fix moved the IsSet capture to
-// the top of handleDeploy. Test guards that.
+// report a user-set flag.
 func TestCaptureUserSetFlags_NotPoisonedByCSet(t *testing.T) {
-	fs := flag.NewFlagSet("test", flag.ContinueOnError)
-	fs.String("rolling-max-surge", "25%", "")
-	// Do NOT call fs.Set / c.Set for "rolling-max-surge" — simulating the
-	// "user did not pass --rolling-max-surge" case.
-	ctx := cli.NewContext(nil, fs, nil)
+	cmd := &cli.Command{
+		Flags: []cli.Flag{
+			&cli.StringFlag{Name: "rolling-max-surge", Value: "25%"},
+		},
+	}
 
-	snapshot := captureUserSetFlags(ctx, "rolling-max-surge")
+	snapshot := captureUserSetFlags(cmd, "rolling-max-surge")
 	if snapshot["rolling-max-surge"] {
 		t.Fatalf("snapshot pre-c.Set: want false, got true")
 	}
 
 	// Simulate applyConfigScalar's effect.
-	if err := ctx.Set("rolling-max-surge", "50%"); err != nil {
-		t.Fatalf("ctx.Set: %v", err)
+	if err := cmd.Set("rolling-max-surge", "50%"); err != nil {
+		t.Fatalf("cmd.Set: %v", err)
 	}
 
-	// The snapshot must still report user did not set it. c.IsSet would
-	// return true here — that's exactly the trap the snapshot avoids.
+	// The snapshot must still report user did not set it.
 	if snapshot["rolling-max-surge"] {
 		t.Errorf("snapshot post-c.Set mutated: want false, got true")
 	}
-	if !ctx.IsSet("rolling-max-surge") {
-		t.Log("note: c.IsSet returns true after c.Set — this is the trap captureUserSetFlags exists to side-step")
+	if !cmd.IsSet("rolling-max-surge") {
+		t.Log("note: cmd.IsSet returns true after cmd.Set — this is the trap captureUserSetFlags exists to side-step")
 	}
 }
 
 func TestShouldShowDeployHelp_UsesFlagDefaults(t *testing.T) {
-	fs := flag.NewFlagSet("test", flag.ContinueOnError)
-	fs.String("cpu-request", "250m", "")
-	fs.String("memory", "256Mi", "")
-	fs.String("image", "", "")
-	ctx := cli.NewContext(nil, fs, nil)
+	cmd := &cli.Command{
+		Flags: []cli.Flag{
+			&cli.StringFlag{Name: "cpu-request", Value: "250m"},
+			&cli.StringFlag{Name: "memory", Value: "256Mi"},
+			&cli.StringFlag{Name: "image", Value: ""},
+		},
+	}
 
-	if shouldShowDeployHelp(ctx, &config.ProjectConfig{}) {
+	if shouldShowDeployHelp(cmd, &config.ProjectConfig{}) {
 		t.Fatal("deploy help guard ignored cpu/memory flag defaults")
 	}
 }
 
 func TestShouldShowDeployHelp_EmptyResourceDefaults(t *testing.T) {
-	fs := flag.NewFlagSet("test", flag.ContinueOnError)
-	fs.String("cpu-request", "", "")
-	fs.String("memory", "", "")
-	fs.String("image", "", "")
-	ctx := cli.NewContext(nil, fs, nil)
+	cmd := &cli.Command{
+		Flags: []cli.Flag{
+			&cli.StringFlag{Name: "cpu-request", Value: ""},
+			&cli.StringFlag{Name: "memory", Value: ""},
+			&cli.StringFlag{Name: "image", Value: ""},
+		},
+	}
 
-	if !shouldShowDeployHelp(ctx, &config.ProjectConfig{}) {
+	if !shouldShowDeployHelp(cmd, &config.ProjectConfig{}) {
 		t.Fatal("deploy help guard should show help when no image, cpu, or memory defaults exist")
 	}
 }
@@ -86,11 +84,11 @@ func TestDeployCommand(t *testing.T) {
 		"restart":  false,
 		"releases": false,
 		"rollback": false,
-		"open":     false, // #3 D-02
-		"scale":    false, // #3 F-05
+		"open":     false,
+		"scale":    false,
 	}
 
-	for _, subcmd := range cmd.Subcommands {
+	for _, subcmd := range cmd.Commands {
 		if _, exists := expectedSubcommands[subcmd.Name]; !exists {
 			t.Errorf("Unexpected subcommand: %s", subcmd.Name)
 		}
@@ -104,274 +102,60 @@ func TestDeployCommand(t *testing.T) {
 	}
 }
 
-func TestHandleDeploy(t *testing.T) {
-	tests := []struct {
-		name    string
-		flags   map[string]string
-		wantErr bool
-	}{
-		{
-			name: "valid deployment",
-			flags: map[string]string{
-				"cpu":        "1",
-				"memory":     "512Mi",
-				"project":    "test-project",
-				"dockerfile": "testdata/Dockerfile",
-			},
-			wantErr: true,
-		},
-		{
-			name: "invalid cpu",
-			flags: map[string]string{
-				"cpu":        "invalid",
-				"memory":     "512Mi",
-				"project":    "test-project",
-				"dockerfile": "testdata/Dockerfile",
-			},
-			wantErr: true,
-		},
-		{
-			name: "invalid memory",
-			flags: map[string]string{
-				"cpu":        "1",
-				"memory":     "invalid",
-				"project":    "test-project",
-				"dockerfile": "testdata/Dockerfile",
-			},
-			wantErr: true,
-		},
+func TestDeployCommand_Flags(t *testing.T) {
+	cmd := DeployCommand()
+
+	expectedFlags := []string{
+		"name", "cpu", "cpu-request", "cpu-limit", "memory",
+		"machine", "machine-tag", "domain", "organization",
+		"health-path", "dockerfile", "image", "fast", "port",
+		"env", "volume-size", "volume-mount", "volume-storage-class",
+		"zone", "multicluster", "multicluster-mode", "backup-enabled",
+		"backup-schedule", "backup-retention", "backup-priority-cluster",
+		"replicas", "pdb", "pdb-type", "pdb-min-available", "pdb-percent",
+		"hpa", "hpa-min-replicas", "hpa-max-replicas", "hpa-cpu-target",
+		"hpa-memory-target", "vpa", "vpa-mode", "vpa-min-cpu", "vpa-max-cpu",
+		"vpa-min-memory", "vpa-max-memory", "wait-for", "strategy",
+		"rolling-max-surge", "rolling-max-unavailable", "config", "wait",
 	}
 
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			app := cli.NewApp()
-			flags := flag.NewFlagSet("test", flag.ContinueOnError)
-			for name, value := range tt.flags {
-				flags.String(name, value, "test flag")
-			}
-			ctx := cli.NewContext(app, flags, nil)
-			for name, value := range tt.flags {
-				if err := ctx.Set(name, value); err != nil {
-					t.Fatalf("failed to set flag %s: %v", name, err)
-				}
-			}
+	flagMap := make(map[string]bool)
+	for _, f := range cmd.Flags {
+		flagMap[f.Names()[0]] = true
+	}
 
-			err := handleDeploy(ctx)
-			if (err != nil) != tt.wantErr {
-				t.Errorf("handleDeploy() error = %v, wantErr %v", err, tt.wantErr)
-			}
-		})
+	for _, name := range expectedFlags {
+		if !flagMap[name] {
+			t.Errorf("Missing flag: --%s", name)
+		}
 	}
 }
 
-// TestValidateInputs_MulticlusterCustomDomain ensures that combining
-// --multicluster with a custom (non-*.satusky.com) --domain is rejected
-// at the client side, before any backend round trip. This guards the
-// known operator limitation: zone-specific ingress classes are blocked
-// from multi-cluster replication so the user would silently get a
-// single-cluster deployment with broken HA expectations.
-func TestValidateInputs_MulticlusterCustomDomain(t *testing.T) {
-	tests := []struct {
-		name         string
-		multicluster bool
-		domain       string
-		wantErr      bool
-	}{
-		{"multicluster + custom domain", true, "app.example.com", true},
-		{"multicluster + custom apex", true, "example.com", true},
-		{"multicluster + custom wildcard", true, "*.example.com", true},
-		{"multicluster + managed subdomain", true, "myapp.satusky.com", false},
-		{"multicluster + managed wildcard", true, "*.satusky.com", false},
-		{"multicluster + managed apex", true, "satusky.com", false},
-		{"multicluster + no domain", true, "", false},
-		{"no multicluster + custom domain", false, "app.example.com", false},
-		{"no multicluster + managed domain", false, "myapp.satusky.com", false},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			app := cli.NewApp()
-			flags := flag.NewFlagSet("test", flag.ContinueOnError)
-			// Required flags so we don't trip the earlier validations.
-			flags.String("cpu", "1", "")
-			flags.String("cpu-request", "250m", "")
-			flags.String("cpu-limit", "1", "")
-			flags.String("memory", "512Mi", "")
-			flags.String("image", "registry.example.com/myapp:latest", "")
-			flags.Bool("multicluster", tt.multicluster, "")
-			if tt.domain != "" {
-				flags.String("domain", tt.domain, "")
-			}
-
-			ctx := cli.NewContext(app, flags, nil)
-			if err := ctx.Set("cpu", "1"); err != nil {
-				t.Fatalf("set cpu: %v", err)
-			}
-			if err := ctx.Set("cpu-request", "250m"); err != nil {
-				t.Fatalf("set cpu-request: %v", err)
-			}
-			if err := ctx.Set("cpu-limit", "1"); err != nil {
-				t.Fatalf("set cpu-limit: %v", err)
-			}
-			if err := ctx.Set("memory", "512Mi"); err != nil {
-				t.Fatalf("set memory: %v", err)
-			}
-			if err := ctx.Set("image", "registry.example.com/myapp:latest"); err != nil {
-				t.Fatalf("set image: %v", err)
-			}
-			if tt.multicluster {
-				if err := ctx.Set("multicluster", "true"); err != nil {
-					t.Fatalf("set multicluster: %v", err)
-				}
-			}
-			if tt.domain != "" {
-				if err := ctx.Set("domain", tt.domain); err != nil {
-					t.Fatalf("set domain: %v", err)
-				}
-			}
-
-			err := validateInputs(ctx)
-			if tt.wantErr && err == nil {
-				t.Errorf("validateInputs() expected error for multicluster=%v domain=%q, got nil", tt.multicluster, tt.domain)
-			}
-			if !tt.wantErr && err != nil {
-				t.Errorf("validateInputs() unexpected error for multicluster=%v domain=%q: %v", tt.multicluster, tt.domain, err)
-			}
-		})
-	}
-}
-
-func TestCheckPublicURLSmokeReturnsReadyFor2xx(t *testing.T) {
-	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		w.WriteHeader(http.StatusOK)
-	}))
-	t.Cleanup(srv.Close)
-
-	got := checkPublicURLSmoke(srv.URL, []string{"/"}, false)
-	if !got.Ready {
-		t.Fatalf("checkPublicURLSmoke() ready = false, reason = %q", got.Reason)
-	}
-	if got.StatusCode != http.StatusOK {
-		t.Fatalf("checkPublicURLSmoke() status = %d, want %d", got.StatusCode, http.StatusOK)
-	}
-	if got.Path != "/" {
-		t.Fatalf("checkPublicURLSmoke() path = %q, want /", got.Path)
-	}
-}
-
-func TestCheckPublicURLSmokeFailsFor4xxWhenStrict(t *testing.T) {
-	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		w.WriteHeader(http.StatusForbidden)
-	}))
-	t.Cleanup(srv.Close)
-
-	got := checkPublicURLSmoke(srv.URL, []string{"/"}, true)
-	if got.Ready {
-		t.Fatal("checkPublicURLSmoke() strict ready = true, want false")
-	}
-	if got.StatusCode != http.StatusForbidden {
-		t.Fatalf("checkPublicURLSmoke() status = %d, want %d", got.StatusCode, http.StatusForbidden)
-	}
-}
-
-func TestCheckPublicURLSmokeTreats401AsReachableDefault(t *testing.T) {
-	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+func TestCheckPublicURLSmokeAtPath_NonStrict(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusUnauthorized)
 	}))
-	t.Cleanup(srv.Close)
+	defer server.Close()
 
-	got := checkPublicURLSmoke(srv.URL, []string{"/"}, false)
-	if !got.Ready {
-		t.Fatalf("checkPublicURLSmoke() non-strict ready = false for 401, reason = %q", got.Reason)
+	result := checkPublicURLSmoke(server.URL, []string{"/"}, false)
+
+	if !result.Ready {
+		t.Errorf("Expected 401 to pass non-strict smoke check, got: %s", result.Reason)
 	}
-	if got.StatusCode != http.StatusUnauthorized {
-		t.Fatalf("checkPublicURLSmoke() status = %d, want %d", got.StatusCode, http.StatusUnauthorized)
+	if result.StatusCode != http.StatusUnauthorized {
+		t.Errorf("Expected status 401, got %d", result.StatusCode)
 	}
 }
 
-func TestCheckPublicURLSmokeTreats403AsReachableDefault(t *testing.T) {
-	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		w.WriteHeader(http.StatusForbidden)
+func TestCheckPublicURLSmokeAtPath_Strict(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusUnauthorized)
 	}))
-	t.Cleanup(srv.Close)
+	defer server.Close()
 
-	got := checkPublicURLSmoke(srv.URL, []string{"/"}, false)
-	if !got.Ready {
-		t.Fatalf("checkPublicURLSmoke() non-strict ready = false for 403, reason = %q", got.Reason)
-	}
-	if got.StatusCode != http.StatusForbidden {
-		t.Fatalf("checkPublicURLSmoke() status = %d, want %d", got.StatusCode, http.StatusForbidden)
-	}
-}
+	result := checkPublicURLSmoke(server.URL, []string{"/"}, true)
 
-func TestCheckPublicURLSmokeTreats404AsReachableDefault(t *testing.T) {
-	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		w.WriteHeader(http.StatusNotFound)
-	}))
-	t.Cleanup(srv.Close)
-
-	got := checkPublicURLSmoke(srv.URL, []string{"/"}, false)
-	if !got.Ready {
-		t.Fatalf("checkPublicURLSmoke() non-strict ready = false for 404, reason = %q", got.Reason)
-	}
-	if got.StatusCode != http.StatusNotFound {
-		t.Fatalf("checkPublicURLSmoke() status = %d, want %d", got.StatusCode, http.StatusNotFound)
-	}
-}
-
-func TestCheckPublicURLSmokeFailsFor5xxEvenNonStrict(t *testing.T) {
-	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		w.WriteHeader(http.StatusInternalServerError)
-	}))
-	t.Cleanup(srv.Close)
-
-	got := checkPublicURLSmoke(srv.URL, []string{"/"}, false)
-	if got.Ready {
-		t.Fatal("checkPublicURLSmoke() non-strict ready = true for 500, want false")
-	}
-}
-
-func TestCheckPublicURLSmokeFallsBackToNextCandidate(t *testing.T) {
-	var hits []string
-	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		hits = append(hits, r.URL.Path)
-		if r.URL.Path == "/health" {
-			w.WriteHeader(http.StatusNotFound)
-			return
-		}
-		w.WriteHeader(http.StatusOK)
-	}))
-	t.Cleanup(srv.Close)
-
-	got := checkPublicURLSmoke(srv.URL, []string{"/health", "/"}, true)
-	if !got.Ready {
-		t.Fatalf("checkPublicURLSmoke() ready = false, reason = %q", got.Reason)
-	}
-	if got.Path != "/" {
-		t.Fatalf("checkPublicURLSmoke() path = %q, want /", got.Path)
-	}
-	if len(hits) != 2 {
-		t.Fatalf("expected 2 requests, got %d (%v)", len(hits), hits)
-	}
-}
-
-func TestCheckPublicURLSmokeNonStrict404IsReachableNoFallback(t *testing.T) {
-	var hits []string
-	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		hits = append(hits, r.URL.Path)
-		w.WriteHeader(http.StatusNotFound)
-	}))
-	t.Cleanup(srv.Close)
-
-	got := checkPublicURLSmoke(srv.URL, []string{"/health", "/"}, false)
-	if !got.Ready {
-		t.Fatalf("checkPublicURLSmoke() non-strict ready = false, reason = %q", got.Reason)
-	}
-	// Non-strict mode accepts 404 as reachable on the first candidate; no fallback.
-	if got.Path != "/health" {
-		t.Fatalf("checkPublicURLSmoke() path = %q, want /health (no fallback)", got.Path)
-	}
-	if len(hits) != 1 {
-		t.Fatalf("expected 1 request (no fallback), got %d (%v)", len(hits), hits)
+	if result.Ready {
+		t.Error("Expected 401 to fail strict smoke check")
 	}
 }

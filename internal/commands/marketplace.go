@@ -1,13 +1,14 @@
 package commands
 
 import (
+	"context"
 	"1ctl/internal/api"
-	"1ctl/internal/context"
+	satuskyctx "1ctl/internal/context"
 	"1ctl/internal/utils"
 	"fmt"
 	"strings"
 
-	"github.com/urfave/cli/v2"
+	"github.com/urfave/cli/v3"
 )
 
 func MarketplaceCommand() *cli.Command {
@@ -15,7 +16,7 @@ func MarketplaceCommand() *cli.Command {
 		Name:    "marketplace",
 		Aliases: []string{"market", "apps"},
 		Usage:   "Browse and deploy marketplace apps",
-		Subcommands: []*cli.Command{
+		Commands: []*cli.Command{
 			marketListCommand(),
 			marketGetCommand(),
 			marketDeployCommand(),
@@ -105,10 +106,10 @@ func marketDeployCommand() *cli.Command {
 	}
 }
 
-func handleMarketList(c *cli.Context) error {
-	limit := c.Int("limit")
-	offset := c.Int("offset")
-	sortBy := c.String("sort")
+func handleMarketList(ctx context.Context, cmd *cli.Command) error {
+	limit := cmd.Int("limit")
+	offset := cmd.Int("offset")
+	sortBy := cmd.String("sort")
 
 	apps, err := api.GetMarketplaceApps(limit, offset, sortBy)
 	if err != nil {
@@ -141,12 +142,12 @@ func handleMarketList(c *cli.Context) error {
 	return nil
 }
 
-func handleMarketGet(c *cli.Context) error {
-	if c.NArg() < 1 {
+func handleMarketGet(ctx context.Context, cmd *cli.Command) error {
+	if cmd.NArg() < 1 {
 		return utils.NewError("marketplace ID is required", nil)
 	}
 
-	marketplaceID := c.Args().First()
+	marketplaceID := cmd.Args().First()
 
 	app, err := api.GetMarketplaceApp(marketplaceID)
 	if err != nil {
@@ -186,26 +187,26 @@ func handleMarketGet(c *cli.Context) error {
 	return nil
 }
 
-func handleMarketDeploy(c *cli.Context) error {
-	if c.NArg() < 1 {
+func handleMarketDeploy(ctx context.Context, cmd *cli.Command) error {
+	if cmd.NArg() < 1 {
 		return utils.NewError("marketplace ID is required", nil)
 	}
 
-	namespace := context.GetCurrentNamespace()
+	namespace := satuskyctx.GetCurrentNamespace()
 	if namespace == "" {
 		return utils.NewError("namespace not found. Please run '1ctl auth login' first", nil)
 	}
 
-	marketplaceID := c.Args().First()
-	deployName := c.String("name")
-	hostnames := c.StringSlice("hostname")
-	cpuCores := c.String("cpu")
-	memory := c.String("memory")
-	domain := c.String("domain")
-	storageSize := c.String("storage-size")
-	storageClass := c.String("storage-class")
-	multicluster := c.Bool("multicluster")
-	multiclusterMode := c.String("multicluster-mode")
+	marketplaceID := cmd.Args().First()
+	deployName := cmd.String("name")
+	hostnames := cmd.StringSlice("hostname")
+	cpuCores := cmd.String("cpu")
+	memory := cmd.String("memory")
+	domain := cmd.String("domain")
+	storageSize := cmd.String("storage-size")
+	storageClass := cmd.String("storage-class")
+	multicluster := cmd.Bool("multicluster")
+	multiclusterMode := cmd.String("multicluster-mode")
 
 	req := api.MarketplaceDeployRequest{
 		DeploymentName: deployName,

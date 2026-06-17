@@ -1,18 +1,19 @@
 package commands
 
 import (
+	"context"
 	"fmt"
 	"net"
 	"strings"
 	"time"
 
 	"1ctl/internal/api"
-	"1ctl/internal/context"
+	satuskyctx "1ctl/internal/context"
 	"1ctl/internal/utils"
 	"1ctl/internal/validator"
 
 	"github.com/google/uuid"
-	"github.com/urfave/cli/v2"
+	"github.com/urfave/cli/v3"
 )
 
 type domainListEntry struct {
@@ -33,7 +34,7 @@ func DomainsCommand() *cli.Command {
 		Name:    "domains",
 		Aliases: []string{"domain"},
 		Usage:   "Add, list, and inspect custom domains for your apps",
-		Subcommands: []*cli.Command{
+		Commands: []*cli.Command{
 			domainsListCommand(),
 			domainsAddCommand(),
 			domainsRemoveCommand(),
@@ -141,8 +142,8 @@ func domainsSetupCommand() *cli.Command {
 	}
 }
 
-func handleDomainsList(c *cli.Context) error {
-	if _, err := context.GetCurrentNamespaceOrError(); err != nil {
+func handleDomainsList(ctx context.Context, cmd *cli.Command) error {
+	if _, err := satuskyctx.GetCurrentNamespaceOrError(); err != nil {
 		return err
 	}
 	ingresses, err := api.ListIngresses()
@@ -207,17 +208,17 @@ func handleDomainsList(c *cli.Context) error {
 	return nil
 }
 
-func handleDomainsAdd(c *cli.Context) error {
-	if c.NArg() < 1 {
+func handleDomainsAdd(ctx context.Context, cmd *cli.Command) error {
+	if cmd.NArg() < 1 {
 		return utils.NewError("domain is required. Usage: 1ctl domains add <domain> --app <app>", nil)
 	}
-	domain, err := normalizeDomainArg(c.Args().First())
+	domain, err := normalizeDomainArg(cmd.Args().First())
 	if err != nil {
 		return err
 	}
-	appName := c.String("app")
+	appName := cmd.String("app")
 
-	namespace, err := context.GetCurrentNamespaceOrError()
+	namespace, err := satuskyctx.GetCurrentNamespaceOrError()
 	if err != nil {
 		return err
 	}
@@ -244,7 +245,7 @@ func handleDomainsAdd(c *cli.Context) error {
 		return utils.NewError(fmt.Sprintf("no service found for app %q — has the app been deployed?", appName), nil)
 	}
 
-	port, err := api.SafeInt32(c.Int("port"))
+	port, err := api.SafeInt32(cmd.Int("port"))
 	if err != nil {
 		return utils.NewError("invalid --port value", err)
 	}
@@ -255,7 +256,7 @@ func handleDomainsAdd(c *cli.Context) error {
 	// aliases. Platform-owned hostnames keep the legacy primary route behavior.
 	dnsCfg := api.DnsConfigDefault
 	isSatuskyHost := strings.HasSuffix(strings.ToLower(domain), ".satusky.com") || strings.ToLower(domain) == "satusky.com"
-	if c.Bool("custom-dns") || !isSatuskyHost {
+	if cmd.Bool("custom-dns") || !isSatuskyHost {
 		dnsCfg = api.DnsConfigCustom
 	}
 
@@ -287,14 +288,14 @@ func handleDomainsAdd(c *cli.Context) error {
 		alias, err := api.AttachDomain(ing.IngressID.String(), api.AttachDomainRequest{
 			OrgID:           orgID,
 			DomainName:      domain,
-			WithWWWRedirect: c.Bool("with-www"),
+			WithWWWRedirect: cmd.Bool("with-www"),
 		})
 		if err != nil {
 			return utils.NewError(fmt.Sprintf("failed to add domain: %s", err.Error()), nil)
 		}
 		utils.PrintSuccess("Domain %s attached to app %s", alias.DomainName, appName)
 
-		if c.Bool("wait") && !c.Bool("no-wait") && !flagIsSetInArgs(c, "no-wait") {
+		if cmd.Bool("wait") && !cmd.Bool("no-wait") && !cmd.IsSet("no-wait") {
 			if err := waitForDomainLive(ing.IngressID.String(), domain, 3*time.Minute); err != nil {
 				utils.PrintWarning("Domain is attached but not yet live: %s", err.Error())
 				utils.PrintInfo("Check status later: 1ctl domains check %s --probe", domain)
@@ -337,17 +338,17 @@ func handleDomainsAdd(c *cli.Context) error {
 	return nil
 }
 
-func handleDomainsRemove(c *cli.Context) error {
-	if c.NArg() < 1 {
+func handleDomainsRemove(ctx context.Context, cmd *cli.Command) error {
+	if cmd.NArg() < 1 {
 		return utils.NewError("domain is required. Usage: 1ctl domains remove <domain> --app <app>", nil)
 	}
-	domain, err := normalizeDomainArg(c.Args().First())
+	domain, err := normalizeDomainArg(cmd.Args().First())
 	if err != nil {
 		return err
 	}
-	appName := c.String("app")
+	appName := cmd.String("app")
 
-	if _, err := context.GetCurrentNamespaceOrError(); err != nil {
+	if _, err := satuskyctx.GetCurrentNamespaceOrError(); err != nil {
 		return err
 	}
 
@@ -358,7 +359,7 @@ func handleDomainsRemove(c *cli.Context) error {
 	if ing.AppLabel != appName {
 		return utils.NewError(fmt.Sprintf("domain %q belongs to app %q, not %q — refusing to remove without explicit match", domain, ing.AppLabel, appName), nil)
 	}
-	if !utils.Confirm(fmt.Sprintf("Remove domain %s from app %s?", domain, appName), c.Bool("yes") || flagIsSetInArgs(c, "yes") || flagIsSetInArgs(c, "y")) {
+	if !utils.Confirm(fmt.Sprintf("Remove domain %s from app %s?", domain, appName), cmd.Bool("yes") || cmd.IsSet("yes") || cmd.IsSet("y")) {
 		fmt.Println("Aborted.")
 		return nil
 	}
@@ -373,11 +374,11 @@ func handleDomainsRemove(c *cli.Context) error {
 	return nil
 }
 
-func handleDomainsCheck(c *cli.Context) error {
-	if c.NArg() < 1 {
+func handleDomainsCheck(ctx context.Context, cmd *cli.Command) error {
+	if cmd.NArg() < 1 {
 		return utils.NewError("domain is required. Usage: 1ctl domains check <domain>", nil)
 	}
-	domain, err := normalizeDomainArg(c.Args().First())
+	domain, err := normalizeDomainArg(cmd.Args().First())
 	if err != nil {
 		return err
 	}
@@ -387,7 +388,7 @@ func handleDomainsCheck(c *cli.Context) error {
 		return printDetachedDomainStatus(domain, err)
 	}
 
-	probe := c.Bool("probe") || flagIsSetInArgs(c, "probe")
+	probe := cmd.Bool("probe") || cmd.IsSet("probe")
 	status, err := api.GetDomainStatus(ing.IngressID.String(), domain, probe)
 	if err != nil {
 		return utils.NewError(fmt.Sprintf("failed to check domain %q: %s", domain, err.Error()), nil)
@@ -401,11 +402,11 @@ func handleDomainsCheck(c *cli.Context) error {
 	return nil
 }
 
-func handleDomainsSetup(c *cli.Context) error {
-	if c.NArg() < 1 {
+func handleDomainsSetup(ctx context.Context, cmd *cli.Command) error {
+	if cmd.NArg() < 1 {
 		return utils.NewError("domain is required. Usage: 1ctl domains setup <domain>", nil)
 	}
-	domain, err := normalizeDomainArg(c.Args().First())
+	domain, err := normalizeDomainArg(cmd.Args().First())
 	if err != nil {
 		return err
 	}
@@ -636,7 +637,7 @@ func normalizeDomainArg(domain string) (string, error) {
 }
 
 func currentOrgUUID() (uuid.UUID, error) {
-	orgID := strings.TrimSpace(context.GetCurrentOrgID())
+	orgID := strings.TrimSpace(satuskyctx.GetCurrentOrgID())
 	if orgID == "" {
 		return uuid.Nil, utils.NewError("no current organization ID is set. Run: 1ctl org switch --id <org-id>", nil)
 	}

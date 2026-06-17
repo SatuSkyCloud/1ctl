@@ -1,13 +1,14 @@
 package commands
 
 import (
+	"context"
 	"1ctl/internal/api"
-	"1ctl/internal/context"
+	satuskyctx "1ctl/internal/context"
 	"1ctl/internal/utils"
 	"fmt"
 
 	"github.com/google/uuid"
-	"github.com/urfave/cli/v2"
+	"github.com/urfave/cli/v3"
 )
 
 func OrgCommand() *cli.Command {
@@ -15,7 +16,7 @@ func OrgCommand() *cli.Command {
 		Name:    "org",
 		Aliases: []string{"organization"},
 		Usage:   "Manage organizations",
-		Subcommands: []*cli.Command{
+		Commands: []*cli.Command{
 			orgListCommand(),
 			orgCurrentCommand(),
 			orgSwitchCommand(),
@@ -92,7 +93,7 @@ func orgTeamCommand() *cli.Command {
 	return &cli.Command{
 		Name:  "team",
 		Usage: "Manage organization team",
-		Subcommands: []*cli.Command{
+		Commands: []*cli.Command{
 			{
 				Name:   "list",
 				Usage:  "List team members",
@@ -138,7 +139,7 @@ func orgTeamCommand() *cli.Command {
 	}
 }
 
-func handleOrgList(c *cli.Context) error {
+func handleOrgList(ctx context.Context, cmd *cli.Command) error {
 	orgs, err := api.GetUserOrganizations()
 	if err != nil {
 		return utils.NewError(fmt.Sprintf("failed to list organizations: %s", err.Error()), nil)
@@ -149,7 +150,7 @@ func handleOrgList(c *cli.Context) error {
 		return nil
 	}
 
-	currentOrgID := context.GetCurrentOrgID()
+	currentOrgID := satuskyctx.GetCurrentOrgID()
 
 	utils.PrintHeader("Organizations")
 	for _, org := range orgs {
@@ -168,9 +169,9 @@ func handleOrgList(c *cli.Context) error {
 	return nil
 }
 
-func handleOrgCurrent(c *cli.Context) error {
-	orgName := context.GetCurrentOrgName()
-	orgID := context.GetCurrentOrgID()
+func handleOrgCurrent(ctx context.Context, cmd *cli.Command) error {
+	orgName := satuskyctx.GetCurrentOrgName()
+	orgID := satuskyctx.GetCurrentOrgID()
 
 	if orgName == "" {
 		return utils.NewError("no organization set. Please run '1ctl auth login' first", nil)
@@ -182,13 +183,13 @@ func handleOrgCurrent(c *cli.Context) error {
 	return nil
 }
 
-func handleOrgSwitch(c *cli.Context) error {
-	orgID := c.String("org-id")
-	orgName := c.String("org-name")
+func handleOrgSwitch(ctx context.Context, cmd *cli.Command) error {
+	orgID := cmd.String("org-id")
+	orgName := cmd.String("org-name")
 
 	// Accept positional arg as org-id or org-name
 	if orgID == "" && orgName == "" {
-		if arg := c.Args().First(); arg != "" {
+		if arg := cmd.Args().First(); arg != "" {
 			// Try as UUID first, fall back to name
 			if _, err := uuid.Parse(arg); err == nil {
 				orgID = arg
@@ -236,7 +237,7 @@ func handleOrgSwitch(c *cli.Context) error {
 	if org.Namespace == "" {
 		return utils.NewError(fmt.Sprintf("organization '%s' has no namespace assigned — contact support", org.OrganizationName), nil)
 	}
-	if err := context.SetCurrentOrganization(org.OrganizationID.String(), org.OrganizationName, org.Namespace); err != nil {
+	if err := satuskyctx.SetCurrentOrganization(org.OrganizationID.String(), org.OrganizationName, org.Namespace); err != nil {
 		return utils.NewError(fmt.Sprintf("failed to switch organization: %s", err.Error()), nil)
 	}
 
@@ -246,9 +247,9 @@ func handleOrgSwitch(c *cli.Context) error {
 	return nil
 }
 
-func handleOrgCreate(c *cli.Context) error {
-	name := c.String("name")
-	description := c.String("description")
+func handleOrgCreate(ctx context.Context, cmd *cli.Command) error {
+	name := cmd.String("name")
+	description := cmd.String("description")
 
 	req := api.CreateOrganizationRequest{
 		Name:        name,
@@ -269,12 +270,12 @@ func handleOrgCreate(c *cli.Context) error {
 	return nil
 }
 
-func handleOrgDelete(c *cli.Context) error {
-	if c.NArg() < 1 {
+func handleOrgDelete(ctx context.Context, cmd *cli.Command) error {
+	if cmd.NArg() < 1 {
 		return utils.NewError("organization ID is required", nil)
 	}
 
-	orgID := c.Args().First()
+	orgID := cmd.Args().First()
 
 	if err := api.DeleteOrganization(orgID); err != nil {
 		return utils.NewError(fmt.Sprintf("failed to delete organization: %s", err.Error()), nil)
@@ -284,8 +285,8 @@ func handleOrgDelete(c *cli.Context) error {
 	return nil
 }
 
-func handleOrgTeamList(c *cli.Context) error {
-	orgID := context.GetCurrentOrgID()
+func handleOrgTeamList(ctx context.Context, cmd *cli.Command) error {
+	orgID := satuskyctx.GetCurrentOrgID()
 	if orgID == "" {
 		return utils.NewError("organization ID not found. Please run '1ctl auth login' first", nil)
 	}
@@ -316,14 +317,14 @@ func handleOrgTeamList(c *cli.Context) error {
 	return nil
 }
 
-func handleOrgTeamAdd(c *cli.Context) error {
-	orgID := context.GetCurrentOrgID()
+func handleOrgTeamAdd(ctx context.Context, cmd *cli.Command) error {
+	orgID := satuskyctx.GetCurrentOrgID()
 	if orgID == "" {
 		return utils.NewError("organization ID not found. Please run '1ctl auth login' first", nil)
 	}
 
-	email := c.String("email")
-	role := c.String("role")
+	email := cmd.String("email")
+	role := cmd.String("role")
 
 	req := api.AddTeamMemberRequest{
 		Email: email,
@@ -342,18 +343,18 @@ func handleOrgTeamAdd(c *cli.Context) error {
 	return nil
 }
 
-func handleOrgTeamRole(c *cli.Context) error {
-	if c.NArg() < 1 {
+func handleOrgTeamRole(ctx context.Context, cmd *cli.Command) error {
+	if cmd.NArg() < 1 {
 		return utils.NewError("org-user ID is required", nil)
 	}
 
-	orgID := context.GetCurrentOrgID()
+	orgID := satuskyctx.GetCurrentOrgID()
 	if orgID == "" {
 		return utils.NewError("organization ID not found. Please run '1ctl auth login' first", nil)
 	}
 
-	orgUserID := c.Args().First()
-	role := c.String("role")
+	orgUserID := cmd.Args().First()
+	role := cmd.String("role")
 
 	if err := api.UpdateTeamMemberRole(orgID, orgUserID, role); err != nil {
 		return utils.NewError(fmt.Sprintf("failed to update team member role: %s", err.Error()), nil)
@@ -363,17 +364,17 @@ func handleOrgTeamRole(c *cli.Context) error {
 	return nil
 }
 
-func handleOrgTeamRemove(c *cli.Context) error {
-	if c.NArg() < 1 {
+func handleOrgTeamRemove(ctx context.Context, cmd *cli.Command) error {
+	if cmd.NArg() < 1 {
 		return utils.NewError("org-user ID is required", nil)
 	}
 
-	orgID := context.GetCurrentOrgID()
+	orgID := satuskyctx.GetCurrentOrgID()
 	if orgID == "" {
 		return utils.NewError("organization ID not found. Please run '1ctl auth login' first", nil)
 	}
 
-	orgUserID := c.Args().First()
+	orgUserID := cmd.Args().First()
 
 	if err := api.RemoveTeamMember(orgID, orgUserID); err != nil {
 		return utils.NewError(fmt.Sprintf("failed to remove team member: %s", err.Error()), nil)

@@ -1,21 +1,22 @@
 package commands
 
 import (
+	"context"
 	"1ctl/internal/api"
-	"1ctl/internal/context"
+	satuskyctx "1ctl/internal/context"
 	"1ctl/internal/utils"
 	"fmt"
 	"strings"
 
 	"github.com/google/uuid"
-	"github.com/urfave/cli/v2"
+	"github.com/urfave/cli/v3"
 )
 
 func SecretCommand() *cli.Command {
 	return &cli.Command{
 		Name:  "secret",
 		Usage: "Manage secrets",
-		Subcommands: []*cli.Command{
+		Commands: []*cli.Command{
 			{
 				Name:  "create",
 				Usage: "Create a new secret",
@@ -59,8 +60,8 @@ func SecretCommand() *cli.Command {
 	}
 }
 
-func handleCreateSecret(c *cli.Context) error {
-	deploymentIDStr, err := resolveDeploymentID(c.String("deployment-id"), c.String("config"))
+func handleCreateSecret(ctx context.Context, cmd *cli.Command) error {
+	deploymentIDStr, err := resolveDeploymentID(cmd.String("deployment-id"), cmd.String("config"))
 	if err != nil {
 		return err
 	}
@@ -70,7 +71,7 @@ func handleCreateSecret(c *cli.Context) error {
 		return utils.NewError(fmt.Sprintf("invalid deployment-id: %s", err.Error()), nil)
 	}
 
-	envVars := c.StringSlice("kv")
+	envVars := cmd.StringSlice("kv")
 	keyValues := make([]api.KeyValuePair, 0, len(envVars))
 
 	for _, kv := range envVars {
@@ -84,7 +85,7 @@ func handleCreateSecret(c *cli.Context) error {
 		})
 	}
 
-	appLabel := c.String("name")
+	appLabel := cmd.String("name")
 	if appLabel == "" {
 		deployment, err := api.GetDeployment(deploymentIDStr)
 		if err != nil {
@@ -96,7 +97,7 @@ func handleCreateSecret(c *cli.Context) error {
 	secret := api.Secret{
 		DeploymentID: deploymentID,
 		AppLabel:     appLabel,
-		Namespace:    context.GetCurrentNamespace(),
+		Namespace:    satuskyctx.GetCurrentNamespace(),
 		KeyValues:    keyValues,
 	}
 
@@ -113,7 +114,7 @@ func handleCreateSecret(c *cli.Context) error {
 	return nil
 }
 
-func handleListSecrets(c *cli.Context) error {
+func handleListSecrets(ctx context.Context, cmd *cli.Command) error {
 	secrets, err := api.ListSecrets()
 	if err != nil {
 		return utils.NewError(fmt.Sprintf("failed to list secrets: %s", err.Error()), nil)
@@ -142,10 +143,10 @@ func handleListSecrets(c *cli.Context) error {
 	return nil
 }
 
-func handleSecretUnset(c *cli.Context) error {
-	key := c.String("key")
+func handleSecretUnset(ctx context.Context, cmd *cli.Command) error {
+	key := cmd.String("key")
 
-	deploymentID, err := resolveDeploymentID(c.String("deployment-id"), c.String("config"))
+	deploymentID, err := resolveDeploymentID(cmd.String("deployment-id"), cmd.String("config"))
 	if err != nil {
 		return utils.NewError(fmt.Sprintf("failed to resolve deployment: %s", err.Error()), nil)
 	}

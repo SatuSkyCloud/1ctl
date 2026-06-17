@@ -11,7 +11,7 @@ func TestVolumesCommandStructure(t *testing.T) {
 		t.Errorf("Aliases = %v, want to include 'volume'", cmd.Aliases)
 	}
 	wantSubs := []string{"list", "inspect", "detach", "destroy"}
-	got := subNames(cmd.Subcommands)
+	got := subNames(cmd.Commands)
 	for _, w := range wantSubs {
 		if !containsString(got, w) {
 			t.Errorf("Subcommands missing %q (have %v)", w, got)

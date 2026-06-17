@@ -1,8 +1,9 @@
 package commands
 
 import (
+	"context"
 	"1ctl/internal/api"
-	"1ctl/internal/context"
+	satuskyctx "1ctl/internal/context"
 	"1ctl/internal/utils"
 	"bufio"
 	"fmt"
@@ -10,7 +11,7 @@ import (
 	"strings"
 	"syscall"
 
-	"github.com/urfave/cli/v2"
+	"github.com/urfave/cli/v3"
 	"golang.org/x/term"
 )
 
@@ -18,7 +19,7 @@ func UserCommand() *cli.Command {
 	return &cli.Command{
 		Name:  "user",
 		Usage: "Manage user account",
-		Subcommands: []*cli.Command{
+		Commands: []*cli.Command{
 			userMeCommand(),
 			userUpdateCommand(),
 			userPasswordCommand(),
@@ -74,7 +75,7 @@ func userSessionsCommand() *cli.Command {
 	return &cli.Command{
 		Name:  "sessions",
 		Usage: "Manage sessions",
-		Subcommands: []*cli.Command{
+		Commands: []*cli.Command{
 			{
 				Name:   "revoke",
 				Usage:  "Revoke all sessions",
@@ -84,7 +85,7 @@ func userSessionsCommand() *cli.Command {
 	}
 }
 
-func handleUserMe(c *cli.Context) error {
+func handleUserMe(ctx context.Context, cmd *cli.Command) error {
 	user, err := api.GetCurrentUser()
 	if err != nil {
 		return utils.NewError(fmt.Sprintf("failed to get user profile: %s", err.Error()), nil)
@@ -108,9 +109,9 @@ func handleUserMe(c *cli.Context) error {
 	return nil
 }
 
-func handleUserUpdate(c *cli.Context) error {
-	name := c.String("name")
-	email := c.String("email")
+func handleUserUpdate(ctx context.Context, cmd *cli.Command) error {
+	name := cmd.String("name")
+	email := cmd.String("email")
 
 	if name == "" && email == "" {
 		return utils.NewError("at least one of --name or --email is required", nil)
@@ -141,7 +142,7 @@ func handleUserUpdate(c *cli.Context) error {
 	return nil
 }
 
-func handleUserPassword(c *cli.Context) error {
+func handleUserPassword(ctx context.Context, cmd *cli.Command) error {
 	reader := bufio.NewReader(os.Stdin)
 
 	fmt.Print("Current password: ")
@@ -201,8 +202,8 @@ func handleUserPassword(c *cli.Context) error {
 	return nil
 }
 
-func handleUserPermissions(c *cli.Context) error {
-	orgID := context.GetCurrentOrgID()
+func handleUserPermissions(ctx context.Context, cmd *cli.Command) error {
+	orgID := satuskyctx.GetCurrentOrgID()
 	if orgID == "" {
 		return utils.NewError("organization ID not found. Please run '1ctl auth login' first", nil)
 	}
@@ -224,7 +225,7 @@ func handleUserPermissions(c *cli.Context) error {
 	return nil
 }
 
-func handleUserSessionsRevoke(c *cli.Context) error {
+func handleUserSessionsRevoke(ctx context.Context, cmd *cli.Command) error {
 	if err := api.RevokeAllSessions(); err != nil {
 		return utils.NewError(fmt.Sprintf("failed to revoke sessions: %s", err.Error()), nil)
 	}

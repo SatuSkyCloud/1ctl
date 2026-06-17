@@ -1,6 +1,7 @@
 package commands
 
 import (
+	"context"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -9,7 +10,7 @@ import (
 	"1ctl/internal/config"
 	"1ctl/internal/utils"
 
-	"github.com/urfave/cli/v2"
+	"github.com/urfave/cli/v3"
 )
 
 func InitCommand() *cli.Command {
@@ -26,8 +27,8 @@ func InitCommand() *cli.Command {
 	}
 }
 
-func handleInit(c *cli.Context) error {
-	configArg := c.String("config")
+func handleInit(ctx context.Context, cmd *cli.Command) error {
+	configArg := cmd.String("config")
 	filename := config.DefaultConfigFile
 	if configArg != "" && !strings.HasSuffix(configArg, ".toml") {
 		filename = fmt.Sprintf("satusky.%s.toml", configArg)

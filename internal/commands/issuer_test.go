@@ -1,11 +1,7 @@
 package commands
 
 import (
-	"flag"
 	"testing"
-
-	"github.com/google/uuid"
-	"github.com/urfave/cli/v2"
 )
 
 func TestIssuerCommand(t *testing.T) {
@@ -17,94 +13,29 @@ func TestIssuerCommand(t *testing.T) {
 	}
 
 	// Check subcommands
-	expectedSubcommands := map[string]bool{
+	expectedCommands := map[string]bool{
 		"create": false,
 		"list":   false,
 		"delete": false,
 	}
 
-	for _, subcmd := range cmd.Subcommands {
-		if _, exists := expectedSubcommands[subcmd.Name]; !exists {
-			t.Errorf("Unexpected subcommand: %s", subcmd.Name)
+	for _, subcmd := range cmd.Commands {
+		if _, exists := expectedCommands[subcmd.Name]; !exists {
+			t.Errorf("Unexpected command: %s", subcmd.Name)
 		}
-		expectedSubcommands[subcmd.Name] = true
+		expectedCommands[subcmd.Name] = true
 	}
 
-	for name, found := range expectedSubcommands {
+	for name, found := range expectedCommands {
 		if !found {
-			t.Errorf("Missing subcommand: %s", name)
+			t.Errorf("Missing command: %s", name)
 		}
 	}
 }
 
-func TestHandleCreateIssuer(t *testing.T) {
-	// Skip this test in CI - it requires API authentication
-	// This is an integration test that should run with proper auth setup
-	t.Skip("Skipping API-dependent test - run with integration tests")
-
-	tests := []struct {
-		name    string
-		flags   map[string]string
-		wantErr bool
-	}{
-		{
-			name: "valid issuer",
-			flags: map[string]string{
-				"deployment-id": uuid.New().String(),
-				"email":         "test@example.com",
-				"environment":   "staging",
-			},
-			wantErr: false,
-		},
-		{
-			name: "missing deployment-id",
-			flags: map[string]string{
-				"email":       "test@example.com",
-				"environment": "staging",
-			},
-			wantErr: true,
-		},
-		{
-			name: "invalid email",
-			flags: map[string]string{
-				"deployment-id": uuid.New().String(),
-				"email":         "invalid-email",
-				"environment":   "staging",
-			},
-			wantErr: true,
-		},
-		{
-			name: "invalid environment",
-			flags: map[string]string{
-				"deployment-id": uuid.New().String(),
-				"email":         "test@example.com",
-				"environment":   "invalid",
-			},
-			wantErr: true,
-		},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			app := cli.NewApp()
-			flags := flag.NewFlagSet("test", flag.ContinueOnError)
-
-			// Set up flags
-			for name, value := range tt.flags {
-				flags.String(name, value, "test flag")
-			}
-
-			ctx := cli.NewContext(app, flags, nil)
-			for name, value := range tt.flags {
-				if err := ctx.Set(name, value); err != nil {
-					t.Fatalf("failed to set flag %s: %v", name, err)
-				}
-			}
-
-			err := handleCreateIssuer(ctx)
-			if (err != nil) != tt.wantErr {
-				t.Errorf("handleCreateIssuer() error = %v, wantErr %v", err, tt.wantErr)
-			}
-		})
+func TestIssuerCommand_Structure(t *testing.T) {
+	cmd := IssuerCommand()
+	if cmd == nil {
+		t.Fatal("IssuerCommand returned nil")
 	}
 }

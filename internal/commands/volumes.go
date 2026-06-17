@@ -1,12 +1,13 @@
 package commands
 
 import (
+	"context"
 	"fmt"
 
 	"1ctl/internal/api"
 	"1ctl/internal/utils"
 
-	"github.com/urfave/cli/v2"
+	"github.com/urfave/cli/v3"
 )
 
 func VolumesCommand() *cli.Command {
@@ -14,7 +15,7 @@ func VolumesCommand() *cli.Command {
 		Name:    "volumes",
 		Aliases: []string{"volume"},
 		Usage:   "Inspect, detach, and destroy persistent volumes",
-		Subcommands: []*cli.Command{
+		Commands: []*cli.Command{
 			volumesListCommand(),
 			volumesInspectCommand(),
 			volumesDetachCommand(),
@@ -70,8 +71,8 @@ func volumesDestroyCommand() *cli.Command {
 	}
 }
 
-func handleVolumesList(c *cli.Context) error {
-	deploymentID, err := resolveDeploymentID(c.String("deployment-id"), c.String("config"))
+func handleVolumesList(ctx context.Context, cmd *cli.Command) error {
+	deploymentID, err := resolveDeploymentID(cmd.String("deployment-id"), cmd.String("config"))
 	if err != nil {
 		return err
 	}
@@ -104,8 +105,8 @@ func handleVolumesList(c *cli.Context) error {
 	return nil
 }
 
-func handleVolumesInspect(c *cli.Context) error {
-	volumeID, err := requiredVolumeID(c, "inspect")
+func handleVolumesInspect(ctx context.Context, cmd *cli.Command) error {
+	volumeID, err := requiredVolumeID(cmd, "inspect")
 	if err != nil {
 		return err
 	}
@@ -118,12 +119,12 @@ func handleVolumesInspect(c *cli.Context) error {
 	return nil
 }
 
-func handleVolumesDetach(c *cli.Context) error {
-	volumeID, err := requiredVolumeID(c, "detach")
+func handleVolumesDetach(ctx context.Context, cmd *cli.Command) error {
+	volumeID, err := requiredVolumeID(cmd, "detach")
 	if err != nil {
 		return err
 	}
-	if !utils.Confirm(fmt.Sprintf("Detach volume %s? The PVC will be retained.", volumeID), c.Bool("yes")) {
+	if !utils.Confirm(fmt.Sprintf("Detach volume %s? The PVC will be retained.", volumeID), cmd.Bool("yes")) {
 		fmt.Println("Aborted.")
 		return nil
 	}
@@ -137,12 +138,12 @@ func handleVolumesDetach(c *cli.Context) error {
 	return nil
 }
 
-func handleVolumesDestroy(c *cli.Context) error {
-	volumeID, err := requiredVolumeID(c, "destroy")
+func handleVolumesDestroy(ctx context.Context, cmd *cli.Command) error {
+	volumeID, err := requiredVolumeID(cmd, "destroy")
 	if err != nil {
 		return err
 	}
-	if !utils.Confirm(fmt.Sprintf("Destroy volume %s? This detaches the volume and deletes its PVC.", volumeID), c.Bool("yes")) {
+	if !utils.Confirm(fmt.Sprintf("Destroy volume %s? This detaches the volume and deletes its PVC.", volumeID), cmd.Bool("yes")) {
 		fmt.Println("Aborted.")
 		return nil
 	}
@@ -156,11 +157,11 @@ func handleVolumesDestroy(c *cli.Context) error {
 	return nil
 }
 
-func requiredVolumeID(c *cli.Context, action string) (string, error) {
-	if c.NArg() < 1 {
+func requiredVolumeID(cmd *cli.Command, action string) (string, error) {
+	if cmd.NArg() < 1 {
 		return "", utils.NewError(fmt.Sprintf("volume ID is required. Usage: 1ctl volumes %s <volume-id>", action), nil)
 	}
-	return c.Args().First(), nil
+	return cmd.Args().First(), nil
 }
 
 func printVolumeLifecycle(status *api.VolumeLifecycleStatus) {

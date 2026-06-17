@@ -1,15 +1,15 @@
 package commands
 
 import (
+	"context"
 	"fmt"
-	"strconv"
 	"strings"
 
 	"1ctl/internal/api"
-	"1ctl/internal/context"
+	satuskyctx "1ctl/internal/context"
 	"1ctl/internal/utils"
 
-	"github.com/urfave/cli/v2"
+	"github.com/urfave/cli/v3"
 )
 
 func domainsAvailableCommand() *cli.Command {
@@ -41,7 +41,7 @@ func domainsManagedCommand() *cli.Command {
 	return &cli.Command{
 		Name:  "managed",
 		Usage: "Manage domains owned or delegated to SatuSky DNS",
-		Subcommands: []*cli.Command{
+		Commands: []*cli.Command{
 			{
 				Name:   "list",
 				Usage:  "List managed domains",
@@ -102,7 +102,7 @@ func domainsDNSCommand() *cli.Command {
 	return &cli.Command{
 		Name:  "dns",
 		Usage: "Manage DNS records for SatuSky-managed domains",
-		Subcommands: []*cli.Command{
+		Commands: []*cli.Command{
 			{
 				Name:      "list",
 				Usage:     "List DNS records",
@@ -172,23 +172,23 @@ func domainsPurchaseStatusCommand() *cli.Command {
 	}
 }
 
-func handleDomainsAvailable(c *cli.Context) error {
-	if c.NArg() == 0 {
+func handleDomainsAvailable(ctx context.Context, cmd *cli.Command) error {
+	if cmd.NArg() == 0 {
 		return utils.NewError("at least one domain is required", nil)
 	}
 	userID, orgID, err := domainAPIScope()
 	if err != nil {
 		return err
 	}
-	domains := make([]string, 0, c.NArg())
-	for i := 0; i < c.NArg(); i++ {
-		domain, err := normalizeDomainArg(c.Args().Get(i))
+	domains := make([]string, 0, cmd.NArg())
+	for i := 0; i < cmd.NArg(); i++ {
+		domain, err := normalizeDomainArg(cmd.Args().Get(i))
 		if err != nil {
 			return err
 		}
 		domains = append(domains, domain)
 	}
-	results, err := api.CheckDomainAvailability(userID, orgID, api.DomainCheckRequest{Domains: domains, WithPrice: c.Bool("price")})
+	results, err := api.CheckDomainAvailability(userID, orgID, api.DomainCheckRequest{Domains: domains, WithPrice: cmd.Bool("price")})
 	if err != nil {
 		return utils.NewError(fmt.Sprintf("failed to check availability: %s", err.Error()), nil)
 	}
@@ -207,8 +207,8 @@ func handleDomainsAvailable(c *cli.Context) error {
 	return nil
 }
 
-func handleDomainsSearch(c *cli.Context) error {
-	if c.NArg() < 1 {
+func handleDomainsSearch(ctx context.Context, cmd *cli.Command) error {
+	if cmd.NArg() < 1 {
 		return utils.NewError("name is required. Usage: 1ctl domains search <name>", nil)
 	}
 	userID, orgID, err := domainAPIScope()
@@ -216,9 +216,9 @@ func handleDomainsSearch(c *cli.Context) error {
 		return err
 	}
 	results, err := api.SearchDomains(userID, orgID, api.DomainSearchRequest{
-		DomainName: c.Args().First(),
-		Extensions: c.StringSlice("tld"),
-		Period:     c.Int("period"),
+		DomainName: cmd.Args().First(),
+		Extensions: cmd.StringSlice("tld"),
+		Period:     cmd.Int("period"),
 	})
 	if err != nil {
 		return utils.NewError(fmt.Sprintf("failed to search domains: %s", err.Error()), nil)
@@ -239,7 +239,7 @@ func handleDomainsSearch(c *cli.Context) error {
 	return nil
 }
 
-func handleManagedDomainsList(c *cli.Context) error {
+func handleManagedDomainsList(ctx context.Context, cmd *cli.Command) error {
 	userID, orgID, err := domainAPIScope()
 	if err != nil {
 		return err
@@ -255,19 +255,19 @@ func handleManagedDomainsList(c *cli.Context) error {
 	return nil
 }
 
-func handleManagedDomainsAdd(c *cli.Context) error {
-	if c.NArg() < 1 {
+func handleManagedDomainsAdd(ctx context.Context, cmd *cli.Command) error {
+	if cmd.NArg() < 1 {
 		return utils.NewError("domain is required. Usage: 1ctl domains managed add <domain>", nil)
 	}
 	userID, orgID, err := domainAPIScope()
 	if err != nil {
 		return err
 	}
-	domain, err := normalizeDomainArg(c.Args().First())
+	domain, err := normalizeDomainArg(cmd.Args().First())
 	if err != nil {
 		return err
 	}
-	created, ns, err := api.CreateManagedDomain(userID, orgID, api.DomainCreateRequest{Name: domain, IPAddress: c.String("ip")})
+	created, ns, err := api.CreateManagedDomain(userID, orgID, api.DomainCreateRequest{Name: domain, IPAddress: cmd.String("ip")})
 	if err != nil {
 		return utils.NewError(fmt.Sprintf("failed to add managed domain: %s", err.Error()), nil)
 	}
@@ -280,15 +280,15 @@ func handleManagedDomainsAdd(c *cli.Context) error {
 	return nil
 }
 
-func handleManagedDomainsVerify(c *cli.Context) error {
-	if c.NArg() < 1 {
+func handleManagedDomainsVerify(ctx context.Context, cmd *cli.Command) error {
+	if cmd.NArg() < 1 {
 		return utils.NewError("domain is required. Usage: 1ctl domains managed verify <domain|domain-id>", nil)
 	}
 	userID, orgID, err := domainAPIScope()
 	if err != nil {
 		return err
 	}
-	domainID, err := resolveManagedDomainID(userID, orgID, c.Args().First())
+	domainID, err := resolveManagedDomainID(userID, orgID, cmd.Args().First())
 	if err != nil {
 		return err
 	}
@@ -304,19 +304,19 @@ func handleManagedDomainsVerify(c *cli.Context) error {
 	return nil
 }
 
-func handleManagedDomainsDelete(c *cli.Context) error {
-	if c.NArg() < 1 {
+func handleManagedDomainsDelete(ctx context.Context, cmd *cli.Command) error {
+	if cmd.NArg() < 1 {
 		return utils.NewError("domain is required. Usage: 1ctl domains managed delete <domain|domain-id>", nil)
 	}
 	userID, orgID, err := domainAPIScope()
 	if err != nil {
 		return err
 	}
-	domainID, err := resolveManagedDomainID(userID, orgID, c.Args().First())
+	domainID, err := resolveManagedDomainID(userID, orgID, cmd.Args().First())
 	if err != nil {
 		return err
 	}
-	if !utils.Confirm(fmt.Sprintf("Delete managed domain %s?", c.Args().First()), c.Bool("yes")) {
+	if !utils.Confirm(fmt.Sprintf("Delete managed domain %s?", cmd.Args().First()), cmd.Bool("yes")) {
 		fmt.Println("Aborted.")
 		return nil
 	}
@@ -327,15 +327,15 @@ func handleManagedDomainsDelete(c *cli.Context) error {
 	return nil
 }
 
-func handleDNSList(c *cli.Context) error {
-	if c.NArg() < 1 {
+func handleDNSList(ctx context.Context, cmd *cli.Command) error {
+	if cmd.NArg() < 1 {
 		return utils.NewError("domain is required. Usage: 1ctl domains dns list <domain|domain-id>", nil)
 	}
 	userID, orgID, err := domainAPIScope()
 	if err != nil {
 		return err
 	}
-	domainID, err := resolveManagedDomainID(userID, orgID, c.Args().First())
+	domainID, err := resolveManagedDomainID(userID, orgID, cmd.Args().First())
 	if err != nil {
 		return err
 	}
@@ -350,30 +350,30 @@ func handleDNSList(c *cli.Context) error {
 	return nil
 }
 
-func handleDNSCreate(c *cli.Context) error {
-	if c.NArg() < 1 {
+func handleDNSCreate(ctx context.Context, cmd *cli.Command) error {
+	if cmd.NArg() < 1 {
 		return utils.NewError("domain is required. Usage: 1ctl domains dns create <domain|domain-id>", nil)
 	}
-	// Manually validate required flags (handles flags after positional args that
-	// Go's flag.FlagSet doesn't parse)
-	if flagValueFromArgs(c, "type") == "" {
+	// In v3, flags can appear anywhere in the argument list, so cmd.String()
+	// works for flags after positional args.
+	if cmd.String("type") == "" {
 		return utils.NewError("--type is required. Usage: 1ctl domains dns create <domain> --type A --name @ --data <value>", nil)
 	}
-	if flagValueFromArgs(c, "name") == "" {
+	if cmd.String("name") == "" {
 		return utils.NewError("--name is required. Usage: 1ctl domains dns create <domain> --type A --name @ --data <value>", nil)
 	}
-	if flagValueFromArgs(c, "data") == "" {
+	if cmd.String("data") == "" {
 		return utils.NewError("--data is required. Usage: 1ctl domains dns create <domain> --type A --name @ --data <value>", nil)
 	}
 	userID, orgID, err := domainAPIScope()
 	if err != nil {
 		return err
 	}
-	domainID, err := resolveManagedDomainID(userID, orgID, c.Args().First())
+	domainID, err := resolveManagedDomainID(userID, orgID, cmd.Args().First())
 	if err != nil {
 		return err
 	}
-	record, err := api.CreateDNSRecord(userID, orgID, domainID, dnsCreateRequestFromFlags(c))
+	record, err := api.CreateDNSRecord(userID, orgID, domainID, dnsCreateRequestFromFlags(cmd))
 	if err != nil {
 		return utils.NewError(fmt.Sprintf("failed to create DNS record: %s", err.Error()), nil)
 	}
@@ -385,19 +385,19 @@ func handleDNSCreate(c *cli.Context) error {
 	return nil
 }
 
-func handleDNSUpdate(c *cli.Context) error {
-	if c.NArg() < 2 {
+func handleDNSUpdate(ctx context.Context, cmd *cli.Command) error {
+	if cmd.NArg() < 2 {
 		return utils.NewError("domain and record ID are required. Usage: 1ctl domains dns update <domain|domain-id> <record-id>", nil)
 	}
 	userID, orgID, err := domainAPIScope()
 	if err != nil {
 		return err
 	}
-	domainID, err := resolveManagedDomainID(userID, orgID, c.Args().First())
+	domainID, err := resolveManagedDomainID(userID, orgID, cmd.Args().First())
 	if err != nil {
 		return err
 	}
-	record, err := api.UpdateDNSRecord(userID, orgID, domainID, c.Args().Get(1), dnsUpdateRequestFromFlags(c))
+	record, err := api.UpdateDNSRecord(userID, orgID, domainID, cmd.Args().Get(1), dnsUpdateRequestFromFlags(cmd))
 	if err != nil {
 		return utils.NewError(fmt.Sprintf("failed to update DNS record: %s", err.Error()), nil)
 	}
@@ -409,26 +409,26 @@ func handleDNSUpdate(c *cli.Context) error {
 	return nil
 }
 
-func handleDNSDelete(c *cli.Context) error {
-	if c.NArg() < 1 {
+func handleDNSDelete(ctx context.Context, cmd *cli.Command) error {
+	if cmd.NArg() < 1 {
 		return utils.NewError("domain is required. Usage: 1ctl domains dns delete <domain|domain-id> [<record-id>] [--record-id <id>]", nil)
 	}
 	userID, orgID, err := domainAPIScope()
 	if err != nil {
 		return err
 	}
-	domainID, err := resolveManagedDomainID(userID, orgID, c.Args().First())
+	domainID, err := resolveManagedDomainID(userID, orgID, cmd.Args().First())
 	if err != nil {
 		return err
 	}
-	recordID := flagValueFromArgs(c, "record-id")
+	recordID := cmd.String("record-id")
 	if recordID == "" {
-		if c.NArg() < 2 {
+		if cmd.NArg() < 2 {
 			return utils.NewError("record ID is required. Usage: 1ctl domains dns delete <domain|domain-id> [<record-id>] [--record-id <id>]", nil)
 		}
-		recordID = c.Args().Get(1)
+		recordID = cmd.Args().Get(1)
 	}
-	if !utils.Confirm(fmt.Sprintf("Delete DNS record %s?", recordID), c.Bool("yes")) {
+	if !utils.Confirm(fmt.Sprintf("Delete DNS record %s?", recordID), cmd.Bool("yes")) {
 		fmt.Println("Aborted.")
 		return nil
 	}
@@ -439,34 +439,34 @@ func handleDNSDelete(c *cli.Context) error {
 	return nil
 }
 
-func handleDomainsPurchase(c *cli.Context) error {
-	if c.NArg() < 1 {
+func handleDomainsPurchase(ctx context.Context, cmd *cli.Command) error {
+	if cmd.NArg() < 1 {
 		return utils.NewError("domain is required. Usage: 1ctl domains purchase <domain>", nil)
 	}
 	userID, orgID, err := domainAPIScope()
 	if err != nil {
 		return err
 	}
-	domain, err := normalizeDomainArg(c.Args().First())
+	domain, err := normalizeDomainArg(cmd.Args().First())
 	if err != nil {
 		return err
 	}
 	resp, err := api.PurchaseDomain(userID, orgID, api.DomainPurchaseRequest{
 		Domain: domain,
-		Period: c.Int("period"),
+		Period: cmd.Int("period"),
 		Contact: &api.DomainContactInfo{
-			FirstName:        c.String("first-name"),
-			LastName:         c.String("last-name"),
-			Email:            c.String("email"),
-			PhoneCountryCode: c.String("phone-country-code"),
-			PhoneNumber:      c.String("phone-number"),
-			Street:           c.String("street"),
-			StreetNumber:     c.String("street-number"),
-			PostalCode:       c.String("postal-code"),
-			City:             c.String("city"),
-			State:            c.String("state"),
-			Country:          strings.ToUpper(c.String("country")),
-			CompanyName:      c.String("company"),
+			FirstName:        cmd.String("first-name"),
+			LastName:         cmd.String("last-name"),
+			Email:            cmd.String("email"),
+			PhoneCountryCode: cmd.String("phone-country-code"),
+			PhoneNumber:      cmd.String("phone-number"),
+			Street:           cmd.String("street"),
+			StreetNumber:     cmd.String("street-number"),
+			PostalCode:       cmd.String("postal-code"),
+			City:             cmd.String("city"),
+			State:            cmd.String("state"),
+			Country:          strings.ToUpper(cmd.String("country")),
+			CompanyName:      cmd.String("company"),
 		},
 	})
 	if err != nil {
@@ -483,15 +483,15 @@ func handleDomainsPurchase(c *cli.Context) error {
 	return nil
 }
 
-func handleDomainsPurchaseStatus(c *cli.Context) error {
-	if c.NArg() < 1 {
+func handleDomainsPurchaseStatus(ctx context.Context, cmd *cli.Command) error {
+	if cmd.NArg() < 1 {
 		return utils.NewError("intent ID is required. Usage: 1ctl domains purchase-status <intent-id>", nil)
 	}
 	userID, orgID, err := domainAPIScope()
 	if err != nil {
 		return err
 	}
-	status, err := api.GetDomainPurchaseStatus(userID, orgID, c.Args().First())
+	status, err := api.GetDomainPurchaseStatus(userID, orgID, cmd.Args().First())
 	if err != nil {
 		return utils.NewError(fmt.Sprintf("failed to get purchase status: %s", err.Error()), nil)
 	}
@@ -505,8 +505,8 @@ func handleDomainsPurchaseStatus(c *cli.Context) error {
 }
 
 func domainAPIScope() (userID, orgID string, err error) {
-	userID = strings.TrimSpace(context.GetUserID())
-	orgID = strings.TrimSpace(context.GetCurrentOrgID())
+	userID = strings.TrimSpace(satuskyctx.GetUserID())
+	orgID = strings.TrimSpace(satuskyctx.GetCurrentOrgID())
 	if userID == "" {
 		return "", "", utils.NewError("no current user ID is set. Run: 1ctl auth login", nil)
 	}
@@ -536,126 +536,75 @@ func resolveManagedDomainID(userID, orgID, value string) (string, error) {
 	return "", utils.NewError(fmt.Sprintf("managed domain %q not found", value), nil)
 }
 
-// flagValueFromArgs extracts a flag's value from the full args slice (including flags
-// that appear after positional args, which Go's flag.FlagSet.Parse() doesn't parse).
-func flagValueFromArgs(c *cli.Context, name string) string {
-	if c.IsSet(name) {
-		return c.String(name)
-	}
-	args := c.Args().Slice()
-	for i := 0; i < len(args); i++ {
-		if args[i] == "--"+name {
-			if i+1 < len(args) {
-				return args[i+1]
-			}
-		}
-		if strings.HasPrefix(args[i], "--"+name+"=") {
-			return strings.SplitN(args[i], "=", 2)[1]
-		}
-	}
-	return ""
-}
-
-// flagIsSetInArgs checks whether a flag was set, scanning both parsed flags
-// and any flags that appear after positional arguments.
-func flagIsSetInArgs(c *cli.Context, name string) bool {
-	if c.IsSet(name) {
-		return true
-	}
-	args := c.Args().Slice()
-	for _, arg := range args {
-		if arg == "--"+name || strings.HasPrefix(arg, "--"+name+"=") {
-			return true
-		}
-	}
-	return false
-}
-
-// flagIntFromArgs extracts an int flag value from full args, falling back to c.Int().
-func flagIntFromArgs(c *cli.Context, name string) int {
-	if c.IsSet(name) {
-		return c.Int(name)
-	}
-	v := flagValueFromArgs(c, name)
-	if v == "" {
-		return 0
-	}
-	n, err := strconv.Atoi(v)
-	if err != nil {
-		return 0
-	}
-	return n
-}
-
-func dnsCreateRequestFromFlags(c *cli.Context) api.DNSRecordCreateRequest {
+func dnsCreateRequestFromFlags(cmd *cli.Command) api.DNSRecordCreateRequest {
 	req := api.DNSRecordCreateRequest{
-		Type: strings.ToUpper(flagValueFromArgs(c, "type")),
-		Name: flagValueFromArgs(c, "name"),
-		Data: flagValueFromArgs(c, "data"),
+		Type: strings.ToUpper(cmd.String("type")),
+		Name: cmd.String("name"),
+		Data: cmd.String("data"),
 	}
-	if flagIsSetInArgs(c, "ttl") {
-		v := flagIntFromArgs(c, "ttl")
+	if cmd.IsSet("ttl") {
+		v := cmd.Int("ttl")
 		req.TTL = &v
 	}
-	if flagIsSetInArgs(c, "priority") {
-		v := flagIntFromArgs(c, "priority")
+	if cmd.IsSet("priority") {
+		v := cmd.Int("priority")
 		req.Priority = &v
 	}
-	if flagIsSetInArgs(c, "port") {
-		v := flagIntFromArgs(c, "port")
+	if cmd.IsSet("port") {
+		v := cmd.Int("port")
 		req.Port = &v
 	}
-	if flagIsSetInArgs(c, "weight") {
-		v := flagIntFromArgs(c, "weight")
+	if cmd.IsSet("weight") {
+		v := cmd.Int("weight")
 		req.Weight = &v
 	}
-	if flagIsSetInArgs(c, "flags") {
-		v := flagIntFromArgs(c, "flags")
+	if cmd.IsSet("flags") {
+		v := cmd.Int("flags")
 		req.Flags = &v
 	}
-	if flagIsSetInArgs(c, "tag") {
-		v := flagValueFromArgs(c, "tag")
+	if cmd.IsSet("tag") {
+		v := cmd.String("tag")
 		req.Tag = &v
 	}
 	return req
 }
 
-func dnsUpdateRequestFromFlags(c *cli.Context) api.DNSRecordUpdateRequest {
+func dnsUpdateRequestFromFlags(cmd *cli.Command) api.DNSRecordUpdateRequest {
 	req := api.DNSRecordUpdateRequest{}
-	if flagIsSetInArgs(c, "type") {
-		v := strings.ToUpper(flagValueFromArgs(c, "type"))
+	if cmd.IsSet("type") {
+		v := strings.ToUpper(cmd.String("type"))
 		req.Type = &v
 	}
-	if flagIsSetInArgs(c, "name") {
-		v := flagValueFromArgs(c, "name")
+	if cmd.IsSet("name") {
+		v := cmd.String("name")
 		req.Name = &v
 	}
-	if flagIsSetInArgs(c, "data") {
-		v := flagValueFromArgs(c, "data")
+	if cmd.IsSet("data") {
+		v := cmd.String("data")
 		req.Data = &v
 	}
-	if flagIsSetInArgs(c, "ttl") {
-		v := flagIntFromArgs(c, "ttl")
+	if cmd.IsSet("ttl") {
+		v := cmd.Int("ttl")
 		req.TTL = &v
 	}
-	if flagIsSetInArgs(c, "priority") {
-		v := flagIntFromArgs(c, "priority")
+	if cmd.IsSet("priority") {
+		v := cmd.Int("priority")
 		req.Priority = &v
 	}
-	if flagIsSetInArgs(c, "port") {
-		v := flagIntFromArgs(c, "port")
+	if cmd.IsSet("port") {
+		v := cmd.Int("port")
 		req.Port = &v
 	}
-	if flagIsSetInArgs(c, "weight") {
-		v := flagIntFromArgs(c, "weight")
+	if cmd.IsSet("weight") {
+		v := cmd.Int("weight")
 		req.Weight = &v
 	}
-	if flagIsSetInArgs(c, "flags") {
-		v := flagIntFromArgs(c, "flags")
+	if cmd.IsSet("flags") {
+		v := cmd.Int("flags")
 		req.Flags = &v
 	}
-	if flagIsSetInArgs(c, "tag") {
-		v := flagValueFromArgs(c, "tag")
+	if cmd.IsSet("tag") {
+		v := cmd.String("tag")
 		req.Tag = &v
 	}
 	return req

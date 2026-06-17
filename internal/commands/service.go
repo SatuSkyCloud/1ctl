@@ -1,12 +1,13 @@
 package commands
 
 import (
+	"context"
 	"1ctl/internal/api"
 	"1ctl/internal/utils"
 	"fmt"
 
 	"github.com/google/uuid"
-	"github.com/urfave/cli/v2"
+	"github.com/urfave/cli/v3"
 )
 
 func ServiceCommand() *cli.Command {
@@ -41,7 +42,7 @@ func ServiceCommand() *cli.Command {
 		// scripts that depend on it.
 		Hidden: true,
 		Flags:  serviceFlags,
-		Subcommands: []*cli.Command{
+		Commands: []*cli.Command{
 			{
 				Name:   "list",
 				Usage:  "List all services",
@@ -65,50 +66,50 @@ func ServiceCommand() *cli.Command {
 				Action: handleDeleteService,
 			},
 		},
-		Action: func(c *cli.Context) error {
+		Action: func(ctx context.Context, cmd *cli.Command) error {
 			// If no subcommand is provided and no flags, show help
-			if c.NArg() == 0 && !c.IsSet("deployment-id") && !c.IsSet("name") && !c.IsSet("port") {
-				return cli.ShowCommandHelp(c, "service")
+			if cmd.NArg() == 0 && !cmd.IsSet("deployment-id") && !cmd.IsSet("name") && !cmd.IsSet("port") {
+				return cli.ShowCommandHelp(ctx, cmd, "service")
 			}
 
 			// If subcommand is provided, let it handle
-			if c.NArg() > 0 {
-				return cli.ShowSubcommandHelp(c)
+			if cmd.NArg() > 0 {
+				return cli.ShowSubcommandHelp(cmd)
 			}
 
 			// Otherwise, handle service upsert
-			return handleUpsertService(c)
+			return handleUpsertService(ctx, cmd)
 		},
 	}
 }
 
-func handleUpsertService(c *cli.Context) error {
+func handleUpsertService(ctx context.Context, cmd *cli.Command) error {
 	// Check required flags for service upsert
-	if c.String("deployment-id") == "" {
+	if cmd.String("deployment-id") == "" {
 		return utils.NewError("--deployment-id flag is required for service", nil)
 	}
-	if c.String("name") == "" {
+	if cmd.String("name") == "" {
 		return utils.NewError("--name flag is required for service", nil)
 	}
-	if c.Int("port") == 0 {
+	if cmd.Int("port") == 0 {
 		return utils.NewError("--port flag is required for service", nil)
 	}
 
-	deploymentIDStr := c.String("deployment-id")
+	deploymentIDStr := cmd.String("deployment-id")
 	deploymentID, err := uuid.Parse(deploymentIDStr)
 	if err != nil {
 		return utils.NewError(fmt.Sprintf("invalid deployment-id: %s", err.Error()), nil)
 	}
 
-	port, err := api.SafeInt32(c.Int("port"))
+	port, err := api.SafeInt32(cmd.Int("port"))
 	if err != nil {
 		return utils.NewError("Invalid port number", err)
 	}
 	service := api.Service{
 		DeploymentID: deploymentID,
-		ServiceName:  c.String("name"),
+		ServiceName:  cmd.String("name"),
 		Port:         port,
-		Namespace:    c.String("namespace"),
+		Namespace:    cmd.String("namespace"),
 	}
 
 	var serviceID string
@@ -120,7 +121,7 @@ func handleUpsertService(c *cli.Context) error {
 	return nil
 }
 
-func handleListServices(c *cli.Context) error {
+func handleListServices(ctx context.Context, cmd *cli.Command) error {
 	services, err := api.ListServices()
 	if err != nil {
 		return utils.NewError(fmt.Sprintf("failed to list services: %s", err.Error()), nil)
@@ -146,9 +147,9 @@ func handleListServices(c *cli.Context) error {
 	return nil
 }
 
-func handleDeleteService(c *cli.Context) error {
-	serviceID := c.String("service-id")
-	if !utils.Confirm(fmt.Sprintf("Delete service %s? This cannot be undone.", serviceID), c.Bool("yes")) {
+func handleDeleteService(ctx context.Context, cmd *cli.Command) error {
+	serviceID := cmd.String("service-id")
+	if !utils.Confirm(fmt.Sprintf("Delete service %s? This cannot be undone.", serviceID), cmd.Bool("yes")) {
 		fmt.Println("Aborted.")
 		return nil
 	}

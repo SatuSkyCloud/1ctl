@@ -1,20 +1,21 @@
 package commands
 
 import (
+	"context"
 	"1ctl/internal/api"
-	"1ctl/internal/context"
+	satuskyctx "1ctl/internal/context"
 	"1ctl/internal/utils"
 	"fmt"
 	"time"
 
-	"github.com/urfave/cli/v2"
+	"github.com/urfave/cli/v3"
 )
 
 func AuthCommand() *cli.Command {
 	return &cli.Command{
 		Name:  "auth",
 		Usage: "Authenticate and manage credentials for SatuSky Cloud",
-		Subcommands: []*cli.Command{
+		Commands: []*cli.Command{
 			{
 				Name:  "login",
 				Usage: "Authenticate with Satusky",
@@ -26,7 +27,7 @@ func AuthCommand() *cli.Command {
 					&cli.StringFlag{
 						Name:    "token",
 						Usage:   "API token for authentication",
-						EnvVars: []string{"SATUSKY_API_KEY"},
+						Sources: cli.EnvVars("SATUSKY_API_KEY"),
 					},
 				},
 			},
@@ -44,12 +45,12 @@ func AuthCommand() *cli.Command {
 	}
 }
 
-func handleLogin(c *cli.Context) error {
+func handleLogin(ctx context.Context, cmd *cli.Command) error {
 	// Try to get token from flag first, then environment variable
-	token := c.String("token")
+	token := cmd.String("token")
 	if token == "" {
 		// check in context.json
-		token = context.GetToken()
+		token = satuskyctx.GetToken()
 		if token == "" {
 			return utils.NewError("token is required. Use --token flag or set SATUSKY_API_KEY environment variable", nil)
 		}
@@ -68,7 +69,7 @@ func handleLogin(c *cli.Context) error {
 		return utils.NewError("token is not associated with an organization — ensure the token has an organization scope", nil)
 	}
 
-	if err := context.SaveLoginState(token, result.UserID, result.UserEmail, result.OrganizationID, result.OrganizationName, result.Namespace); err != nil {
+	if err := satuskyctx.SaveLoginState(token, result.UserID, result.UserEmail, result.OrganizationID, result.OrganizationName, result.Namespace); err != nil {
 		return utils.NewError(fmt.Sprintf("failed to store login state: %s", err.Error()), nil)
 	}
 
@@ -76,8 +77,8 @@ func handleLogin(c *cli.Context) error {
 	return nil
 }
 
-func handleLogout(c *cli.Context) error {
-	if err := context.ClearAuthState(); err != nil {
+func handleLogout(ctx context.Context, cmd *cli.Command) error {
+	if err := satuskyctx.ClearAuthState(); err != nil {
 		return utils.NewError(fmt.Sprintf("failed to clear auth state: %s", err.Error()), nil)
 	}
 
@@ -85,8 +86,8 @@ func handleLogout(c *cli.Context) error {
 	return nil
 }
 
-func handleAuthStatus(c *cli.Context) error {
-	token := context.GetToken()
+func handleAuthStatus(ctx context.Context, cmd *cli.Command) error {
+	token := satuskyctx.GetToken()
 	if token == "" {
 		return utils.NewError("not authenticated. Please run '1ctl auth login' to authenticate", nil)
 	}

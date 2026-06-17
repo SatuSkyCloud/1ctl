@@ -1,14 +1,15 @@
 package commands
 
 import (
+	"context"
 	"1ctl/internal/api"
-	"1ctl/internal/context"
+	satuskyctx "1ctl/internal/context"
 	"1ctl/internal/utils"
 	"fmt"
 	"net/http"
 
 	gorillaws "github.com/gorilla/websocket"
-	"github.com/urfave/cli/v2"
+	"github.com/urfave/cli/v3"
 )
 
 func LogsCommand() *cli.Command {
@@ -32,20 +33,20 @@ func LogsCommand() *cli.Command {
 				Value:   100,
 			},
 		},
-		Subcommands: []*cli.Command{
+		Commands: []*cli.Command{
 			logsStreamCommand(),
 		},
 		Action: handleLogs,
 	}
 }
 
-func handleLogs(c *cli.Context) error {
-	deploymentID, err := resolveDeploymentID(c.String("deployment-id"), c.String("config"))
+func handleLogs(ctx context.Context, cmd *cli.Command) error {
+	deploymentID, err := resolveDeploymentID(cmd.String("deployment-id"), cmd.String("config"))
 	if err != nil {
 		return err
 	}
 
-	tail := c.Int("tail")
+	tail := cmd.Int("tail")
 
 	logs, meta, err := api.GetStoredLogs(deploymentID, tail)
 	if err != nil {
@@ -87,31 +88,31 @@ func handleLogs(c *cli.Context) error {
 
 // requireUserContext returns the userID from context or an error
 func requireUserContext() (string, error) {
-	userID := context.GetUserID()
+	userID := satuskyctx.GetUserID()
 	if userID == "" {
 		return "", utils.NewError("user ID not found. Please run '1ctl auth login' first", nil)
 	}
 	return userID, nil
 }
 
-func handleLogsStream(c *cli.Context) error {
-	namespace := c.String("namespace")
-	appLabel := c.String("app")
-	batchSize := c.Int("batch-size")
+func handleLogsStream(ctx context.Context, cmd *cli.Command) error {
+	namespace := cmd.String("namespace")
+	appLabel := cmd.String("app")
+	batchSize := cmd.Int("batch-size")
 	resolvedDeploymentID := ""
 
 	// Resolve deployment-id from --config if not provided directly
-	if c.String("deployment-id") == "" && c.String("namespace") == "" {
-		id, err := resolveDeploymentID("", c.String("config"))
+	if cmd.String("deployment-id") == "" && cmd.String("namespace") == "" {
+		id, err := resolveDeploymentID("", cmd.String("config"))
 		if err == nil && id != "" {
-			if err := c.Set("deployment-id", id); err != nil {
+			if err := cmd.Set("deployment-id", id); err != nil {
 				return utils.NewError(fmt.Sprintf("failed to set deployment-id: %s", err.Error()), nil)
 			}
 		}
 	}
 
 	// Resolve via deployment ID if explicit flags not given
-	if deploymentID := c.String("deployment-id"); deploymentID != "" {
+	if deploymentID := cmd.String("deployment-id"); deploymentID != "" {
 		deployment, err := api.GetDeployment(deploymentID)
 		if err != nil {
 			return utils.NewError(fmt.Sprintf("failed to get deployment: %s", err.Error()), nil)
@@ -135,7 +136,7 @@ func handleLogsStream(c *cli.Context) error {
 	}
 
 	headers := http.Header{}
-	headers.Set("x-satusky-api-key", context.GetToken())
+	headers.Set("x-satusky-api-key", satuskyctx.GetToken())
 
 	conn, _, err := gorillaws.DefaultDialer.Dial(wsURL, headers)
 	if err != nil {

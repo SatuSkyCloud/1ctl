@@ -1,11 +1,12 @@
 package commands
 
 import (
+	"context"
 	"1ctl/internal/api"
 	"1ctl/internal/utils"
 	"fmt"
 
-	"github.com/urfave/cli/v2"
+	"github.com/urfave/cli/v3"
 )
 
 // PricingCommand returns the root pricing command
@@ -14,7 +15,7 @@ func PricingCommand() *cli.Command {
 		Name:    "pricing",
 		Aliases: []string{"price"},
 		Usage:   "View machine pricing configurations",
-		Subcommands: []*cli.Command{
+		Commands: []*cli.Command{
 			pricingListCommand(),
 			pricingGetCommand(),
 			pricingLookupCommand(),
@@ -101,7 +102,7 @@ func pricingCalculateCommand() *cli.Command {
 	}
 }
 
-func handlePricingList(_ *cli.Context) error {
+func handlePricingList(ctx context.Context, cmd *cli.Command) error {
 	configs, err := api.ListPricingConfigs()
 	if err != nil {
 		return utils.NewError(fmt.Sprintf("failed to list pricing configs: %s", err.Error()), nil)
@@ -120,8 +121,8 @@ func handlePricingList(_ *cli.Context) error {
 	return nil
 }
 
-func handlePricingGet(c *cli.Context) error {
-	configID := c.String("config-id")
+func handlePricingGet(ctx context.Context, cmd *cli.Command) error {
+	configID := cmd.String("config-id")
 
 	config, err := api.GetPricingConfig(configID)
 	if err != nil {
@@ -133,10 +134,10 @@ func handlePricingGet(c *cli.Context) error {
 	return nil
 }
 
-func handlePricingLookup(c *cli.Context) error {
-	region := c.String("region")
-	machineType := c.String("type")
-	sla := c.String("sla")
+func handlePricingLookup(ctx context.Context, cmd *cli.Command) error {
+	region := cmd.String("region")
+	machineType := cmd.String("type")
+	sla := cmd.String("sla")
 
 	config, err := api.GetPricingByRegionAndType(region, machineType, sla)
 	if err != nil {
@@ -148,12 +149,12 @@ func handlePricingLookup(c *cli.Context) error {
 	return nil
 }
 
-func handlePricingCalculate(c *cli.Context) error {
-	machineRefID := c.String("machine-ref-id")
-	machineID := c.String("machine-id")
+func handlePricingCalculate(ctx context.Context, cmd *cli.Command) error {
+	machineRefID := cmd.String("machine-ref-id")
+	machineID := cmd.String("machine-id")
 	req := api.CostCalculationRequest{
-		StartTime: c.String("start"),
-		EndTime:   c.String("end"),
+		StartTime: cmd.String("start"),
+		EndTime:   cmd.String("end"),
 	}
 
 	result, err := api.CalculateMachineCost(machineRefID, machineID, req)

@@ -20,7 +20,7 @@ func TestEnvironmentCommand(t *testing.T) {
 		"unset":  false,
 	}
 
-	for _, subcmd := range cmd.Subcommands {
+	for _, subcmd := range cmd.Commands {
 		if _, exists := expectedSubcommands[subcmd.Name]; !exists {
 			t.Errorf("Unexpected subcommand: %s", subcmd.Name)
 		}

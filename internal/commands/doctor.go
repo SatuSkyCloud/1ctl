@@ -1,16 +1,17 @@
 package commands
 
 import (
+	"context"
 	"fmt"
 	"strings"
 
 	"1ctl/internal/api"
 	"1ctl/internal/config"
-	"1ctl/internal/context"
+	satuskyctx "1ctl/internal/context"
 	"1ctl/internal/utils"
 	"1ctl/internal/validator"
 
-	"github.com/urfave/cli/v2"
+	"github.com/urfave/cli/v3"
 )
 
 type doctorReport struct {
@@ -59,19 +60,19 @@ func DoctorCommand() *cli.Command {
 	}
 }
 
-func handleDoctor(c *cli.Context) error {
+func handleDoctor(ctx context.Context, cmd *cli.Command) error {
 	user, err := api.GetCurrentUser()
 	if err != nil {
 		return utils.NewError(fmt.Sprintf("auth/backend check failed: %s", err.Error()), nil)
 	}
 
-	namespace := context.GetCurrentNamespace()
+	namespace := satuskyctx.GetCurrentNamespace()
 	if namespace == "" {
 		return utils.NewError("not authenticated or namespace missing", nil)
 	}
 
 	// Validate --health-path like deploy does.
-	if err := validator.ValidateURLPath(c.String("health-path")); err != nil {
+	if err := validator.ValidateURLPath(cmd.String("health-path")); err != nil {
 		return utils.NewError(fmt.Sprintf("invalid health path: %v", err), nil)
 	}
 
@@ -93,7 +94,7 @@ func handleDoctor(c *cli.Context) error {
 		report.Clusters = len(clusters)
 	}
 
-	targets, smokePath, targetedMode, err := resolveDoctorTargets(c)
+	targets, smokePath, targetedMode, err := resolveDoctorTargets(cmd)
 	if err != nil {
 		return err
 	}
@@ -101,9 +102,9 @@ func handleDoctor(c *cli.Context) error {
 	// Smoke checks run only when explicitly requested:
 	// - --deployment-id / --config (targeted mode): always smoke
 	// - namespace-wide: only smoke when --smoke flag is set
-	runSmoke := targetedMode || c.Bool("smoke")
+	runSmoke := targetedMode || cmd.Bool("smoke")
 	// Strict smoke (enforce 2xx/3xx) only when --health-path was explicitly set.
-	strictSmoke := c.IsSet("health-path")
+	strictSmoke := cmd.IsSet("health-path")
 
 	for _, dep := range targets {
 		resolvedDomain := strings.TrimSpace(dep.Domain)
@@ -197,11 +198,11 @@ func handleDoctor(c *cli.Context) error {
 	return nil
 }
 
-func resolveDoctorTargets(c *cli.Context) ([]api.Deployment, string, bool, error) {
-	healthPath := strings.TrimSpace(c.String("health-path"))
+func resolveDoctorTargets(cmd *cli.Command) ([]api.Deployment, string, bool, error) {
+	healthPath := strings.TrimSpace(cmd.String("health-path"))
 
-	if c.String("deployment-id") != "" || c.String("config") != "" {
-		deploymentID, err := resolveDeploymentID(c.String("deployment-id"), c.String("config"))
+	if cmd.String("deployment-id") != "" || cmd.String("config") != "" {
+		deploymentID, err := resolveDeploymentID(cmd.String("deployment-id"), cmd.String("config"))
 		if err != nil {
 			return nil, "", false, err
 		}
@@ -209,8 +210,8 @@ func resolveDoctorTargets(c *cli.Context) ([]api.Deployment, string, bool, error
 		if err != nil {
 			return nil, "", false, utils.NewError(fmt.Sprintf("failed to load deployment %s: %s", deploymentID, err.Error()), nil)
 		}
-		if healthPath == "" && c.String("config") != "" {
-			if cfg, cfgErr := config.FindConfig(c.String("config")); cfgErr == nil && cfg != nil {
+		if healthPath == "" && cmd.String("config") != "" {
+			if cfg, cfgErr := config.FindConfig(cmd.String("config")); cfgErr == nil && cfg != nil {
 				healthPath = strings.TrimSpace(cfg.App.HealthPath)
 			}
 		}

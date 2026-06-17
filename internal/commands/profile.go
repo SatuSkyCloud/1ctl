@@ -1,12 +1,13 @@
 package commands
 
 import (
+	"context"
 	"1ctl/internal/config"
-	"1ctl/internal/context"
+	satuskyctx "1ctl/internal/context"
 	"1ctl/internal/utils"
 	"fmt"
 
-	"github.com/urfave/cli/v2"
+	"github.com/urfave/cli/v3"
 )
 
 func defaultAPIURLDisplay() string {
@@ -17,7 +18,7 @@ func ProfileCommand() *cli.Command {
 	return &cli.Command{
 		Name:  "profile",
 		Usage: "Manage named configuration profiles (API endpoints + credentials)",
-		Subcommands: []*cli.Command{
+		Commands: []*cli.Command{
 			profileListCommand(),
 			profileCreateCommand(),
 			profileUseCommand(),
@@ -76,8 +77,8 @@ func profileDeleteCommand() *cli.Command {
 	}
 }
 
-func handleProfileList(c *cli.Context) error {
-	profiles, err := context.ListProfiles()
+func handleProfileList(ctx context.Context, cmd *cli.Command) error {
+	profiles, err := satuskyctx.ListProfiles()
 	if err != nil {
 		return utils.NewError(fmt.Sprintf("failed to list profiles: %s", err.Error()), nil)
 	}
@@ -115,15 +116,15 @@ func handleProfileList(c *cli.Context) error {
 	return nil
 }
 
-func handleProfileCreate(c *cli.Context) error {
-	if c.NArg() < 1 {
+func handleProfileCreate(ctx context.Context, cmd *cli.Command) error {
+	if cmd.NArg() < 1 {
 		return utils.NewError("profile name is required. Usage: 1ctl profile create [--url <url>] <name>", nil)
 	}
 
-	name := c.Args().First()
-	apiURL := c.String("url")
+	name := cmd.Args().First()
+	apiURL := cmd.String("url")
 
-	if err := context.CreateProfile(name, apiURL); err != nil {
+	if err := satuskyctx.CreateProfile(name, apiURL); err != nil {
 		return utils.NewError(fmt.Sprintf("failed to create profile: %s", err.Error()), nil)
 	}
 
@@ -139,14 +140,14 @@ func handleProfileCreate(c *cli.Context) error {
 	return nil
 }
 
-func handleProfileUse(c *cli.Context) error {
-	if c.NArg() < 1 {
+func handleProfileUse(ctx context.Context, cmd *cli.Command) error {
+	if cmd.NArg() < 1 {
 		return utils.NewError("profile name is required. Usage: 1ctl profile use <name>", nil)
 	}
 
-	name := c.Args().First()
+	name := cmd.Args().First()
 
-	if err := context.UseProfile(name); err != nil {
+	if err := satuskyctx.UseProfile(name); err != nil {
 		return utils.NewError(fmt.Sprintf("failed to switch profile: %s", err.Error()), nil)
 	}
 
@@ -156,15 +157,15 @@ func handleProfileUse(c *cli.Context) error {
 	utils.PrintStatusLine("API URL", config.GetConfig().ApiURL)
 
 	// Let user know if they haven't authenticated this profile yet
-	if context.GetToken() == "" {
+	if satuskyctx.GetToken() == "" {
 		utils.PrintInfo("Run '1ctl auth login --token=<token>' to authenticate this profile")
 	}
 
 	return nil
 }
 
-func handleProfileCurrent(c *cli.Context) error {
-	name := context.GetActiveProfileName()
+func handleProfileCurrent(ctx context.Context, cmd *cli.Command) error {
+	name := satuskyctx.GetActiveProfileName()
 
 	if name == "" {
 		utils.PrintInfo("No profile active. Run '1ctl profile use <name>' to select one.")
@@ -175,27 +176,27 @@ func handleProfileCurrent(c *cli.Context) error {
 	utils.PrintStatusLine("Profile", name)
 	utils.PrintStatusLine("API URL", config.GetConfig().ApiURL)
 
-	if email := context.GetEmail(); email != "" {
+	if email := satuskyctx.GetEmail(); email != "" {
 		utils.PrintStatusLine("Auth", email)
 	} else {
 		utils.PrintStatusLine("Auth", "(not logged in — run '1ctl auth login')")
 	}
 
-	if org := context.GetCurrentOrgName(); org != "" {
+	if org := satuskyctx.GetCurrentOrgName(); org != "" {
 		utils.PrintStatusLine("Org", org)
 	}
 
 	return nil
 }
 
-func handleProfileDelete(c *cli.Context) error {
-	if c.NArg() < 1 {
+func handleProfileDelete(ctx context.Context, cmd *cli.Command) error {
+	if cmd.NArg() < 1 {
 		return utils.NewError("profile name is required. Usage: 1ctl profile delete <name>", nil)
 	}
 
-	name := c.Args().First()
+	name := cmd.Args().First()
 
-	if err := context.DeleteProfile(name); err != nil {
+	if err := satuskyctx.DeleteProfile(name); err != nil {
 		return utils.NewError(fmt.Sprintf("failed to delete profile: %s", err.Error()), nil)
 	}
 
