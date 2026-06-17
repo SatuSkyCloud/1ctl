@@ -1,5 +1,54 @@
 # Release Notes
 
+## Version 0.10.0 (Unreleased)
+
+Platform diagnostics, post-deploy smoke testing, Loki degradation awareness, and a fully verified documentation suite.
+
+### New Commands
+
+* **`1ctl doctor`**: Diagnoses auth, backend reachability, zones, clusters, and live deployments in a single pass.
+  - `--deployment-id` / `--config` for targeted mode (always runs smoke).
+  - `--smoke` flag to opt into namespace-wide smoke checks.
+  - `--health-path` for app-level path probing with strict 2xx/3xx semantics.
+  - Outputs both structured JSON (`-o json`) and human-readable tables.
+  - Smoke failures are always warnings, never hard errors.
+* Added bash, fish, and PowerShell completions for `doctor` and `deploy --health-path`.
+
+### Features
+
+* **Post-deploy smoke testing**: After `deploy --wait` succeeds, the CLI probes the public URL to verify real-world reachability.
+  - Default behaviour (no `--health-path`): 401/403/404 are accepted as proof of platform reachability (DNS/TLS/routing proven). Only 5xx and connection errors fail the check.
+  - With `--health-path` set: success requires 2xx/3xx. Failure blocks the deploy.
+  - Non-strict smoke failures are warnings, not deploy-blocking errors.
+  - `health_path` can be set in `satusky.toml` `[app]` section or via `--health-path` flag.
+* **Logs degradation awareness**: `GetStoredLogs` now returns `DeploymentLogsMeta` with explicit `source`, `degraded`, `fallback_reason`, and `fallback_source` fields. The `1ctl logs` command surfaces a clear warning when Loki is unavailable and the response fell back to stored deployment logs.
+* **CLI usability fixes**:
+  - Commands can be invoked by alias (e.g., `1ctl d` for `deploy`).
+  - `-o`/`--output` flags normalized to global position so urfave/cli parses them correctly regardless of placement.
+  - Deprecated `storage`/`volume` commands now print a helpful redirect to `1ctl volumes`.
+
+### Config
+
+* `health_path` field added to `[app]` section of `satusky.toml`. Validated by `ValidateURLPath()` — must start with `/`.
+
+### Documentation
+
+* All 12 user journey guides audited and rewritten against live CLI output (122 command verifications).
+  - TOML format: added `[app]` section headers to all deployment guides.
+  - JSON field names corrected: `name` → `app_label`, `url` → `domain`, `cpu` → `cpu_request` / `cpu_limit`, `memory` → `memory_request` / `memory_limit`, `status: 'running'` → `status: 'completed'`.
+  - Deploy output format corrected to match current step-by-step output.
+  - Releases table columns and status values corrected (`inactive` → `superseded` / `rolled_back`).
+  - Removed `--wait` from `deploy rollback` (flag does not exist).
+  - Removed `--config` from `secret list` (flag does not exist).
+  - Added `-y` flag for non-interactive rollback/destroy.
+* New `examples/fullstack-api/` reference project exercising all 40+ `satusky.toml` fields across 6 sections (`app`, `volume`, `hpa`, `vpa`, `pdb`, `multicluster`) with staging override example.
+
+### Bug Fixes
+
+* Removed dead `SmokePathExplicit` field from deploy types (was set but never read; `StrictSmoke` already captures the same value).
+* Suppressed `errcheck` lint warnings for `Body.Close()` and test `Fprintf` calls.
+* Fixed frontend nginx asset permissions in example Dockerfile.
+
 ## Version 0.9.0 (02-06-2026)
 
 CPU request and burst semantics are now explicit for shared-resource deploys.
