@@ -526,6 +526,7 @@ func handleEnvironmentAndVolumes(opts DeploymentOptions, deploymentID, projectNa
 			opts.Volume.DeploymentID = api.ToUUID(deploymentID)
 			opts.Volume.VolumeName = fmt.Sprintf("%s-volume", projectName)
 			opts.Volume.ClaimName = fmt.Sprintf("%s-claim", projectName)
+			opts.Volume.DesiredAttached = true
 			if e := api.CreateVolume(*opts.Volume); e != nil {
 				volChan <- volResult{err: utils.NewError(fmt.Sprintf("failed to create volume: %s", e.Error()), nil)}
 				return

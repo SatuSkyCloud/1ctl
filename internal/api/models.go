@@ -285,15 +285,16 @@ type Dependency struct {
 }
 
 type Volume struct {
-	VolumeID     uuid.UUID `json:"volume_id"`
-	DeploymentID uuid.UUID `json:"deployment_id"`
-	VolumeName   string    `json:"volume_name"`
-	StorageClass string    `json:"storage_class"`
-	StorageSize  string    `json:"storage_size"`
-	ClaimName    string    `json:"claim_name"`
-	MountPath    string    `json:"mount_path"`
-	CreatedAt    time.Time `json:"created_at"`
-	UpdatedAt    time.Time `json:"updated_at"`
+	VolumeID        uuid.UUID `json:"volume_id"`
+	DeploymentID    uuid.UUID `json:"deployment_id"`
+	VolumeName      string    `json:"volume_name"`
+	StorageClass    string    `json:"storage_class"`
+	StorageSize     string    `json:"storage_size"`
+	ClaimName       string    `json:"claim_name"`
+	MountPath       string    `json:"mount_path"`
+	DesiredAttached bool      `json:"desired_attached"`
+	CreatedAt       time.Time `json:"created_at"`
+	UpdatedAt       time.Time `json:"updated_at"`
 }
 
 type VolumePVCStatus struct {
