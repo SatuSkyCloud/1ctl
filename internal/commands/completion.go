@@ -25,8 +25,8 @@ func CompletionCommand() *cli.Command {
 		Usage: "Generate and install shell completion scripts",
 		Commands: []*cli.Command{
 			{
-				Name:  "install",
-				Usage: "Auto-detect shell and install completion (add one line to shell config)",
+				Name:   "install",
+				Usage:  "Auto-detect shell and install completion (add one line to shell config)",
 				Action: handleCompletionInstall,
 			},
 			{
@@ -145,11 +145,15 @@ compdef _%[1]s %[1]s
 _%[1]s() {
   local -a opts
   local current
+  local previous
+  local executable
   current=${words[-1]}
+  previous=${words[-2]}
+  executable=${words[1]}
   if [[ "$current" == "-"* ]]; then
-    opts=("${(@f)$(%[1]s ${words[2,$#words-1]} ${current} --generate-shell-completion 2>/dev/null)}")
+    opts=("${(@f)$(__1CTL_COMPLETE_CURRENT="${current}" __1CTL_COMPLETE_PREV="${previous}" "${executable}" ${words[2,$#words-1]} ${current} --generate-shell-completion 2>/dev/null)}")
   else
-    opts=("${(@f)$(%[1]s ${words[2,$#words-1]} --generate-shell-completion 2>/dev/null)}")
+    opts=("${(@f)$(__1CTL_COMPLETE_CURRENT="${current}" __1CTL_COMPLETE_PREV="${previous}" "${executable}" ${words[2,$#words-1]} --generate-shell-completion 2>/dev/null)}")
   fi
 
   if [[ "${opts[1]}" != "" ]]; then
@@ -236,20 +240,20 @@ func handleCompletionInstall(ctx context.Context, cmd *cli.Command) error {
 	switch {
 	case strings.Contains(shell, "zsh"):
 		si = shellInfo{
-			name:       "zsh",
-			dir:        filepath.Join(home, ".zsh", "completions"),
-			file:       "_" + appName,
-			config:     fmt.Sprintf("fpath=(%s $fpath)", filepath.Join(home, ".zsh", "completions")),
-			scriptFunc: handleZshCompletion,
+			name:        "zsh",
+			dir:         filepath.Join(home, ".zsh", "completions"),
+			file:        "_" + appName,
+			config:      fmt.Sprintf("fpath=(%s $fpath)", filepath.Join(home, ".zsh", "completions")),
+			scriptFunc:  handleZshCompletion,
 			postInstall: "rm -f ~/.zcompdump && compinit",
 		}
 	case strings.Contains(shell, "bash"):
 		si = shellInfo{
-			name:       "bash",
-			dir:        filepath.Join(home, ".bash_completion.d"),
-			file:       appName,
-			config:     fmt.Sprintf("source %s/%s", filepath.Join(home, ".bash_completion.d"), appName),
-			scriptFunc: handleBashCompletion,
+			name:        "bash",
+			dir:         filepath.Join(home, ".bash_completion.d"),
+			file:        appName,
+			config:      fmt.Sprintf("source %s/%s", filepath.Join(home, ".bash_completion.d"), appName),
+			scriptFunc:  handleBashCompletion,
 			postInstall: fmt.Sprintf("source %s/%s", filepath.Join(home, ".bash_completion.d"), appName),
 		}
 	case strings.Contains(shell, "fish"):
