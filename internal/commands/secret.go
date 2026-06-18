@@ -51,6 +51,12 @@ func SecretCommand() *cli.Command {
 				Action: handleListSecrets,
 			},
 			{
+				Name:      "get",
+				Usage:     "Show secret details including key names",
+				ArgsUsage: "<secret-id>",
+				Action:    handleGetSecret,
+			},
+			{
 				Name:  "unset",
 				Usage: "Remove a specific key from a secret",
 				Flags: []cli.Flag{
@@ -139,13 +145,14 @@ func handleListSecrets(ctx context.Context, cmd *cli.Command) error {
 		return nil
 	}
 
-	headers := []string{"NAME", "SECRET ID", "DEPLOYMENT ID", "CREATED"}
+	headers := []string{"NAME", "SECRET ID", "DEPLOYMENT ID", "KEYS", "CREATED"}
 	rows := make([][]string, 0, len(secrets))
 	for _, secret := range secrets {
 		rows = append(rows, []string{
 			secret.AppLabel,
 			secret.SecretID.String(),
 			secret.DeploymentID.String(),
+			fmt.Sprintf("%d", len(secret.KeyValues)),
 			api.FormatTimeAgo(secret.CreatedAt),
 		})
 	}
@@ -172,4 +179,35 @@ func handleSecretUnset(ctx context.Context, cmd *cli.Command) error {
 
 	utils.PrintSuccess("Key %q removed from secrets", key)
 	return nil
+}
+
+func handleGetSecret(ctx context.Context, cmd *cli.Command) error {
+	if cmd.NArg() < 1 {
+		return utils.NewError("secret ID is required. Usage: 1ctl secret get <secret-id>", nil)
+	}
+	secretID := cmd.Args().First()
+
+	secrets, err := api.ListSecrets()
+	if err != nil {
+		return utils.NewError(fmt.Sprintf("failed to fetch secrets: %%s", err.Error()), nil)
+	}
+
+	for _, s := range secrets {
+		if s.SecretID.String() == secretID {
+			if utils.TryPrintJSON(s) {
+				return nil
+			}
+			utils.PrintHeader("Secret %s", s.AppLabel)
+			utils.PrintStatusLine("Secret ID", s.SecretID.String())
+			utils.PrintStatusLine("Deployment ID", s.DeploymentID.String())
+			utils.PrintStatusLine("Namespace", s.Namespace)
+			utils.PrintStatusLine("Created", api.FormatTimeAgo(s.CreatedAt))
+			utils.PrintStatusLine("Keys", fmt.Sprintf("%d", len(s.KeyValues)))
+			for _, kv := range s.KeyValues {
+				utils.PrintStatusLine("  "+kv.Key, "********")
+			}
+			return nil
+		}
+	}
+	return utils.NewError(fmt.Sprintf("secret %%s not found", secretID), nil)
 }

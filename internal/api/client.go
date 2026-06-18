@@ -388,6 +388,18 @@ func CreateVolume(volume Volume) error {
 	return makeRequest("POST", "/volumes/create", volume, nil)
 }
 
+// GetAllVolumes returns all volumes across all namespaces.
+func GetAllVolumes() ([]Volume, error) {
+	var resp struct {
+		Error bool     `json:"error"`
+		Data  []Volume `json:"data"`
+	}
+	if err := makeRequest("GET", "/volumes/all", nil, &resp); err != nil {
+		return nil, err
+	}
+	return resp.Data, nil
+}
+
 // GetVolumeLifecycleStatus reports DB, PVC, and mount state for a volume.
 func GetVolumeLifecycleStatus(volumeID string) (*VolumeLifecycleStatus, error) {
 	var resp struct {

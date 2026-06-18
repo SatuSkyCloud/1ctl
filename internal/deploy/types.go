@@ -75,8 +75,6 @@ type DeploymentOptions struct {
 	// TargetArch is the CPU architecture the image was built for ("amd64", "arm64", or "").
 	// Empty means multi-arch or unknown — no arch-based machine filtering is applied.
 	TargetArch string
-	// Wait blocks after deploy until pods are Running or timeout is reached.
-	Wait bool
 	// StrictSmoke enforces app-level 2xx/3xx success on the smoke check.
 	// When false, 401/403/404 are treated as platform-reachable and only
 	// 5xx/connection failures fail the check.

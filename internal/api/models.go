@@ -292,6 +292,7 @@ type Volume struct {
 	StorageSize     string    `json:"storage_size"`
 	ClaimName       string    `json:"claim_name"`
 	MountPath       string    `json:"mount_path"`
+	Namespace       string    `json:"namespace"`
 	DesiredAttached bool      `json:"desired_attached"`
 	CreatedAt       time.Time `json:"created_at"`
 	UpdatedAt       time.Time `json:"updated_at"`

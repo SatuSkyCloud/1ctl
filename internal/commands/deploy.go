@@ -1,14 +1,15 @@
 package commands
 
 import (
-	"context"
 	"1ctl/internal/api"
 	"1ctl/internal/config"
 	satuskyctx "1ctl/internal/context"
 	"1ctl/internal/deploy"
 	"1ctl/internal/utils"
 	"1ctl/internal/validator"
+	"context"
 	"fmt"
+	"net"
 	"net/http"
 	"strings"
 	"time"
@@ -16,6 +17,54 @@ import (
 	"github.com/google/uuid"
 	"github.com/urfave/cli/v3"
 )
+
+func newCmdList() *cli.Command {
+	return &cli.Command{
+		Name:  "list",
+		Usage: "List deployments",
+		Action: func(ctx context.Context, cmd *cli.Command) error {
+			return handleListDeployments(ctx)
+		},
+	}
+}
+
+func newCmdGet() *cli.Command {
+	var (
+		depIDArgs []string
+		depIDFlag string
+		app       string
+		config    string
+	)
+	return &cli.Command{
+		Name:  "get",
+		Usage: "Get deployment details",
+		Arguments: []cli.Argument{
+			&cli.StringArgs{Name: "deployment-id", Min: 0, Max: 1, Destination: &depIDArgs},
+		},
+		Flags: []cli.Flag{
+			&cli.StringFlag{Name: "deployment-id", Destination: &depIDFlag},
+			&cli.StringFlag{Name: "app", Destination: &app},
+			&cli.StringFlag{Name: "config", Destination: &config},
+		},
+		Action: func(ctx context.Context, cmd *cli.Command) error {
+			input := GetDeploymentInput{
+				DeploymentID: depIDFlag,
+				App:          app,
+				Config:       config,
+			}
+			if input.DeploymentID == "" && len(depIDArgs) > 0 {
+				input.DeploymentID = depIDArgs[0]
+			}
+			return handleGetDeployment(ctx, input)
+		},
+	}
+}
+
+type GetDeploymentInput struct {
+	DeploymentID string
+	App          string
+	Config       string
+}
 
 func DeployCommand() *cli.Command {
 	deployFlags := []cli.Flag{
@@ -231,11 +280,6 @@ func DeployCommand() *cli.Command {
 			Name:  "config",
 			Usage: "Config name or path (e.g. staging, satusky.staging.toml). Default: satusky.toml",
 		},
-		&cli.BoolFlag{
-			Name:    "wait",
-			Aliases: []string{"w"},
-			Usage:   "Wait until pods are Running before returning (default timeout: 5m)",
-		},
 	}
 
 	return &cli.Command{
@@ -263,41 +307,43 @@ Subcommands manage existing deployments:
    1ctl deploy delete --deployment-id <id>   [or --app <name>]`,
 		Flags: deployFlags,
 		Commands: []*cli.Command{
+			//{
+			//	Name:  "list",
+			//	Usage: "List deployments",
+			//	Flags: []cli.Flag{
+			//		&cli.StringFlag{
+			//			Name:  "namespace",
+			//			Usage: "Filter by namespace",
+			//		},
+			//	},
+			//	Action: handleListDeployments,
+			//},
+			newCmdList(),
+			//{
+			//	Name: "get",
+			//	Arguments: []cli.Argument{
+			//		&cli.StringArgs{Name: "deployment-id", Min: 0, Max: 1},
+			//	},
+			//	Usage: "Get deployment details",
+			//	Flags: []cli.Flag{
+			//		&cli.StringFlag{
+			//			Name:  "deployment-id",
+			//			Usage: "Deployment ID to get details for",
+			//		},
+			//		&cli.StringFlag{
+			//			Name:  "app",
+			//			Usage: "App name to resolve (alternative to --deployment-id)",
+			//		},
+			//		&cli.StringFlag{
+			//			Name:  "config",
+			//			Usage: "Config name or path (e.g. staging, satusky.staging.toml). Default: satusky.toml",
+			//		},
+			//	},
+			//	Action: handleGetDeployment,
+			//},
+			newCmdGet(),
 			{
-				Name:  "list",
-				Usage: "List deployments",
-				Flags: []cli.Flag{
-					&cli.StringFlag{
-						Name:  "namespace",
-						Usage: "Filter by namespace",
-					},
-				},
-				Action: handleListDeployments,
-			},
-			{
-				Name:  "get",
-				Arguments: []cli.Argument{
-					&cli.StringArgs{Name: "deployment-id", Min: 0, Max: 1},
-				},
-				Usage: "Get deployment details",
-				Flags: []cli.Flag{
-					&cli.StringFlag{
-						Name:  "deployment-id",
-						Usage: "Deployment ID to get details for",
-					},
-					&cli.StringFlag{
-						Name:  "app",
-						Usage: "App name to resolve (alternative to --deployment-id)",
-					},
-					&cli.StringFlag{
-						Name:  "config",
-						Usage: "Config name or path (e.g. staging, satusky.staging.toml). Default: satusky.toml",
-					},
-				},
-				Action: handleGetDeployment,
-			},
-			{
-				Name:  "status",
+				Name: "status",
 				Arguments: []cli.Argument{
 					&cli.StringArgs{Name: "deployment-id", Min: 0, Max: 1},
 				},
@@ -343,6 +389,10 @@ Subcommands manage existing deployments:
 						Name:    "yes",
 						Aliases: []string{"y"},
 						Usage:   "Skip confirmation prompt",
+					},
+					&cli.BoolFlag{
+						Name:  "destroy-volumes",
+						Usage: "Also delete persistent volume claims (PVCs). Without this, PVCs are retained for data recovery.",
 					},
 				},
 				Action: handleDestroyDeployment,
@@ -544,62 +594,52 @@ func handleDeploy(ctx context.Context, cmd *cli.Command) error {
 	}
 
 	publicURL := checkPublicURLReadiness(resp)
-	return reportDeployResult(resp, opts.Wait, publicURL, opts.SmokePath, opts.StrictSmoke)
+	return reportDeployResult(resp, publicURL, opts.SmokePath, opts.StrictSmoke)
 }
 
-func reportDeployResult(resp *api.CreateDeploymentResponse, waitForWorkload bool, publicURL publicURLReadiness, smokePath string, strictSmoke bool) error {
-	if publicURL.Ready {
-		utils.PrintSuccess("🚀 Deployment for %s is successful! Your app is live at: https://%s", resp.AppLabel, resp.Domain)
-	} else {
-		utils.PrintSuccess("Deployment for %s was accepted by the platform.", resp.AppLabel)
-		utils.PrintWarning("Public URL is not ready yet: https://%s", resp.Domain)
-		if publicURL.Reason != "" {
-			utils.PrintStatusLine("Public URL reason", publicURL.Reason)
-		}
-		utils.PrintInfo("Run: 1ctl domains check %s --probe", resp.Domain)
-	}
+func reportDeployResult(resp *api.CreateDeploymentResponse, publicURL publicURLReadiness, smokePath string, strictSmoke bool) error {
 	utils.PrintStatusLine("Deployment ID", resp.DeploymentID.String())
 
-	workloadReady := false
-	if waitForWorkload {
-		utils.PrintInfo("Waiting for deployment to become healthy...")
-		status, err := api.WaitForDeployment(resp.DeploymentID.String(), 5*time.Minute)
-		if err != nil {
-			utils.PrintWarning("Timed out waiting for deployment: %s", err.Error())
-		} else if status != nil && status.Status == "Running" {
-			workloadReady = true
-			utils.PrintSuccess("Deployment is healthy: pods Running")
-		}
+	if !publicURL.Ready || resp.Domain == "" {
+		// Public URL not ready — deployment was accepted, check back later.
+		utils.PrintSuccess("Deployment for %s was accepted by the platform.", resp.AppLabel)
 		if resp.Domain != "" {
-			if publicURL.Ready {
-				utils.PrintStatusLine("Public URL", fmt.Sprintf("ready: https://%s", resp.Domain))
-			} else {
-				utils.PrintStatusLine("Public URL", fmt.Sprintf("not ready: https://%s", resp.Domain))
-				if publicURL.Reason != "" {
-					utils.PrintStatusLine("Reason", publicURL.Reason)
-				}
+			utils.PrintWarning("Public URL is not ready yet: https://%s", resp.Domain)
+			if publicURL.Reason != "" {
+				utils.PrintStatusLine("Public URL reason", publicURL.Reason)
 			}
+			utils.PrintInfo("Run: 1ctl domains check %s --probe", resp.Domain)
 		}
-		if workloadReady && !publicURL.Ready && resp.Domain != "" {
-			return utils.NewError(fmt.Sprintf("deployment workload is healthy, but public URL is not ready yet. Run: 1ctl domains check %s --probe", resp.Domain), nil)
+		return nil
+	}
+
+	// Public URL is ready — smoke test the app with a brief retry loop.
+	// Pods typically start within 10-30s of deployment creation.
+	smokeURL := "https://" + resp.Domain
+	smokePaths := smokePathCandidates(smokePath)
+	utils.PrintInfo("Waiting for app to respond at %s...", smokeURL)
+
+	var smoke publicURLSmokeResult
+	deadline := time.Now().Add(30 * time.Second)
+	for {
+		smoke = checkPublicURLSmoke(smokeURL, smokePaths, strictSmoke)
+		if smoke.Ready || time.Now().After(deadline) {
+			break
 		}
-		if workloadReady && publicURL.Ready && resp.Domain != "" {
-			smokeURL := "https://" + resp.Domain
-			smokePaths := smokePathCandidates(smokePath)
-			utils.PrintInfo("Running public URL smoke check against %s", smokeURL)
-			smoke := checkPublicURLSmoke(smokeURL, smokePaths, strictSmoke)
-			if smoke.Ready {
-				if smoke.Path != "" {
-					utils.PrintSuccess("Public URL smoke check passed: %s%s", smokeURL, smoke.Path)
-				} else {
-					utils.PrintSuccess("Public URL smoke check passed: %s", smokeURL)
-				}
-			} else {
-				utils.PrintWarning("Public URL smoke check failed: %s", smoke.Reason)
-				if strictSmoke {
-					return utils.NewError(fmt.Sprintf("deployment workload is healthy, but the public URL smoke check failed for %s: %s", smokeURL, smoke.Reason), nil)
-				}
-			}
+		time.Sleep(3 * time.Second)
+	}
+
+	if smoke.Ready {
+		utils.PrintSuccess("🚀 Deployment for %s is successful! Your app is live at: https://%s", resp.AppLabel, resp.Domain)
+		if smoke.Path != "" {
+			utils.PrintInfo("Verified: %s%s", smokeURL, smoke.Path)
+		}
+	} else {
+		utils.PrintWarning("App is starting up — not reachable yet at https://%s", resp.Domain)
+		utils.PrintInfo("The platform accepted your deployment and pods are starting.")
+		utils.PrintInfo("Check status: 1ctl doctor --deployment-id %s", resp.DeploymentID.String())
+		if strictSmoke {
+			return utils.NewError(fmt.Sprintf("smoke check failed for https://%s: %s", resp.Domain, smoke.Reason), nil)
 		}
 	}
 
@@ -733,17 +773,17 @@ func prepareDeploymentOptions(cmd *cli.Command, cfg *config.ProjectConfig, userS
 		return deploy.DeploymentOptions{}, err
 	}
 	opts := deploy.DeploymentOptions{
-		CPU:               cmd.String("cpu"),
-		CPURequest:        cmd.String("cpu-request"),
-		CPULimit:          cmd.String("cpu-limit"),
-		Memory:            cmd.String("memory"),
-		Domain:            cmd.String("domain"),
-		SmokePath:         cmd.String("health-path"),
-		StrictSmoke:       cmd.IsSet("health-path"),
-		Port:              cmd.Int("port"),
-		DockerfilePath:    dockerfilePath,
-		PrebuiltImage:     cmd.String("image"),
-		FastBuild:         cmd.Bool("fast"),
+		CPU:            cmd.String("cpu"),
+		CPURequest:     cmd.String("cpu-request"),
+		CPULimit:       cmd.String("cpu-limit"),
+		Memory:         cmd.String("memory"),
+		Domain:         cmd.String("domain"),
+		SmokePath:      cmd.String("health-path"),
+		StrictSmoke:    cmd.IsSet("health-path"),
+		Port:           cmd.Int("port"),
+		DockerfilePath: dockerfilePath,
+		PrebuiltImage:  cmd.String("image"),
+		FastBuild:      cmd.Bool("fast"),
 	}
 
 	if !cmd.IsSet("fast") && cfg != nil && cfg.Build.FastBuild {
@@ -934,8 +974,6 @@ func prepareDeploymentOptions(cmd *cli.Command, cfg *config.ProjectConfig, userS
 	// the user typed deliberately (e.g. --rolling-max-surge=25% to assert
 	// the default in an audit log). Snapshot taken BEFORE the toml merge.
 	opts.RollingFlagsExplicit = userSet["rolling-max-surge"] || userSet["rolling-max-unavailable"]
-	opts.Wait = cmd.Bool("wait")
-
 	// Validate strategy value
 	switch opts.Strategy {
 	case "rolling", "recreate":
@@ -1223,7 +1261,22 @@ func checkPublicURLSmoke(baseURL string, paths []string, strict bool) publicURLS
 
 func checkPublicURLSmokeAtPath(baseURL, path string, strict bool) publicURLSmokeResult {
 	targetURL := strings.TrimRight(baseURL, "/") + path
-	client := &http.Client{Timeout: 10 * time.Second}
+	// Use 8.8.8.8 directly to bypass stale local DNS cache entries that
+	// may still have NXDOMAIN from before Cloudflare propagation completed.
+	client := &http.Client{
+		Timeout: 10 * time.Second,
+		Transport: &http.Transport{
+			DialContext: (&net.Dialer{
+				Resolver: &net.Resolver{
+					PreferGo: true,
+					Dial: func(ctx context.Context, network, address string) (net.Conn, error) {
+						d := net.Dialer{Timeout: 3 * time.Second}
+						return d.DialContext(ctx, "udp", "8.8.8.8:53")
+					},
+				},
+			}).DialContext,
+		},
+	}
 	req, err := http.NewRequest(http.MethodGet, targetURL, nil)
 	if err != nil {
 		return publicURLSmokeResult{Ready: false, Reason: fmt.Sprintf("failed to build request: %s", err.Error()), Path: path}
@@ -1398,7 +1451,7 @@ func handleDeploymentStatus(ctx context.Context, cmd *cli.Command) error {
 // `1ctl deploy logs` will land alongside the backend WS endpoint in a
 // follow-up (#3 G-01).
 
-func handleListDeployments(ctx context.Context, cmd *cli.Command) error {
+func handleListDeployments(ctx context.Context) error {
 	namespace, err := satuskyctx.GetCurrentNamespaceOrError()
 	if err != nil {
 		return err
@@ -1434,15 +1487,8 @@ func handleListDeployments(ctx context.Context, cmd *cli.Command) error {
 	return nil
 }
 
-func handleGetDeployment(ctx context.Context, cmd *cli.Command) error {
-	depID := cmd.String("deployment-id")
-	if depID == "" {
-		args := cmd.StringArgs("deployment-id")
-		if len(args) > 0 {
-			depID = args[0]
-		}
-	}
-	deploymentID, err := resolveDeploymentID(depID, cmd.String("app"), cmd.String("config"))
+func handleGetDeployment(ctx context.Context, in GetDeploymentInput) error {
+	deploymentID, err := resolveDeploymentID(in.DeploymentID, in.App, in.Config)
 	if err != nil {
 		return err
 	}
@@ -1565,6 +1611,19 @@ func handleDestroyDeployment(ctx context.Context, cmd *cli.Command) error {
 		return nil
 	}
 	utils.PrintInfo("Destroying deployment %s...", deploymentID)
+	if cmd.Bool("destroy-volumes") {
+		statuses, volErr := api.GetDeploymentVolumeLifecycleStatuses(deploymentID)
+		if volErr != nil {
+			utils.PrintWarning("Could not list volumes for destruction: %s", volErr.Error())
+		} else {
+			for _, v := range statuses {
+				utils.PrintInfo("Destroying volume %s (PVC: %s)...", v.Volume.VolumeName, v.PVC.Name)
+				if _, delErr := api.DeleteVolumePVC(v.Volume.VolumeID.String()); delErr != nil {
+					utils.PrintWarning("Failed to destroy volume %s: %s", v.Volume.VolumeName, delErr.Error())
+				}
+			}
+		}
+	}
 	result, err := api.DeleteDeployment(deploymentID)
 	if err != nil {
 		return utils.NewError(fmt.Sprintf("failed to delete deployment: %s", err.Error()), nil)
