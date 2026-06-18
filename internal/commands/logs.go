@@ -47,9 +47,21 @@ func handleLogs(c *cli.Context) error {
 
 	tail := c.Int("tail")
 
-	logs, err := api.GetStoredLogs(deploymentID, tail)
+	logs, meta, err := api.GetStoredLogs(deploymentID, tail)
 	if err != nil {
 		return utils.NewError(fmt.Sprintf("failed to get logs: %s", err.Error()), nil)
+	}
+
+	if meta != nil {
+		switch {
+		case meta.Degraded:
+			utils.PrintWarning("Loki unavailable; using stored deployment logs")
+			if meta.FallbackReason != "" {
+				utils.PrintInfo("Fallback reason: %s", meta.FallbackReason)
+			}
+		case meta.Source == "loki":
+			utils.PrintInfo("Showing logs from Loki")
+		}
 	}
 
 	if len(logs) == 0 {

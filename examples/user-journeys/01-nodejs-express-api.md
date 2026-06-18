@@ -6,13 +6,6 @@
 
 ---
 
-## CLI Coverage
-
-> ✅ **Fully covered** — every command in this guide works with the current CLI.
-> No gaps.
-
----
-
 ## 1. Project structure
 
 Your repo looks like this:
@@ -55,10 +48,11 @@ CMD ["node", "src/index.js"]
 ## 3. satusky.toml
 
 ```toml
-name    = "my-api"
-port    = 3000
-cpu     = "0.5"
-memory  = "512Mi"
+[app]
+  name   = "my-api"
+  port   = 3000
+  cpu    = "0.5"
+  memory = "512Mi"
 ```
 
 That's it — no org, no deployment IDs. The platform resolves by `name` at runtime.
@@ -77,23 +71,25 @@ cd my-api
 `--wait` blocks until pods are Running and healthy. You'll see output like:
 
 ```
-Building image...  done (42s)
-Pushing image...   done (8s)
-Creating deployment my-api...
-Waiting for pods to be Running...
-  my-api-7d9f4b6c8-xk2p9   Running   ✓
-Deploy complete. App is live.
+💡 Build queued (ID: ...)
+  [build] Docker build completed
+💡 Image architecture: amd64
+Step 2/5: Creating/updating deployment my-api ✓
+Step 3/5: ...
+💡 Generated new domain: happyotter-x3k9m2.satusky.com
+✅ 🚀 Deployment for my-api is successful! Your app is live at: https://happyotter-x3k9m2.satusky.com
+💡 Waiting for deployment to become healthy...
+✅ Deployment is healthy — pods Running
 ```
 
 If you skip `--wait` and check status immediately, the deployment may still be in progress:
 
 ```bash
-# Checking too early — pods may show Pending or ContainerCreating
 1ctl deploy status --config satusky.toml
-# STATUS: Pending  (image pull in progress)
+# Workload: Pending  (image pull in progress)
 ```
 
-Wait a few seconds and run it again, or just use `--wait` from the start to avoid the guesswork.
+Wait a few seconds and run it again, or just use `--wait` from the start.
 
 ---
 
@@ -129,10 +125,10 @@ Non-sensitive config lives in env vars. These are visible in deploy metadata, so
   --env NODE_ENV=production
 ```
 
-Changes take effect on the next deploy. Trigger a redeploy to pick them up:
+Changes take effect on the next restart:
 
 ```bash
-1ctl deploy --config satusky.toml --wait
+1ctl deploy restart --config satusky.toml
 ```
 
 ---
@@ -148,10 +144,9 @@ In a second terminal, tail the log stream while you test:
 You'll see structured output like:
 
 ```
-2026-04-26T14:03:01Z [my-api] Server listening on port 3000
-2026-04-26T14:03:12Z [my-api] GET /api/users 200 14ms
-2026-04-26T14:03:18Z [my-api] POST /api/auth/login 200 38ms
-2026-04-26T14:03:25Z [my-api] GET /api/users/42 401 3ms
+2026-06-12T14:03:01Z [my-api-7d9f4b6c8-xk2p9] Server listening on port 3000
+2026-06-12T14:03:12Z [my-api-7d9f4b6c8-xk2p9] GET /api/users 200 14ms
+2026-06-12T14:03:18Z [my-api-7d9f4b6c8-xk2p9] POST /api/auth/login 200 38ms
 ```
 
 Press `Ctrl+C` to stop the stream.
@@ -178,19 +173,12 @@ curl -X POST https://happyotter-x3k9m2.satusky.com/api/auth/login \
 
 ## 9. Re-deploy after a code change
 
-Edit `src/index.js`, commit, and deploy again. The platform upserts — it creates a new version and keeps the old one in history.
+Edit `src/index.js`, commit, and deploy again. The platform creates a new release and keeps the old one in history.
 
 ```bash
 git add src/index.js
 git commit -m "fix: return 404 when user not found"
 1ctl deploy --config satusky.toml --wait
-```
-
-Output shows the new version number:
-
-```
-Building image...  done (39s)
-Deploy complete. Version: 4
 ```
 
 ---
@@ -202,28 +190,26 @@ Deploy complete. Version: 4
 ```
 
 ```
-VERSION  STATUS    DEPLOYED AT           MESSAGE
-4        active    2026-04-26 14:22:11   fix: return 404 when user not found
-3        inactive  2026-04-26 13:55:04   feat: add /api/users/:id route
-2        inactive  2026-04-26 12:10:47   chore: update dependencies
-1        inactive  2026-04-26 11:30:00   initial deploy
+VERSION  IMAGE                                   STATUS       DEPLOYED
+4        registry.satusky.com/my-api:d4e5f6a      active       2 min ago
+3        registry.satusky.com/my-api:c3b4a5c      superseded   2 hours ago
+2        registry.satusky.com/my-api:b2a3c4d      superseded   1 day ago
+1        registry.satusky.com/my-api:a1b2c3d      superseded   2 days ago
 ```
 
 ---
 
 ## 11. Roll back to a previous version
 
-Version 4 broke something — let's roll back to version 3 immediately.
+Version 4 broke something — roll back to version 3.
 
 ```bash
-1ctl deploy rollback --config satusky.toml --version 3
+1ctl deploy rollback --config satusky.toml --version 3 -y
 ```
 
 ```
-Rolling back my-api to version 3...
-Waiting for pods to be Running...
-  my-api-6c8d9b5f2-tz7n1   Running   ✓
-Rollback complete. Now running version 3.
+💡 Rolling back to release 3...
+✅ Rollback to version 3 initiated
 ```
 
 No image rebuild needed — the platform reruns the already-built image from version 3.
@@ -238,6 +224,41 @@ No image rebuild needed — the platform reruns the already-built image from ver
 | Set credentials | `1ctl secret create --config satusky.toml --kv KEY=VAL` |
 | Remove a secret | `1ctl secret unset --config satusky.toml --key KEY` |
 | Set config vars | `1ctl env create --config satusky.toml --env KEY=VAL` |
+| Apply env/secret changes | `1ctl deploy restart --config satusky.toml` |
 | Live logs | `1ctl logs stream --config satusky.toml` |
 | Release history | `1ctl deploy releases --config satusky.toml` |
-| Roll back | `1ctl deploy rollback --config satusky.toml --version N` |
+| Roll back | `1ctl deploy rollback --config satusky.toml --version N -y` |
+
+---
+
+## Live Verification (2026-06-12)
+
+All commands verified against live `org123-c0bee423` namespace with `backend-api` deployment.
+
+| # | Command | Exit |
+|---|---------|------|
+| 1 | `1ctl deploy list` | ✅ 0 |
+| 2 | `1ctl -o json deploy list` | ✅ 0 |
+| 3 | `1ctl deploy status --deployment-id <id>` | ✅ 0 |
+| 4 | `1ctl -o json deploy get --deployment-id <id>` | ✅ 0 |
+| 5 | `1ctl deploy releases --deployment-id <id>` | ✅ 0 |
+| 6 | `1ctl secret create --deployment-id <id> --kv X=Y` | ✅ 0 |
+| 7 | `1ctl secret list` | ✅ 0 |
+| 8 | `1ctl secret unset --deployment-id <id> --key X` | ✅ 0 |
+| 9 | `1ctl env create --deployment-id <id> --env X=Y` | ✅ 0 |
+| 10 | `1ctl env list --deployment-id <id>` | ✅ 0 |
+| 11 | `1ctl -o json env list --deployment-id <id>` | ✅ 0 |
+| 12 | `1ctl env unset --deployment-id <id> --key X` | ✅ 0 |
+| 13 | `1ctl deploy restart --deployment-id <id>` | ✅ 0 |
+| 14 | `1ctl logs --deployment-id <id> --tail 3` | ✅ 0 |
+| 15 | `1ctl doctor --deployment-id <id>` | ✅ 0 |
+
+**JSON field verification** (`deploy get -o json`):
+```
+app_label: backend-api     status: completed    domain: https://...satusky.com
+cpu_request: 250m          memory_request: 256Mi   replicas: 1
+```
+
+**Releases columns** (`deploy releases`): `VERSION  IMAGE  STATUS  DEPLOYED`
+
+**Status values**: `active`, `superseded`, `rolled_back`

@@ -8,6 +8,7 @@ import (
 	"1ctl/internal/utils"
 	"1ctl/internal/validator"
 	"fmt"
+	"net/http"
 	"strings"
 	"time"
 
@@ -55,6 +56,10 @@ func DeployCommand() *cli.Command {
 		&cli.StringFlag{
 			Name:  "organization",
 			Usage: "Organization name to organize your resources (default: current organization)",
+		},
+		&cli.StringFlag{
+			Name:  "health-path",
+			Usage: "HTTP path to smoke test after deploy wait succeeds (default: tries /health then /)",
 		},
 		&cli.StringFlag{
 			Name:  "dockerfile",
@@ -408,7 +413,7 @@ func handleDeploy(c *cli.Context) error {
 	// (Discovered during review: RollingFlagsExplicit was tripping for
 	// toml-provided defaults, forcing strategy config onto requests that
 	// would otherwise have been omitted.)
-	userSet := captureUserSetFlags(c, "rolling-max-surge", "rolling-max-unavailable", "domain", "multicluster", "cpu", "cpu-request", "cpu-limit")
+	userSet := captureUserSetFlags(c, "rolling-max-surge", "rolling-max-unavailable", "domain", "health-path", "multicluster", "cpu", "cpu-request", "cpu-limit")
 
 	// Apply satusky.toml scalar fields to flags the user didn't explicitly set.
 	// Precedence overall: CLI flag (c.IsSet) > satusky.toml > flag Value: default.
@@ -452,6 +457,9 @@ func handleDeploy(c *cli.Context) error {
 			return err
 		}
 		if err := applyConfigScalar(c, "organization", cfg.App.Organization); err != nil {
+			return err
+		}
+		if err := applyConfigScalar(c, "health-path", cfg.App.HealthPath); err != nil {
 			return err
 		}
 		if err := applyConfigScalar(c, "strategy", cfg.App.Strategy); err != nil {
@@ -503,10 +511,10 @@ func handleDeploy(c *cli.Context) error {
 	}
 
 	publicURL := checkPublicURLReadiness(resp)
-	return reportDeployResult(resp, opts.Wait, publicURL)
+	return reportDeployResult(resp, opts.Wait, publicURL, opts.SmokePath, opts.StrictSmoke)
 }
 
-func reportDeployResult(resp *api.CreateDeploymentResponse, waitForWorkload bool, publicURL publicURLReadiness) error {
+func reportDeployResult(resp *api.CreateDeploymentResponse, waitForWorkload bool, publicURL publicURLReadiness, smokePath string, strictSmoke bool) error {
 	if publicURL.Ready {
 		utils.PrintSuccess("🚀 Deployment for %s is successful! Your app is live at: https://%s", resp.AppLabel, resp.Domain)
 	} else {
@@ -541,6 +549,24 @@ func reportDeployResult(resp *api.CreateDeploymentResponse, waitForWorkload bool
 		}
 		if workloadReady && !publicURL.Ready && resp.Domain != "" {
 			return utils.NewError(fmt.Sprintf("deployment workload is healthy, but public URL is not ready yet. Run: 1ctl domains check %s --probe", resp.Domain), nil)
+		}
+		if workloadReady && publicURL.Ready && resp.Domain != "" {
+			smokeURL := "https://" + resp.Domain
+			smokePaths := smokePathCandidates(smokePath)
+			utils.PrintInfo("Running public URL smoke check against %s", smokeURL)
+			smoke := checkPublicURLSmoke(smokeURL, smokePaths, strictSmoke)
+			if smoke.Ready {
+				if smoke.Path != "" {
+					utils.PrintSuccess("Public URL smoke check passed: %s%s", smokeURL, smoke.Path)
+				} else {
+					utils.PrintSuccess("Public URL smoke check passed: %s", smokeURL)
+				}
+			} else {
+				utils.PrintWarning("Public URL smoke check failed: %s", smoke.Reason)
+				if strictSmoke {
+					return utils.NewError(fmt.Sprintf("deployment workload is healthy, but the public URL smoke check failed for %s: %s", smokeURL, smoke.Reason), nil)
+				}
+			}
 		}
 	}
 
@@ -602,6 +628,9 @@ func validateInputs(c *cli.Context) error {
 	}
 	if err := validator.ValidateDomain(c.String("domain")); err != nil {
 		return utils.NewError("invalid domain: %v", err)
+	}
+	if err := validator.ValidateURLPath(c.String("health-path")); err != nil {
+		return utils.NewError("invalid health path: %v", err)
 	}
 
 	// Validate volume options
@@ -671,15 +700,17 @@ func prepareDeploymentOptions(c *cli.Context, cfg *config.ProjectConfig, userSet
 		return deploy.DeploymentOptions{}, err
 	}
 	opts := deploy.DeploymentOptions{
-		CPU:            c.String("cpu"),
-		CPURequest:     c.String("cpu-request"),
-		CPULimit:       c.String("cpu-limit"),
-		Memory:         c.String("memory"),
-		Domain:         c.String("domain"),
-		Port:           c.Int("port"),
-		DockerfilePath: dockerfilePath,
-		PrebuiltImage:  c.String("image"),
-		FastBuild:      c.Bool("fast"),
+		CPU:               c.String("cpu"),
+		CPURequest:        c.String("cpu-request"),
+		CPULimit:          c.String("cpu-limit"),
+		Memory:            c.String("memory"),
+		Domain:            c.String("domain"),
+		SmokePath:   c.String("health-path"),
+		StrictSmoke: c.IsSet("health-path"),
+		Port:              c.Int("port"),
+		DockerfilePath:    dockerfilePath,
+		PrebuiltImage:     c.String("image"),
+		FastBuild:         c.Bool("fast"),
 	}
 
 	if !c.IsSet("fast") && cfg != nil && cfg.App.FastBuild {
@@ -1054,6 +1085,13 @@ type publicURLReadiness struct {
 	Reason string
 }
 
+type publicURLSmokeResult struct {
+	Ready      bool
+	StatusCode int
+	Reason     string
+	Path       string
+}
+
 func checkPublicURLReadiness(resp *api.CreateDeploymentResponse) publicURLReadiness {
 	if resp == nil || resp.IngressID == uuid.Nil || resp.Domain == "" {
 		return publicURLReadiness{Ready: true}
@@ -1109,6 +1147,87 @@ func domainStatusReason(status *api.DomainStatusResponse) string {
 		return fmt.Sprintf("DNS is %s", status.DNS.Status)
 	}
 	return "public URL is not ready"
+}
+
+func smokePathCandidates(explicitPath string) []string {
+	if explicitPath != "" {
+		return []string{explicitPath}
+	}
+	return []string{"/health", "/"}
+}
+
+func checkPublicURLSmoke(baseURL string, paths []string, strict bool) publicURLSmokeResult {
+	if len(paths) == 0 {
+		paths = smokePathCandidates("")
+	}
+
+	var failureReasons []string
+	var lastFailure publicURLSmokeResult
+	for _, path := range paths {
+		result := checkPublicURLSmokeAtPath(baseURL, path, strict)
+		if result.Ready {
+			return result
+		}
+		failureReasons = append(failureReasons, fmt.Sprintf("%s: %s", path, result.Reason))
+		lastFailure = result
+	}
+
+	if len(failureReasons) == 1 {
+		return lastFailure
+	}
+	return publicURLSmokeResult{
+		Ready:      false,
+		Reason:     strings.Join(failureReasons, "; "),
+		Path:       lastFailure.Path,
+		StatusCode: lastFailure.StatusCode,
+	}
+}
+
+func checkPublicURLSmokeAtPath(baseURL, path string, strict bool) publicURLSmokeResult {
+	targetURL := strings.TrimRight(baseURL, "/") + path
+	client := &http.Client{Timeout: 10 * time.Second}
+	req, err := http.NewRequest(http.MethodGet, targetURL, nil)
+	if err != nil {
+		return publicURLSmokeResult{Ready: false, Reason: fmt.Sprintf("failed to build request: %s", err.Error()), Path: path}
+	}
+
+	resp, err := client.Do(req)
+	if err != nil {
+		return publicURLSmokeResult{Ready: false, Reason: fmt.Sprintf("request failed: %s", err.Error()), Path: path}
+	}
+	defer func() { _ = resp.Body.Close() }() //nolint:errcheck
+
+	// In non-strict mode (default smoke without explicit --health-path),
+	// 401, 403, and 404 prove DNS/TLS/routing worked — the platform is healthy.
+	// Only 5xx and connection errors mean the route is truly broken.
+	if resp.StatusCode >= http.StatusBadRequest {
+		if !strict && isReachabilityStatus(resp.StatusCode) {
+			return publicURLSmokeResult{
+				Ready:      true,
+				StatusCode: resp.StatusCode,
+				Path:       path,
+			}
+		}
+		return publicURLSmokeResult{
+			Ready:      false,
+			StatusCode: resp.StatusCode,
+			Reason:     fmt.Sprintf("unexpected HTTP status: %d %s", resp.StatusCode, http.StatusText(resp.StatusCode)),
+			Path:       path,
+		}
+	}
+
+	return publicURLSmokeResult{
+		Ready:      true,
+		StatusCode: resp.StatusCode,
+		Path:       path,
+	}
+}
+
+// isReachabilityStatus returns true for HTTP status codes that still prove
+// DNS/TLS/routing worked (platform reachable), even if the app-level response
+// is an error.
+func isReachabilityStatus(code int) bool {
+	return code == http.StatusUnauthorized || code == http.StatusForbidden || code == http.StatusNotFound
 }
 
 func deploymentStrategyText(strategy *api.DeploymentStrategyConfig) string {

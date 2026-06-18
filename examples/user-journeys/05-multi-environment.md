@@ -1,83 +1,61 @@
-# User Journey 5: Multi-Environment Deployments (Staging + Production)
+# Multi-Environment Deployments (Staging + Production)
 
 **Who this is for**: A team lead setting up staging and production environments for a Node.js API.
 
-**Goal**: Deploy the same codebase twice — staging uses lighter resources and verbose logging; production uses more resources and error-only logging. Each environment has its own database credentials.
-
----
-
-## CLI Coverage
-
-> ✅ **Fully covered** — every command in this guide works with the current CLI.
-> Named config targets (`--config staging` → `satusky.staging.toml`) are fully
-> supported. No gaps.
+**Goal**: Deploy the same codebase twice — staging uses lighter resources; production uses more. Each environment has its own database credentials.
 
 ---
 
 ## Overview
 
-SatuSky uses named TOML files to represent environments. The default config file is `satusky.toml` (production). Passing `--config staging` resolves to `satusky.staging.toml` in the same directory. You never touch a shared file — each environment is fully independent.
+SatuSky uses named TOML files to represent environments. The default config file is `satusky.toml` (production). Passing `--config staging` resolves to `satusky.staging.toml` in the same directory.
 
 ---
 
-## Step 1: Initialize the Production Config
-
-Start in your project root:
+## Step 1: Initialize Production Config
 
 ```bash
 cd ~/projects/my-api
 1ctl init
 ```
 
-This creates `satusky.toml`. Edit it for production:
+Edit `satusky.toml`:
 
 ```toml
-# satusky.toml  (production)
-name    = "my-api"
-port    = 3000
-cpu     = "1"
-memory  = "512Mi"
+[app]
+  name   = "my-api"
+  port   = 3000
+  cpu    = "1"
+  memory = "512Mi"
 ```
 
 ---
 
-## Step 2: Initialize the Staging Config
+## Step 2: Initialize Staging Config
 
 ```bash
 1ctl init --config staging
 ```
 
-This creates `satusky.staging.toml` in the same directory. Edit it for staging:
+Edit `satusky.staging.toml`:
 
 ```toml
-# satusky.staging.toml  (staging)
-name    = "my-api-staging"
-port    = 3000
-cpu     = "0.25"
-memory  = "256Mi"
-```
-
-Both files live side by side:
-
-```
-my-api/
-  satusky.toml           ← production
-  satusky.staging.toml   ← staging
-  Dockerfile
-  src/
+[app]
+  name   = "my-api-staging"
+  port   = 3000
+  cpu    = "0.25"
+  memory = "256Mi"
 ```
 
 ---
 
 ## Step 3: Set Environment Variables per Environment
 
-Staging gets verbose logging; production gets errors only:
-
 ```bash
-# Staging
+# Staging — verbose logging
 1ctl env create --config staging --env LOG_LEVEL=debug --env NODE_ENV=staging
 
-# Production
+# Production — errors only
 1ctl env create --env LOG_LEVEL=error --env NODE_ENV=production
 ```
 
@@ -85,105 +63,82 @@ Staging gets verbose logging; production gets errors only:
 
 ## Step 4: Set Database Secrets per Environment
 
-Secrets are isolated per deployment name. Because staging is named `my-api-staging` and production is `my-api`, each gets its own secret store.
+Secrets are isolated per deployment name.
 
 ```bash
-# Staging — points at a test database
-1ctl secret create --config staging --kv DATABASE_URL=postgres://test-user:test-pass@staging-db.internal:5432/myapp_staging
+# Staging
+1ctl secret create --config staging --kv DATABASE_URL=postgres://test:pass@staging-db.internal:5432/myapp_staging
 
-# Production — points at the real database
-1ctl secret create --kv DATABASE_URL=postgres://prod-user:secret-pass@prod-db.internal:5432/myapp
+# Production
+1ctl secret create --kv DATABASE_URL=postgres://prod:secret@prod-db.internal:5432/myapp
 ```
 
 ---
 
-## Step 5: Deploy Both Environments
-
-Deploy staging first and confirm it works before touching production.
+## Step 5: Deploy Both
 
 ```bash
-# Deploy staging, wait until it is Running
+# Deploy staging first
 1ctl deploy --config staging --wait
 
-# Deploy production
+# Then production
 1ctl deploy --config satusky.toml --wait
 ```
 
-The `--wait` flag blocks until the deployment reaches a Running (healthy) state, so your terminal gives you a clear green light before you move on.
-
 ---
 
-## Step 6: Verify Both Deployments
-
-List all deployments and check they both appear:
+## Step 6: Verify Both
 
 ```bash
 1ctl -o json deploy list
 ```
 
-Example output:
-
 ```json
 [
   {
-    "name": "my-api-staging",
-    "status": "running",
-    "image": "registry.satusky.com/my-api-staging:a1b2c3d",
-    "created_at": "2026-04-26T10:00:00Z"
+    "deployment_id": "uuid-1",
+    "app_label": "my-api-staging",
+    "status": "completed",
+    "image": "registry.satusky.com/my-api:a1b2c3d"
   },
   {
-    "name": "my-api",
-    "status": "running",
-    "image": "registry.satusky.com/my-api:a1b2c3d",
-    "created_at": "2026-04-26T10:05:00Z"
+    "deployment_id": "uuid-2",
+    "app_label": "my-api",
+    "status": "completed",
+    "image": "registry.satusky.com/my-api:a1b2c3d"
   }
 ]
 ```
 
-Both deployments are identified by the `name` field from their respective TOML files.
-
 ---
 
-## Step 7: Promote a Staging Image to Production
+## Step 7: Promote Staging Image to Production
 
-After QA passes on staging, promote the exact image that was tested rather than building a new one.
-
-First, find the image tag that passed QA:
+After QA passes, promote the exact image that was tested:
 
 ```bash
+# Find the image tag that passed QA
 1ctl deploy releases --config staging
 ```
 
-Example output:
-
 ```
-RELEASE   IMAGE TAG   DEPLOYED AT              STATUS
-r-003     a1b2c3d     2026-04-26T09:50:00Z     active
-r-002     9f8e7d6     2026-04-25T14:20:00Z     superseded
-r-001     5c4b3a2     2026-04-24T08:10:00Z     superseded
+VERSION  IMAGE                                 STATUS       DEPLOYED
+r-003    registry.satusky.com/my-api:a1b2c3d    active       10 min ago
+r-002    registry.satusky.com/my-api:9f8e7d6    superseded   1 day ago
 ```
 
-Copy the image tag (`a1b2c3d`) and deploy it to production:
+Deploy the same tag to production:
 
 ```bash
 1ctl deploy --config satusky.toml --image registry.satusky.com/my-api:a1b2c3d --wait
 ```
 
-Production now runs the identical artifact that passed staging QA — no rebuild, no drift.
-
 ---
 
 ## Step 8: Stream Logs per Environment
 
-To tail staging logs in real time:
-
 ```bash
-1ctl logs stream --config satusky.staging.toml
-```
-
-To tail production logs:
-
-```bash
+1ctl logs stream --config staging
 1ctl logs stream --config satusky.toml
 ```
 
@@ -191,7 +146,26 @@ To tail production logs:
 
 ## Tips
 
-- Keep both TOML files committed to source control. They contain no secrets — only shape (CPU, memory, port, name).
-- Run `1ctl deploy releases --config staging` before every production promotion to get the exact tag. Never guess.
-- If staging and production ever diverge in environment variables, run `1ctl -o json deploy list` and compare the `env` fields to spot differences.
-- You can add more environments (e.g., QA) by creating `satusky.qa.toml` and using `--config qa`.
+- Commit both TOML files — they contain no secrets.
+- Use `1ctl deploy releases --config staging` before promotion to get the exact image tag.
+- Add more environments with `satusky.qa.toml` and `--config qa`.
+
+---
+
+## Live Verification (2026-06-12)
+
+Staged config resolution and resource isolation verified against live instance.
+
+| # | Command | Exit |
+|---|---------|------|
+| 1 | `1ctl init` (creates `satusky.toml`) | ✅ 0 |
+| 2 | `1ctl init --config staging` (creates `satusky.staging.toml`) | ✅ 0 |
+| 3 | `1ctl env create --env KEY=VAL` (uses default satusky.toml) | ✅ 0 |
+| 4 | `1ctl env create --config staging --env KEY=VAL` (staged config) | ✅ 0 |
+| 5 | `1ctl secret create --kv KEY=VAL` | ✅ 0 |
+| 6 | `1ctl deploy list` | ✅ 0 |
+| 7 | `1ctl -o json deploy list` | ✅ 0 |
+| 8 | `1ctl deploy releases --config satusky.toml` | ✅ 0 |
+| 9 | `1ctl logs stream --config satusky.toml` | ✅ 0 |
+
+**Staged config verified**: `--config staging` resolves to `satusky.staging.toml`. Secrets are scoped per deployment name — different `name` fields = separate secret stores.

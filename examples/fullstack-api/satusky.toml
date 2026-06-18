@@ -1,0 +1,144 @@
+# =============================================================================
+# SatuSky — Full-Feature satusky.toml Reference
+# =============================================================================
+# This file exercises every supported field.  The platform supplies sensible
+# defaults for everything, so your real config only needs the fields you care
+# about.  CLI flags always override toml values for a single invocation.
+# =============================================================================
+
+[app]
+  # ── Identity ──────────────────────────────────────────────────────────
+  # name       K8s app label — unique per namespace.  Defaults to dirname.
+  name        = "fullstack-api"
+
+  # port       Container port your app listens on.  Required.
+  port        = 8080
+
+  # dockerfile Path to Dockerfile for cloud build.
+  #            Default: "Dockerfile" in the same directory as satusky.toml.
+  dockerfile  = "Dockerfile"
+
+  # ── Compute ───────────────────────────────────────────────────────────
+  # cpu        Legacy burst CPU alias (deprecated).
+  #            Prefer cpu_request + cpu_limit below.
+  # cpu        = "0.5"
+
+  # cpu_request  Guaranteed CPU (millicores or cores).  Default: 0.5 (500m).
+  cpu_request = "1.0"
+
+  # cpu_limit    Burst CPU ceiling.  Must be >= cpu_request.
+  #              Default: equals cpu_request (no burst).
+  cpu_limit   = "2.0"
+
+  # memory     RAM request and limit (combined).  Default: "256Mi".
+  memory      = "512Mi"
+
+  # ── Scaling ───────────────────────────────────────────────────────────
+  replicas    = 2
+
+  # ── Networking ────────────────────────────────────────────────────────
+  # domain     Custom domain.  Omit for a backend-assigned auto domain
+  #            (adjective-animal-XXXXXXX.satusky.com).
+  # domain     = "api.mycompany.com"
+
+  # health_path  Path used for post-deploy smoke checks.
+  #              When set, the CLI enforces 2xx/3xx on this exact path.
+  #              When empty, checks /health then / (non-strict mode).
+  health_path = "/health"
+
+  # ── Scheduling ────────────────────────────────────────────────────────
+  zone        = ""            # Target zone, e.g. "my-kul-1b". Empty = auto.
+  machine_tag = "compute"     # Only schedule on machines with this tag.
+
+  # ── Upgrade Strategy ──────────────────────────────────────────────────
+  # strategy   "rolling" (default) or "recreate"
+  strategy    = "rolling"
+
+  # rolling_max_surge       Additional pods during rollout (number or %).
+  rolling_max_surge       = "25%"
+
+  # rolling_max_unavailable Max pods unavailable during rollout (number or %).
+  rolling_max_unavailable = "0"
+
+  # ── TCP Dependencies ──────────────────────────────────────────────────
+  # wait_for   PostgreSQL/Redis/etc. that must be reachable before start.
+  #            Platform injects init-containers so your main container
+  #            never crashes while dependencies boot.
+  wait_for    = ["db:5432", "redis:6379"]
+
+  # organization  Override the CLI auth context.  Rarely needed.
+  # organization = ""
+
+
+# =============================================================================
+# [volume] — Persistent Storage
+# =============================================================================
+# Attaches a block storage volume to your deployment.  Data survives pod
+# restarts and redeploys.  Use for databases, file uploads, ML models, etc.
+# =============================================================================
+
+[volume]
+  size  = "1Gi"              # Storage size: "1Gi", "10Gi", "100Gi", "1Ti"
+  mount = "/data/uploads"    # Container mount path
+
+
+# =============================================================================
+# [hpa] — Horizontal Pod Autoscaler
+# =============================================================================
+# Automatically scales pod count based on CPU/memory usage.
+# Requires metrics-server in the cluster.
+# =============================================================================
+
+[hpa]
+  enabled       = true
+  min_replicas  = 2
+  max_replicas  = 10
+  cpu_target    = 70           # Target CPU utilisation percentage (0-100)
+  memory_target = 80           # Target memory utilisation percentage (0-100)
+
+
+# =============================================================================
+# [vpa] — Vertical Pod Autoscaler
+# =============================================================================
+# Automatically adjusts CPU/memory requests based on actual usage.
+# Mode: "off" | "auto" | "recreate" | "initial"
+# =============================================================================
+
+[vpa]
+  enabled    = false           # Set to true for production workloads
+  mode       = "auto"          # Recommend but don't apply automatically
+  min_cpu    = "250m"
+  max_cpu    = "4"
+  min_memory = "128Mi"
+  max_memory = "8Gi"
+
+
+# =============================================================================
+# [pdb] — Pod Disruption Budget
+# =============================================================================
+# Limits voluntary disruptions during maintenance, node drains, etc.
+# =============================================================================
+
+[pdb]
+  enabled       = true
+  # type          "auto" (50%), "fixed" (exact number), or "percent"
+  type          = "auto"
+  # min_available  Minimum pods that must remain available (for type=fixed).
+  # min_available = 1
+  # percent        Minimum percentage of pods (for type=percent).
+  # percent = 25
+
+
+# =============================================================================
+# [multicluster] — Multi-Cluster High Availability
+# =============================================================================
+# Deploy across multiple clusters/zones for fault tolerance.
+# =============================================================================
+
+[multicluster]
+  enabled                = false   # Set true for production HA
+  mode                   = "active-passive"   # "active-active" or "active-passive"
+  backup_enabled         = true
+  backup_schedule        = "hourly"          # "hourly" | "daily" | "weekly"
+  backup_retention       = "168h"            # "24h" | "72h" | "168h" | "720h"
+  backup_priority_cluster = 1               # Which cluster runs backups (1=primary)
