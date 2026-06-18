@@ -76,3 +76,28 @@ func TestValidateDomain(t *testing.T) {
 		})
 	}
 }
+
+func TestValidateURLPath(t *testing.T) {
+	tests := []struct {
+		name    string
+		path    string
+		wantErr bool
+	}{
+		{"empty path", "", false},
+		{"root path", "/", false},
+		{"health path", "/healthz", false},
+		{"nested path", "/api/health", false},
+		{"no leading slash", "health", true},
+		{"full URL rejected", "https://example.com/health", true},
+		{"whitespace rejected", "/health check", true},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			err := ValidateURLPath(tt.path)
+			if (err != nil) != tt.wantErr {
+				t.Errorf("ValidateURLPath(%q) error = %v, wantErr %v", tt.path, err, tt.wantErr)
+			}
+		})
+	}
+}

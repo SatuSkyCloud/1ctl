@@ -30,7 +30,8 @@ gosec ./...
 - `internal/config/` — config loading (`SATUSKY_API_URL`, `SATUSKY_DOCKER_API_URL`)
 - `internal/context/` — persisted auth state (`~/.satusky/context.json`)
 - `internal/docker/` — Docker image build and push
-- `internal/validator/` — Dockerfile validation
+- `internal/validator/` — Dockerfile validation plus health-path validation (`ValidateURLPath()`)
+- `internal/commands/doctor.go` — `1ctl doctor` diagnostic command (auth, zones, clusters, deployments, smoke)
 
 ## Key Patterns
 
@@ -40,6 +41,9 @@ gosec ./...
 - **Safe int conversions**: Use `api.SafeInt32()` for all `int` to `int32` conversions (gosec G115).
 - **Upsert pattern**: Deploy/service/ingress use upsert endpoints, not separate create/update.
 - **CLI framework**: `github.com/urfave/cli/v2`.
+- **Post-deploy smoke testing**: After `deploy --wait` reports workload healthy, `reportDeployResult()` probes the public URL. Default (no `--health-path`): 401/403/404 are accepted as proof of platform reachability (DNS/TLS/routing worked). With `--health-path` set: only 2xx/3xx pass. Non-strict smoke failures are warnings; strict failures block the deploy. `health_path` can be set in `satusky.toml` `[app]` or via `--health-path` flag. Path validated by `ValidateURLPath()` — must start with `/`.
+- **Logs metadata**: `GetStoredLogs` returns `(*DeploymentLogsMeta, error)` alongside logs. Check `meta.Degraded` for Loki unavailability; surface `FallbackReason`/`FallbackSource` to the user. The `logs` command prints a warning when Loki is degraded and response fell back to stored deployment logs.
+- **Doctor command**: `--deployment-id`/`--config` = targeted mode (always runs smoke). `--smoke` = opt-in for namespace-wide smoke. `--health-path` enforces strict 2xx/3xx in doctor smoke too. Smoke failures in doctor are always warnings, never hard errors.
 
 ## Backend API Contract
 
@@ -75,3 +79,6 @@ Resolution order at runtime (highest wins): `--api-url` flag → `SATUSKY_API_UR
 - HPA + VPA with mode `Auto` conflict — validate and reject in CLI
 - `deploy create` subcommand was removed in v0.2.0 — use `deploy` directly
 - Backend struct field names often differ from what you'd expect (e.g., `user_email` not `email`, `token_id` not `id`) — always check backend model JSON tags before adding/changing structs
+- `--wait` flag does NOT exist on `deploy rollback` — use `-y`/`--yes` for non-interactive rollback
+- `secret list` does NOT accept `--config` flag
+- `-o json` is NOT wired for `ingress list` or `service list` (works for deploy, env, secret, machine, token)

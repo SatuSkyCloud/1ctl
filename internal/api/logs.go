@@ -21,6 +21,26 @@ type DeploymentLog struct {
 	Level        string    `json:"level"`
 }
 
+// DeploymentLogsMeta carries explicit source/degradation information for logs.
+type DeploymentLogsMeta struct {
+	Source         string `json:"source"`
+	Degraded       bool   `json:"degraded"`
+	FallbackReason string `json:"fallback_reason,omitempty"`
+	FallbackSource string `json:"fallback_source,omitempty"`
+	Message        string `json:"message"`
+}
+
+type deploymentLogsResponse struct {
+	Error          bool            `json:"error"`
+	Message        string          `json:"message"`
+	Data           []DeploymentLog `json:"data"`
+	Source         string          `json:"source"`
+	Degraded       bool            `json:"degraded"`
+	FallbackReason string          `json:"fallback_reason,omitempty"`
+	FallbackSource string          `json:"fallback_source,omitempty"`
+	Count          int             `json:"count"`
+}
+
 // LogStats represents log statistics for a deployment
 type LogStats struct {
 	DeploymentID uuid.UUID `json:"deployment_id"`
@@ -40,28 +60,26 @@ type PodInfo struct {
 }
 
 // GetStoredLogs retrieves logs for a deployment via Loki (populated by Promtail).
-func GetStoredLogs(deploymentID string, tail int) ([]DeploymentLog, error) {
+func GetStoredLogs(deploymentID string, tail int) ([]DeploymentLog, *DeploymentLogsMeta, error) {
 	path := fmt.Sprintf("/loki/logs/%s", deploymentID)
 	if tail > 0 {
 		path = fmt.Sprintf("%s?tail=%d", path, tail)
 	}
 
-	var resp apiResponse
+	var resp deploymentLogsResponse
 	err := makeRequest("GET", path, nil, &resp)
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 
-	data, err := json.Marshal(resp.Data)
-	if err != nil {
-		return nil, utils.NewError(fmt.Sprintf("failed to marshal response data: %s", err.Error()), nil)
+	meta := &DeploymentLogsMeta{
+		Source:         resp.Source,
+		Degraded:       resp.Degraded,
+		FallbackReason: resp.FallbackReason,
+		FallbackSource: resp.FallbackSource,
+		Message:        resp.Message,
 	}
-
-	var logs []DeploymentLog
-	if err := json.Unmarshal(data, &logs); err != nil {
-		return nil, utils.NewError(fmt.Sprintf("failed to unmarshal logs: %s", err.Error()), nil)
-	}
-	return logs, nil
+	return resp.Data, meta, nil
 }
 
 // GetLogStats retrieves log statistics for a deployment

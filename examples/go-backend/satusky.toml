@@ -1,0 +1,7 @@
+[app]
+  name       = "my-api"
+  port       = 8080
+  dockerfile = "Dockerfile"
+  cpu        = "0.5"
+  memory     = "256Mi"
+
