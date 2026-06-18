@@ -1,6 +1,6 @@
 # Release Notes
 
-## Version 0.10.0 (Unreleased)
+## Version 0.10.0 (19-06-2026)
 
 Platform diagnostics, post-deploy smoke testing, Loki degradation awareness, and a fully verified documentation suite.
 
@@ -66,10 +66,7 @@ CPU request and burst semantics are now explicit for shared-resource deploys.
 
 ### Documentation
 
-* Updated deploy examples to use `--cpu-request 250m --cpu-limit 1`.
-* Documented that `cpu_request` is the reserved baseline and `cpu_limit` is the burst ceiling.
-
-## Version 0.8.5 (Unreleased)
+## Version 0.9.1 (15-06-2026)
 
 Machine inventory management and diagnostics for BYOA operators.
 
@@ -99,6 +96,26 @@ Machine inventory management and diagnostics for BYOA operators.
 * Machine references now resolve from the authenticated user's owned machine list, so name-based updates and deletes cannot accidentally target someone else's machine.
 * Main API calls from `1ctl` now preserve the `/v1` API prefix when deriving non-CLI machine endpoints from the configured `/v1/cli` URL.
 * The default machine type for new records is now `worker`, matching backend-supported machine types.
+
+## Version 0.9.0 (02-06-2026)
+
+CPU request and burst semantics are now explicit for shared-resource deploys.
+
+### Features
+
+* **Explicit CPU fraction flags**:
+  - Added `--cpu-request` for guaranteed scheduler reservation.
+  - Added `--cpu-limit` for burst ceiling.
+  - Kept `--cpu` as a backward-compatible alias for `--cpu-limit`.
+* **Shared-tier defaults**:
+  - Default deploy shape is now `250m` request with `1` vCPU burst.
+  - `1ctl launch` writes `cpu_request` and `cpu_limit` into `satusky.toml`.
+  - Existing `cpu` config entries remain supported as legacy burst limits.
+
+### Documentation
+
+* Updated deploy examples to use `--cpu-request 250m --cpu-limit 1`.
+* Documented that `cpu_request` is the reserved baseline and `cpu_limit` is the burst ceiling.
 
 ## Version 0.8.4 (19-05-2026)
 
