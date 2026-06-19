@@ -15,7 +15,7 @@ func TestFlagsHaveDestination(t *testing.T) {
 				continue
 			}
 			if hasNilDestination(f) {
-				t.Errorf("command %q: required flag %q has no Destination", cmd.Name, flagName(f))
+				t.Errorf("command %q: required flag %q has no Destination", cmd.Name, getFlagName(f))
 			}
 		}
 	})
@@ -64,6 +64,6 @@ func hasNilDestination(f cli.Flag) bool {
 	return dest.IsNil()
 }
 
-func flagName(f cli.Flag) string {
+func getFlagName(f cli.Flag) string {
 	return reflect.ValueOf(f).Elem().FieldByName("Name").String()
 }

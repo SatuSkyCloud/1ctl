@@ -13,6 +13,7 @@ import (
 	"1ctl/internal/commands/cluster"
 	"1ctl/internal/commands/completion"
 	"1ctl/internal/commands/credits"
+	deploycmd "1ctl/internal/commands/deploy"
 	"1ctl/internal/commands/doctor"
 	"1ctl/internal/commands/domains"
 	"1ctl/internal/commands/environment"
@@ -21,7 +22,9 @@ import (
 	"1ctl/internal/commands/issuer"
 	"1ctl/internal/commands/launch"
 	"1ctl/internal/commands/logs"
+	"1ctl/internal/commands/machine"
 	"1ctl/internal/commands/marketplace"
+	"1ctl/internal/commands/postgres"
 	"1ctl/internal/commands/notifications"
 	"1ctl/internal/commands/org"
 	"1ctl/internal/commands/pricing"
@@ -103,3 +106,12 @@ func EnvironmentCommand() *cli.Command { return environment.Command() }
 
 // DomainsCommand returns the "1ctl domains" command tree.
 func DomainsCommand() *cli.Command { return domains.Command() }
+
+// MachineCommand returns the "1ctl machine" command tree.
+func MachineCommand() *cli.Command { return machine.Command() }
+
+// DeployCommand returns the "1ctl deploy" command tree.
+func DeployCommand() *cli.Command { return deploycmd.Command() }
+
+// PostgresCommand returns the "1ctl postgres" command tree.
+func PostgresCommand() *cli.Command { return postgres.Command() }
