@@ -1,103 +1,15 @@
-package commands
+package token
 
 import (
 	"context"
+	"fmt"
+
 	"1ctl/internal/api"
 	satuskyctx "1ctl/internal/context"
 	"1ctl/internal/utils"
-	"fmt"
-
-	"github.com/urfave/cli/v3"
 )
 
-func TokenCommand() *cli.Command {
-	return &cli.Command{
-		Name:    "token",
-		Aliases: []string{"api-token"},
-		Usage:   "Manage API tokens",
-		Commands: []*cli.Command{
-			tokenListCommand(),
-			tokenCreateCommand(),
-			tokenGetCommand(),
-			tokenEnableCommand(),
-			tokenDisableCommand(),
-			tokenDeleteCommand(),
-		},
-	}
-}
-
-func tokenListCommand() *cli.Command {
-	return &cli.Command{
-		Name:   "list",
-		Usage:  "List API tokens",
-		Action: handleTokenList,
-	}
-}
-
-func tokenCreateCommand() *cli.Command {
-	return &cli.Command{
-		Name:  "create",
-		Usage: "Create a new API token",
-		Flags: []cli.Flag{
-			&cli.StringFlag{
-				Name:     "name",
-				Usage:    "Token name",
-				Required: true,
-			},
-			&cli.IntFlag{
-				Name:  "expires",
-				Usage: "Token expiry in days (0 for no expiry)",
-				Value: 0,
-			},
-		},
-		Action: handleTokenCreate,
-	}
-}
-
-func tokenGetCommand() *cli.Command {
-	return &cli.Command{
-		Name:      "get",
-		Usage:     "Get token details",
-		ArgsUsage: "<token-id>",
-		Action:    handleTokenGet,
-	}
-}
-
-func tokenEnableCommand() *cli.Command {
-	return &cli.Command{
-		Name:      "enable",
-		Usage:     "Enable a token",
-		ArgsUsage: "<token-id>",
-		Action:    handleTokenEnable,
-	}
-}
-
-func tokenDisableCommand() *cli.Command {
-	return &cli.Command{
-		Name:      "disable",
-		Usage:     "Disable a token",
-		ArgsUsage: "<token-id>",
-		Action:    handleTokenDisable,
-	}
-}
-
-func tokenDeleteCommand() *cli.Command {
-	return &cli.Command{
-		Name:      "delete",
-		Usage:     "Delete a token",
-		ArgsUsage: "<token-id>",
-		Flags: []cli.Flag{
-			&cli.BoolFlag{
-				Name:    "yes",
-				Aliases: []string{"y"},
-				Usage:   "Skip confirmation prompt",
-			},
-		},
-		Action: handleTokenDelete,
-	}
-}
-
-func handleTokenList(ctx context.Context, cmd *cli.Command) error {
+func handleTokenList(ctx context.Context) error {
 	userID := satuskyctx.GetUserID()
 	orgID := satuskyctx.GetCurrentOrgID()
 	if userID == "" || orgID == "" {
@@ -132,7 +44,7 @@ func handleTokenList(ctx context.Context, cmd *cli.Command) error {
 		utils.PrintStatusLine("Name", token.Name)
 		utils.PrintStatusLine("Status", status)
 		if token.LastUsedAt != nil {
-			utils.PrintStatusLine("Last Used", formatTimeAgo(*token.LastUsedAt))
+			utils.PrintStatusLine("Last Used", utils.FormatTimeAgo(*token.LastUsedAt))
 		} else {
 			utils.PrintStatusLine("Last Used", "Never")
 		}
@@ -141,25 +53,22 @@ func handleTokenList(ctx context.Context, cmd *cli.Command) error {
 		} else {
 			utils.PrintStatusLine("Expires", "Never")
 		}
-		utils.PrintStatusLine("Created", formatTimeAgo(token.CreatedAt))
+		utils.PrintStatusLine("Created", utils.FormatTimeAgo(token.CreatedAt))
 		utils.PrintDivider()
 	}
 	return nil
 }
 
-func handleTokenCreate(ctx context.Context, cmd *cli.Command) error {
+func handleTokenCreate(ctx context.Context, in tokenCreateInput) error {
 	userID := satuskyctx.GetUserID()
 	orgID := satuskyctx.GetCurrentOrgID()
 	if userID == "" || orgID == "" {
 		return utils.NewError("user or organization ID not found. Please run '1ctl auth login' first", nil)
 	}
 
-	name := cmd.String("name")
-	expires := cmd.Int("expires")
-
 	req := api.CreateTokenRequest{
-		Name:      name,
-		ExpiresIn: expires,
+		Name:      in.Name,
+		ExpiresIn: in.Expires,
 	}
 
 	token, err := api.CreateCLIToken(userID, orgID, req)
@@ -186,19 +95,13 @@ func handleTokenCreate(ctx context.Context, cmd *cli.Command) error {
 	return nil
 }
 
-func handleTokenGet(ctx context.Context, cmd *cli.Command) error {
-	if cmd.NArg() < 1 {
-		return utils.NewError("token ID is required", nil)
-	}
-
+func handleTokenGet(ctx context.Context, in tokenIDInput) error {
 	userID := satuskyctx.GetUserID()
 	if userID == "" {
 		return utils.NewError("user ID not found. Please run '1ctl auth login' first", nil)
 	}
 
-	tokenID := cmd.Args().First()
-
-	token, err := api.GetCLIToken(userID, tokenID)
+	token, err := api.GetCLIToken(userID, in.TokenID)
 	if err != nil {
 		return utils.NewError(fmt.Sprintf("failed to get token: %s", err.Error()), nil)
 	}
@@ -218,7 +121,7 @@ func handleTokenGet(ctx context.Context, cmd *cli.Command) error {
 	utils.PrintStatusLine("Name", token.Name)
 	utils.PrintStatusLine("Status", status)
 	if token.LastUsedAt != nil {
-		utils.PrintStatusLine("Last Used", formatTimeAgo(*token.LastUsedAt))
+		utils.PrintStatusLine("Last Used", utils.FormatTimeAgo(*token.LastUsedAt))
 	} else {
 		utils.PrintStatusLine("Last Used", "Never")
 	}
@@ -227,23 +130,17 @@ func handleTokenGet(ctx context.Context, cmd *cli.Command) error {
 	} else {
 		utils.PrintStatusLine("Expires", "Never")
 	}
-	utils.PrintStatusLine("Created", formatTimeAgo(token.CreatedAt))
+	utils.PrintStatusLine("Created", utils.FormatTimeAgo(token.CreatedAt))
 	return nil
 }
 
-func handleTokenEnable(ctx context.Context, cmd *cli.Command) error {
-	if cmd.NArg() < 1 {
-		return utils.NewError("token ID is required", nil)
-	}
-
+func handleTokenEnable(ctx context.Context, in tokenIDInput) error {
 	userID := satuskyctx.GetUserID()
 	if userID == "" {
 		return utils.NewError("user ID not found. Please run '1ctl auth login' first", nil)
 	}
 
-	tokenID := cmd.Args().First()
-
-	if err := api.SetCLITokenState(userID, tokenID, true); err != nil {
+	if err := api.SetCLITokenState(userID, in.TokenID, true); err != nil {
 		return utils.NewError(fmt.Sprintf("failed to enable token: %s", err.Error()), nil)
 	}
 
@@ -251,19 +148,13 @@ func handleTokenEnable(ctx context.Context, cmd *cli.Command) error {
 	return nil
 }
 
-func handleTokenDisable(ctx context.Context, cmd *cli.Command) error {
-	if cmd.NArg() < 1 {
-		return utils.NewError("token ID is required", nil)
-	}
-
+func handleTokenDisable(ctx context.Context, in tokenIDInput) error {
 	userID := satuskyctx.GetUserID()
 	if userID == "" {
 		return utils.NewError("user ID not found. Please run '1ctl auth login' first", nil)
 	}
 
-	tokenID := cmd.Args().First()
-
-	if err := api.SetCLITokenState(userID, tokenID, false); err != nil {
+	if err := api.SetCLITokenState(userID, in.TokenID, false); err != nil {
 		return utils.NewError(fmt.Sprintf("failed to disable token: %s", err.Error()), nil)
 	}
 
@@ -271,25 +162,19 @@ func handleTokenDisable(ctx context.Context, cmd *cli.Command) error {
 	return nil
 }
 
-func handleTokenDelete(ctx context.Context, cmd *cli.Command) error {
-	if cmd.NArg() < 1 {
-		return utils.NewError("token ID is required", nil)
-	}
-
+func handleTokenDelete(ctx context.Context, in tokenDeleteInput) error {
 	userID := satuskyctx.GetUserID()
 	orgID := satuskyctx.GetCurrentOrgID()
 	if userID == "" || orgID == "" {
 		return utils.NewError("user or organization ID not found. Please run '1ctl auth login' first", nil)
 	}
 
-	tokenID := cmd.Args().First()
-
-	if !utils.Confirm(fmt.Sprintf("Delete token %s? This cannot be undone.", tokenID), cmd.Bool("yes")) {
+	if !utils.Confirm(fmt.Sprintf("Delete token %s? This cannot be undone.", in.TokenID), in.Yes) {
 		fmt.Println("Aborted.")
 		return nil
 	}
 
-	if err := api.DeleteCLIToken(userID, orgID, tokenID); err != nil {
+	if err := api.DeleteCLIToken(userID, orgID, in.TokenID); err != nil {
 		return utils.NewError(fmt.Sprintf("failed to delete token: %s", err.Error()), nil)
 	}
 

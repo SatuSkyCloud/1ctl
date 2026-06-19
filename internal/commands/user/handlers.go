@@ -1,92 +1,21 @@
-package commands
+package user
 
 import (
-	"context"
-	"1ctl/internal/api"
-	satuskyctx "1ctl/internal/context"
-	"1ctl/internal/utils"
 	"bufio"
+	"context"
 	"fmt"
 	"os"
 	"strings"
 	"syscall"
 
-	"github.com/urfave/cli/v3"
+	"1ctl/internal/api"
+	satuskyctx "1ctl/internal/context"
+	"1ctl/internal/utils"
+
 	"golang.org/x/term"
 )
 
-func UserCommand() *cli.Command {
-	return &cli.Command{
-		Name:  "user",
-		Usage: "Manage user account",
-		Commands: []*cli.Command{
-			userMeCommand(),
-			userUpdateCommand(),
-			userPasswordCommand(),
-			userPermissionsCommand(),
-			userSessionsCommand(),
-		},
-	}
-}
-
-func userMeCommand() *cli.Command {
-	return &cli.Command{
-		Name:    "me",
-		Aliases: []string{"info"},
-		Usage:   "Show current user profile",
-		Action:  handleUserMe,
-	}
-}
-
-func userUpdateCommand() *cli.Command {
-	return &cli.Command{
-		Name:  "update",
-		Usage: "Update user profile",
-		Flags: []cli.Flag{
-			&cli.StringFlag{
-				Name:  "name",
-				Usage: "New display name",
-			},
-			&cli.StringFlag{
-				Name:  "email",
-				Usage: "New email address",
-			},
-		},
-		Action: handleUserUpdate,
-	}
-}
-
-func userPasswordCommand() *cli.Command {
-	return &cli.Command{
-		Name:   "password",
-		Usage:  "Change password (interactive)",
-		Action: handleUserPassword,
-	}
-}
-
-func userPermissionsCommand() *cli.Command {
-	return &cli.Command{
-		Name:   "permissions",
-		Usage:  "Show current permissions",
-		Action: handleUserPermissions,
-	}
-}
-
-func userSessionsCommand() *cli.Command {
-	return &cli.Command{
-		Name:  "sessions",
-		Usage: "Manage sessions",
-		Commands: []*cli.Command{
-			{
-				Name:   "revoke",
-				Usage:  "Revoke all sessions",
-				Action: handleUserSessionsRevoke,
-			},
-		},
-	}
-}
-
-func handleUserMe(ctx context.Context, cmd *cli.Command) error {
+func handleUserMe(ctx context.Context) error {
 	user, err := api.GetCurrentUser()
 	if err != nil {
 		return utils.NewError(fmt.Sprintf("failed to get user profile: %s", err.Error()), nil)
@@ -110,15 +39,12 @@ func handleUserMe(ctx context.Context, cmd *cli.Command) error {
 	if user.Role != "" {
 		utils.PrintStatusLine("Role", user.Role)
 	}
-	utils.PrintStatusLine("Created", formatTimeAgo(user.CreatedAt))
+	utils.PrintStatusLine("Created", utils.FormatTimeAgo(user.CreatedAt))
 	return nil
 }
 
-func handleUserUpdate(ctx context.Context, cmd *cli.Command) error {
-	name := cmd.String("name")
-	email := cmd.String("email")
-
-	if name == "" && email == "" {
+func handleUserUpdate(ctx context.Context, in userUpdateInput) error {
+	if in.Name == "" && in.Email == "" {
 		return utils.NewError("at least one of --name or --email is required", nil)
 	}
 
@@ -128,8 +54,8 @@ func handleUserUpdate(ctx context.Context, cmd *cli.Command) error {
 	}
 
 	req := api.UpdateUserRequest{
-		Name:  name,
-		Email: email,
+		Name:  in.Name,
+		Email: in.Email,
 	}
 
 	updatedUser, err := api.UpdateUser(user.UserID, req)
@@ -147,13 +73,12 @@ func handleUserUpdate(ctx context.Context, cmd *cli.Command) error {
 	return nil
 }
 
-func handleUserPassword(ctx context.Context, cmd *cli.Command) error {
+func handleUserPassword(ctx context.Context) error {
 	reader := bufio.NewReader(os.Stdin)
 
 	fmt.Print("Current password: ")
 	currentPasswordBytes, err := term.ReadPassword(int(syscall.Stdin))
 	if err != nil {
-		// Fallback to regular input if terminal password reading fails
 		currentPassword, readErr := reader.ReadString('\n')
 		if readErr != nil {
 			return utils.NewError("failed to read current password", nil)
@@ -207,7 +132,7 @@ func handleUserPassword(ctx context.Context, cmd *cli.Command) error {
 	return nil
 }
 
-func handleUserPermissions(ctx context.Context, cmd *cli.Command) error {
+func handleUserPermissions(ctx context.Context) error {
 	orgID := satuskyctx.GetCurrentOrgID()
 	if orgID == "" {
 		return utils.NewError("organization ID not found. Please run '1ctl auth login' first", nil)
@@ -234,7 +159,7 @@ func handleUserPermissions(ctx context.Context, cmd *cli.Command) error {
 	return nil
 }
 
-func handleUserSessionsRevoke(ctx context.Context, cmd *cli.Command) error {
+func handleUserSessionsRevoke(ctx context.Context) error {
 	if err := api.RevokeAllSessions(); err != nil {
 		return utils.NewError(fmt.Sprintf("failed to revoke sessions: %s", err.Error()), nil)
 	}

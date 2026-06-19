@@ -1,56 +1,27 @@
-package commands
+package logs
 
 import (
 	"context"
-	"1ctl/internal/api"
-	satuskyctx "1ctl/internal/context"
-	"1ctl/internal/utils"
 	"fmt"
 	"net/http"
 
+	"1ctl/internal/api"
+	"1ctl/internal/deploy"
+	satuskyctx "1ctl/internal/context"
+	"1ctl/internal/utils"
+
 	gorillaws "github.com/gorilla/websocket"
-	"github.com/urfave/cli/v3"
 )
 
-func LogsCommand() *cli.Command {
-	return &cli.Command{
-		Name:  "logs",
-		Usage: "View and manage pod logs",
-		Flags: []cli.Flag{
-			&cli.StringFlag{
-				Name:    "deployment-id",
-				Aliases: []string{"d"},
-				Usage:   "Deployment ID to view logs for",
-			},
-			&cli.StringFlag{
-				Name:  "app",
-				Usage: "App name to resolve (alternative to --deployment-id)",
-			},
-			&cli.StringFlag{
-				Name:  "config",
-				Usage: "Config name or path (e.g. staging, satusky.staging.toml). Default: satusky.toml",
-			},
-			&cli.IntFlag{
-				Name:    "tail",
-				Aliases: []string{"n"},
-				Usage:   "Number of lines to show (default: 100)",
-				Value:   100,
-			},
-		},
-		Commands: []*cli.Command{
-			logsStreamCommand(),
-		},
-		Action: handleLogs,
-	}
-}
+// --- Handlers -----------------------------------------------------------
 
-func handleLogs(ctx context.Context, cmd *cli.Command) error {
-	deploymentID, err := resolveDeploymentID(cmd.String("deployment-id"), cmd.String("app"), cmd.String("config"))
+func handleLogs(ctx context.Context, in logsInput) error {
+	deploymentID, err := deploy.ResolveDeploymentID(in.DeploymentID, in.App, in.Config)
 	if err != nil {
 		return err
 	}
 
-	tail := cmd.Int("tail")
+	tail := in.Tail
 
 	logs, meta, err := api.GetStoredLogs(deploymentID, tail)
 	if err != nil {
@@ -90,31 +61,29 @@ func handleLogs(ctx context.Context, cmd *cli.Command) error {
 	return nil
 }
 
-func handleLogsStream(ctx context.Context, cmd *cli.Command) error {
-	namespace := cmd.String("namespace")
-	appLabel := cmd.String("app")
-	batchSize := cmd.Int("batch-size")
+func handleLogsStream(ctx context.Context, in logsStreamInput) error {
+	namespace := in.Namespace
+	appLabel := in.App
+	batchSize := in.BatchSize
 	resolvedDeploymentID := ""
 
 	// Resolve deployment-id from --config if not provided directly
-	if cmd.String("deployment-id") == "" && cmd.String("namespace") == "" {
-		id, err := resolveDeploymentID("", cmd.String("app"), cmd.String("config"))
+	if in.DeploymentID == "" && in.Namespace == "" {
+		id, err := deploy.ResolveDeploymentID("", in.App, in.Config)
 		if err == nil && id != "" {
-			if err := cmd.Set("deployment-id", id); err != nil {
-				return utils.NewError(fmt.Sprintf("failed to set deployment-id: %s", err.Error()), nil)
-			}
+			in.DeploymentID = id
 		}
 	}
 
 	// Resolve via deployment ID if explicit flags not given
-	if deploymentID := cmd.String("deployment-id"); deploymentID != "" {
-		deployment, err := api.GetDeployment(deploymentID)
+	if in.DeploymentID != "" {
+		deployment, err := api.GetDeployment(in.DeploymentID)
 		if err != nil {
 			return utils.NewError(fmt.Sprintf("failed to get deployment: %s", err.Error()), nil)
 		}
 		namespace = deployment.Namespace
 		appLabel = deployment.AppLabel
-		resolvedDeploymentID = deploymentID
+		resolvedDeploymentID = in.DeploymentID
 	}
 
 	if namespace == "" || appLabel == "" {
@@ -158,40 +127,5 @@ func handleLogsStream(ctx context.Context, cmd *cli.Command) error {
 			return nil
 		}
 		fmt.Println(string(msg))
-	}
-}
-
-// logsStreamCommand streams live pod logs over WebSocket
-func logsStreamCommand() *cli.Command {
-	return &cli.Command{
-		Name:  "stream",
-		Usage: "Stream live pod logs (like kubectl logs -f)",
-		Flags: []cli.Flag{
-			&cli.StringFlag{
-				Name:    "deployment-id",
-				Aliases: []string{"d"},
-				Usage:   "Deployment ID (resolves namespace and app label automatically)",
-			},
-			&cli.StringFlag{
-				Name:    "namespace",
-				Aliases: []string{"n"},
-				Usage:   "Kubernetes namespace (use with --app)",
-			},
-			&cli.StringFlag{
-				Name:    "app",
-				Aliases: []string{"a"},
-				Usage:   "App label (use with --namespace)",
-			},
-			&cli.IntFlag{
-				Name:  "batch-size",
-				Usage: "Log lines per batch sent by the server",
-				Value: 100,
-			},
-			&cli.StringFlag{
-				Name:  "config",
-				Usage: "Config name or path (e.g. staging, satusky.staging.toml). Default: satusky.toml",
-			},
-		},
-		Action: handleLogsStream,
 	}
 }

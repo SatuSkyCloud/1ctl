@@ -1,73 +1,17 @@
-package commands
+package credits
 
 import (
 	"context"
+	"fmt"
+
 	"1ctl/internal/api"
 	satuskyctx "1ctl/internal/context"
 	"1ctl/internal/utils"
-	"fmt"
-	"time"
-
-	"github.com/urfave/cli/v3"
 )
 
-func CreditsCommand() *cli.Command {
-	return &cli.Command{
-		Name:    "credits",
-		Aliases: []string{"billing"},
-		Usage:   "Manage credits and billing",
-		Commands: []*cli.Command{
-			creditsBalanceCommand(),
-			creditsTransactionsCommand(),
-			creditsUsageCommand(),
-		},
-	}
-}
+// --- Handlers -----------------------------------------------------------
 
-func creditsBalanceCommand() *cli.Command {
-	return &cli.Command{
-		Name:   "balance",
-		Usage:  "Show current credit balance",
-		Action: handleCreditsBalance,
-	}
-}
-
-func creditsTransactionsCommand() *cli.Command {
-	return &cli.Command{
-		Name:  "transactions",
-		Usage: "Show transaction history",
-		Flags: []cli.Flag{
-			&cli.IntFlag{
-				Name:  "limit",
-				Usage: "Number of transactions to show",
-				Value: 10,
-			},
-			&cli.IntFlag{
-				Name:  "offset",
-				Usage: "Offset for pagination",
-				Value: 0,
-			},
-		},
-		Action: handleCreditsTransactions,
-	}
-}
-
-func creditsUsageCommand() *cli.Command {
-	return &cli.Command{
-		Name:  "usage",
-		Usage: "Show machine usage history",
-		Flags: []cli.Flag{
-			&cli.IntFlag{
-				Name:  "days",
-				Usage: "Number of days to show usage for",
-				Value: 7,
-			},
-		},
-		Action: handleCreditsUsage,
-	}
-}
-
-func handleCreditsBalance(ctx context.Context, cmd *cli.Command) error {
+func handleCreditsBalance(ctx context.Context) error {
 	orgID := satuskyctx.GetCurrentOrgID()
 	if orgID == "" {
 		return utils.NewError("organization ID not found. Please run '1ctl auth login' first", nil)
@@ -85,7 +29,7 @@ func handleCreditsBalance(ctx context.Context, cmd *cli.Command) error {
 	utils.PrintHeader("Credit Balance")
 	utils.PrintStatusLine("Organization ID", balance.OrganizationID.String())
 	utils.PrintStatusLine("Balance", fmt.Sprintf("$%.2f %s", balance.Balance, balance.Currency))
-	utils.PrintStatusLine("Last Updated", formatTimeAgo(balance.UpdatedAt))
+	utils.PrintStatusLine("Last Updated", utils.FormatTimeAgo(balance.UpdatedAt))
 
 	// Display tier information if available
 	if balance.Tier != nil {
@@ -123,32 +67,13 @@ func handleCreditsBalance(ctx context.Context, cmd *cli.Command) error {
 	return nil
 }
 
-// formatTierDisplayName converts tier ID to display name
-func formatTierDisplayName(tier string) string {
-	switch tier {
-	case "free":
-		return "Free"
-	case "starter":
-		return "Starter"
-	case "pro":
-		return "Pro"
-	case "enterprise":
-		return "Enterprise"
-	default:
-		return tier
-	}
-}
-
-func handleCreditsTransactions(ctx context.Context, cmd *cli.Command) error {
+func handleCreditsTransactions(ctx context.Context, in creditsTransactionsInput) error {
 	orgID := satuskyctx.GetCurrentOrgID()
 	if orgID == "" {
 		return utils.NewError("organization ID not found. Please run '1ctl auth login' first", nil)
 	}
 
-	limit := cmd.Int("limit")
-	offset := cmd.Int("offset")
-
-	transactions, err := api.GetCreditTransactions(orgID, limit, offset)
+	transactions, err := api.GetCreditTransactions(orgID, in.Limit, in.Offset)
 	if err != nil {
 		return utils.NewError(fmt.Sprintf("failed to get transactions: %s", err.Error()), nil)
 	}
@@ -167,21 +92,19 @@ func handleCreditsTransactions(ctx context.Context, cmd *cli.Command) error {
 		utils.PrintStatusLine("Amount", amountStr)
 		utils.PrintStatusLine("Type", tx.TransactionType)
 		utils.PrintStatusLine("Description", tx.Description)
-		utils.PrintStatusLine("Date", formatTimeAgo(tx.CreatedAt))
+		utils.PrintStatusLine("Date", utils.FormatTimeAgo(tx.CreatedAt))
 		utils.PrintDivider()
 	}
 	return nil
 }
 
-func handleCreditsUsage(ctx context.Context, cmd *cli.Command) error {
+func handleCreditsUsage(ctx context.Context, in creditsUsageInput) error {
 	orgID := satuskyctx.GetCurrentOrgID()
 	if orgID == "" {
 		return utils.NewError("organization ID not found. Please run '1ctl auth login' first", nil)
 	}
 
-	days := cmd.Int("days")
-
-	usages, err := api.GetMachineUsageHistory(orgID, days)
+	usages, err := api.GetMachineUsageHistory(orgID, in.Days)
 	if err != nil {
 		return utils.NewError(fmt.Sprintf("failed to get machine usage: %s", err.Error()), nil)
 	}
@@ -197,7 +120,7 @@ func handleCreditsUsage(ctx context.Context, cmd *cli.Command) error {
 		utils.PrintStatusLine("Hours", fmt.Sprintf("%.1f", usage.HoursUsed))
 		utils.PrintStatusLine("Cost", fmt.Sprintf("$%.2f", usage.Cost))
 		utils.PrintStatusLine("Status", usage.Status)
-		utils.PrintStatusLine("Period", fmt.Sprintf("Last %d days", days))
+		utils.PrintStatusLine("Period", fmt.Sprintf("Last %d days", in.Days))
 		utils.PrintDivider()
 		totalCost += usage.Cost
 	}
@@ -205,42 +128,20 @@ func handleCreditsUsage(ctx context.Context, cmd *cli.Command) error {
 	return nil
 }
 
-// formatTimeAgo formats a time as a human-readable "X ago" string
-func formatTimeAgo(t time.Time) string {
-	duration := time.Since(t)
+// --- Shared helpers -----------------------------------------------------
 
-	switch {
-	case duration < time.Minute:
-		return "just now"
-	case duration < time.Hour:
-		minutes := int(duration.Minutes())
-		if minutes == 1 {
-			return "1 minute ago"
-		}
-		return fmt.Sprintf("%d minutes ago", minutes)
-	case duration < 24*time.Hour:
-		hours := int(duration.Hours())
-		if hours == 1 {
-			return "1 hour ago"
-		}
-		return fmt.Sprintf("%d hours ago", hours)
-	case duration < 7*24*time.Hour:
-		days := int(duration.Hours() / 24)
-		if days == 1 {
-			return "1 day ago"
-		}
-		return fmt.Sprintf("%d days ago", days)
-	case duration < 30*24*time.Hour:
-		weeks := int(duration.Hours() / 24 / 7)
-		if weeks == 1 {
-			return "1 week ago"
-		}
-		return fmt.Sprintf("%d weeks ago", weeks)
+// formatTierDisplayName converts tier ID to display name
+func formatTierDisplayName(tier string) string {
+	switch tier {
+	case "free":
+		return "Free"
+	case "starter":
+		return "Starter"
+	case "pro":
+		return "Pro"
+	case "enterprise":
+		return "Enterprise"
 	default:
-		months := int(duration.Hours() / 24 / 30)
-		if months == 1 {
-			return "1 month ago"
-		}
-		return fmt.Sprintf("%d months ago", months)
+		return tier
 	}
 }

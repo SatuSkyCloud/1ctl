@@ -1,69 +1,21 @@
-package commands
+package audit
 
 import (
 	"context"
+	"fmt"
+
 	"1ctl/internal/api"
 	satuskyctx "1ctl/internal/context"
 	"1ctl/internal/utils"
-	"fmt"
-
-	"github.com/urfave/cli/v3"
 )
 
-func AuditCommand() *cli.Command {
-	return &cli.Command{
-		Name:  "audit",
-		Usage: "View audit logs",
-		Commands: []*cli.Command{
-			auditListCommand(),
-			auditGetCommand(),
-		},
-	}
-}
-
-func auditListCommand() *cli.Command {
-	return &cli.Command{
-		Name:  "list",
-		Usage: "List audit logs",
-		Flags: []cli.Flag{
-			&cli.IntFlag{
-				Name:  "limit",
-				Usage: "Number of logs to show",
-				Value: 20,
-			},
-			&cli.StringFlag{
-				Name:  "action",
-				Usage: "Filter by action type",
-			},
-			&cli.StringFlag{
-				Name:  "user",
-				Usage: "Filter by user ID",
-			},
-		},
-		Action: handleAuditList,
-	}
-}
-
-func auditGetCommand() *cli.Command {
-	return &cli.Command{
-		Name:      "get",
-		Usage:     "Get audit log details",
-		ArgsUsage: "<log-id>",
-		Action:    handleAuditGet,
-	}
-}
-
-func handleAuditList(ctx context.Context, cmd *cli.Command) error {
+func handleAuditList(ctx context.Context, in auditListInput) error {
 	orgID := satuskyctx.GetCurrentOrgID()
 	if orgID == "" {
 		return utils.NewError("organization ID not found. Please run '1ctl auth login' first", nil)
 	}
 
-	limit := cmd.Int("limit")
-	action := cmd.String("action")
-	userID := cmd.String("user")
-
-	logs, err := api.GetAuditLogs(orgID, limit, action, userID)
+	logs, err := api.GetAuditLogs(orgID, in.Limit, in.Action, in.User)
 	if err != nil {
 		return utils.NewError(fmt.Sprintf("failed to get audit logs: %s", err.Error()), nil)
 	}
@@ -84,25 +36,19 @@ func handleAuditList(ctx context.Context, cmd *cli.Command) error {
 		if log.IPAddress != "" {
 			utils.PrintStatusLine("IP Address", log.IPAddress)
 		}
-		utils.PrintStatusLine("Time", formatTimeAgo(log.CreatedAt))
+		utils.PrintStatusLine("Time", utils.FormatTimeAgo(log.CreatedAt))
 		utils.PrintDivider()
 	}
 	return nil
 }
 
-func handleAuditGet(ctx context.Context, cmd *cli.Command) error {
-	if cmd.NArg() < 1 {
-		return utils.NewError("log ID is required", nil)
-	}
-
+func handleAuditGet(ctx context.Context, in auditGetInput) error {
 	orgID := satuskyctx.GetCurrentOrgID()
 	if orgID == "" {
 		return utils.NewError("organization ID not found. Please run '1ctl auth login' first", nil)
 	}
 
-	logID := cmd.Args().First()
-
-	log, err := api.GetAuditLog(orgID, logID)
+	log, err := api.GetAuditLog(orgID, in.ID)
 	if err != nil {
 		return utils.NewError(fmt.Sprintf("failed to get audit log: %s", err.Error()), nil)
 	}
