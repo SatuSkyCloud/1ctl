@@ -9,17 +9,41 @@ package commands
 
 import (
 	"1ctl/internal/commands/audit"
+	"1ctl/internal/commands/auth"
 	"1ctl/internal/commands/cluster"
+	"1ctl/internal/commands/completion"
 	"1ctl/internal/commands/credits"
+	initcmd "1ctl/internal/commands/init"
+	"1ctl/internal/commands/ingress"
+	"1ctl/internal/commands/issuer"
+	"1ctl/internal/commands/launch"
 	"1ctl/internal/commands/logs"
 	"1ctl/internal/commands/marketplace"
 	"1ctl/internal/commands/notifications"
 	"1ctl/internal/commands/pricing"
+	"1ctl/internal/commands/profile"
+	"1ctl/internal/commands/service"
 	"1ctl/internal/commands/token"
 	"1ctl/internal/commands/user"
+	"1ctl/internal/commands/volumes"
 
 	"github.com/urfave/cli/v3"
 )
+
+// AuthCommand returns the "1ctl auth" command tree.
+func AuthCommand() *cli.Command { return auth.Command() }
+
+// ProfileCommand returns the "1ctl profile" command tree.
+func ProfileCommand() *cli.Command { return profile.Command() }
+
+// InitCommand returns the "1ctl init" command tree.
+func InitCommand() *cli.Command { return initcmd.Command() }
+
+// LaunchCommand returns the "1ctl launch" command tree.
+func LaunchCommand() *cli.Command { return launch.Command() }
+
+// CompletionCommand returns the "1ctl completion" command tree.
+func CompletionCommand() *cli.Command { return completion.Command() }
 
 // PricingCommand returns the "1ctl pricing" command tree.
 func PricingCommand() *cli.Command { return pricing.Command() }
@@ -47,3 +71,15 @@ func AuditCommand() *cli.Command { return audit.Command() }
 
 // ClusterCommand returns the "1ctl cluster" command tree.
 func ClusterCommand() *cli.Command { return cluster.Command() }
+
+// ServiceCommand returns the "1ctl service" command tree.
+func ServiceCommand() *cli.Command { return service.Command() }
+
+// IngressCommand returns the "1ctl ingress" command tree.
+func IngressCommand() *cli.Command { return ingress.Command() }
+
+// IssuerCommand returns the "1ctl issuer" command tree.
+func IssuerCommand() *cli.Command { return issuer.Command() }
+
+// VolumesCommand returns the "1ctl volumes" command tree.
+func VolumesCommand() *cli.Command { return volumes.Command() }
