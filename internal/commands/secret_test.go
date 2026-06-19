@@ -16,6 +16,7 @@ func TestSecretCommand(t *testing.T) {
 	expectedCommands := map[string]bool{
 		"create": false,
 		"list":   false,
+		"get":    false,
 		"unset":  false,
 	}
 
