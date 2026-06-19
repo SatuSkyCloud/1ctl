@@ -11,6 +11,8 @@ import (
 	"github.com/google/uuid"
 )
 
+// --- Handlers -----------------------------------------------------------
+
 func handleOrgList(ctx context.Context) error {
 	orgs, err := api.GetUserOrganizations()
 	if err != nil {
@@ -58,16 +60,8 @@ func handleOrgSwitch(ctx context.Context, in orgSwitchInput) error {
 	orgID := in.OrgID
 	orgName := in.OrgName
 
-	// Try to parse as UUID — if it's a UUID, treat as org ID; otherwise treat as name
-	if orgName == "" && orgID != "" {
-		if _, err := uuid.Parse(orgID); err != nil {
-			orgName = orgID
-			orgID = ""
-		}
-	}
-
 	if orgID == "" && orgName == "" {
-		return utils.NewError("provide --org-id, --org-name, or a positional org name/id", nil)
+		return utils.NewError("provide --org-id or --org-name", nil)
 	}
 
 	var org *api.Organization
@@ -128,6 +122,10 @@ func handleOrgCreate(ctx context.Context, in orgCreateInput) error {
 }
 
 func handleOrgDelete(ctx context.Context, orgID string) error {
+	if orgID == "" {
+		return utils.NewError("organization ID is required", nil)
+	}
+
 	if err := api.DeleteOrganization(orgID); err != nil {
 		return utils.NewError(fmt.Sprintf("failed to delete organization: %s", err.Error()), nil)
 	}
@@ -192,6 +190,10 @@ func handleOrgTeamAdd(ctx context.Context, in orgTeamAddInput) error {
 }
 
 func handleOrgTeamRole(ctx context.Context, in orgTeamRoleInput) error {
+	if in.OrgUserID == "" {
+		return utils.NewError("org-user ID is required", nil)
+	}
+
 	orgID := satuskyctx.GetCurrentOrgID()
 	if orgID == "" {
 		return utils.NewError("organization ID not found. Please run '1ctl auth login' first", nil)
@@ -206,6 +208,10 @@ func handleOrgTeamRole(ctx context.Context, in orgTeamRoleInput) error {
 }
 
 func handleOrgTeamRemove(ctx context.Context, orgUserID string) error {
+	if orgUserID == "" {
+		return utils.NewError("org-user ID is required", nil)
+	}
+
 	orgID := satuskyctx.GetCurrentOrgID()
 	if orgID == "" {
 		return utils.NewError("organization ID not found. Please run '1ctl auth login' first", nil)

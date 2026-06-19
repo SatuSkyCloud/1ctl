@@ -13,6 +13,8 @@ import (
 	"1ctl/internal/commands/cluster"
 	"1ctl/internal/commands/completion"
 	"1ctl/internal/commands/credits"
+	"1ctl/internal/commands/doctor"
+	"1ctl/internal/commands/environment"
 	initcmd "1ctl/internal/commands/init"
 	"1ctl/internal/commands/ingress"
 	"1ctl/internal/commands/issuer"
@@ -20,8 +22,10 @@ import (
 	"1ctl/internal/commands/logs"
 	"1ctl/internal/commands/marketplace"
 	"1ctl/internal/commands/notifications"
+	"1ctl/internal/commands/org"
 	"1ctl/internal/commands/pricing"
 	"1ctl/internal/commands/profile"
+	"1ctl/internal/commands/secret"
 	"1ctl/internal/commands/service"
 	"1ctl/internal/commands/token"
 	"1ctl/internal/commands/user"
@@ -83,3 +87,15 @@ func IssuerCommand() *cli.Command { return issuer.Command() }
 
 // VolumesCommand returns the "1ctl volumes" command tree.
 func VolumesCommand() *cli.Command { return volumes.Command() }
+
+// OrgCommand returns the "1ctl org" command tree.
+func OrgCommand() *cli.Command { return org.Command() }
+
+// DoctorCommand returns the "1ctl doctor" command tree.
+func DoctorCommand() *cli.Command { return doctor.Command() }
+
+// SecretCommand returns the "1ctl secret" command tree.
+func SecretCommand() *cli.Command { return secret.Command() }
+
+// EnvironmentCommand returns the "1ctl env" command tree.
+func EnvironmentCommand() *cli.Command { return environment.Command() }

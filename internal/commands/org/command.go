@@ -1,5 +1,4 @@
-// Package org defines the "1ctl org" command tree — flag names,
-// input structs, and CLI wiring. Handler logic lives in handlers.go.
+// Package org defines the "1ctl org" command tree.
 package org
 
 import (
@@ -11,12 +10,12 @@ import (
 // --- Flag name constants ------------------------------------------------
 
 const (
-	flagName        = "name"
+	flagOrgID      = "org-id"
+	flagOrgName    = "org-name"
+	flagName       = "name"
 	flagDescription = "description"
-	flagOrgID       = "org-id"
-	flagOrgName     = "org-name"
-	flagEmail       = "email"
-	flagRole        = "role"
+	flagEmail      = "email"
+	flagRole       = "role"
 )
 
 // --- Input structs ------------------------------------------------------
@@ -41,6 +40,10 @@ type orgTeamRoleInput struct {
 	Role      string
 }
 
+type orgTeamRemoveInput struct {
+	OrgUserID string
+}
+
 // --- Command tree -------------------------------------------------------
 
 // Command returns the root org command tree.
@@ -62,21 +65,17 @@ func Command() *cli.Command {
 
 func orgListCommand() *cli.Command {
 	return &cli.Command{
-		Name:  "list",
-		Usage: "List all organizations",
-		Action: func(ctx context.Context, cmd *cli.Command) error {
-			return handleOrgList(ctx)
-		},
+		Name:   "list",
+		Usage:  "List all organizations",
+		Action: func(ctx context.Context, cmd *cli.Command) error { return handleOrgList(ctx) },
 	}
 }
 
 func orgCurrentCommand() *cli.Command {
 	return &cli.Command{
-		Name:  "current",
-		Usage: "Show current organization",
-		Action: func(ctx context.Context, cmd *cli.Command) error {
-			return handleOrgCurrent(ctx)
-		},
+		Name:   "current",
+		Usage:  "Show current organization",
+		Action: func(ctx context.Context, cmd *cli.Command) error { return handleOrgCurrent(ctx) },
 	}
 }
 
@@ -97,21 +96,7 @@ func orgSwitchCommand() *cli.Command {
 				Destination: &in.OrgName,
 			},
 		},
-		Before: func(ctx context.Context, cmd *cli.Command) (context.Context, error) {
-			// Accept --org-id, --org-name, or a positional org name/id
-			if in.OrgID == "" && in.OrgName == "" {
-				if arg := cmd.Args().First(); arg != "" {
-					in.OrgID = arg
-				}
-			}
-			if in.OrgID == "" && in.OrgName == "" {
-				return ctx, cli.Exit("provide --org-id, --org-name, or a positional org name/id", 1)
-			}
-			return ctx, nil
-		},
-		Action: func(ctx context.Context, cmd *cli.Command) error {
-			return handleOrgSwitch(ctx, in)
-		},
+		Action: func(ctx context.Context, cmd *cli.Command) error { return handleOrgSwitch(ctx, in) },
 	}
 }
 
@@ -133,27 +118,21 @@ func orgCreateCommand() *cli.Command {
 				Destination: &in.Description,
 			},
 		},
-		Action: func(ctx context.Context, cmd *cli.Command) error {
-			return handleOrgCreate(ctx, in)
-		},
+		Action: func(ctx context.Context, cmd *cli.Command) error { return handleOrgCreate(ctx, in) },
 	}
 }
 
 func orgDeleteCommand() *cli.Command {
-	var in struct{ OrgID string }
 	return &cli.Command{
-		Name:  "delete",
-		Usage: "Delete an organization",
-		Flags: []cli.Flag{
-			&cli.StringFlag{
-				Name:        flagOrgID,
-				Usage:       "Organization ID to delete",
-				Required:    true,
-				Destination: &in.OrgID,
-			},
-		},
+		Name:      "delete",
+		Usage:     "Delete an organization",
+		ArgsUsage: "<org-id>",
 		Action: func(ctx context.Context, cmd *cli.Command) error {
-			return handleOrgDelete(ctx, in.OrgID)
+			id := ""
+			if cmd.Args().First() != "" {
+				id = cmd.Args().First()
+			}
+			return handleOrgDelete(ctx, id)
 		},
 	}
 }
@@ -163,25 +142,19 @@ func orgTeamCommand() *cli.Command {
 		Name:  "team",
 		Usage: "Manage organization team",
 		Commands: []*cli.Command{
-			orgTeamListCommand(),
-			orgTeamAddCommand(),
-			orgTeamRoleCommand(),
-			orgTeamDeleteCommand(),
+			{
+				Name:   "list",
+				Usage:  "List team members",
+				Action: func(ctx context.Context, cmd *cli.Command) error { return handleOrgTeamList(ctx) },
+			},
+			orgTeamAddSubCommand(),
+			orgTeamRoleSubCommand(),
+			orgTeamRemoveSubCommand(),
 		},
 	}
 }
 
-func orgTeamListCommand() *cli.Command {
-	return &cli.Command{
-		Name:  "list",
-		Usage: "List team members",
-		Action: func(ctx context.Context, cmd *cli.Command) error {
-			return handleOrgTeamList(ctx)
-		},
-	}
-}
-
-func orgTeamAddCommand() *cli.Command {
+func orgTeamAddSubCommand() *cli.Command {
 	var in orgTeamAddInput
 	return &cli.Command{
 		Name:  "add",
@@ -200,17 +173,16 @@ func orgTeamAddCommand() *cli.Command {
 				Destination: &in.Role,
 			},
 		},
-		Action: func(ctx context.Context, cmd *cli.Command) error {
-			return handleOrgTeamAdd(ctx, in)
-		},
+		Action: func(ctx context.Context, cmd *cli.Command) error { return handleOrgTeamAdd(ctx, in) },
 	}
 }
 
-func orgTeamRoleCommand() *cli.Command {
+func orgTeamRoleSubCommand() *cli.Command {
 	var in orgTeamRoleInput
 	return &cli.Command{
-		Name:  "role",
-		Usage: "Update team member role",
+		Name:      "role",
+		Usage:     "Update team member role",
+		ArgsUsage: "<org-user-id>",
 		Flags: []cli.Flag{
 			&cli.StringFlag{
 				Name:        flagRole,
@@ -218,35 +190,30 @@ func orgTeamRoleCommand() *cli.Command {
 				Required:    true,
 				Destination: &in.Role,
 			},
-			&cli.StringFlag{
-				Name:        flagOrgID,
-				Usage:       "Organization user ID",
-				Required:    true,
-				Destination: &in.OrgUserID,
-			},
 		},
 		Action: func(ctx context.Context, cmd *cli.Command) error {
+			id := ""
+			if cmd.Args().First() != "" {
+				id = cmd.Args().First()
+			}
+			in.OrgUserID = id
 			return handleOrgTeamRole(ctx, in)
 		},
 	}
 }
 
-func orgTeamDeleteCommand() *cli.Command {
-	var in struct{ OrgUserID string }
+func orgTeamRemoveSubCommand() *cli.Command {
 	return &cli.Command{
-		Name:    "delete",
-		Aliases: []string{"remove", "rm"},
-		Usage:   "Remove a team member",
-		Flags: []cli.Flag{
-			&cli.StringFlag{
-				Name:        flagOrgID,
-				Usage:       "Organization user ID to remove",
-				Required:    true,
-				Destination: &in.OrgUserID,
-			},
-		},
+		Name:      "delete",
+		Aliases:   []string{"remove", "rm"},
+		Usage:     "Remove a team member",
+		ArgsUsage: "<org-user-id>",
 		Action: func(ctx context.Context, cmd *cli.Command) error {
-			return handleOrgTeamRemove(ctx, in.OrgUserID)
+			id := ""
+			if cmd.Args().First() != "" {
+				id = cmd.Args().First()
+			}
+			return handleOrgTeamRemove(ctx, id)
 		},
 	}
 }

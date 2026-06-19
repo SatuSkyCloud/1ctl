@@ -1,4 +1,4 @@
-package commands
+package doctor
 
 import (
 	"context"
@@ -7,11 +7,10 @@ import (
 
 	"1ctl/internal/api"
 	"1ctl/internal/config"
+	"1ctl/internal/deploy"
 	satuskyctx "1ctl/internal/context"
 	"1ctl/internal/utils"
 	"1ctl/internal/validator"
-
-	"github.com/urfave/cli/v3"
 )
 
 type doctorReport struct {
@@ -30,41 +29,10 @@ type doctorDeploymentReport struct {
 	Domain       string                    `json:"domain,omitempty"`
 	Status       string                    `json:"status"`
 	DomainStatus *api.DomainStatusResponse `json:"domain_status,omitempty"`
-	Smoke        *publicURLSmokeResult     `json:"smoke,omitempty"`
+	Smoke        *deploy.PublicURLSmokeResult `json:"smoke,omitempty"`
 }
 
-func DoctorCommand() *cli.Command {
-	return &cli.Command{
-		Name:  "doctor",
-		Usage: "Diagnose auth, backend reachability, zones, clusters, and live deployments",
-		Flags: []cli.Flag{
-			&cli.StringFlag{
-				Name:    "deployment-id",
-				Aliases: []string{"d"},
-				Usage:   "Check one deployment instead of the whole namespace",
-			},
-			&cli.StringFlag{
-				Name:  "app",
-				Usage: "App name to resolve (alternative to --deployment-id)",
-			},
-			&cli.StringFlag{
-				Name:  "config",
-				Usage: "Config name or path (e.g. staging, satusky.staging.toml). Used to resolve a deployment ID when not provided.",
-			},
-			&cli.StringFlag{
-				Name:  "health-path",
-				Usage: "Explicit HTTP path for app-level smoke success (default: tries /health then /). Enforces 2xx/3xx success.",
-			},
-			&cli.BoolFlag{
-				Name:  "smoke",
-				Usage: "Run smoke checks across all namespace deployments (opt-in for namespace-wide doctor)",
-			},
-		},
-		Action: handleDoctor,
-	}
-}
-
-func handleDoctor(ctx context.Context, cmd *cli.Command) error {
+func handleDoctor(ctx context.Context, in doctorInput) error {
 	user, err := api.GetCurrentUser()
 	if err != nil {
 		return utils.NewError(fmt.Sprintf("auth/backend check failed: %s", err.Error()), nil)
@@ -76,7 +44,7 @@ func handleDoctor(ctx context.Context, cmd *cli.Command) error {
 	}
 
 	// Validate --health-path like deploy does.
-	if err := validator.ValidateURLPath(cmd.String("health-path")); err != nil {
+	if err := validator.ValidateURLPath(in.HealthPath); err != nil {
 		return utils.NewError(fmt.Sprintf("invalid health path: %v", err), nil)
 	}
 
@@ -98,7 +66,7 @@ func handleDoctor(ctx context.Context, cmd *cli.Command) error {
 		report.Clusters = len(clusters)
 	}
 
-	targets, smokePath, targetedMode, err := resolveDoctorTargets(cmd)
+	targets, smokePath, targetedMode, err := resolveDoctorTargets(in)
 	if err != nil {
 		return err
 	}
@@ -106,9 +74,9 @@ func handleDoctor(ctx context.Context, cmd *cli.Command) error {
 	// Smoke checks run only when explicitly requested:
 	// - --deployment-id / --config (targeted mode): always smoke
 	// - namespace-wide: only smoke when --smoke flag is set
-	runSmoke := targetedMode || cmd.Bool("smoke")
+	runSmoke := targetedMode || in.Smoke
 	// Strict smoke (enforce 2xx/3xx) only when --health-path was explicitly set.
-	strictSmoke := cmd.IsSet("health-path")
+	strictSmoke := in.HealthPathSet
 
 	for _, dep := range targets {
 		resolvedDomain := strings.TrimSpace(dep.Domain)
@@ -202,11 +170,11 @@ func handleDoctor(ctx context.Context, cmd *cli.Command) error {
 	return nil
 }
 
-func resolveDoctorTargets(cmd *cli.Command) ([]api.Deployment, string, bool, error) {
-	healthPath := strings.TrimSpace(cmd.String("health-path"))
+func resolveDoctorTargets(in doctorInput) ([]api.Deployment, string, bool, error) {
+	healthPath := strings.TrimSpace(in.HealthPath)
 
-	if cmd.String("deployment-id") != "" || cmd.String("config") != "" {
-		deploymentID, err := resolveDeploymentID(cmd.String("deployment-id"), cmd.String("app"), cmd.String("config"))
+	if in.DeploymentID != "" || in.Config != "" {
+		deploymentID, err := deploy.ResolveDeploymentID(in.DeploymentID, in.App, in.Config)
 		if err != nil {
 			return nil, "", false, err
 		}
@@ -214,12 +182,11 @@ func resolveDoctorTargets(cmd *cli.Command) ([]api.Deployment, string, bool, err
 		if err != nil {
 			return nil, "", false, utils.NewError(fmt.Sprintf("failed to load deployment %s: %s", deploymentID, err.Error()), nil)
 		}
-		if healthPath == "" && cmd.String("config") != "" {
-			if cfg, cfgErr := config.FindConfig(cmd.String("config")); cfgErr == nil && cfg != nil {
+		if healthPath == "" && in.Config != "" {
+			if cfg, cfgErr := config.FindConfig(in.Config); cfgErr == nil && cfg != nil {
 				healthPath = strings.TrimSpace(cfg.Checks.HealthPath)
 			}
 		}
-		// targetedMode: smoke always runs for a specific deployment or config.
 		return []api.Deployment{*deployment}, healthPath, true, nil
 	}
 
@@ -227,15 +194,78 @@ func resolveDoctorTargets(cmd *cli.Command) ([]api.Deployment, string, bool, err
 	if err != nil {
 		return nil, "", false, utils.NewError(fmt.Sprintf("failed to list deployments: %s", err.Error()), nil)
 	}
-	// namespace-wide mode: smoke only when --smoke is explicitly requested.
 	return deployments, healthPath, false, nil
 }
 
-func smokeDeploymentURL(domain, healthPath string, strict bool) *publicURLSmokeResult {
+func smokeDeploymentURL(domain, healthPath string, strict bool) *deploy.PublicURLSmokeResult {
 	if domain == "" {
 		return nil
 	}
-	candidates := smokePathCandidates(healthPath)
-	result := checkPublicURLSmoke("https://"+domain, candidates, strict)
+	candidates := deploy.SmokePathCandidates(healthPath)
+	result := deploy.CheckPublicURLSmoke("https://"+domain, candidates, strict)
 	return &result
+}
+
+// --- Domain status display helpers (copied from domains.go) -------------
+
+func domainRouteText(status api.DomainRouteStatus) string {
+	if !status.Attached {
+		if status.Message != "" {
+			return "not attached: " + status.Message
+		}
+		return "not attached"
+	}
+	if status.ResourceKind == "" && status.ResourceName == "" {
+		return "attached"
+	}
+	return fmt.Sprintf("attached to %s/%s", status.ResourceKind, status.ResourceName)
+}
+
+func domainDNSText(status api.DNSStatusResponse) string {
+	parts := []string{string(status.Status)}
+	if len(status.ResolvedIPs) > 0 {
+		parts = append(parts, "resolved "+strings.Join(status.ResolvedIPs, ", "))
+	}
+	if status.ExpectedIP != "" {
+		parts = append(parts, "expected "+status.ExpectedIP)
+	}
+	if status.Message != "" {
+		parts = append(parts, status.Message)
+	}
+	return strings.Join(parts, " - ")
+}
+
+func domainTLSText(status api.TLSStatusResponse) string {
+	if status.Status == "" {
+		return "unknown"
+	}
+	if status.ExpiresAt != nil {
+		return fmt.Sprintf("%s, expires %s", status.Status, status.ExpiresAt.Format("2006-01-02"))
+	}
+	if status.Message != "" {
+		return fmt.Sprintf("%s - %s", status.Status, status.Message)
+	}
+	return string(status.Status)
+}
+
+func domainHTTPText(status api.DomainReachabilityStatus) string {
+	if !status.Checked {
+		if status.Message != "" {
+			return "not checked - " + status.Message
+		}
+		return "not checked"
+	}
+	if status.Reachable {
+		return fmt.Sprintf("reachable %s %d", status.URL, status.StatusCode)
+	}
+	if status.StatusCode > 0 {
+		if status.Message != "" {
+			return fmt.Sprintf("unreachable: %d - %s", status.StatusCode, status.Message)
+		}
+		return fmt.Sprintf("unreachable: %d", status.StatusCode)
+	}
+	if status.Message != "" {
+		return "unreachable - " + status.Message
+	}
+	return "unreachable"
 }
