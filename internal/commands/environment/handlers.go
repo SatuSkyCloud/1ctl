@@ -12,8 +12,10 @@ import (
 	"github.com/google/uuid"
 )
 
-func handleEnvCreate(ctx context.Context, in envCreateInput) error {
-	deploymentIDStr, err := deploy.ResolveDeploymentID(in.DeploymentID, "", in.Config)
+// --- Handlers -----------------------------------------------------------
+
+func handleCreateEnvironment(ctx context.Context, in envCreateInput) error {
+	deploymentIDStr, err := deploy.ResolveDeploymentID(in.DeploymentID, in.App, in.Config)
 	if err != nil {
 		return err
 	}
@@ -63,7 +65,7 @@ func handleEnvCreate(ctx context.Context, in envCreateInput) error {
 	return nil
 }
 
-func handleEnvList(ctx context.Context) error {
+func handleListEnvironments(ctx context.Context) error {
 	environments, err := api.ListEnvironments()
 	if err != nil {
 		return utils.NewError(fmt.Sprintf("failed to list environments: %s", err.Error()), nil)

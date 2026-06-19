@@ -14,6 +14,7 @@ import (
 	"1ctl/internal/commands/completion"
 	"1ctl/internal/commands/credits"
 	"1ctl/internal/commands/doctor"
+	"1ctl/internal/commands/domains"
 	"1ctl/internal/commands/environment"
 	initcmd "1ctl/internal/commands/init"
 	"1ctl/internal/commands/ingress"
@@ -99,3 +100,6 @@ func SecretCommand() *cli.Command { return secret.Command() }
 
 // EnvironmentCommand returns the "1ctl env" command tree.
 func EnvironmentCommand() *cli.Command { return environment.Command() }
+
+// DomainsCommand returns the "1ctl domains" command tree.
+func DomainsCommand() *cli.Command { return domains.Command() }

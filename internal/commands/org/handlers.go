@@ -7,8 +7,6 @@ import (
 	"1ctl/internal/api"
 	satuskyctx "1ctl/internal/context"
 	"1ctl/internal/utils"
-
-	"github.com/google/uuid"
 )
 
 // --- Handlers -----------------------------------------------------------

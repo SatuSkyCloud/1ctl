@@ -1,5 +1,4 @@
-// Package secret defines the "1ctl secret" command tree — flag names,
-// input structs, and CLI wiring. Handler logic lives in handlers.go.
+// Package secret defines the "1ctl secret" command tree.
 package secret
 
 import (
@@ -17,7 +16,7 @@ const (
 	flagName         = "name"
 	flagKV           = "kv"
 	flagKey          = "key"
-	flagID           = "id"
+	flagSecretID     = "secret-id"
 )
 
 // --- Input structs ------------------------------------------------------
@@ -30,15 +29,15 @@ type secretCreateInput struct {
 	KV           []string
 }
 
-type secretGetInput struct {
-	ID string
-}
-
 type secretUnsetInput struct {
 	DeploymentID string
 	App          string
 	Config       string
 	Key          string
+}
+
+type secretGetInput struct {
+	SecretID string
 }
 
 // --- Command tree -------------------------------------------------------
@@ -90,19 +89,15 @@ func secretCreateCommand() *cli.Command {
 				Destination: &in.KV,
 			},
 		},
-		Action: func(ctx context.Context, cmd *cli.Command) error {
-			return handleCreateSecret(ctx, in)
-		},
+		Action: func(ctx context.Context, cmd *cli.Command) error { return handleCreateSecret(ctx, in) },
 	}
 }
 
 func secretListCommand() *cli.Command {
 	return &cli.Command{
-		Name:  "list",
-		Usage: "List all secrets",
-		Action: func(ctx context.Context, cmd *cli.Command) error {
-			return handleListSecrets(ctx)
-		},
+		Name:   "list",
+		Usage:  "List all secrets",
+		Action: func(ctx context.Context, cmd *cli.Command) error { return handleListSecrets(ctx) },
 	}
 }
 
@@ -113,15 +108,13 @@ func secretGetCommand() *cli.Command {
 		Usage: "Show secret details including key names",
 		Flags: []cli.Flag{
 			&cli.StringFlag{
-				Name:        flagID,
+				Name:        flagSecretID,
 				Usage:       "Secret ID",
 				Required:    true,
-				Destination: &in.ID,
+				Destination: &in.SecretID,
 			},
 		},
-		Action: func(ctx context.Context, cmd *cli.Command) error {
-			return handleGetSecret(ctx, in)
-		},
+		Action: func(ctx context.Context, cmd *cli.Command) error { return handleGetSecret(ctx, in) },
 	}
 }
 
@@ -131,13 +124,30 @@ func secretUnsetCommand() *cli.Command {
 		Name:  "unset",
 		Usage: "Remove a specific key from a secret",
 		Flags: []cli.Flag{
-			&cli.StringFlag{Name: flagApp, Usage: "App name to resolve (alternative to --deployment-id)", Destination: &in.App},
-			&cli.StringFlag{Name: flagConfig, Usage: "Config name or path", Destination: &in.Config},
-			&cli.StringFlag{Name: flagDeploymentID, Aliases: []string{"d"}, Usage: "Deployment ID", Destination: &in.DeploymentID},
-			&cli.StringFlag{Name: flagKey, Aliases: []string{"k"}, Usage: "Key to remove", Required: true, Destination: &in.Key},
+			&cli.StringFlag{
+				Name:        flagApp,
+				Usage:       "App name to resolve (alternative to --deployment-id)",
+				Destination: &in.App,
+			},
+			&cli.StringFlag{
+				Name:        flagConfig,
+				Usage:       "Config name or path",
+				Destination: &in.Config,
+			},
+			&cli.StringFlag{
+				Name:        flagDeploymentID,
+				Aliases:     []string{"d"},
+				Usage:       "Deployment ID",
+				Destination: &in.DeploymentID,
+			},
+			&cli.StringFlag{
+				Name:        flagKey,
+				Aliases:     []string{"k"},
+				Usage:       "Key to remove",
+				Required:    true,
+				Destination: &in.Key,
+			},
 		},
-		Action: func(ctx context.Context, cmd *cli.Command) error {
-			return handleSecretUnset(ctx, in)
-		},
+		Action: func(ctx context.Context, cmd *cli.Command) error { return handleSecretUnset(ctx, in) },
 	}
 }

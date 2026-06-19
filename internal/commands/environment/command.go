@@ -1,5 +1,4 @@
-// Package environment defines the "1ctl env" command tree — flag names,
-// input structs, and CLI wiring. Handler logic lives in handlers.go.
+// Package environment defines the "1ctl env" command tree.
 package environment
 
 import (
@@ -23,9 +22,15 @@ const (
 
 type envCreateInput struct {
 	DeploymentID string
+	App          string
 	Config       string
 	Name         string
 	Env          []string
+}
+
+type envListInput struct {
+	DeploymentID string
+	App          string
 }
 
 type envUnsetInput struct {
@@ -37,7 +42,7 @@ type envUnsetInput struct {
 
 // --- Command tree -------------------------------------------------------
 
-// Command returns the root environment command tree.
+// Command returns the root env command tree.
 func Command() *cli.Command {
 	return &cli.Command{
 		Name:    "env",
@@ -78,29 +83,28 @@ func envCreateCommand() *cli.Command {
 				Destination: &in.Env,
 			},
 		},
-		Action: func(ctx context.Context, cmd *cli.Command) error {
-			return handleEnvCreate(ctx, in)
-		},
+		Action: func(ctx context.Context, cmd *cli.Command) error { return handleCreateEnvironment(ctx, in) },
 	}
 }
 
 func envListCommand() *cli.Command {
+	var in envListInput
 	return &cli.Command{
 		Name:  "list",
 		Usage: "List all environments",
 		Flags: []cli.Flag{
 			&cli.StringFlag{
-				Name:  flagDeploymentID,
-				Usage: "Filter by deployment ID",
+				Name:        flagDeploymentID,
+				Usage:       "Filter by deployment ID",
+				Destination: &in.DeploymentID,
 			},
 			&cli.StringFlag{
-				Name:  flagApp,
-				Usage: "App name to resolve (alternative to --deployment-id)",
+				Name:        flagApp,
+				Usage:       "App name to resolve (alternative to --deployment-id)",
+				Destination: &in.App,
 			},
 		},
-		Action: func(ctx context.Context, cmd *cli.Command) error {
-			return handleEnvList(ctx)
-		},
+		Action: func(ctx context.Context, cmd *cli.Command) error { return handleListEnvironments(ctx) },
 	}
 }
 
@@ -110,13 +114,30 @@ func envUnsetCommand() *cli.Command {
 		Name:  "unset",
 		Usage: "Remove a specific key from an environment",
 		Flags: []cli.Flag{
-			&cli.StringFlag{Name: flagConfig, Usage: "Config name or path", Destination: &in.Config},
-			&cli.StringFlag{Name: flagDeploymentID, Aliases: []string{"d"}, Usage: "Deployment ID", Destination: &in.DeploymentID},
-			&cli.StringFlag{Name: flagApp, Usage: "App name to resolve (alternative to --deployment-id)", Destination: &in.App},
-			&cli.StringFlag{Name: flagKey, Aliases: []string{"k"}, Usage: "Key to remove", Required: true, Destination: &in.Key},
+			&cli.StringFlag{
+				Name:        flagConfig,
+				Usage:       "Config name or path",
+				Destination: &in.Config,
+			},
+			&cli.StringFlag{
+				Name:        flagDeploymentID,
+				Aliases:     []string{"d"},
+				Usage:       "Deployment ID",
+				Destination: &in.DeploymentID,
+			},
+			&cli.StringFlag{
+				Name:        flagApp,
+				Usage:       "App name to resolve (alternative to --deployment-id)",
+				Destination: &in.App,
+			},
+			&cli.StringFlag{
+				Name:        flagKey,
+				Aliases:     []string{"k"},
+				Usage:       "Key to remove",
+				Required:    true,
+				Destination: &in.Key,
+			},
 		},
-		Action: func(ctx context.Context, cmd *cli.Command) error {
-			return handleEnvUnset(ctx, in)
-		},
+		Action: func(ctx context.Context, cmd *cli.Command) error { return handleEnvUnset(ctx, in) },
 	}
 }

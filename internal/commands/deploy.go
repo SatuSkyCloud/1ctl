@@ -1812,3 +1812,46 @@ func handleScaleDeployment(ctx context.Context, cmd *cli.Command) error {
 	utils.PrintSuccess("Scaled deployment %s to %d replicas", deploymentID, replicas)
 	return nil
 }
+
+// domainRouteText returns a human-readable description of a domain route status.
+func domainRouteText(status api.DomainRouteStatus) string {
+	if !status.Attached {
+		if status.Message != "" {
+			return "not attached: " + status.Message
+		}
+		return "not attached"
+	}
+	if status.ResourceKind == "" && status.ResourceName == "" {
+		return "attached"
+	}
+	return fmt.Sprintf("attached to %s/%s", status.ResourceKind, status.ResourceName)
+}
+
+// domainDNSText returns a human-readable description of a domain DNS status.
+func domainDNSText(status api.DNSStatusResponse) string {
+	parts := []string{string(status.Status)}
+	if len(status.ResolvedIPs) > 0 {
+		parts = append(parts, "resolved "+strings.Join(status.ResolvedIPs, ", "))
+	}
+	if status.ExpectedIP != "" {
+		parts = append(parts, "expected "+status.ExpectedIP)
+	}
+	if status.Message != "" {
+		parts = append(parts, status.Message)
+	}
+	return strings.Join(parts, " - ")
+}
+
+// domainTLSText returns a human-readable description of a domain TLS status.
+func domainTLSText(status api.TLSStatusResponse) string {
+	if status.Status == "" {
+		return "unknown"
+	}
+	if status.ExpiresAt != nil {
+		return fmt.Sprintf("%s, expires %s", status.Status, status.ExpiresAt.Format("2006-01-02"))
+	}
+	if status.Message != "" {
+		return fmt.Sprintf("%s - %s", status.Status, status.Message)
+	}
+	return string(status.Status)
+}

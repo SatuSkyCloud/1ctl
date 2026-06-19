@@ -13,6 +13,8 @@ import (
 	"github.com/google/uuid"
 )
 
+// --- Handlers -----------------------------------------------------------
+
 func handleCreateSecret(ctx context.Context, in secretCreateInput) error {
 	deploymentIDStr, err := deploy.ResolveDeploymentID(in.DeploymentID, in.App, in.Config)
 	if err != nil {
@@ -118,17 +120,13 @@ func handleSecretUnset(ctx context.Context, in secretUnsetInput) error {
 }
 
 func handleGetSecret(ctx context.Context, in secretGetInput) error {
-	if in.ID == "" {
-		return utils.NewError("secret ID is required. Usage: 1ctl secret get --id <secret-id>", nil)
-	}
-
 	secrets, err := api.ListSecrets()
 	if err != nil {
 		return utils.NewError(fmt.Sprintf("failed to fetch secrets: %s", err.Error()), nil)
 	}
 
 	for _, s := range secrets {
-		if s.SecretID.String() == in.ID {
+		if s.SecretID.String() == in.SecretID {
 			if utils.TryPrintJSON(s) {
 				return nil
 			}
@@ -144,5 +142,5 @@ func handleGetSecret(ctx context.Context, in secretGetInput) error {
 			return nil
 		}
 	}
-	return utils.NewError(fmt.Sprintf("secret %s not found", in.ID), nil)
+	return utils.NewError(fmt.Sprintf("secret %s not found", in.SecretID), nil)
 }

@@ -1,5 +1,4 @@
-// Package doctor defines the "1ctl doctor" command tree — flag names,
-// input structs, and CLI wiring. Handler logic lives in handlers.go.
+// Package doctor defines the "1ctl doctor" command tree.
 package doctor
 
 import (

@@ -7,11 +7,13 @@ import (
 
 	"1ctl/internal/api"
 	"1ctl/internal/config"
-	"1ctl/internal/deploy"
 	satuskyctx "1ctl/internal/context"
+	"1ctl/internal/deploy"
 	"1ctl/internal/utils"
 	"1ctl/internal/validator"
 )
+
+// --- Report types -------------------------------------------------------
 
 type doctorReport struct {
 	UserEmail    string                   `json:"user_email"`
@@ -32,6 +34,8 @@ type doctorDeploymentReport struct {
 	Smoke        *deploy.PublicURLSmokeResult `json:"smoke,omitempty"`
 }
 
+// --- Handlers -----------------------------------------------------------
+
 func handleDoctor(ctx context.Context, in doctorInput) error {
 	user, err := api.GetCurrentUser()
 	if err != nil {
@@ -43,7 +47,6 @@ func handleDoctor(ctx context.Context, in doctorInput) error {
 		return utils.NewError("not authenticated or namespace missing", nil)
 	}
 
-	// Validate --health-path like deploy does.
 	if err := validator.ValidateURLPath(in.HealthPath); err != nil {
 		return utils.NewError(fmt.Sprintf("invalid health path: %v", err), nil)
 	}
@@ -71,12 +74,8 @@ func handleDoctor(ctx context.Context, in doctorInput) error {
 		return err
 	}
 
-	// Smoke checks run only when explicitly requested:
-	// - --deployment-id / --config (targeted mode): always smoke
-	// - namespace-wide: only smoke when --smoke flag is set
 	runSmoke := targetedMode || in.Smoke
-	// Strict smoke (enforce 2xx/3xx) only when --health-path was explicitly set.
-	strictSmoke := in.HealthPathSet
+	strictSmoke := in.HealthPath != ""
 
 	for _, dep := range targets {
 		resolvedDomain := strings.TrimSpace(dep.Domain)
@@ -103,9 +102,10 @@ func handleDoctor(ctx context.Context, in doctorInput) error {
 			}
 
 			if runSmoke {
-				entry.Smoke = smokeDeploymentURL(resolvedDomain, smokePath, strictSmoke)
-				if entry.Smoke != nil && !entry.Smoke.Ready {
-					report.Issues = append(report.Issues, fmt.Sprintf("%s smoke: %s", dep.AppLabel, entry.Smoke.Reason))
+				result := smokeDeploymentURL(resolvedDomain, smokePath, strictSmoke)
+				entry.Smoke = result
+				if result != nil && !result.Ready {
+					report.Issues = append(report.Issues, fmt.Sprintf("%s smoke: %s", dep.AppLabel, result.Reason))
 				}
 			}
 		}
@@ -170,6 +170,8 @@ func handleDoctor(ctx context.Context, in doctorInput) error {
 	return nil
 }
 
+// --- Target resolution --------------------------------------------------
+
 func resolveDoctorTargets(in doctorInput) ([]api.Deployment, string, bool, error) {
 	healthPath := strings.TrimSpace(in.HealthPath)
 
@@ -197,6 +199,8 @@ func resolveDoctorTargets(in doctorInput) ([]api.Deployment, string, bool, error
 	return deployments, healthPath, false, nil
 }
 
+// --- Smoke helpers ------------------------------------------------------
+
 func smokeDeploymentURL(domain, healthPath string, strict bool) *deploy.PublicURLSmokeResult {
 	if domain == "" {
 		return nil
@@ -206,7 +210,7 @@ func smokeDeploymentURL(domain, healthPath string, strict bool) *deploy.PublicUR
 	return &result
 }
 
-// --- Domain status display helpers (copied from domains.go) -------------
+// --- Domain status text helpers -----------------------------------------
 
 func domainRouteText(status api.DomainRouteStatus) string {
 	if !status.Attached {
