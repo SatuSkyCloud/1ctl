@@ -1,4 +1,4 @@
-package commands
+package init
 
 import (
 	"context"
@@ -9,26 +9,10 @@ import (
 
 	"1ctl/internal/config"
 	"1ctl/internal/utils"
-
-	"github.com/urfave/cli/v3"
 )
 
-func InitCommand() *cli.Command {
-	return &cli.Command{
-		Name:  "init",
-		Usage: "Create a satusky.toml config file in the current directory",
-		Flags: []cli.Flag{
-			&cli.StringFlag{
-				Name:  "config",
-				Usage: "Config name (e.g. staging → creates satusky.staging.toml)",
-			},
-		},
-		Action: handleInit,
-	}
-}
-
-func handleInit(ctx context.Context, cmd *cli.Command) error {
-	configArg := cmd.String("config")
+func handleInit(ctx context.Context, in initInput) error {
+	configArg := in.Config
 	filename := config.DefaultConfigFile
 	if configArg != "" && !strings.HasSuffix(configArg, ".toml") {
 		filename = fmt.Sprintf("satusky.%s.toml", configArg)

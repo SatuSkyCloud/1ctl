@@ -1,8 +1,8 @@
-package commands
+package launch
 
 import (
-	"context"
 	"bufio"
+	"context"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -10,26 +10,7 @@ import (
 
 	"1ctl/internal/config"
 	"1ctl/internal/utils"
-
-	"github.com/urfave/cli/v3"
 )
-
-// LaunchCommand is the onboarding wizard. It detects the project runtime,
-// suggests sensible defaults, and writes a populated satusky.toml so the
-// user can run `1ctl deploy` immediately. (#3 D-06)
-func LaunchCommand() *cli.Command {
-	return &cli.Command{
-		Name:  "launch",
-		Usage: "Interactive wizard: detect runtime, write satusky.toml, ready to deploy",
-		Flags: []cli.Flag{
-			&cli.BoolFlag{
-				Name:  "non-interactive",
-				Usage: "Skip prompts and accept all detected defaults",
-			},
-		},
-		Action: handleLaunch,
-	}
-}
 
 // Runtime is a detected project runtime. Each carries a suggested resource
 // profile and a default port.
@@ -56,8 +37,7 @@ var detectableRuntimes = []Runtime{
 	{Name: "PHP", Marker: "composer.json", CPURequest: "250m", CPULimit: "1", Memory: "512Mi", Port: 8080},
 }
 
-// detectRuntime returns the first matching runtime in detectableRuntimes,
-// or an empty Runtime if none match.
+// detectRuntime returns the first matching runtime in detectableRuntimes.
 func detectRuntime(dir string) Runtime {
 	for _, r := range detectableRuntimes {
 		if _, err := os.Stat(filepath.Join(dir, r.Marker)); err == nil {
@@ -68,8 +48,6 @@ func detectRuntime(dir string) Runtime {
 }
 
 // hasDockerfile reports whether the directory contains a Dockerfile.
-// Builds require either a Dockerfile or a --image flag, so the wizard
-// flags missing Dockerfiles to the user.
 func hasDockerfile(dir string) bool {
 	for _, name := range []string{"Dockerfile", "Dockerfile.prod", "dockerfile"} {
 		if _, err := os.Stat(filepath.Join(dir, name)); err == nil {
@@ -79,37 +57,36 @@ func hasDockerfile(dir string) bool {
 	return false
 }
 
-func handleLaunch(ctx context.Context, cmd *cli.Command) error {
+func handleLaunch(ctx context.Context, in launchInput) error {
 	dir, err := os.Getwd()
 	if err != nil {
 		return utils.NewError("failed to read working directory", err)
 	}
 
 	if _, err := os.Stat(filepath.Join(dir, config.DefaultConfigFile)); err == nil {
-		return utils.NewError(fmt.Sprintf("%s already exists in %s — remove it or run `1ctl deploy` directly", config.DefaultConfigFile, dir), nil)
+		return utils.NewError(fmt.Sprintf("%s already exists in %s \u2014 remove it or run `1ctl deploy` directly", config.DefaultConfigFile, dir), nil)
 	}
 
 	rt := detectRuntime(dir)
 	appName := filepath.Base(dir)
-	nonInteractive := cmd.Bool("non-interactive")
 
 	utils.PrintHeader("1ctl launch")
 	if rt.Name != "" {
 		utils.PrintInfo("Detected runtime: %s (%s)", rt.Name, rt.Marker)
 	} else {
-		utils.PrintWarning("No runtime detected — using generic defaults. You can edit satusky.toml after.")
+		utils.PrintWarning("No runtime detected \u2014 using generic defaults. You can edit satusky.toml after.")
 		rt = Runtime{CPURequest: "250m", CPULimit: "1", Memory: "256Mi", Port: 8080}
 	}
 	if !hasDockerfile(dir) {
-		utils.PrintWarning("No Dockerfile in this directory — add one before running `1ctl deploy`, or pass `--image` to use a pre-built image.")
+		utils.PrintWarning("No Dockerfile in this directory \u2014 add one before running `1ctl deploy`, or pass `--image` to use a pre-built image.")
 	}
 
 	reader := bufio.NewReader(os.Stdin)
-	appName = promptOrDefault(reader, "App name", appName, nonInteractive)
-	port := promptIntOrDefault(reader, "Port", rt.Port, nonInteractive)
-	cpuRequest := promptOrDefault(reader, "CPU request", rt.CPURequest, nonInteractive)
-	cpuLimit := promptOrDefault(reader, "CPU limit", rt.CPULimit, nonInteractive)
-	memory := promptOrDefault(reader, "Memory", rt.Memory, nonInteractive)
+	appName = promptOrDefault(reader, "App name", appName, in.NonInteractive)
+	port := promptIntOrDefault(reader, "Port", rt.Port, in.NonInteractive)
+	cpuRequest := promptOrDefault(reader, "CPU request", rt.CPURequest, in.NonInteractive)
+	cpuLimit := promptOrDefault(reader, "CPU limit", rt.CPULimit, in.NonInteractive)
+	memory := promptOrDefault(reader, "Memory", rt.Memory, in.NonInteractive)
 
 	cfg := config.ProjectConfig{
 		App: config.AppConfig{
@@ -155,10 +132,7 @@ func promptIntOrDefault(r *bufio.Reader, label string, def int, nonInteractive b
 	return n
 }
 
-// writeLaunchConfig serialises a minimal satusky.toml. We don't reuse
-// init.go's template because launch is the curated path: only the four
-// fields the user just confirmed get written. Users discover the v2
-// schema via 1ctl init.
+// writeLaunchConfig serialises a minimal satusky.toml.
 func writeLaunchConfig(cfg *config.ProjectConfig) error {
 	lines := []string{
 		"[app]",

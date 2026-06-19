@@ -1,60 +1,18 @@
-package commands
+package completion
 
 import (
 	"context"
 	"fmt"
+	"io"
 	"os"
 	"path/filepath"
 	"strings"
 
 	"1ctl/internal/utils"
-
-	"github.com/urfave/cli/v3"
 )
 
-// CompletionCommand returns the completion command group.
-//
-// These scripts use v3's --generate-shell-completion flag which dynamically
-// outputs commands/flags/descriptions based on the live command tree.
-// No manual updates needed when commands are added or removed.
-//
-// Use `1ctl completion install` to auto-detect your shell and install.
-func CompletionCommand() *cli.Command {
-	return &cli.Command{
-		Name:  "completion",
-		Usage: "Generate and install shell completion scripts",
-		Commands: []*cli.Command{
-			{
-				Name:   "install",
-				Usage:  "Auto-detect shell and install completion (add one line to shell config)",
-				Action: handleCompletionInstall,
-			},
-			{
-				Name:   "bash",
-				Usage:  "Generate bash completion script",
-				Action: handleBashCompletion,
-			},
-			{
-				Name:   "zsh",
-				Usage:  "Generate zsh completion script",
-				Action: handleZshCompletion,
-			},
-			{
-				Name:   "fish",
-				Usage:  "Generate fish completion script",
-				Action: handleFishCompletion,
-			},
-			{
-				Name:   "powershell",
-				Usage:  "Generate PowerShell completion script",
-				Action: handlePowerShellCompletion,
-			},
-		},
-	}
-}
-
-func handleBashCompletion(ctx context.Context, cmd *cli.Command) error {
-	appName := cmd.Root().Name
+func handleBashCompletion(ctx context.Context, in completionWriterInput) error {
+	appName := in.Name
 	script := fmt.Sprintf(`#/usr/bin/env bash
 
 __%[1]s_init_completion() {
@@ -133,12 +91,12 @@ _%[1]s_completions() {
 
 complete -o bashdefault -o default -F _%[1]s_completions %[1]s
 `, appName)
-	_, err := fmt.Fprint(cmd.Root().Writer, script)
+	_, err := fmt.Fprint(in.Writer, script)
 	return err
 }
 
-func handleZshCompletion(ctx context.Context, cmd *cli.Command) error {
-	appName := cmd.Root().Name
+func handleZshCompletion(ctx context.Context, in completionWriterInput) error {
+	appName := in.Name
 	script := fmt.Sprintf(`#compdef %[1]s
 compdef _%[1]s %[1]s
 
@@ -167,12 +125,12 @@ if [ "$funcstack[1]" = "_%[1]s" ]; then
   _%[1]s
 fi
 `, appName)
-	_, err := fmt.Fprint(cmd.Root().Writer, script)
+	_, err := fmt.Fprint(in.Writer, script)
 	return err
 }
 
-func handleFishCompletion(ctx context.Context, cmd *cli.Command) error {
-	appName := cmd.Root().Name
+func handleFishCompletion(ctx context.Context, in completionWriterInput) error {
+	appName := in.Name
 	script := fmt.Sprintf(`# Fish completion for %[1]s
 
 function __fish_%[1]s_complete
@@ -183,12 +141,12 @@ end
 
 complete -c %[1]s -f -a '(__fish_%[1]s_complete)'
 `, appName)
-	_, err := fmt.Fprint(cmd.Root().Writer, script)
+	_, err := fmt.Fprint(in.Writer, script)
 	return err
 }
 
-func handlePowerShellCompletion(ctx context.Context, cmd *cli.Command) error {
-	appName := cmd.Root().Name
+func handlePowerShellCompletion(ctx context.Context, in completionWriterInput) error {
+	appName := in.Name
 	script := fmt.Sprintf(`using namespace System.Management.Automation
 using namespace System.Management.Automation.Language
 
@@ -217,12 +175,12 @@ Register-ArgumentCompleter -Native -CommandName '%[1]s' -ScriptBlock {
     $completions
 }
 `, appName)
-	_, err := fmt.Fprint(cmd.Root().Writer, script)
+	_, err := fmt.Fprint(in.Writer, script)
 	return err
 }
 
-func handleCompletionInstall(ctx context.Context, cmd *cli.Command) error {
-	appName := cmd.Root().Name
+func handleCompletionInstall(ctx context.Context, rootWriter io.Writer) error {
+	appName := "1ctl"
 	shell := os.Getenv("SHELL")
 	home, _ := os.UserHomeDir()
 
@@ -231,7 +189,7 @@ func handleCompletionInstall(ctx context.Context, cmd *cli.Command) error {
 		dir         string
 		file        string
 		config      string
-		scriptFunc  func(context.Context, *cli.Command) error
+		scriptFunc  func(io.Writer) error
 		postInstall string
 	}
 
@@ -240,30 +198,36 @@ func handleCompletionInstall(ctx context.Context, cmd *cli.Command) error {
 	switch {
 	case strings.Contains(shell, "zsh"):
 		si = shellInfo{
-			name:        "zsh",
-			dir:         filepath.Join(home, ".zsh", "completions"),
-			file:        "_" + appName,
-			config:      fmt.Sprintf("fpath=(%s $fpath)", filepath.Join(home, ".zsh", "completions")),
-			scriptFunc:  handleZshCompletion,
+			name:   "zsh",
+			dir:    filepath.Join(home, ".zsh", "completions"),
+			file:   "_" + appName,
+			config: fmt.Sprintf("fpath=(%s $fpath)", filepath.Join(home, ".zsh", "completions")),
+			scriptFunc: func(w io.Writer) error {
+				return handleZshCompletion(ctx, completionWriterInput{Writer: w, Name: appName})
+			},
 			postInstall: "rm -f ~/.zcompdump && compinit",
 		}
 	case strings.Contains(shell, "bash"):
 		si = shellInfo{
-			name:        "bash",
-			dir:         filepath.Join(home, ".bash_completion.d"),
-			file:        appName,
-			config:      fmt.Sprintf("source %s/%s", filepath.Join(home, ".bash_completion.d"), appName),
-			scriptFunc:  handleBashCompletion,
+			name:   "bash",
+			dir:    filepath.Join(home, ".bash_completion.d"),
+			file:   appName,
+			config: fmt.Sprintf("source %s/%s", filepath.Join(home, ".bash_completion.d"), appName),
+			scriptFunc: func(w io.Writer) error {
+				return handleBashCompletion(ctx, completionWriterInput{Writer: w, Name: appName})
+			},
 			postInstall: fmt.Sprintf("source %s/%s", filepath.Join(home, ".bash_completion.d"), appName),
 		}
 	case strings.Contains(shell, "fish"):
 		installDir := filepath.Join(home, ".config", "fish", "completions")
 		si = shellInfo{
-			name:       "fish",
-			dir:        installDir,
-			file:       appName + ".fish",
-			config:     "(auto-loaded by fish, nothing to add)",
-			scriptFunc: handleFishCompletion,
+			name: "fish",
+			dir:  installDir,
+			file: appName + ".fish",
+			config: "(auto-loaded by fish, nothing to add)",
+			scriptFunc: func(w io.Writer) error {
+				return handleFishCompletion(ctx, completionWriterInput{Writer: w, Name: appName})
+			},
 		}
 	case strings.Contains(shell, "pwsh") || strings.Contains(shell, "powershell"):
 		utils.PrintInfo("PowerShell detected. Use:")
@@ -289,24 +253,19 @@ func handleCompletionInstall(ctx context.Context, cmd *cli.Command) error {
 	}
 	defer f.Close()
 
-	// Swap writer temporarily to write script into file
-	origWriter := cmd.Root().Writer
-	cmd.Root().Writer = f
-	err = si.scriptFunc(ctx, cmd)
-	cmd.Root().Writer = origWriter
-	if err != nil {
+	if err := si.scriptFunc(f); err != nil {
 		return err
 	}
 
 	utils.PrintSuccess("Installed %s completion at %s", si.name, installPath)
-	fmt.Println()
-	fmt.Printf("  # Add this ONE line to your ~/.%src and never touch it again:\n", si.name)
-	fmt.Printf("  %s\n", si.config)
-	fmt.Println()
+	fmt.Fprintln(rootWriter)
+	fmt.Fprintf(rootWriter, "  # Add this ONE line to your ~/.%src and never touch it again:\n", si.name)
+	fmt.Fprintf(rootWriter, "  %s\n", si.config)
+	fmt.Fprintln(rootWriter)
 	if si.postInstall != "" {
 		utils.PrintInfo("Then run: %s", si.postInstall)
 	}
-	fmt.Println()
-	utils.PrintInfo("Completions auto-update when 1ctl changes — no re-install needed.")
+	fmt.Fprintln(rootWriter)
+	utils.PrintInfo("Completions auto-update when 1ctl changes \u2014 no re-install needed.")
 	return nil
 }
