@@ -90,15 +90,6 @@ func handleLogs(ctx context.Context, cmd *cli.Command) error {
 	return nil
 }
 
-// requireUserContext returns the userID from context or an error
-func requireUserContext() (string, error) {
-	userID := satuskyctx.GetUserID()
-	if userID == "" {
-		return "", utils.NewError("user ID not found. Please run '1ctl auth login' first", nil)
-	}
-	return userID, nil
-}
-
 func handleLogsStream(ctx context.Context, cmd *cli.Command) error {
 	namespace := cmd.String("namespace")
 	appLabel := cmd.String("app")
