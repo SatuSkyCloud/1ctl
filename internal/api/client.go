@@ -1010,6 +1010,32 @@ func MachineHasTag(labels map[string]string, tag string) bool {
 	return ok
 }
 
+// MachineHasAllTags reports whether the given label set contains ALL of the specified tags.
+func MachineHasAllTags(labels map[string]string, tags []string) bool {
+	if labels == nil || len(tags) == 0 {
+		return false
+	}
+	for _, tag := range tags {
+		if _, ok := labels[MachineTagLabelPrefix+tag]; !ok {
+			return false
+		}
+	}
+	return true
+}
+
+// MachineHasAnyTag reports whether the given label set contains ANY of the specified tags.
+func MachineHasAnyTag(labels map[string]string, tags []string) bool {
+	if labels == nil || len(tags) == 0 {
+		return false
+	}
+	for _, tag := range tags {
+		if _, ok := labels[MachineTagLabelPrefix+tag]; ok {
+			return true
+		}
+	}
+	return false
+}
+
 func GetMachinesByOwnerID(ownerID uuid.UUID) ([]Machine, error) {
 	var resp apiResponse
 	err := makeRequest("GET", fmt.Sprintf("/machines/ownerId/%s", ownerID), nil, &resp)

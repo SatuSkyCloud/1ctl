@@ -123,7 +123,11 @@ func mergeConfig(in DeployInput, cfg *config.ProjectConfig) mergedInput {
 		applyIf(&m.RollingMaxUnavail, cfg.Deploy.RollingMaxUnavailable)
 		applyIf(&m.VolumeSize, cfg.Volume.Size)
 		applyIf(&m.VolumeMount, cfg.Volume.Mount)
-		applyIf(&m.MachineTag, cfg.Deploy.MachineTag)
+		// MachineTag is a []string in the input (from repeatable --machine-tag flag)
+		// but a single string in the TOML config. Merge the TOML value if no CLI flags were set.
+		if len(m.MachineTag) == 0 && cfg.Deploy.MachineTag != "" {
+			m.MachineTag = []string{cfg.Deploy.MachineTag}
+		}
 		if !m.Multicluster && cfg.Multicluster.Enabled {
 			m.Multicluster = true
 			if m.MulticlusterMode == "" || m.MulticlusterMode == "active-passive" {
@@ -346,13 +350,18 @@ func prepareDeploymentOptions(m mergedInput, cfg *config.ProjectConfig) (deployp
 		opts.Zone = m.Zone
 	}
 
-	if m.MachineTag != "" && len(m.Machine) == 0 {
-		hostnames, err := resolveMachineTag(m.MachineTag)
+	if len(m.MachineTag) > 0 && len(m.Machine) == 0 {
+		hostnames, err := resolveMachineTags(m.MachineTag, m.MachineTagStrategy)
 		if err != nil {
 			return deploypkg.DeploymentOptions{}, err
 		}
 		opts.Hostnames = hostnames
-		utils.PrintInfo("Resolved --machine-tag %q to %d owned machine(s)", m.MachineTag, len(hostnames))
+		tagList := strings.Join(m.MachineTag, ", ")
+		strategy := m.MachineTagStrategy
+		if strategy == "" {
+			strategy = "and"
+		}
+		utils.PrintInfo("Resolved --machine-tag %q (%s) to %d owned machine(s)", tagList, strings.ToUpper(strategy), len(hostnames))
 	}
 
 	if m.Multicluster {
@@ -535,7 +544,7 @@ func defaultInt32(v, fallback int32) int32 {
 	return v
 }
 
-func resolveMachineTag(tag string) ([]string, error) {
+func resolveMachineTags(tags []string, strategy string) ([]string, error) {
 	userID := satuskyctx.GetUserID()
 	if userID == "" {
 		return nil, utils.NewError("not authenticated — run '1ctl auth login' first", nil)
@@ -551,6 +560,8 @@ func resolveMachineTag(tag string) ([]string, error) {
 	if len(machines) == 0 {
 		return nil, utils.NewError("no owned machines found — register a machine before using --machine-tag", nil)
 	}
+
+	useOR := strings.ToLower(strategy) == "or"
 	var hostnames []string
 	for _, m := range machines {
 		if m.Status != "online" {
@@ -561,12 +572,20 @@ func resolveMachineTag(tag string) ([]string, error) {
 			utils.PrintWarning("Could not read labels for machine %s: %s", m.MachineID, err.Error())
 			continue
 		}
-		if api.MachineHasTag(labels, tag) {
+
+		matched := false
+		if useOR {
+			matched = api.MachineHasAnyTag(labels, tags)
+		} else {
+			matched = api.MachineHasAllTags(labels, tags)
+		}
+
+		if matched {
 			hostnames = append(hostnames, m.MachineID)
 		}
 	}
 	if len(hostnames) == 0 {
-		return nil, utils.NewError(fmt.Sprintf("no machines tagged %q are online", tag), nil)
+		return nil, utils.NewError(fmt.Sprintf("no online machines matched tags %v (strategy: %s)", tags, strategy), nil)
 	}
 	return hostnames, nil
 }
