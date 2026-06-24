@@ -27,6 +27,7 @@ type ProjectConfig struct {
 	HPA          HPAConfig          `toml:"hpa"`
 	VPA          VPAConfig          `toml:"vpa"`
 	PDB          PDBConfig          `toml:"pdb"`
+	Env          EnvConfig          `toml:"env"`
 	Multicluster MulticlusterConfig `toml:"multicluster"`
 	Path         string             `toml:"-"`
 }
@@ -109,6 +110,12 @@ type PDBConfig struct {
 	MinAvailable int32  `toml:"min_available"`
 	Percent      int32  `toml:"percent"`
 }
+
+// EnvConfig holds environment variables defined in satusky.toml [env] section.
+// These are non-sensitive runtime configuration values, following Fly.io's
+// convention where env vars live in the config file while secrets are managed
+// through the CLI (1ctl secret create).
+type EnvConfig map[string]string
 
 type MulticlusterConfig struct {
 	Enabled               bool   `toml:"enabled"`

@@ -26,11 +26,23 @@ func handleCreateSecret(ctx context.Context, in secretCreateInput) error {
 		return utils.NewError(fmt.Sprintf("invalid deployment-id: %s", err.Error()), nil)
 	}
 
-	keyValues := make([]api.KeyValuePair, 0, len(in.KV))
-	for _, kv := range in.KV {
+	// Collect key-value pairs from BOTH --kv/--env flags AND positional args.
+	// This matches Fly.io's `fly secrets set KEY=VALUE` convention where
+	// secrets are passed as positional arguments, not flags.
+	allKV := in.KV
+	for _, arg := range in.Args {
+		allKV = append(allKV, arg)
+	}
+
+	if len(allKV) == 0 {
+		return utils.NewError("at least one KEY=VALUE pair is required", nil)
+	}
+
+	keyValues := make([]api.KeyValuePair, 0, len(allKV))
+	for _, kv := range allKV {
 		parts := strings.SplitN(kv, "=", 2)
 		if len(parts) != 2 {
-			return utils.NewError("invalid key-value format (expected KEY=VALUE)", nil)
+			return utils.NewError(fmt.Sprintf("invalid key-value format (expected KEY=VALUE): %s", kv), nil)
 		}
 		keyValues = append(keyValues, api.KeyValuePair{
 			Key:   parts[0],

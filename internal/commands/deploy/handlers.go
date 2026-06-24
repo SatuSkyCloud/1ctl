@@ -137,6 +137,27 @@ func mergeConfig(in DeployInput, cfg *config.ProjectConfig) mergedInput {
 		if len(m.WaitFor) == 0 && len(cfg.Deploy.WaitFor) > 0 {
 			m.WaitFor = cfg.Deploy.WaitFor
 		}
+
+		// Merge [env] from config with CLI --env flags.
+		// Config values are the base; CLI flags override individual keys.
+		if len(cfg.Env) > 0 {
+			// Build a map from both sources
+			envMap := make(map[string]string, len(cfg.Env))
+			for k, v := range cfg.Env {
+				envMap[k] = v
+			}
+			// CLI flags override config
+			for _, kv := range in.Env {
+				if parts := strings.SplitN(kv, "=", 2); len(parts) == 2 {
+					envMap[parts[0]] = parts[1]
+				}
+			}
+			// Convert back to []string format
+			m.Env = make([]string, 0, len(envMap))
+			for k, v := range envMap {
+				m.Env = append(m.Env, k+"="+v)
+			}
+		}
 	}
 
 	if in.Name != "" {

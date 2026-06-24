@@ -71,6 +71,20 @@
 
 
 # =============================================================================
+# [env] — Environment variables (non-sensitive)
+# =============================================================================
+# Following Fly.io's convention: env vars in config, secrets via CLI.
+# Rendered by the app's GET /api/config endpoint.
+# CLI --env flags override individual keys at deploy time.
+# =============================================================================
+
+[env]
+  APP_ENV           = "staging"
+  LOG_LEVEL         = "debug"
+  FEATURE_X_ENABLED = "true"
+
+
+# =============================================================================
 # [volume] — Persistent Storage
 # =============================================================================
 # Attaches a block storage volume to your deployment.  Data survives pod

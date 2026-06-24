@@ -27,6 +27,7 @@ type secretCreateInput struct {
 	Config       string
 	Name         string
 	KV           []string
+	Args         []string // positional args (KEY=VALUE pairs)
 }
 
 type secretUnsetInput struct {
@@ -89,7 +90,10 @@ func secretCreateCommand() *cli.Command {
 				Destination: &in.KV,
 			},
 		},
-		Action: func(ctx context.Context, cmd *cli.Command) error { return handleCreateSecret(ctx, in) },
+		Action: func(ctx context.Context, cmd *cli.Command) error {
+			in.Args = cmd.Args().Slice()
+			return handleCreateSecret(ctx, in)
+		},
 	}
 }
 
