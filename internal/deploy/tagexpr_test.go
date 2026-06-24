@@ -15,8 +15,9 @@ func TestEvaluateTagExpr(t *testing.T) {
 		expr string
 		want bool
 	}{
-		{"existence match", "production", true},
-		{"existence no match", "nonexistent", false},
+		{"bare ident true", "production", true},
+		{"bare ident no match", "nonexistent", false},
+		{"bare ident not true value", "tier", false}, // tier=compute, not tier=true
 		{"value match", "tier=compute", true},
 		{"value no match", "tier=staging", false},
 		{"AND both match", "tier=compute&production", true},

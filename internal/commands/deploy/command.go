@@ -19,8 +19,7 @@ const (
 	flagMemory              = "memory"
 	flagMachine             = "machine"
 	flagMachineTag          = "machine-tag"
-flagMachineTagStrategy = "machine-tag-strategy"
-flagMachineTagExpr    = "machine-tag-expr"
+
 	flagDomain              = "domain"
 	flagOrganization        = "organization"
 	flagHealthPath          = "health-path"
@@ -78,9 +77,7 @@ type DeployInput struct {
 	CPULimit             string
 	Memory               string
 	Machine              []string
-	MachineTag           []string
-	MachineTagStrategy   string
-	MachineTagExpr       string
+	MachineTag           string
 	Domain               string
 	Organization         string
 	HealthPath           string
@@ -273,9 +270,7 @@ func deployFlags(in *DeployInput) []cli.Flag {
 		optionalStringVal(flagCPULimit, "Maximum burst CPU per replica (e.g., '1')", "1", &in.CPULimit),
 		optionalStringVal(flagMemory, "Memory allocation (e.g., '512Mi', '2Gi')", "256Mi", &in.Memory),
 		optionalStringSlice(flagMachine, "Explicit machine name (BYOA). Repeatable for multi-machine.", &in.Machine),
-		optionalStringSlice(flagMachineTag, "Deploy to machines with this label (e.g., production or tier=compute). Repeatable for AND logic.", &in.MachineTag),
-		optionalStringVal(flagMachineTagStrategy, "Tag matching strategy: 'and' (all tags required) or 'or' (any tag matches)", "and", &in.MachineTagStrategy),
-		optionalString(flagMachineTagExpr, "Advanced tag expression using & (AND), | (OR), = (equals), (groups). Example: \"(tier=compute|tier=staging)&production\"", &in.MachineTagExpr),
+		optionalString(flagMachineTag, "Tag expression using & (AND), | (OR), = (equals), (groups). Bare key checks value=\"true\". Example: \"(tier=compute|tier=staging)&production\"", &in.MachineTag),
 		optionalString(flagDomain, "Custom domain (default: *.satusky.com)", &in.Domain),
 		optionalString(flagOrganization, "Organization name (default: current organization)", &in.Organization),
 		optionalString(flagHealthPath, "HTTP path to smoke test after deploy wait succeeds (default: tries /health then /)", &in.HealthPath),

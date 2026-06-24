@@ -56,10 +56,10 @@ func evalTagAST(node ast.Node, labels map[string]string) bool {
 	case *ast.ParenExpr:
 		return evalTagAST(n.X, labels)
 	case *ast.Ident:
-		// Standalone identifier: existence check.
+	// Standalone identifier: value must be "true".
 		key := normalizeTagKey(n.Name)
 		val, ok := labels[key]
-		return ok && val != ""
+		return ok && val == "true"
 	}
 	return false
 }
