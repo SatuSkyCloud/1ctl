@@ -47,7 +47,9 @@ func Command() *cli.Command {
 	return &cli.Command{
 		Name:    "env",
 		Aliases: []string{"environment"},
-		Usage:   "Manage environments for a deployment",
+		Usage:   "Manage environment variables for a deployment",
+		Description: `Manage environment variables (non-sensitive runtime configuration) for a deployment.
+Secrets are managed separately via "1ctl secret".`,
 		Commands: []*cli.Command{
 			envCreateCommand(),
 			envListCommand(),
@@ -109,7 +111,7 @@ func envListCommand() *cli.Command {
 				Destination: &in.App,
 			},
 		},
-		Action: func(ctx context.Context, cmd *cli.Command) error { return handleListEnvironments(ctx) },
+		Action: func(ctx context.Context, cmd *cli.Command) error { return handleListEnvironments(ctx, in) },
 	}
 }
 

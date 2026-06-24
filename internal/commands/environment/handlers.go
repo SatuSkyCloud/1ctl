@@ -65,10 +65,25 @@ func handleCreateEnvironment(ctx context.Context, in envCreateInput) error {
 	return nil
 }
 
-func handleListEnvironments(ctx context.Context) error {
+func handleListEnvironments(ctx context.Context, in envListInput) error {
 	environments, err := api.ListEnvironments()
 	if err != nil {
 		return utils.NewError(fmt.Sprintf("failed to list environments: %s", err.Error()), nil)
+	}
+
+	// Filter by --app or --deployment-id if provided
+	if in.App != "" || in.DeploymentID != "" {
+		depID, err := deploy.ResolveDeploymentID(in.DeploymentID, in.App, "")
+		if err != nil {
+			return utils.NewError(fmt.Sprintf("failed to resolve deployment: %s", err.Error()), nil)
+		}
+		var filtered []api.Environment
+		for _, env := range environments {
+			if env.DeploymentID.String() == depID {
+				filtered = append(filtered, env)
+			}
+		}
+		environments = filtered
 	}
 
 	if utils.PrintListOrJSON(environments, "No environments found") {

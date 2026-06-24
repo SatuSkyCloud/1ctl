@@ -67,37 +67,41 @@ Tokens: https://cloud.satusky.com/<org-id>/token`,
 			},
 		},
 		Commands: []*cli.Command{
-			commands.AuthCommand(),
-			commands.ProfileCommand(),
-			commands.OrgCommand(),
-			commands.InitCommand(),
-			commands.LaunchCommand(),
-			commands.DeployCommand(),
-			commands.DoctorCommand(),
+			// 1ctl init → Core workflow
+			cat(commands.InitCommand(), "Core workflow"),
+			cat(commands.LaunchCommand(), "Core workflow"),
+			cat(commands.DeployCommand(), "Core workflow"),
+			cat(commands.AppCommand(), "Core workflow"),
+			cat(commands.LogsCommand(), "Core workflow"),
+			cat(commands.DoctorCommand(), "Core workflow"),
+			// Applications
+			cat(commands.DomainsCommand(), "Applications"),
+			cat(commands.EnvironmentCommand(), "Applications"),
+			cat(commands.SecretCommand(), "Applications"),
+			cat(commands.VolumesCommand(), "Applications"),
+			// Data
+			cat(commands.PostgresCommand(), "Data"),
+			// Infrastructure
+			cat(commands.MachineCommand(), "Infrastructure"),
+			cat(commands.ClusterCommand(), "Infrastructure"),
+			// Catalog
+			cat(commands.MarketplaceCommand(), "Catalog"),
+			// Account
+			cat(commands.AuthCommand(), "Account"),
+			cat(commands.ProfileCommand(), "Account"),
+			cat(commands.OrgCommand(), "Account"),
+			cat(commands.UserCommand(), "Account"),
+			cat(commands.TokenCommand(), "Account"),
+			// Billing & operations
+			cat(commands.CreditsCommand(), "Billing & operations"),
+			cat(commands.PricingCommand(), "Billing & operations"),
+			cat(commands.AuditCommand(), "Billing & operations"),
+			cat(commands.NotificationsCommand(), "Billing & operations"),
+			cat(commands.CompletionCommand(), "Billing & operations"),
+			// Internal (hidden)
 			commands.ServiceCommand(),
-			commands.SecretCommand(),
 			commands.IngressCommand(),
 			commands.IssuerCommand(),
-			commands.DomainsCommand(),
-			commands.VolumesCommand(),
-			commands.PostgresCommand(),
-			commands.EnvironmentCommand(),
-			commands.MachineCommand(),
-			commands.CompletionCommand(),
-			// Phase 1: Credits, Logs
-			commands.CreditsCommand(),
-			commands.LogsCommand(),
-			// Phase 2: Notifications
-			commands.NotificationsCommand(),
-			// Phase 3: User, Token
-			commands.UserCommand(),
-			commands.TokenCommand(),
-			// Phase 5: Marketplace, Audit
-			commands.MarketplaceCommand(),
-			commands.AuditCommand(),
-			// Phase 3+4: Pricing
-			commands.PricingCommand(),
-			commands.ClusterCommand(),
 		},
 		Before: func(ctx context.Context, cmd *cli.Command) (context.Context, error) {
 			// Apply --profile flag: sets profile for this process invocation only (not persisted)
@@ -166,6 +170,12 @@ Tokens: https://cloud.satusky.com/<org-id>/token`,
 			return utils.NewError("No command specified, use --help for usage", nil)
 		},
 	}
+	return cmd
+}
+
+// cat sets the command category and returns the command for chaining.
+func cat(cmd *cli.Command, category string) *cli.Command {
+	cmd.Category = category
 	return cmd
 }
 

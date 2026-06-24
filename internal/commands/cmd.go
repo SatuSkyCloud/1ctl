@@ -113,5 +113,8 @@ func MachineCommand() *cli.Command { return machine.Command() }
 // DeployCommand returns the "1ctl deploy" command tree.
 func DeployCommand() *cli.Command { return deploycmd.Command() }
 
+// AppCommand returns the "1ctl app" command tree.
+func AppCommand() *cli.Command { return deploycmd.AppCommand() }
+
 // PostgresCommand returns the "1ctl postgres" command tree.
 func PostgresCommand() *cli.Command { return postgres.Command() }

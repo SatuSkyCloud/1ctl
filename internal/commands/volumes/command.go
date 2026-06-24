@@ -28,6 +28,7 @@ type volumesListInput struct {
 
 type volumesActionInput struct {
 	VolumeID     string
+	VolumeName   string // positional: volume name to resolve under --app
 	DeploymentID string
 	App          string
 	Config       string
@@ -103,13 +104,14 @@ func volumesListCommand() *cli.Command {
 func volumesInspectCommand() *cli.Command {
 	var in volumesActionInput
 	return &cli.Command{
-		Name:    "inspect",
-		Aliases: []string{"get"},
-		Usage:   "Inspect PVC and mount state for a volume",
+		Name:      "inspect",
+		Aliases:   []string{"get"},
+		Usage:     "Inspect PVC and mount state for a volume",
+		ArgsUsage: "[volume-name-or-id]",
 		Flags: []cli.Flag{
 			&cli.StringFlag{
 				Name:        flagVolumeID,
-				Usage:       "Volume ID (alternative to --app or --deployment-id)",
+				Usage:       "Volume ID (alternative to positional arg or --app)",
 				Destination: &in.VolumeID,
 			},
 			&cli.StringFlag{
@@ -128,7 +130,18 @@ func volumesInspectCommand() *cli.Command {
 				Destination: &in.Config,
 			},
 		},
-		Action: func(ctx context.Context, cmd *cli.Command) error { return handleVolumesInspect(ctx, in) },
+		Action: func(ctx context.Context, cmd *cli.Command) error {
+			// Pick up positional arg as volume name or ID
+			if cmd.Args().Len() >= 1 {
+				arg := cmd.Args().First()
+				if looksLikeUUID(arg) {
+					in.VolumeID = arg
+				} else {
+					in.VolumeName = arg
+				}
+			}
+			return handleVolumesInspect(ctx, in)
+		},
 	}
 }
 
