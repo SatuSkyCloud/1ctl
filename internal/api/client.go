@@ -864,7 +864,7 @@ func GetMachineLabels(machineID string) (map[string]string, error) {
 			Custom map[string]string `json:"custom"`
 		} `json:"data"`
 	}
-	if err := makeRequest("GET", fmt.Sprintf("/machines/%s/labels", machineID), nil, &resp); err != nil {
+	if err := makeRequest("GET", fmt.Sprintf("/machines/%s/labels", url.PathEscape(machineID)), nil, &resp); err != nil {
 		return nil, err
 	}
 	return resp.Data.Custom, nil
@@ -922,6 +922,10 @@ func UpdateMachine(machineID string, machine Machine) error {
 	return makeRequest("POST", fmt.Sprintf("/machines/update/%s", machineID), machine, &resp)
 }
 
+// DeleteMachine decommissions a machine by UUID. Uses the main API route
+// (DELETE /machines/:machineId) rather than the CLI route
+// (POST /machines/delete/:id) because the CLI route expects a numeric
+// database ID, but the CLI operates with UUID machine IDs.
 func DeleteMachine(machineID string) error {
 	var resp apiResponse
 	return makeMainAPIRequest("DELETE", fmt.Sprintf("/machines/%s", url.PathEscape(machineID)), nil, &resp)
