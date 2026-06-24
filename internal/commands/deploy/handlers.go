@@ -357,11 +357,7 @@ func prepareDeploymentOptions(m mergedInput, cfg *config.ProjectConfig) (deployp
 			return deploypkg.DeploymentOptions{}, err
 		}
 		opts.Hostnames = hostnames
-		strategy := m.MachineTagStrategy
-		if strategy == "" {
-			strategy = "and"
-		}
-		utils.PrintInfo("Resolved --machine-tag-expr %q (%s) to %d owned machine(s)", m.MachineTagExpr, strings.ToUpper(strategy), len(hostnames))
+		utils.PrintInfo("Resolved --machine-tag-expr %q to %d owned machine(s)", m.MachineTagExpr, len(hostnames))
 	} else if len(m.MachineTag) > 0 && len(m.Machine) == 0 {
 		hostnames, err := resolveMachineTags(m.MachineTag, m.MachineTagStrategy)
 		if err != nil {
