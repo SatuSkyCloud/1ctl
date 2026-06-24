@@ -150,6 +150,86 @@ Pattern: `1ctl <resource> <action> <target> [flags]`. UUID auto-detection, `-o j
 * New `context.md` with project context documentation.
 * Added shell completion section to README.
 
+## Version 0.10.0 (19-06-2026)
+
+Platform diagnostics, post-deploy smoke testing, Loki degradation awareness, and a fully verified documentation suite.
+
+### New Commands
+
+* **`1ctl doctor`**: Diagnoses auth, backend reachability, zones, clusters, and live deployments in a single pass.
+  - `--deployment-id` / `--config` for targeted mode (always runs smoke).
+  - `--smoke` flag to opt into namespace-wide smoke checks.
+  - `--health-path` for app-level path probing with strict 2xx/3xx semantics.
+  - Outputs both structured JSON (`-o json`) and human-readable tables.
+  - Smoke failures are always warnings, never hard errors.
+* Added bash, fish, and PowerShell completions for `doctor` and `deploy --health-path`.
+
+### Features
+
+* **Post-deploy smoke testing**: After `deploy --wait` succeeds, the CLI probes the public URL to verify real-world reachability.
+  - Default behaviour (no `--health-path`): 401/403/404 are accepted as proof of platform reachability (DNS/TLS/routing proven). Only 5xx and connection errors fail the check.
+  - With `--health-path` set: success requires 2xx/3xx. Failure blocks the deploy.
+  - Non-strict smoke failures are warnings, not deploy-blocking errors.
+  - `health_path` can be set in `satusky.toml` `[app]` section or via `--health-path` flag.
+* **Logs degradation awareness**: `GetStoredLogs` now returns `DeploymentLogsMeta` with explicit `source`, `degraded`, `fallback_reason`, and `fallback_source` fields. The `1ctl logs` command surfaces a clear warning when Loki is unavailable and the response fell back to stored deployment logs.
+* **CLI usability fixes**:
+  - Commands can be invoked by alias (e.g., `1ctl d` for `deploy`).
+  - `-o`/`--output` flags normalized to global position so urfave/cli parses them correctly regardless of placement.
+  - Deprecated `storage`/`volume` commands now print a helpful redirect to `1ctl volumes`.
+
+### Config
+
+* `health_path` field added to `[app]` section of `satusky.toml`. Validated by `ValidateURLPath()` — must start with `/`.
+
+### Documentation
+
+* All 12 user journey guides audited and rewritten against live CLI output (122 command verifications).
+  - TOML format: added `[app]` section headers to all deployment guides.
+  - JSON field names corrected: `name` → `app_label`, `url` → `domain`, `cpu` → `cpu_request` / `cpu_limit`, `memory` → `memory_request` / `memory_limit`, `status: 'running'` → `status: 'completed'`.
+  - Deploy output format corrected to match current step-by-step output.
+  - Releases table columns and status values corrected (`inactive` → `superseded` / `rolled_back`).
+  - Removed `--wait` from `deploy rollback` (flag does not exist).
+  - Removed `--config` from `secret list` (flag does not exist).
+  - Added `-y` flag for non-interactive rollback/destroy.
+* New `examples/fullstack-api/` reference project exercising all 40+ `satusky.toml` fields across 6 sections (`app`, `volume`, `hpa`, `vpa`, `pdb`, `multicluster`) with staging override example.
+
+### Bug Fixes
+
+* Removed dead `SmokePathExplicit` field from deploy types (was set but never read; `StrictSmoke` already captures the same value).
+* Suppressed `errcheck` lint warnings for `Body.Close()` and test `Fprintf` calls.
+* Fixed frontend nginx asset permissions in example Dockerfile.
+
+## Version 0.9.1 (15-06-2026)
+
+Machine inventory management and diagnostics for BYOA operators.
+
+### Deployment Builds
+
+* **`deploy --fast` added**: requests the accelerated Depot-backed cloud builder before deployment.
+  - The default deploy path still uses the platform build service.
+  - `--fast` sends `builder=depot` to the backend build API; the backend owns the Depot project/token configuration.
+  - `--fast` is ignored when `--image` is supplied because pre-built images skip cloud builds entirely.
+* **`satusky.toml` supports `fast_build = true`** under `[app]` to opt a project into the accelerated builder by default.
+  - CLI precedence remains: explicit `--fast` overrides config; `--image` still skips all build paths.
+  - Pricing for accelerated builds is intentionally not surfaced yet; this is a platform capability flag only.
+* Build documentation and status text now refer to generic cloud builds instead of Kaniko-specific implementation details.
+
+### New Commands
+
+* **`machine get <machine-id|name|numeric-id>`**: shows the full owned machine inventory record.
+* **`machine create`**: creates an owned machine inventory record with region, zone, hardware specs, pricing tier, monetization, recommendation, Talos/Kubernetes version, and optional organization scope.
+* **`machine update <machine-id|name|numeric-id>`**: updates the same mutable inventory fields while preserving ownership and omitted existing values.
+* **`machine delete <machine-id|name|numeric-id>`**: decommissions an owned machine through the authenticated machine API instead of hard-deleting the database row.
+* **`machine inspect <machine-id|name|numeric-id>`**: combines machine details, hardware inspection, SatuSky node labels, and Talos status in one command.
+* **`machine logs <machine-id|name|numeric-id>`**: fetches SideroLink, Talos, and Kubernetes discovery/config logs with source, component, tail, since, and text filters.
+* **`machine events <machine-id|name|numeric-id>`**: fetches recent runtime events for a machine.
+
+### Reliability And Safety
+
+* Machine references now resolve from the authenticated user's owned machine list, so name-based updates and deletes cannot accidentally target someone else's machine.
+* Main API calls from `1ctl` now preserve the `/v1` API prefix when deriving non-CLI machine endpoints from the configured `/v1/cli` URL.
+* The default machine type for new records is now `worker`, matching backend-supported machine types.
+
 ## Version 0.9.0 (02-06-2026)
 
 CPU request and burst semantics are now explicit for shared-resource deploys.
