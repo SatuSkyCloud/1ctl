@@ -422,9 +422,20 @@ func upsertIngress(deploymentID string, serviceID string, opts DeploymentOptions
 			domainName = opts.Domain
 		}
 	} else {
-		// Use existing domain name if no explicit domain provided
+		// Use existing domain name if no explicit domain provided.
+		// If the existing domain is a custom (non-satusky.com) domain,
+		// generate a fresh auto-domain instead. The user can explicitly
+		// pass --domain (or set domain in satusky.toml) to use a custom domain.
 		if opts.Domain == "" {
-			domainName = existingIngress.DomainName
+			if !strings.HasSuffix(existingIngress.DomainName, ".satusky.com") {
+				domainName, err = api.GenerateDomainName(projectName)
+				if err != nil {
+					return "", "", utils.NewError(fmt.Sprintf("failed to generate domain name: %s", err.Error()), nil)
+				}
+				utils.PrintInfo("Generated new domain: %s", domainName)
+			} else {
+				domainName = existingIngress.DomainName
+			}
 		} else {
 			domainName = opts.Domain
 		}
