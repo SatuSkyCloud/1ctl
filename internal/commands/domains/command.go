@@ -357,13 +357,17 @@ func domainsManagedCommand() *cli.Command {
 			func() *cli.Command {
 				var in domainsManagedAddInput
 				return &cli.Command{
-					Name:  "add",
-					Usage: "Add a domain zone to SatuSky DNS",
+					Name:      "add",
+					Usage:     "Add a domain zone to SatuSky DNS",
+					ArgsUsage: "<domain>",
 					Flags: []cli.Flag{
-						requiredString(flagDomain, "Domain name", &in.Domain, nil),
 						optionalString(flagIP, "Optional default apex A record", &in.IP, nil),
 					},
 					Action: func(ctx context.Context, cmd *cli.Command) error {
+						if cmd.Args().Len() < 1 {
+							return cli.ShowSubcommandHelp(cmd)
+						}
+						in.Domain = cmd.Args().First()
 						return handleManagedDomainsAdd(ctx, in)
 					},
 				}
@@ -371,12 +375,15 @@ func domainsManagedCommand() *cli.Command {
 			func() *cli.Command {
 				var in domainsManagedVerifyInput
 				return &cli.Command{
-					Name:  "verify",
-					Usage: "Verify nameservers for a managed domain",
-					Flags: []cli.Flag{
-						requiredString(flagDomain, "Domain name or ID", &in.Domain, nil),
-					},
+					Name:      "verify",
+					Usage:     "Verify nameservers for a managed domain",
+					ArgsUsage: "<domain>",
+					Flags:     []cli.Flag{},
 					Action: func(ctx context.Context, cmd *cli.Command) error {
+						if cmd.Args().Len() < 1 {
+							return cli.ShowSubcommandHelp(cmd)
+						}
+						in.Domain = cmd.Args().First()
 						return handleManagedDomainsVerify(ctx, in)
 					},
 				}
@@ -384,14 +391,18 @@ func domainsManagedCommand() *cli.Command {
 			func() *cli.Command {
 				var in domainsManagedDeleteInput
 				return &cli.Command{
-					Name:    "delete",
-					Aliases: []string{"rm"},
-					Usage:   "Delete a managed domain zone",
+					Name:      "delete",
+					Aliases:   []string{"rm"},
+					Usage:     "Delete a managed domain zone",
+					ArgsUsage: "<domain>",
 					Flags: []cli.Flag{
-						requiredString(flagDomain, "Domain name or ID", &in.Domain, nil),
 						&cli.BoolFlag{Name: flagYes, Aliases: []string{"y"}, Usage: "Skip confirmation prompt", Destination: &in.Yes},
 					},
 					Action: func(ctx context.Context, cmd *cli.Command) error {
+						if cmd.Args().Len() < 1 {
+							return cli.ShowSubcommandHelp(cmd)
+						}
+						in.Domain = cmd.Args().First()
 						return handleManagedDomainsDelete(ctx, in)
 					},
 				}

@@ -20,7 +20,6 @@ import (
 // accessor.
 
 const (
-	flagConfigID     = "config-id"
 	flagRegion       = "region"
 	flagType         = "type"
 	flagSLA          = "sla"
@@ -124,12 +123,15 @@ func pricingListCommand() *cli.Command {
 func pricingGetCommand() *cli.Command {
 	var in pricingGetInput
 	return &cli.Command{
-		Name:  "get",
-		Usage: "Get a pricing configuration by ID",
-		Flags: []cli.Flag{
-			requiredString(flagConfigID, "Pricing config ID", &in.ConfigID, nil),
-		},
+		Name:      "get",
+		Usage:     "Get a pricing configuration by ID",
+		ArgsUsage: "<config-id>",
+		Flags:     []cli.Flag{},
 		Action: func(ctx context.Context, cmd *cli.Command) error {
+			if cmd.Args().Len() < 1 {
+				return cli.ShowSubcommandHelp(cmd)
+			}
+			in.ConfigID = cmd.Args().First()
 			return handlePricingGet(ctx, in)
 		},
 	}

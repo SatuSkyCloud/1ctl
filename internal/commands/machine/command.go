@@ -192,12 +192,14 @@ func machineListCommand() *cli.Command {
 func machineGetCommand() *cli.Command {
 	var in machineGetInput
 	return &cli.Command{
-		Name:  "get",
-		Usage: "Show machine inventory details",
-		Flags: []cli.Flag{
-			requiredStringFlag(flagName, "Machine ID, name, or numeric ID", &in.MachineID),
-		},
+		Name:      "get",
+		Usage:     "Show machine inventory details",
+		ArgsUsage: "<machine-id-or-name>",
 		Action: func(ctx context.Context, cmd *cli.Command) error {
+			if cmd.Args().Len() < 1 {
+				return cli.ShowSubcommandHelp(cmd)
+			}
+			in.MachineID = cmd.Args().First()
 			return handleMachineGet(ctx, in)
 		},
 	}
@@ -218,12 +220,15 @@ func machineCreateCommand() *cli.Command {
 func machineUpdateCommand() *cli.Command {
 	var in machineUpdateInput
 	return &cli.Command{
-		Name:  "update",
-		Usage: "Update a machine inventory record",
-		Flags: append(machineMutationFlags(false, &in.machineCreateInput),
-			requiredStringFlag("machine-id", "Machine ID, name, or numeric ID", &in.MachineID),
-		),
+		Name:      "update",
+		Usage:     "Update a machine inventory record",
+		ArgsUsage: "<machine-id>",
+		Flags:     machineMutationFlags(false, &in.machineCreateInput),
 		Action: func(ctx context.Context, cmd *cli.Command) error {
+			if cmd.Args().Len() < 1 {
+				return cli.ShowSubcommandHelp(cmd)
+			}
+			in.MachineID = cmd.Args().First()
 			return handleMachineUpdate(ctx, in)
 		},
 	}
@@ -232,13 +237,17 @@ func machineUpdateCommand() *cli.Command {
 func machineDeleteCommand() *cli.Command {
 	var in machineDeleteInput
 	return &cli.Command{
-		Name:  "delete",
-		Usage: "Delete a machine inventory record",
+		Name:      "delete",
+		Usage:     "Delete a machine inventory record",
+		ArgsUsage: "<machine-id-or-name>",
 		Flags: []cli.Flag{
-			requiredStringFlag(flagName, "Machine ID, name, or numeric ID", &in.MachineID),
 			optionalBoolFlag(flagYes, "Skip confirmation prompt", &in.Yes),
 		},
 		Action: func(ctx context.Context, cmd *cli.Command) error {
+			if cmd.Args().Len() < 1 {
+				return cli.ShowSubcommandHelp(cmd)
+			}
+			in.MachineID = cmd.Args().First()
 			return handleMachineDelete(ctx, in)
 		},
 	}
@@ -247,13 +256,17 @@ func machineDeleteCommand() *cli.Command {
 func machineInspectCommand() *cli.Command {
 	var in machineInspectInput
 	return &cli.Command{
-		Name:  "inspect",
-		Usage: "Inspect machine hardware, labels, and Talos status",
+		Name:      "inspect",
+		Usage:     "Inspect machine hardware, labels, and Talos status",
+		ArgsUsage: "<machine-id-or-name>",
 		Flags: []cli.Flag{
-			requiredStringFlag(flagName, "Machine ID, name, or numeric ID", &in.MachineID),
 			optionalBoolFlag(flagRefresh, "Refresh hardware data before printing", &in.Refresh),
 		},
 		Action: func(ctx context.Context, cmd *cli.Command) error {
+			if cmd.Args().Len() < 1 {
+				return cli.ShowSubcommandHelp(cmd)
+			}
+			in.MachineID = cmd.Args().First()
 			return handleMachineInspect(ctx, in)
 		},
 	}
@@ -262,10 +275,10 @@ func machineInspectCommand() *cli.Command {
 func machineLogsCommand() *cli.Command {
 	var in machineLogsInput
 	return &cli.Command{
-		Name:  "logs",
-		Usage: "Fetch machine boot, Talos, and Kubernetes logs",
+		Name:      "logs",
+		Usage:     "Fetch machine boot, Talos, and Kubernetes logs",
+		ArgsUsage: "<machine-id-or-name>",
 		Flags: []cli.Flag{
-			requiredStringFlag(flagName, "Machine ID, name, or numeric ID", &in.MachineID),
 			&cli.StringSliceFlag{Name: flagSource, Usage: "Log source: siderolink, talos, kubernetes. Repeatable.", Destination: &in.Sources},
 			optionalIntFlag(flagTail, "Number of lines to fetch", &in.Tail, 100),
 			optionalStringFlag(flagSince, "Fetch logs since duration or timestamp, e.g. 10m, 1h", &in.Since),
@@ -274,6 +287,10 @@ func machineLogsCommand() *cli.Command {
 			optionalBoolFlag(flagPrev, "Include previous container logs when available", &in.Previous),
 		},
 		Action: func(ctx context.Context, cmd *cli.Command) error {
+			if cmd.Args().Len() < 1 {
+				return cli.ShowSubcommandHelp(cmd)
+			}
+			in.MachineID = cmd.Args().First()
 			return handleMachineLogs(ctx, in)
 		},
 	}
@@ -282,13 +299,17 @@ func machineLogsCommand() *cli.Command {
 func machineEventsCommand() *cli.Command {
 	var in machineEventsInput
 	return &cli.Command{
-		Name:  "events",
-		Usage: "Fetch recent machine runtime events",
+		Name:      "events",
+		Usage:     "Fetch recent machine runtime events",
+		ArgsUsage: "<machine-id-or-name>",
 		Flags: []cli.Flag{
-			requiredStringFlag(flagName, "Machine ID, name, or numeric ID", &in.MachineID),
 			optionalIntFlag(flagTail, "Number of events to fetch", &in.Tail, 50),
 		},
 		Action: func(ctx context.Context, cmd *cli.Command) error {
+			if cmd.Args().Len() < 1 {
+				return cli.ShowSubcommandHelp(cmd)
+			}
+			in.MachineID = cmd.Args().First()
 			return handleMachineEvents(ctx, in)
 		},
 	}
@@ -339,12 +360,14 @@ func machineUsageListCommand() *cli.Command {
 func machineUsageGetCommand() *cli.Command {
 	var in machineUsageIDInput
 	return &cli.Command{
-		Name:  "get",
-		Usage: "Get details for a specific usage record",
-		Flags: []cli.Flag{
-			requiredStringFlag(flagUsageID, "Usage record ID", &in.UsageID),
-		},
+		Name:      "get",
+		Usage:     "Get details for a specific usage record",
+		ArgsUsage: "<usage-id>",
 		Action: func(ctx context.Context, cmd *cli.Command) error {
+			if cmd.Args().Len() < 1 {
+				return cli.ShowSubcommandHelp(cmd)
+			}
+			in.UsageID = cmd.Args().First()
 			return handleMachineUsageGet(ctx, in)
 		},
 	}
@@ -353,12 +376,14 @@ func machineUsageGetCommand() *cli.Command {
 func machineUsageCostCommand() *cli.Command {
 	var in machineUsageIDInput
 	return &cli.Command{
-		Name:  "cost",
-		Usage: "Calculate cost for a usage record",
-		Flags: []cli.Flag{
-			requiredStringFlag(flagUsageID, "Usage record ID", &in.UsageID),
-		},
+		Name:      "cost",
+		Usage:     "Calculate cost for a usage record",
+		ArgsUsage: "<usage-id>",
 		Action: func(ctx context.Context, cmd *cli.Command) error {
+			if cmd.Args().Len() < 1 {
+				return cli.ShowSubcommandHelp(cmd)
+			}
+			in.UsageID = cmd.Args().First()
 			return handleMachineUsageCost(ctx, in)
 		},
 	}

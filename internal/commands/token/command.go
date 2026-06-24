@@ -11,10 +11,8 @@ import (
 // --- Flag name constants ------------------------------------------------
 
 const (
-	flagTokenName = "name"
-	flagExpires   = "expires"
-	flagID        = "id"
-	flagYes       = "yes"
+	flagExpires = "expires"
+	flagYes     = "yes"
 )
 
 // --- Input structs ------------------------------------------------------
@@ -89,17 +87,14 @@ func tokenCreateCommand() *cli.Command {
 func tokenGetCommand() *cli.Command {
 	var in tokenIDInput
 	return &cli.Command{
-		Name:  "get",
-		Usage: "Get token details",
-		Flags: []cli.Flag{
-			&cli.StringFlag{
-				Name:        flagID,
-				Usage:       "Token ID",
-				Required:    true,
-				Destination: &in.TokenID,
-			},
-		},
+		Name:      "get",
+		Usage:     "Get token details",
+		ArgsUsage: "<token-id>",
 		Action: func(ctx context.Context, cmd *cli.Command) error {
+			if cmd.Args().Len() < 1 {
+				return cli.ShowSubcommandHelp(cmd)
+			}
+			in.TokenID = cmd.Args().First()
 			return handleTokenGet(ctx, in)
 		},
 	}
@@ -108,17 +103,14 @@ func tokenGetCommand() *cli.Command {
 func tokenEnableCommand() *cli.Command {
 	var in tokenIDInput
 	return &cli.Command{
-		Name:  "enable",
-		Usage: "Enable a token",
-		Flags: []cli.Flag{
-			&cli.StringFlag{
-				Name:        flagID,
-				Usage:       "Token ID",
-				Required:    true,
-				Destination: &in.TokenID,
-			},
-		},
+		Name:      "enable",
+		Usage:     "Enable a token",
+		ArgsUsage: "<token-id>",
 		Action: func(ctx context.Context, cmd *cli.Command) error {
+			if cmd.Args().Len() < 1 {
+				return cli.ShowSubcommandHelp(cmd)
+			}
+			in.TokenID = cmd.Args().First()
 			return handleTokenEnable(ctx, in)
 		},
 	}
@@ -127,17 +119,14 @@ func tokenEnableCommand() *cli.Command {
 func tokenDisableCommand() *cli.Command {
 	var in tokenIDInput
 	return &cli.Command{
-		Name:  "disable",
-		Usage: "Disable a token",
-		Flags: []cli.Flag{
-			&cli.StringFlag{
-				Name:        flagID,
-				Usage:       "Token ID",
-				Required:    true,
-				Destination: &in.TokenID,
-			},
-		},
+		Name:      "disable",
+		Usage:     "Disable a token",
+		ArgsUsage: "<token-id>",
 		Action: func(ctx context.Context, cmd *cli.Command) error {
+			if cmd.Args().Len() < 1 {
+				return cli.ShowSubcommandHelp(cmd)
+			}
+			in.TokenID = cmd.Args().First()
 			return handleTokenDisable(ctx, in)
 		},
 	}
@@ -146,15 +135,10 @@ func tokenDisableCommand() *cli.Command {
 func tokenDeleteCommand() *cli.Command {
 	var in tokenDeleteInput
 	return &cli.Command{
-		Name:  "delete",
-		Usage: "Delete a token",
+		Name:      "delete",
+		Usage:     "Delete a token",
+		ArgsUsage: "<token-id>",
 		Flags: []cli.Flag{
-			&cli.StringFlag{
-				Name:        flagID,
-				Usage:       "Token ID",
-				Required:    true,
-				Destination: &in.TokenID,
-			},
 			&cli.BoolFlag{
 				Name:        flagYes,
 				Aliases:     []string{"y"},
@@ -163,6 +147,10 @@ func tokenDeleteCommand() *cli.Command {
 			},
 		},
 		Action: func(ctx context.Context, cmd *cli.Command) error {
+			if cmd.Args().Len() < 1 {
+				return cli.ShowSubcommandHelp(cmd)
+			}
+			in.TokenID = cmd.Args().First()
 			return handleTokenDelete(ctx, in)
 		},
 	}

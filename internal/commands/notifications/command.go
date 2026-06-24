@@ -19,18 +19,6 @@ const (
 	flagYes    = "yes"
 )
 
-// --- Flag constructors --------------------------------------------------
-
-func requiredString(name, usage string, dest *string, validate func(string) error) *cli.StringFlag {
-	return &cli.StringFlag{
-		Name:        name,
-		Usage:       usage,
-		Destination: dest,
-		Required:    true,
-		Validator:   validate,
-	}
-}
-
 // --- Input structs ------------------------------------------------------
 
 type notifListInput struct {
@@ -131,10 +119,10 @@ func notifReadCommand() *cli.Command {
 func notifDeleteCommand() *cli.Command {
 	var in notifDeleteInput
 	return &cli.Command{
-		Name:  "delete",
-		Usage: "Delete a notification",
+		Name:      "delete",
+		Usage:     "Delete a notification",
+		ArgsUsage: "<notification-id>",
 		Flags: []cli.Flag{
-			requiredString(flagID, "Notification ID to delete", &in.ID, nil),
 			&cli.BoolFlag{
 				Name:        flagYes,
 				Aliases:     []string{"y"},
@@ -143,6 +131,10 @@ func notifDeleteCommand() *cli.Command {
 			},
 		},
 		Action: func(ctx context.Context, cmd *cli.Command) error {
+			if cmd.Args().Len() < 1 {
+				return cli.ShowSubcommandHelp(cmd)
+			}
+			in.ID = cmd.Args().First()
 			return handleNotifDelete(ctx, in)
 		},
 	}

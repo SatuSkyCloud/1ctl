@@ -17,7 +17,6 @@ const (
 	flagDomain       = "domain"
 	flagPort         = "port"
 	flagCustomDNS    = "custom-dns"
-	flagIngressID    = "ingress-id"
 	flagYes          = "yes"
 )
 
@@ -36,18 +35,6 @@ type ingressUpsertInput struct {
 type ingressDeleteInput struct {
 	IngressID string
 	Yes       bool
-}
-
-// --- Flag constructors --------------------------------------------------
-
-func requiredString(name, usage string, dest *string, validate func(string) error) *cli.StringFlag {
-	return &cli.StringFlag{
-		Name:        name,
-		Usage:       usage,
-		Destination: dest,
-		Required:    true,
-		Validator:   validate,
-	}
 }
 
 // --- Command tree -------------------------------------------------------
@@ -95,10 +82,10 @@ func ingressListCommand() *cli.Command {
 func ingressDeleteCommand() *cli.Command {
 	var in ingressDeleteInput
 	return &cli.Command{
-		Name:  "delete",
-		Usage: "Delete an ingress",
+		Name:      "delete",
+		Usage:     "Delete an ingress",
+		ArgsUsage: "<ingress-id>",
 		Flags: []cli.Flag{
-			requiredString(flagIngressID, "Ingress ID to delete", &in.IngressID, nil),
 			&cli.BoolFlag{
 				Name:        flagYes,
 				Aliases:     []string{"y"},
@@ -106,6 +93,12 @@ func ingressDeleteCommand() *cli.Command {
 				Destination: &in.Yes,
 			},
 		},
-		Action: func(ctx context.Context, cmd *cli.Command) error { return handleDeleteIngress(ctx, in) },
+		Action: func(ctx context.Context, cmd *cli.Command) error {
+			if cmd.Args().Len() < 1 {
+				return cli.ShowSubcommandHelp(cmd)
+			}
+			in.IngressID = cmd.Args().First()
+			return handleDeleteIngress(ctx, in)
+		},
 	}
 }

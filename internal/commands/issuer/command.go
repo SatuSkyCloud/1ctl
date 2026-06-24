@@ -13,7 +13,6 @@ const (
 	flagDeploymentID = "deployment-id"
 	flagEmail        = "email"
 	flagEnvironment  = "environment"
-	flagIssuerID     = "issuer-id"
 )
 
 // --- Input structs ------------------------------------------------------
@@ -91,11 +90,16 @@ func issuerListCommand() *cli.Command {
 func issuerDeleteCommand() *cli.Command {
 	var in issuerDeleteInput
 	return &cli.Command{
-		Name:  "delete",
-		Usage: "Delete a certificate issuer",
-		Flags: []cli.Flag{
-			requiredString(flagIssuerID, "Issuer ID to delete", &in.IssuerID, nil),
+		Name:      "delete",
+		Usage:     "Delete a certificate issuer",
+		ArgsUsage: "<issuer-id>",
+		Flags:     []cli.Flag{},
+		Action: func(ctx context.Context, cmd *cli.Command) error {
+			if cmd.Args().Len() < 1 {
+				return cli.ShowSubcommandHelp(cmd)
+			}
+			in.IssuerID = cmd.Args().First()
+			return handleDeleteIssuer(ctx, in)
 		},
-		Action: func(ctx context.Context, cmd *cli.Command) error { return handleDeleteIssuer(ctx, in) },
 	}
 }

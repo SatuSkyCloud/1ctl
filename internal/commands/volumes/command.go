@@ -148,10 +148,20 @@ func volumesInspectCommand() *cli.Command {
 func volumesDetachCommand() *cli.Command {
 	var in volumesActionInput
 	return &cli.Command{
-		Name:  "detach",
-		Usage: "Detach a volume from its deployment without deleting the PVC",
+		Name:      "detach",
+		Usage:     "Detach a volume from its deployment without deleting the PVC",
+		ArgsUsage: "<volume-name-or-id>",
 		Flags: []cli.Flag{
-			requiredString(flagVolumeID, "Volume ID", &in.VolumeID, nil),
+			&cli.StringFlag{
+				Name:        "id",
+				Usage:       "Volume ID (explicit, for scripting)",
+				Destination: &in.VolumeID,
+			},
+			&cli.StringFlag{
+				Name:        flagApp,
+				Usage:       "App name for volume name resolution",
+				Destination: &in.App,
+			},
 			&cli.BoolFlag{
 				Name:        flagYes,
 				Aliases:     []string{"y"},
@@ -159,18 +169,42 @@ func volumesDetachCommand() *cli.Command {
 				Destination: &in.Yes,
 			},
 		},
-		Action: func(ctx context.Context, cmd *cli.Command) error { return handleVolumesDetach(ctx, in) },
+		Action: func(ctx context.Context, cmd *cli.Command) error {
+			if in.VolumeID != "" {
+				// --id was set explicitly
+			} else if cmd.Args().Len() >= 1 {
+				arg := cmd.Args().First()
+				if looksLikeUUID(arg) {
+					in.VolumeID = arg
+				} else {
+					in.VolumeName = arg
+				}
+			} else {
+				return cli.ShowSubcommandHelp(cmd)
+			}
+			return handleVolumesDetach(ctx, in)
+		},
 	}
 }
 
 func volumesDestroyCommand() *cli.Command {
 	var in volumesActionInput
 	return &cli.Command{
-		Name:    "delete",
-		Aliases: []string{"destroy", "rm"},
-		Usage:   "Detach and delete a persistent volume claim",
+		Name:      "delete",
+		Aliases:   []string{"destroy", "rm"},
+		Usage:     "Detach and delete a persistent volume claim",
+		ArgsUsage: "<volume-name-or-id>",
 		Flags: []cli.Flag{
-			requiredString(flagVolumeID, "Volume ID", &in.VolumeID, nil),
+			&cli.StringFlag{
+				Name:        "id",
+				Usage:       "Volume ID (explicit, for scripting)",
+				Destination: &in.VolumeID,
+			},
+			&cli.StringFlag{
+				Name:        flagApp,
+				Usage:       "App name for volume name resolution",
+				Destination: &in.App,
+			},
 			&cli.BoolFlag{
 				Name:        flagYes,
 				Aliases:     []string{"y"},
@@ -178,7 +212,21 @@ func volumesDestroyCommand() *cli.Command {
 				Destination: &in.Yes,
 			},
 		},
-		Action: func(ctx context.Context, cmd *cli.Command) error { return handleVolumesDestroy(ctx, in) },
+		Action: func(ctx context.Context, cmd *cli.Command) error {
+			if in.VolumeID != "" {
+				// --id was set explicitly
+			} else if cmd.Args().Len() >= 1 {
+				arg := cmd.Args().First()
+				if looksLikeUUID(arg) {
+					in.VolumeID = arg
+				} else {
+					in.VolumeName = arg
+				}
+			} else {
+				return cli.ShowSubcommandHelp(cmd)
+			}
+			return handleVolumesDestroy(ctx, in)
+		},
 	}
 }
 

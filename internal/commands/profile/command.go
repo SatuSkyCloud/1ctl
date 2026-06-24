@@ -10,8 +10,7 @@ import (
 // --- Flag name constants ------------------------------------------------
 
 const (
-	flagName = "name"
-	flagURL  = "url"
+	flagURL = "url"
 )
 
 // --- Input structs ------------------------------------------------------
@@ -78,17 +77,14 @@ func profileCreateCommand() *cli.Command {
 func profileUseCommand() *cli.Command {
 	var in profileNameInput
 	return &cli.Command{
-		Name:  "use",
-		Usage: "Switch to a profile",
-		Flags: []cli.Flag{
-			&cli.StringFlag{
-				Name:        flagName,
-				Usage:       "Profile name",
-				Required:    true,
-				Destination: &in.Name,
-			},
-		},
+		Name:      "use",
+		Usage:     "Switch to a profile",
+		ArgsUsage: "<name>",
 		Action: func(ctx context.Context, cmd *cli.Command) error {
+			if cmd.Args().Len() < 1 {
+				return cli.ShowSubcommandHelp(cmd)
+			}
+			in.Name = cmd.Args().First()
 			return handleProfileUse(ctx, in)
 		},
 	}
@@ -107,17 +103,14 @@ func profileCurrentCommand() *cli.Command {
 func profileDeleteCommand() *cli.Command {
 	var in profileNameInput
 	return &cli.Command{
-		Name:  "delete",
-		Usage: "Delete a profile",
-		Flags: []cli.Flag{
-			&cli.StringFlag{
-				Name:        flagName,
-				Usage:       "Profile name",
-				Required:    true,
-				Destination: &in.Name,
-			},
-		},
+		Name:      "delete",
+		Usage:     "Delete a profile",
+		ArgsUsage: "<name>",
 		Action: func(ctx context.Context, cmd *cli.Command) error {
+			if cmd.Args().Len() < 1 {
+				return cli.ShowSubcommandHelp(cmd)
+			}
+			in.Name = cmd.Args().First()
 			return handleProfileDelete(ctx, in)
 		},
 	}

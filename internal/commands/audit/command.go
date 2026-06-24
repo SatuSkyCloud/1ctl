@@ -10,7 +10,6 @@ import (
 // --- Flag name constants ------------------------------------------------
 
 const (
-	flagID     = "id"
 	flagLimit  = "limit"
 	flagAction = "action"
 	flagUser   = "user"
@@ -18,16 +17,6 @@ const (
 
 // --- Flag constructors --------------------------------------------------
 // Every constructor requires Destination.
-
-func requiredString(name, usage string, dest *string, validate func(string) error) *cli.StringFlag {
-	return &cli.StringFlag{
-		Name:        name,
-		Usage:       usage,
-		Destination: dest,
-		Required:    true,
-		Validator:   validate,
-	}
-}
 
 func optionalString(name, usage string, dest *string, validate func(string) error) *cli.StringFlag {
 	return &cli.StringFlag{
@@ -88,12 +77,15 @@ func auditListCommand() *cli.Command {
 func auditGetCommand() *cli.Command {
 	var in auditGetInput
 	return &cli.Command{
-		Name:  "get",
-		Usage: "Get audit log details",
-		Flags: []cli.Flag{
-			requiredString(flagID, "Audit log ID", &in.ID, nil),
-		},
+		Name:      "get",
+		Usage:     "Get audit log details",
+		ArgsUsage: "<audit-id>",
+		Flags:     []cli.Flag{},
 		Action: func(ctx context.Context, cmd *cli.Command) error {
+			if cmd.Args().Len() < 1 {
+				return cli.ShowSubcommandHelp(cmd)
+			}
+			in.ID = cmd.Args().First()
 			return handleAuditGet(ctx, in)
 		},
 	}

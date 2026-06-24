@@ -3,6 +3,7 @@ package org
 
 import (
 	"context"
+	"strings"
 
 	"github.com/urfave/cli/v3"
 )
@@ -10,12 +11,11 @@ import (
 // --- Flag name constants ------------------------------------------------
 
 const (
-	flagOrgID      = "org-id"
-	flagOrgName    = "org-name"
-	flagName       = "name"
+	flagOrgID       = "org-id"
+	flagOrgName     = "org-name"
 	flagDescription = "description"
-	flagEmail      = "email"
-	flagRole       = "role"
+	flagEmail       = "email"
+	flagRole        = "role"
 )
 
 // --- Input structs ------------------------------------------------------
@@ -82,21 +82,35 @@ func orgCurrentCommand() *cli.Command {
 func orgSwitchCommand() *cli.Command {
 	var in orgSwitchInput
 	return &cli.Command{
-		Name:  "switch",
-		Usage: "Switch to a different organization",
+		Name:      "switch",
+		Usage:     "Switch to a different organization",
+		ArgsUsage: "<org-name-or-id>",
 		Flags: []cli.Flag{
 			&cli.StringFlag{
 				Name:        flagOrgID,
-				Usage:       "Organization ID to switch to",
+				Usage:       "Organization ID to switch to (explicit, overrides positional)",
 				Destination: &in.OrgID,
 			},
 			&cli.StringFlag{
 				Name:        flagOrgName,
-				Usage:       "Organization name to switch to",
+				Usage:       "Organization name to switch to (explicit, overrides positional)",
 				Destination: &in.OrgName,
 			},
 		},
-		Action: func(ctx context.Context, cmd *cli.Command) error { return handleOrgSwitch(ctx, in) },
+		Action: func(ctx context.Context, cmd *cli.Command) error {
+			if in.OrgID == "" && in.OrgName == "" {
+				if cmd.Args().Len() < 1 {
+					return cli.ShowSubcommandHelp(cmd)
+				}
+				arg := cmd.Args().First()
+				if len(arg) == 36 && strings.Count(arg, "-") == 4 {
+					in.OrgID = arg
+				} else {
+					in.OrgName = arg
+				}
+			}
+			return handleOrgSwitch(ctx, in)
+		},
 	}
 }
 
