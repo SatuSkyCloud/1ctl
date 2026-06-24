@@ -104,6 +104,17 @@ func SecretCommand() *cli.Command { return secret.Command() }
 // EnvironmentCommand returns the "1ctl env" command tree.
 func EnvironmentCommand() *cli.Command { return environment.Command() }
 
+// ConfigCommand returns the "1ctl config" command tree (alias for env).
+func ConfigCommand() *cli.Command {
+	cmd := environment.Command()
+	cmd.Name = "config"
+	cmd.Usage = "Manage environment variables"
+	cmd.Aliases = []string{"env", "environment"}
+	cmd.Description = `Manage non-sensitive environment variables.
+Secrets are managed separately via "1ctl secret".`
+	return cmd
+}
+
 // DomainsCommand returns the "1ctl domains" command tree.
 func DomainsCommand() *cli.Command { return domains.Command() }
 
