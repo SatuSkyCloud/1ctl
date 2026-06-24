@@ -110,7 +110,12 @@ func appDestroyCommand() *cli.Command {
 		Usage:     "Delete an application and all associated resources",
 		ArgsUsage: "<app-name>",
 		Flags: []cli.Flag{
-			optionalBool(flagYes, "Skip confirmation prompt", &in.Yes),
+			&cli.BoolFlag{
+				Name:        flagYes,
+				Aliases:     []string{"y"},
+				Usage:       "Skip confirmation prompt",
+				Destination: &in.Yes,
+			},
 			&cli.BoolFlag{
 				Name:        "retain-volumes",
 				Usage:       "Retain persistent volumes instead of deleting them",
