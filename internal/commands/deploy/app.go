@@ -111,6 +111,11 @@ func appDestroyCommand() *cli.Command {
 		ArgsUsage: "<app-name>",
 		Flags: []cli.Flag{
 			optionalBool(flagYes, "Skip confirmation prompt", &in.Yes),
+			&cli.BoolFlag{
+				Name:        "retain-volumes",
+				Usage:       "Retain persistent volumes instead of deleting them",
+				Destination: &in.RetainVolumes,
+			},
 		},
 		Action: func(ctx context.Context, cmd *cli.Command) error {
 			if cmd.Args().Len() >= 1 {

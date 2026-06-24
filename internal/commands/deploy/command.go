@@ -135,10 +135,11 @@ type StatusInput struct {
 
 // DestroyInput holds flags for the "delete" subcommand.
 type DestroyInput struct {
-	DeploymentID string
-	App          string
-	Config       string
-	Yes          bool
+	DeploymentID  string
+	App           string
+	Config        string
+	Yes           bool
+	RetainVolumes bool // if true, skip PVC destruction
 }
 
 // DeployRefInput holds common deployment-reference flags.
@@ -378,7 +379,11 @@ func destroyCommand() *cli.Command {
 				Destination: &in.App,
 			},
 			optionalBool(flagYes, "Skip confirmation prompt", &in.Yes),
-
+			&cli.BoolFlag{
+				Name:        "retain-volumes",
+				Usage:       "Retain persistent volumes instead of deleting them",
+				Destination: &in.RetainVolumes,
+			},
 		},
 		Action: func(ctx context.Context, cmd *cli.Command) error {
 			if cmd.Args().Len() >= 1 {

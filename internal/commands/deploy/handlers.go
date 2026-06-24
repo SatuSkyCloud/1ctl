@@ -762,11 +762,15 @@ func handleDestroyDeployment(ctx context.Context, in DestroyInput) error {
 	statuses, volErr := api.GetDeploymentVolumeLifecycleStatuses(deploymentID)
 	if volErr != nil {
 		utils.PrintWarning("Could not list volumes for destruction: %s", volErr.Error())
-	} else {
-		for _, v := range statuses {
-			utils.PrintInfo("Destroying volume %s (PVC: %s)...", v.Volume.VolumeName, v.PVC.Name)
-			if _, delErr := api.DeleteVolumePVC(v.Volume.VolumeID.String()); delErr != nil {
-				utils.PrintWarning("Failed to destroy volume %s: %s", v.Volume.VolumeName, delErr.Error())
+	} else if len(statuses) > 0 {
+		if in.RetainVolumes {
+			utils.PrintInfo("--retain-volumes set: skipping PVC destruction for %d volume(s)", len(statuses))
+		} else {
+			for _, v := range statuses {
+				utils.PrintInfo("Destroying volume %s (PVC: %s)...", v.Volume.VolumeName, v.PVC.Name)
+				if _, delErr := api.DeleteVolumePVC(v.Volume.VolumeID.String()); delErr != nil {
+					utils.PrintWarning("Failed to destroy volume %s: %s", v.Volume.VolumeName, delErr.Error())
+				}
 			}
 		}
 	}
