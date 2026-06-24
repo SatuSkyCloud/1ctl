@@ -55,15 +55,10 @@ func profileListCommand() *cli.Command {
 func profileCreateCommand() *cli.Command {
 	var in profileCreateInput
 	return &cli.Command{
-		Name:  "create",
-		Usage: "Create a new profile",
+		Name:      "create",
+		Usage:     "Create a new profile",
+		ArgsUsage: "<name>",
 		Flags: []cli.Flag{
-			&cli.StringFlag{
-				Name:        flagName,
-				Usage:       "Profile name",
-				Required:    true,
-				Destination: &in.Name,
-			},
 			&cli.StringFlag{
 				Name:        flagURL,
 				Usage:       "API URL for this profile (e.g. http://localhost:8080/v1/cli)",
@@ -71,6 +66,10 @@ func profileCreateCommand() *cli.Command {
 			},
 		},
 		Action: func(ctx context.Context, cmd *cli.Command) error {
+			if cmd.Args().Len() < 1 {
+				return cli.ShowSubcommandHelp(cmd)
+			}
+			in.Name = cmd.Args().First()
 			return handleProfileCreate(ctx, in)
 		},
 	}

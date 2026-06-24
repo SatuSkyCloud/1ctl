@@ -65,15 +65,10 @@ func tokenListCommand() *cli.Command {
 func tokenCreateCommand() *cli.Command {
 	var in tokenCreateInput
 	return &cli.Command{
-		Name:  "create",
-		Usage: "Create a new API token",
+		Name:      "create",
+		Usage:     "Create a new API token",
+		ArgsUsage: "<name>",
 		Flags: []cli.Flag{
-			&cli.StringFlag{
-				Name:        flagTokenName,
-				Usage:       "Token name",
-				Required:    true,
-				Destination: &in.Name,
-			},
 			&cli.IntFlag{
 				Name:        flagExpires,
 				Usage:       "Token expiry in days (0 for no expiry)",
@@ -82,6 +77,10 @@ func tokenCreateCommand() *cli.Command {
 			},
 		},
 		Action: func(ctx context.Context, cmd *cli.Command) error {
+			if cmd.Args().Len() < 1 {
+				return cli.ShowSubcommandHelp(cmd)
+			}
+			in.Name = cmd.Args().First()
 			return handleTokenCreate(ctx, in)
 		},
 	}

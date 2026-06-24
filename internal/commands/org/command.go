@@ -103,22 +103,23 @@ func orgSwitchCommand() *cli.Command {
 func orgCreateCommand() *cli.Command {
 	var in orgCreateInput
 	return &cli.Command{
-		Name:  "create",
-		Usage: "Create a new organization",
+		Name:      "create",
+		Usage:     "Create a new organization",
+		ArgsUsage: "<name>",
 		Flags: []cli.Flag{
-			&cli.StringFlag{
-				Name:        flagName,
-				Usage:       "Organization name",
-				Required:    true,
-				Destination: &in.Name,
-			},
 			&cli.StringFlag{
 				Name:        flagDescription,
 				Usage:       "Organization description",
 				Destination: &in.Description,
 			},
 		},
-		Action: func(ctx context.Context, cmd *cli.Command) error { return handleOrgCreate(ctx, in) },
+		Action: func(ctx context.Context, cmd *cli.Command) error {
+			if cmd.Args().Len() < 1 {
+				return cli.ShowSubcommandHelp(cmd)
+			}
+			in.Name = cmd.Args().First()
+			return handleOrgCreate(ctx, in)
+		},
 	}
 }
 
