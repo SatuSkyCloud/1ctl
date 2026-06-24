@@ -33,7 +33,6 @@ const (
 	flagFlags        = "flags"
 	flagTag          = "tag"
 	flagRecordID     = "record-id"
-	flagIntentID     = "intent-id"
 	flagFirstName    = "first-name"
 	flagLastName     = "last-name"
 	flagEmail        = "email"
@@ -537,12 +536,14 @@ func domainsPurchaseCommand() *cli.Command {
 func domainsPurchaseStatusCommand() *cli.Command {
 	var in domainsPurchaseStatusInput
 	return &cli.Command{
-		Name:  "purchase-status",
-		Usage: "Check a domain purchase intent",
-		Flags: []cli.Flag{
-			requiredString(flagIntentID, "Purchase intent ID", &in.IntentID, nil),
-		},
+		Name:      "purchase-status",
+		Usage:     "Check a domain purchase intent",
+		ArgsUsage: "<intent-id>",
 		Action: func(ctx context.Context, cmd *cli.Command) error {
+			if cmd.Args().Len() < 1 {
+				return cli.ShowSubcommandHelp(cmd)
+			}
+			in.IntentID = cmd.Args().First()
 			return handleDomainsPurchaseStatus(ctx, in)
 		},
 	}
