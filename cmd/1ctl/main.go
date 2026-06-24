@@ -62,7 +62,7 @@ Tokens: https://cloud.satusky.com/<org-id>/token`,
 			&cli.StringFlag{
 				Name:    "output",
 				Aliases: []string{"o"},
-				Usage:   "Output format: table or json (default: table)",
+				Usage:   "Output format: table or json",
 				Value:   "table",
 			},
 		},
