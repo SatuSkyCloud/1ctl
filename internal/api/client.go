@@ -1001,13 +1001,33 @@ func GetMachineEvents(machineID string, tail int) (*MachineEventsResponse, error
 	return &resp.Data, nil
 }
 
-// MachineHasTag reports whether the given label set contains the satusky.com/<tag> key.
+// parseTagSpec splits a tag like "production" or "tier=compute" into key and optional value.
+// If the tag contains "=", both key AND value must match.
+// Otherwise, only key existence is checked.
+func parseTagSpec(tag string) (key, value string, hasValue bool) {
+	parts := strings.SplitN(tag, "=", 2)
+	if len(parts) == 2 {
+		return parts[0], parts[1], true
+	}
+	return tag, "", false
+}
+
+// MachineHasTag reports whether the label set matches a tag spec.
+// If tag contains "=" (e.g. "tier=compute"), both key AND value must match.
+// Otherwise, only key existence is checked (e.g. "production").
 func MachineHasTag(labels map[string]string, tag string) bool {
 	if tag == "" || labels == nil {
 		return false
 	}
-	_, ok := labels[MachineTagLabelPrefix+tag]
-	return ok
+	key, value, hasValue := parseTagSpec(tag)
+	actual, ok := labels[MachineTagLabelPrefix+key]
+	if !ok {
+		return false
+	}
+	if hasValue {
+		return actual == value
+	}
+	return true
 }
 
 // MachineHasAllTags reports whether the given label set contains ALL of the specified tags.
@@ -1016,7 +1036,7 @@ func MachineHasAllTags(labels map[string]string, tags []string) bool {
 		return false
 	}
 	for _, tag := range tags {
-		if _, ok := labels[MachineTagLabelPrefix+tag]; !ok {
+		if !MachineHasTag(labels, tag) {
 			return false
 		}
 	}
@@ -1029,7 +1049,7 @@ func MachineHasAnyTag(labels map[string]string, tags []string) bool {
 		return false
 	}
 	for _, tag := range tags {
-		if _, ok := labels[MachineTagLabelPrefix+tag]; ok {
+		if MachineHasTag(labels, tag) {
 			return true
 		}
 	}

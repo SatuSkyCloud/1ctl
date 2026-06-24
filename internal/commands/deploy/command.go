@@ -271,7 +271,7 @@ func deployFlags(in *DeployInput) []cli.Flag {
 		optionalStringVal(flagCPULimit, "Maximum burst CPU per replica (e.g., '1')", "1", &in.CPULimit),
 		optionalStringVal(flagMemory, "Memory allocation (e.g., '512Mi', '2Gi')", "256Mi", &in.Memory),
 		optionalStringSlice(flagMachine, "Explicit machine name (BYOA). Repeatable for multi-machine.", &in.Machine),
-		optionalStringSlice(flagMachineTag, "Deploy to your machines labelled with this tag (BYOA). Repeatable for AND logic.", &in.MachineTag),
+		optionalStringSlice(flagMachineTag, "Deploy to machines with this label (e.g., production or tier=compute). Repeatable for AND logic.", &in.MachineTag),
 		optionalStringVal(flagMachineTagStrategy, "Tag matching strategy: 'and' (all tags required) or 'or' (any tag matches)", "and", &in.MachineTagStrategy),
 		optionalString(flagDomain, "Custom domain (default: *.satusky.com)", &in.Domain),
 		optionalString(flagOrganization, "Organization name (default: current organization)", &in.Organization),
