@@ -88,10 +88,10 @@ func serviceListCommand() *cli.Command {
 func serviceDeleteCommand() *cli.Command {
 	var in serviceDeleteInput
 	return &cli.Command{
-		Name:  "delete",
-		Usage: "Delete a service",
+		Name:      "delete",
+		Usage:     "Delete a service",
+		ArgsUsage: "<service-id>",
 		Flags: []cli.Flag{
-			requiredString(flagServiceID, "Service ID to delete", &in.ServiceID, nil),
 			&cli.BoolFlag{
 				Name:        flagYes,
 				Aliases:     []string{"y"},
@@ -99,6 +99,12 @@ func serviceDeleteCommand() *cli.Command {
 				Destination: &in.Yes,
 			},
 		},
-		Action: func(ctx context.Context, cmd *cli.Command) error { return handleDeleteService(ctx, in) },
+		Action: func(ctx context.Context, cmd *cli.Command) error {
+			if cmd.Args().Len() < 1 {
+				return cli.ShowSubcommandHelp(cmd)
+			}
+			in.ServiceID = cmd.Args().First()
+			return handleDeleteService(ctx, in)
+		},
 	}
 }
