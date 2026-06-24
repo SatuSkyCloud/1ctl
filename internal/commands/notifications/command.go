@@ -54,7 +54,7 @@ type notifDeleteInput struct {
 func Command() *cli.Command {
 	return &cli.Command{
 		Name:    "notifications",
-		Aliases: []string{"notif"},
+		
 		Usage:   "Manage notifications",
 		Commands: []*cli.Command{
 			notifListCommand(),

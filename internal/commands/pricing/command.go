@@ -100,7 +100,7 @@ type pricingCalculateInput struct {
 func Command() *cli.Command {
 	return &cli.Command{
 		Name:    "pricing",
-		Aliases: []string{"price"},
+		
 		Usage:   "View machine pricing configurations",
 		Commands: []*cli.Command{
 			pricingListCommand(),

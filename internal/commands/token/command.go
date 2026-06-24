@@ -39,7 +39,7 @@ type tokenDeleteInput struct {
 func Command() *cli.Command {
 	return &cli.Command{
 		Name:    "token",
-		Aliases: []string{"api-token"},
+		
 		Usage:   "Manage API tokens",
 		Commands: []*cli.Command{
 			tokenListCommand(),

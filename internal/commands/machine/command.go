@@ -367,7 +367,7 @@ func machineUsageCostCommand() *cli.Command {
 func machineLabelsCommand() *cli.Command {
 	return &cli.Command{
 		Name:    "labels",
-		Aliases: []string{"label", "tag", "tags"},
+		Aliases: []string{"label"},
 		Usage:   "Manage machine labels (tags)",
 		Description: `Manage satusky.com/* labels on your machines.
 
