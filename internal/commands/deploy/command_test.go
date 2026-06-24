@@ -27,21 +27,9 @@ func TestDeployCommand_Subcommands(t *testing.T) {
 		t.Errorf("expected name 'deploy', got %s", cmd.Name)
 	}
 
-	expected := map[string]bool{
-		"list": false, "get": false, "status": false, "delete": false,
-		"restart": false, "releases": false, "rollback": false,
-		"open": false, "scale": false,
-	}
-	for _, sub := range cmd.Commands {
-		if _, ok := expected[sub.Name]; !ok {
-			t.Errorf("unexpected subcommand: %s", sub.Name)
-		}
-		expected[sub.Name] = true
-	}
-	for name, found := range expected {
-		if !found {
-			t.Errorf("missing subcommand: %s", name)
-		}
+	// Deploy should no longer have lifecycle subcommands — those moved to '1ctl app'
+	if len(cmd.Commands) != 0 {
+		t.Errorf("expected no subcommands on deploy, got %d: %v", len(cmd.Commands), cmd.Commands)
 	}
 }
 

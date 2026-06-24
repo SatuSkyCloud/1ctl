@@ -107,7 +107,7 @@ func appDestroyCommand() *cli.Command {
 	return &cli.Command{
 		Name:      "delete",
 		Aliases:   []string{"destroy", "rm"},
-		Usage:     "Delete an application and all associated resources",
+		Usage:     "Delete an application and its runtime resources",
 		ArgsUsage: "<app-name>",
 		Flags: []cli.Flag{
 			&cli.BoolFlag{

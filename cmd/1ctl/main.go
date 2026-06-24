@@ -71,7 +71,7 @@ Tokens: https://cloud.satusky.com/<org-id>/token`,
 			cat(commands.InitCommand(), "Core workflow"),
 			cat(commands.LaunchCommand(), "Core workflow"),
 			cat(commands.DeployCommand(), "Core workflow"),
-			cat(commands.AppCommand(), "Core workflow"),
+			cat(commands.AppCommand(), "Applications"),
 			cat(commands.LogsCommand(), "Core workflow"),
 			cat(commands.DoctorCommand(), "Core workflow"),
 			// Applications
