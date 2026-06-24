@@ -44,7 +44,7 @@ type marketplaceDeployInput struct {
 func Command() *cli.Command {
 	return &cli.Command{
 		Name:    "marketplace",
-		Aliases: []string{"market", "apps"},
+		Aliases: []string{"market"},
 		Usage:   "Browse and deploy marketplace apps",
 		Commands: []*cli.Command{
 			marketplaceListCommand(),

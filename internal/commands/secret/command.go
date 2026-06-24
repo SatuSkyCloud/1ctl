@@ -16,7 +16,7 @@ const (
 	flagName         = "name"
 	flagKV           = "kv"
 	flagKey          = "key"
-	flagSecretID     = "secret-id"
+	flagID           = "id"
 )
 
 // --- Input structs ------------------------------------------------------
@@ -38,7 +38,13 @@ type secretUnsetInput struct {
 }
 
 type secretGetInput struct {
-	SecretID string
+	ID  string // --id for UUID lookup (escape hatch)
+	App string // --app for app name resolution
+	Key string // positional: secret key name (optional)
+}
+
+type secretListInput struct {
+	App string // optional --app filter
 }
 
 // --- Command tree -------------------------------------------------------
@@ -98,27 +104,49 @@ func secretCreateCommand() *cli.Command {
 }
 
 func secretListCommand() *cli.Command {
+	var in secretListInput
 	return &cli.Command{
-		Name:   "list",
-		Usage:  "List all secrets",
-		Action: func(ctx context.Context, cmd *cli.Command) error { return handleListSecrets(ctx) },
+		Name:  "list",
+		Usage: "List all secrets",
+		Flags: []cli.Flag{
+			&cli.StringFlag{
+				Name:        flagApp,
+				Usage:       "Filter by app name",
+				Destination: &in.App,
+			},
+		},
+		Action: func(ctx context.Context, cmd *cli.Command) error { return handleListSecrets(ctx, in) },
 	}
 }
 
 func secretGetCommand() *cli.Command {
 	var in secretGetInput
 	return &cli.Command{
-		Name:  "get",
-		Usage: "Show secret details including key names",
+		Name:      "get",
+		Usage:     "Show secret details",
+		ArgsUsage: "[key-name]",
 		Flags: []cli.Flag{
 			&cli.StringFlag{
-				Name:        flagSecretID,
-				Usage:       "Secret ID",
-				Required:    true,
-				Destination: &in.SecretID,
+				Name:        flagID,
+				Usage:       "Secret ID (alternative to --app + positional key)",
+				Destination: &in.ID,
+			},
+			&cli.StringFlag{
+				Name:        flagApp,
+				Usage:       "App name (alternative to --id)",
+				Destination: &in.App,
 			},
 		},
-		Action: func(ctx context.Context, cmd *cli.Command) error { return handleGetSecret(ctx, in) },
+		Action: func(ctx context.Context, cmd *cli.Command) error {
+			// Pick up positional argument as key name
+			if cmd.Args().Len() >= 1 {
+				in.Key = cmd.Args().First()
+			}
+			if in.ID == "" && in.App == "" {
+				return cli.ShowSubcommandHelp(cmd)
+			}
+			return handleGetSecret(ctx, in)
+		},
 	}
 }
 

@@ -85,7 +85,7 @@ func optionalIntWithAliases(name, usage string, aliases []string, dest *int, def
 func Command() *cli.Command {
 	return &cli.Command{
 		Name:  "logs",
-		Usage: "View and manage pod logs",
+		Usage: "View application logs",
 		Flags: []cli.Flag{
 			optionalStringWithAliases(flagDeploymentID, "Deployment ID to view logs for", []string{"d"}, &rootLogsIn.DeploymentID),
 			optionalString(flagApp, "App name to resolve (alternative to --deployment-id)", &rootLogsIn.App),
@@ -107,7 +107,7 @@ func logsStreamCommand() *cli.Command {
 	var in logsStreamInput
 	return &cli.Command{
 		Name:  "stream",
-		Usage: "Stream live pod logs (like kubectl logs -f)",
+		Usage: "Stream live application logs",
 		Flags: []cli.Flag{
 			optionalStringWithAliases(flagDeploymentID, "Deployment ID (resolves namespace and app label automatically)", []string{"d"}, &in.DeploymentID),
 			optionalStringWithAliases(flagNamespace, "Kubernetes namespace (use with --app)", []string{"n"}, &in.Namespace),

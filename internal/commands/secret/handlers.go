@@ -87,10 +87,21 @@ func handleCreateSecret(ctx context.Context, in secretCreateInput) error {
 	return nil
 }
 
-func handleListSecrets(ctx context.Context) error {
+func handleListSecrets(ctx context.Context, in secretListInput) error {
 	secrets, err := api.ListSecrets()
 	if err != nil {
 		return utils.NewError(fmt.Sprintf("failed to list secrets: %s", err.Error()), nil)
+	}
+
+	// Filter by app name if requested
+	if in.App != "" {
+		var filtered []api.Secret
+		for _, s := range secrets {
+			if s.AppLabel == in.App {
+				filtered = append(filtered, s)
+			}
+		}
+		secrets = filtered
 	}
 
 	if utils.PrintListOrJSON(secrets, "No secrets found") {
@@ -132,27 +143,68 @@ func handleSecretUnset(ctx context.Context, in secretUnsetInput) error {
 }
 
 func handleGetSecret(ctx context.Context, in secretGetInput) error {
-	secrets, err := api.ListSecrets()
-	if err != nil {
-		return utils.NewError(fmt.Sprintf("failed to fetch secrets: %s", err.Error()), nil)
+	// --- Path 1: Lookup by --id (escape hatch) ---
+	if in.ID != "" {
+		secrets, err := api.ListSecrets()
+		if err != nil {
+			return utils.NewError(fmt.Sprintf("failed to fetch secrets: %s", err.Error()), nil)
+		}
+		for _, s := range secrets {
+			if s.SecretID.String() == in.ID {
+				return printSecretBundle(&s)
+			}
+		}
+		return utils.NewError(fmt.Sprintf("secret %s not found", in.ID), nil)
 	}
 
-	for _, s := range secrets {
-		if s.SecretID.String() == in.SecretID {
-			if utils.TryPrintJSON(s) {
+	// --- Path 2: Lookup by --app [key] ---
+	deploymentID, err := deploy.ResolveDeploymentID("", in.App, "")
+	if err != nil {
+		return utils.NewError(fmt.Sprintf("failed to resolve app: %s", err.Error()), nil)
+	}
+
+	secrets, err := api.GetSecretsByDeploymentID(deploymentID)
+	if err != nil || len(secrets) == 0 {
+		return utils.NewError(fmt.Sprintf("no secrets found for app %q", in.App), nil)
+	}
+	secret := secrets[0] // deployment-id is unique; there should be one secret bundle
+
+	if in.Key != "" {
+		// Show just the specified key
+		for _, kv := range secret.KeyValues {
+			if kv.Key == in.Key {
+				if utils.TryPrintJSON(kv) {
+					return nil
+				}
+				utils.PrintHeader("Secret %s", in.Key)
+				utils.PrintStatusLine("App", in.App)
+				utils.PrintStatusLine("Value", "********")
+				utils.PrintStatusLine("Created", utils.FormatTimeAgo(secret.CreatedAt))
 				return nil
 			}
-			utils.PrintHeader("Secret %s", s.AppLabel)
-			utils.PrintStatusLine("Secret ID", s.SecretID.String())
-			utils.PrintStatusLine("Deployment ID", s.DeploymentID.String())
-			utils.PrintStatusLine("Namespace", s.Namespace)
-			utils.PrintStatusLine("Created", utils.FormatTimeAgo(s.CreatedAt))
-			utils.PrintStatusLine("Keys", fmt.Sprintf("%d", len(s.KeyValues)))
-			for _, kv := range s.KeyValues {
-				utils.PrintStatusLine("  "+kv.Key, "********")
-			}
-			return nil
 		}
+		return utils.NewError(fmt.Sprintf("key %q not found in secrets for app %q", in.Key, in.App), nil)
 	}
-	return utils.NewError(fmt.Sprintf("secret %s not found", in.SecretID), nil)
+
+	// Show the full bundle metadata (no key specified)
+	return printSecretBundle(&secret)
+}
+
+func printSecretBundle(s *api.Secret) error {
+	if s == nil {
+		return nil
+	}
+	if utils.TryPrintJSON(s) {
+		return nil
+	}
+	utils.PrintHeader("Secret %s", s.AppLabel)
+	utils.PrintStatusLine("Secret ID", s.SecretID.String())
+	utils.PrintStatusLine("Deployment ID", s.DeploymentID.String())
+	utils.PrintStatusLine("Namespace", s.Namespace)
+	utils.PrintStatusLine("Created", utils.FormatTimeAgo(s.CreatedAt))
+	utils.PrintStatusLine("Keys", fmt.Sprintf("%d", len(s.KeyValues)))
+	for _, kv := range s.KeyValues {
+		utils.PrintStatusLine("  "+kv.Key, "********")
+	}
+	return nil
 }
