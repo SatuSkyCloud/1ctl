@@ -64,7 +64,7 @@
   # wait_for   PostgreSQL/Redis/etc. that must be reachable before start.
   #            Platform injects init-containers so your main container
   #            never crashes while dependencies boot.
-  wait_for    = ["db:5432", "redis:6379"]
+  # wait_for    = ["db:5432", "redis:6379"]
 
   # organization  Override the CLI auth context.  Rarely needed.
   # organization = ""

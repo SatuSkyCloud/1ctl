@@ -65,7 +65,6 @@ type mergedInput struct {
 	StrictSmoke  bool
 	AppName      string
 	Organization string
-	MachineTag   string
 	UserSetFlags map[string]bool
 }
 

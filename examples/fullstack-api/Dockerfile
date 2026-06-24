@@ -1,11 +1,12 @@
 # ── SatuSky Cloud Build Dockerfile ───────────────────────────────────
 # Builds on the SatuSky platform via Kaniko (no local Docker required).
-# Cloud builds produce linux/amd64 images; multi-arch images used with
-# --image are pulled as-is (kubelet picks the right variant).
+# Uses BuildKit TARGETARCH for multi-arch (amd64, arm64) builds.
 # ──────────────────────────────────────────────────────────────────────
 
 # ── Stage 1: Build ───────────────────────────────────────────────────
 FROM golang:1.24-alpine AS builder
+
+ARG TARGETARCH
 
 RUN apk add --no-cache git ca-certificates
 
@@ -15,9 +16,9 @@ WORKDIR /src
 COPY go.mod go.sum ./
 RUN go mod download
 
-# Copy source and build a static binary.
+# Copy source and build a static binary for the target architecture.
 COPY . .
-RUN CGO_ENABLED=0 GOOS=linux GOARCH=amd64 \
+RUN CGO_ENABLED=0 GOOS=linux GOARCH=$TARGETARCH \
     go build -ldflags="-s -w" -o /app ./main.go
 
 # ── Stage 2: Runtime ─────────────────────────────────────────────────
