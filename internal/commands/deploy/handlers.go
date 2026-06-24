@@ -350,7 +350,19 @@ func prepareDeploymentOptions(m mergedInput, cfg *config.ProjectConfig) (deployp
 		opts.Zone = m.Zone
 	}
 
-	if len(m.MachineTag) > 0 && len(m.Machine) == 0 {
+	// --machine-tag-expr takes precedence over --machine-tag
+	if m.MachineTagExpr != "" && len(m.Machine) == 0 {
+		hostnames, err := resolveMachineTagExpr(m.MachineTagExpr, m.MachineTagStrategy)
+		if err != nil {
+			return deploypkg.DeploymentOptions{}, err
+		}
+		opts.Hostnames = hostnames
+		strategy := m.MachineTagStrategy
+		if strategy == "" {
+			strategy = "and"
+		}
+		utils.PrintInfo("Resolved --machine-tag-expr %q (%s) to %d owned machine(s)", m.MachineTagExpr, strings.ToUpper(strategy), len(hostnames))
+	} else if len(m.MachineTag) > 0 && len(m.Machine) == 0 {
 		hostnames, err := resolveMachineTags(m.MachineTag, m.MachineTagStrategy)
 		if err != nil {
 			return deploypkg.DeploymentOptions{}, err
@@ -542,6 +554,48 @@ func defaultInt32(v, fallback int32) int32 {
 		return fallback
 	}
 	return v
+}
+
+func resolveMachineTagExpr(expr, strategy string) ([]string, error) {
+	userID := satuskyctx.GetUserID()
+	if userID == "" {
+		return nil, utils.NewError("not authenticated — run '1ctl auth login' first", nil)
+	}
+	userUUID, err := api.ParseUUID(userID)
+	if err != nil {
+		return nil, utils.NewError(fmt.Sprintf("invalid user ID in context: %s", err.Error()), nil)
+	}
+	machines, err := api.GetMachinesByOwnerID(userUUID)
+	if err != nil {
+		return nil, utils.NewError(fmt.Sprintf("failed to list owned machines: %s", err.Error()), nil)
+	}
+	if len(machines) == 0 {
+		return nil, utils.NewError("no owned machines found — register a machine before using --machine-tag-expr", nil)
+	}
+
+	var hostnames []string
+	for _, m := range machines {
+		if m.Status != "online" {
+			continue
+		}
+		labels, err := api.GetMachineLabels(m.MachineID)
+		if err != nil {
+			utils.PrintWarning("Could not read labels for machine %s: %s", m.MachineID, err.Error())
+			continue
+		}
+
+		match, evalErr := deploypkg.EvaluateTagExpr(expr, labels)
+		if evalErr != nil {
+			return nil, utils.NewError(fmt.Sprintf("invalid tag expression: %s", evalErr.Error()), nil)
+		}
+		if match {
+			hostnames = append(hostnames, m.MachineID)
+		}
+	}
+	if len(hostnames) == 0 {
+		return nil, utils.NewError(fmt.Sprintf("no online machines matched tag expression %q", expr), nil)
+	}
+	return hostnames, nil
 }
 
 func resolveMachineTags(tags []string, strategy string) ([]string, error) {
