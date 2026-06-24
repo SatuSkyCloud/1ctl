@@ -516,3 +516,71 @@ func printMapStatus(values map[string]interface{}) {
 		utils.PrintStatusLine(key, fmt.Sprintf("%v", value))
 	}
 }
+
+// ── Machine Label Handlers ─────────────────────────────────────────────
+
+func handleMachineLabelsList(ctx context.Context, machineID string) error {
+	labels, err := api.GetMachineLabels(machineID)
+	if err != nil {
+		return utils.NewError(fmt.Sprintf("failed to get labels: %s", err.Error()), nil)
+	}
+	if len(labels) == 0 {
+		utils.PrintInfo("No labels found on this machine")
+		return nil
+	}
+	utils.PrintHeader("Labels for %s", machineID)
+	for k, v := range labels {
+		utils.PrintStatusLine(k, v)
+	}
+	return nil
+}
+
+func handleMachineLabelsSet(ctx context.Context, machineID string, pairs []string) error {
+	labels := make(map[string]string)
+	for _, pair := range pairs {
+		parts := strings.SplitN(pair, "=", 2)
+		if len(parts) != 2 {
+			return utils.NewError(fmt.Sprintf("invalid format: %s (expected key=value)", pair), nil)
+		}
+		key := parts[0]
+		// Auto-prefix with satusky.com/ if not already prefixed
+		if !strings.HasPrefix(key, api.MachineTagLabelPrefix) {
+			key = api.MachineTagLabelPrefix + key
+		}
+		labels[key] = parts[1]
+	}
+	if err := api.UpdateMachineLabels(machineID, labels); err != nil {
+		return utils.NewError(fmt.Sprintf("failed to set labels: %s", err.Error()), nil)
+	}
+	utils.PrintSuccess("Labels updated on machine %s", machineID)
+	return handleMachineLabelsList(ctx, machineID)
+}
+
+func handleMachineLabelsUnset(ctx context.Context, machineID, key string) error {
+	// Auto-prefix if needed
+	if !strings.HasPrefix(key, api.MachineTagLabelPrefix) {
+		key = api.MachineTagLabelPrefix + key
+	}
+	labels := map[string]string{key: ""}
+	if err := api.UpdateMachineLabels(machineID, labels); err != nil {
+		return utils.NewError(fmt.Sprintf("failed to unset label: %s", err.Error()), nil)
+	}
+	utils.PrintSuccess("Label %q removed from machine %s", key, machineID)
+	return handleMachineLabelsList(ctx, machineID)
+}
+
+func handleMachineLabelsKeys(ctx context.Context) error {
+	keys, err := api.GetAvailableLabelKeys()
+	if err != nil {
+		return utils.NewError(fmt.Sprintf("failed to get label keys: %s", err.Error()), nil)
+	}
+	if len(keys) == 0 {
+		utils.PrintInfo("No label keys found")
+		return nil
+	}
+	utils.PrintHeader("Available Label Keys")
+	for _, k := range keys {
+		fmt.Println("  " + k)
+	}
+	return nil
+}

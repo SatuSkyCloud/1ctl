@@ -43,6 +43,8 @@ const (
 	flagMinMemory     = "min-memory"
 	flagGPU           = "gpu"
 	flagUsageID       = "usage-id"
+	flagKey           = "key"
+	flagValue         = "value"
 )
 
 // --- Input structs ------------------------------------------------------
@@ -172,6 +174,7 @@ func Command() *cli.Command {
 			machineEventsCommand(),
 			machineAvailableCommand(),
 			machineUsageCommand(),
+			machineLabelsCommand(),
 		},
 	}
 }
@@ -357,6 +360,86 @@ func machineUsageCostCommand() *cli.Command {
 		},
 		Action: func(ctx context.Context, cmd *cli.Command) error {
 			return handleMachineUsageCost(ctx, in)
+		},
+	}
+}
+
+func machineLabelsCommand() *cli.Command {
+	return &cli.Command{
+		Name:    "labels",
+		Aliases: []string{"label", "tag", "tags"},
+		Usage:   "Manage machine labels (tags)",
+		Description: `Manage satusky.com/* labels on your machines.
+
+Labels are used with "1ctl deploy --machine-tag <tag>" to route deployments
+to specific machines. When you set "satusky.com/production" on a machine,
+deploying with "--machine-tag production" will schedule on that machine.
+
+Examples:
+   1ctl machine labels list <machine-id>
+   1ctl machine labels set  <machine-id> environment=production tier=compute
+   1ctl machine labels unset <machine-id> environment
+   1ctl machine labels keys`,
+		Commands: []*cli.Command{
+			machineLabelsListCommand(),
+			machineLabelsSetCommand(),
+			machineLabelsUnsetCommand(),
+			machineLabelsKeysCommand(),
+		},
+	}
+}
+
+func machineLabelsListCommand() *cli.Command {
+	return &cli.Command{
+		Name:      "list",
+		Usage:     "Show all labels on a machine",
+		ArgsUsage: "<machine-id>",
+		Action: func(ctx context.Context, cmd *cli.Command) error {
+			if cmd.Args().Len() < 1 {
+				return cli.ShowSubcommandHelp(cmd)
+			}
+			return handleMachineLabelsList(ctx, cmd.Args().First())
+		},
+	}
+}
+
+func machineLabelsSetCommand() *cli.Command {
+	return &cli.Command{
+		Name:      "set",
+		Usage:     "Set one or more labels on a machine",
+		ArgsUsage: "<machine-id> <key=value> [key=value...]",
+		Action: func(ctx context.Context, cmd *cli.Command) error {
+			args := cmd.Args().Slice()
+			if len(args) < 2 {
+				return cli.ShowSubcommandHelp(cmd)
+			}
+			return handleMachineLabelsSet(ctx, args[0], args[1:])
+		},
+	}
+}
+
+func machineLabelsUnsetCommand() *cli.Command {
+	return &cli.Command{
+		Name:      "unset",
+		Aliases:   []string{"delete", "rm"},
+		Usage:     "Remove a label from a machine",
+		ArgsUsage: "<machine-id> <key>",
+		Action: func(ctx context.Context, cmd *cli.Command) error {
+			args := cmd.Args().Slice()
+			if len(args) < 2 {
+				return cli.ShowSubcommandHelp(cmd)
+			}
+			return handleMachineLabelsUnset(ctx, args[0], args[1])
+		},
+	}
+}
+
+func machineLabelsKeysCommand() *cli.Command {
+	return &cli.Command{
+		Name:  "keys",
+		Usage: "List all available label keys across all machines",
+		Action: func(ctx context.Context, cmd *cli.Command) error {
+			return handleMachineLabelsKeys(ctx)
 		},
 	}
 }

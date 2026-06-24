@@ -861,13 +861,49 @@ func GetMachineLabels(machineID string) (map[string]string, error) {
 	var resp struct {
 		Error bool `json:"error"`
 		Data  struct {
-			Labels map[string]string `json:"labels"`
+			Custom map[string]string `json:"custom"`
 		} `json:"data"`
 	}
 	if err := makeRequest("GET", fmt.Sprintf("/machines/%s/labels", machineID), nil, &resp); err != nil {
 		return nil, err
 	}
-	return resp.Data.Labels, nil
+	return resp.Data.Custom, nil
+}
+
+type updateLabelsRequest struct {
+	Labels map[string]string `json:"labels"`
+}
+
+// UpdateMachineLabels sets or removes satusky.com/* labels on a machine.
+// To remove a label, set its value to empty string.
+func UpdateMachineLabels(machineID string, labels map[string]string) error {
+	var resp apiResponse
+	req := updateLabelsRequest{Labels: labels}
+	return makeRequest("PATCH", fmt.Sprintf("/machines/%s/labels", machineID), req, &resp)
+}
+
+// QueryMachinesByLabel finds machines that have ALL the specified labels.
+func QueryMachinesByLabel(labels map[string]string) ([]Machine, error) {
+	var resp struct {
+		Error bool      `json:"error"`
+		Data  []Machine `json:"data"`
+	}
+	if err := makeRequest("POST", "/machines/label-query", labels, &resp); err != nil {
+		return nil, err
+	}
+	return resp.Data, nil
+}
+
+// GetAvailableLabelKeys returns all satusky.com/* label keys currently in use.
+func GetAvailableLabelKeys() ([]string, error) {
+	var resp struct {
+		Error bool     `json:"error"`
+		Data  []string `json:"data"`
+	}
+	if err := makeRequest("GET", "/machines/label-keys", nil, &resp); err != nil {
+		return nil, err
+	}
+	return resp.Data, nil
 }
 
 func CreateMachine(machine Machine) (int64, error) {
