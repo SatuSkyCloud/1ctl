@@ -299,20 +299,22 @@ type Volume struct {
 }
 
 type VolumePVCStatus struct {
-	Name         string `json:"name"`
-	Namespace    string `json:"namespace"`
-	Exists       bool   `json:"exists"`
-	Phase        string `json:"phase,omitempty"`
-	StorageClass string `json:"storage_class,omitempty"`
-	Capacity     string `json:"capacity,omitempty"`
-	Message      string `json:"message,omitempty"`
+	Name           string     `json:"name"`
+	Namespace      string     `json:"namespace"`
+	Exists         bool       `json:"exists"`
+	Phase          string     `json:"phase,omitempty"`
+	StorageClass   string     `json:"storage_class,omitempty"`
+	Capacity       string     `json:"capacity,omitempty"`
+	Message        string     `json:"message,omitempty"`
+	LastObservedAt *time.Time `json:"last_observed_at,omitempty"`
 }
 
 type VolumeMountStatus struct {
-	Attached bool   `json:"attached"`
-	Mounted  bool   `json:"mounted"`
-	Path     string `json:"path,omitempty"`
-	Message  string `json:"message,omitempty"`
+	Attached       bool       `json:"attached"`
+	Mounted        bool       `json:"mounted"`
+	Path           string     `json:"path,omitempty"`
+	Message        string     `json:"message,omitempty"`
+	LastObservedAt *time.Time `json:"last_observed_at,omitempty"`
 }
 
 type VolumeLifecycleStatus struct {

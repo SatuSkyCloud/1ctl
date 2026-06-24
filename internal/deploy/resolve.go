@@ -26,7 +26,7 @@ func ResolveDeploymentID(depID, appFlag, configArg string) (string, error) {
 		}
 		dep, err := api.GetDeploymentByAppLabel(ns, appFlag)
 		if err != nil {
-			return "", fmt.Errorf("app %q not found in namespace %s", appFlag, ns)
+			return "", fmt.Errorf("app %q not found in organization %s\nRun '1ctl app list' to see deployed apps", appFlag, ns)
 		}
 		return dep.DeploymentID.String(), nil
 	}
@@ -53,7 +53,7 @@ func ResolveDeploymentID(depID, appFlag, configArg string) (string, error) {
 
 	dep, err := api.GetDeploymentByAppLabel(ns, cfg.App.Name)
 	if err != nil {
-		return "", fmt.Errorf("app %q not found in namespace %s\nRun '1ctl deploy' first or pass --deployment-id", cfg.App.Name, ns)
+		return "", fmt.Errorf("app %q not found in organization %s\nRun '1ctl deploy' first or pass --deployment-id\nRun '1ctl app list' to see deployed apps", cfg.App.Name, ns)
 	}
 
 	return dep.DeploymentID.String(), nil

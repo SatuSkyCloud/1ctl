@@ -3,6 +3,7 @@ package volumes
 import (
 	"context"
 	"fmt"
+	"time"
 
 	"1ctl/internal/api"
 	"1ctl/internal/deploy"
@@ -161,6 +162,12 @@ func printVolumeLifecycle(status *api.VolumeLifecycleStatus) {
 		utils.PrintStatusLine("Mount message", status.Mount.Message)
 	}
 	utils.PrintStatusLine("Destroy policy", status.DestroyPolicy)
+
+	// Staleness warning: show if PVC or mount state is stale
+	if isStale(status.PVC.LastObservedAt, status.Mount.LastObservedAt) {
+		fmt.Println()
+		utils.PrintWarning("State may be stale — run with --refresh to fetch live data")
+	}
 }
 
 func pvcStatusText(status api.VolumePVCStatus) string {
@@ -170,10 +177,14 @@ func pvcStatusText(status api.VolumePVCStatus) string {
 		}
 		return "missing"
 	}
-	if status.Phase != "" {
-		return status.Phase
+	phase := status.Phase
+	if phase == "" {
+		phase = "exists"
 	}
-	return "exists"
+	if isStale(status.LastObservedAt, nil) && phase != "missing" {
+		phase += " (stale)"
+	}
+	return phase
 }
 
 func mountStatusText(status api.VolumeMountStatus) string {
@@ -188,4 +199,23 @@ func mountStatusText(status api.VolumeMountStatus) string {
 	default:
 		return "detached"
 	}
+}
+
+// staleThreshold is the maximum age before observed state is considered stale.
+const staleThreshold = 2 * time.Minute
+
+// isStale returns true if all provided observed-at timestamps are nil
+// or older than staleThreshold. A nil timestamp means no observation has
+// ever been recorded, which is treated as stale.
+func isStale(observedAts ...*time.Time) bool {
+	if len(observedAts) == 0 {
+		return false
+	}
+	now := time.Now()
+	for _, t := range observedAts {
+		if t == nil || now.Sub(*t) > staleThreshold {
+			return true
+		}
+	}
+	return false
 }
