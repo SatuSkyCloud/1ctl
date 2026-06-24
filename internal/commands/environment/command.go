@@ -68,6 +68,11 @@ func envCreateCommand() *cli.Command {
 				Destination: &in.DeploymentID,
 			},
 			&cli.StringFlag{
+				Name:        flagApp,
+				Usage:       "App name to resolve (alternative to --deployment-id)",
+				Destination: &in.App,
+			},
+			&cli.StringFlag{
 				Name:        flagConfig,
 				Usage:       "Config name or path (e.g. staging, satusky.staging.toml). Default: satusky.toml",
 				Destination: &in.Config,
@@ -91,7 +96,7 @@ func envListCommand() *cli.Command {
 	var in envListInput
 	return &cli.Command{
 		Name:  "list",
-		Usage: "List all environments",
+		Usage: "List all environments for a deployment",
 		Flags: []cli.Flag{
 			&cli.StringFlag{
 				Name:        flagDeploymentID,

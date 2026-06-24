@@ -4,6 +4,7 @@ import (
 	"1ctl/internal/utils"
 	"encoding/json"
 	"fmt"
+	"strings"
 	"time"
 
 	"github.com/google/uuid"
@@ -102,6 +103,33 @@ func GetMarketplaceApp(marketplaceID string) (*MarketplaceApp, error) {
 		return nil, utils.NewError(fmt.Sprintf("failed to unmarshal marketplace app: %s", err.Error()), nil)
 	}
 	return &app, nil
+}
+
+// ResolveMarketplaceApp resolves a marketplace app name or UUID to a full app record.
+// If nameOrID looks like a UUID, it tries direct lookup first; otherwise it fetches
+// the catalog and matches by marketplace_name (case-insensitive).
+func ResolveMarketplaceApp(nameOrID string) (*MarketplaceApp, error) {
+	// Try direct UUID lookup first.
+	if _, err := uuid.Parse(nameOrID); err == nil {
+		app, err := GetMarketplaceApp(nameOrID)
+		if err == nil {
+			return app, nil
+		}
+	}
+
+	// Fall back to name-based lookup in the catalog.
+	// Use a high limit to guarantee all apps are returned (backend defaults to 9).
+	apps, err := GetMarketplaceApps(100, 0, "name")
+	if err != nil {
+		return nil, utils.NewError(fmt.Sprintf("failed to list marketplace apps: %s", err.Error()), nil)
+	}
+	nameOrIDLower := strings.ToLower(nameOrID)
+	for _, a := range apps {
+		if strings.ToLower(a.MarketplaceName) == nameOrIDLower {
+			return &a, nil
+		}
+	}
+	return nil, utils.NewError(fmt.Sprintf("marketplace app %q not found — use '1ctl marketplace list' to see available apps", nameOrID), nil)
 }
 
 // DeployMarketplaceApp deploys a marketplace app

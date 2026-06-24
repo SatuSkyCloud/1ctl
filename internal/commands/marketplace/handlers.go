@@ -6,6 +6,7 @@ import (
 
 	"1ctl/internal/api"
 	satuskyctx "1ctl/internal/context"
+	deploypkg "1ctl/internal/deploy"
 	"1ctl/internal/utils"
 )
 
@@ -25,7 +26,6 @@ func handleMarketplaceList(ctx context.Context, in marketplaceListInput) error {
 		if app.ComingSoon {
 			status = "Coming Soon"
 		}
-		utils.PrintStatusLine("ID", app.MarketplaceID.String())
 		utils.PrintStatusLine("Name", app.MarketplaceName)
 		utils.PrintStatusLine("Category", app.Category)
 		if app.Description != "" {
@@ -40,10 +40,10 @@ func handleMarketplaceList(ctx context.Context, in marketplaceListInput) error {
 	return nil
 }
 
-func handleMarketplaceGet(ctx context.Context, in marketplaceGetInput) error {
-	app, err := api.GetMarketplaceApp(in.MarketplaceID)
+func handleMarketplaceGet(ctx context.Context, nameOrID string) error {
+	app, err := api.ResolveMarketplaceApp(nameOrID)
 	if err != nil {
-		return utils.NewError(fmt.Sprintf("failed to get marketplace app: %s", err.Error()), nil)
+		return err
 	}
 
 	status := "Available"
@@ -52,7 +52,6 @@ func handleMarketplaceGet(ctx context.Context, in marketplaceGetInput) error {
 	}
 
 	utils.PrintHeader("Marketplace App: %s", app.MarketplaceName)
-	utils.PrintStatusLine("ID", app.MarketplaceID.String())
 	utils.PrintStatusLine("Name", app.MarketplaceName)
 	utils.PrintStatusLine("Category", app.Category)
 	if app.Description != "" {
@@ -70,7 +69,7 @@ func handleMarketplaceGet(ctx context.Context, in marketplaceGetInput) error {
 
 	if len(app.Metadata) > 0 {
 		fmt.Println()
-		utils.PrintHeader("Metadata")
+		utils.PrintHeader("Details")
 		for key, value := range app.Metadata {
 			utils.PrintStatusLine(key, fmt.Sprintf("%v", value))
 		}
@@ -85,39 +84,34 @@ func handleMarketplaceDeploy(ctx context.Context, in marketplaceDeployInput) err
 		return utils.NewError("namespace not found. Please run '1ctl auth login' first", nil)
 	}
 
+	app, err := api.ResolveMarketplaceApp(in.AppName)
+	if err != nil {
+		return err
+	}
+	if app.ComingSoon {
+		return utils.NewError(fmt.Sprintf("%q is coming soon and cannot be deployed yet", app.MarketplaceName), nil)
+	}
+
+	deployName := in.DeployName
+	if deployName == "" {
+		deployName = app.MarketplaceName
+	}
+
 	req := api.MarketplaceDeployRequest{
-		DeploymentName: in.Name,
+		DeploymentName: deployName,
 		Hostnames:      in.Hostnames,
 		CPUCores:       in.CPU,
 		Memory:         in.Memory,
 		DomainName:     in.Domain,
 		StorageSize:    in.StorageSize,
-		StorageClass:   in.StorageClass,
 	}
 
-	if in.Multicluster {
-		req.MulticlusterConfig = &api.MulticlusterConfig{
-			Enabled: true,
-			Mode:    in.MulticlusterMode,
-		}
-	}
-
-	resp, err := api.DeployMarketplaceApp(namespace, in.MarketplaceID, req)
+	resp, err := api.DeployMarketplaceApp(namespace, app.MarketplaceID.String(), req)
 	if err != nil {
 		return utils.NewError(fmt.Sprintf("failed to deploy marketplace app: %s", err.Error()), nil)
 	}
 
-	utils.PrintSuccess("Marketplace app deployed successfully!")
-	utils.PrintStatusLine("Deployment ID", resp.DeploymentID.String())
-	utils.PrintStatusLine("App Label", resp.AppLabel)
-	if resp.Domain != "" {
-		utils.PrintStatusLine("Domain", resp.Domain)
-	}
-	utils.PrintStatusLine("Status", resp.Status)
-
-	if len(in.Hostnames) > 0 {
-		utils.PrintStatusLine("Machines", utils.JoinOptions(in.Hostnames))
-	}
-
-	return nil
+	ingressID := deploypkg.ResolveIngressID(resp.DeploymentID.String())
+	publicURL := deploypkg.WaitForPublicURL(ingressID, resp.Domain)
+	return deploypkg.ReportDeployResult(resp.AppLabel, resp.DeploymentID.String(), resp.Domain, publicURL, "", true)
 }

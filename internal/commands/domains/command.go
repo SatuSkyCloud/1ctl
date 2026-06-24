@@ -213,11 +213,19 @@ func Command() *cli.Command {
 }
 
 func domainsListCommand() *cli.Command {
+	var app string
 	return &cli.Command{
 		Name:  "list",
 		Usage: "List all domains in the current organization",
+		Flags: []cli.Flag{
+			&cli.StringFlag{
+				Name:        flagApp,
+				Usage:       "Filter by app name",
+				Destination: &app,
+			},
+		},
 		Action: func(ctx context.Context, cmd *cli.Command) error {
-			return handleDomainsList(ctx)
+			return handleDomainsList(ctx, app)
 		},
 	}
 }
@@ -225,10 +233,10 @@ func domainsListCommand() *cli.Command {
 func domainsAddCommand() *cli.Command {
 	var in domainsAddInput
 	return &cli.Command{
-		Name:  "add",
-		Usage: "Add a custom domain to an app",
+		Name:      "add",
+		Usage:     "Add a custom domain to an app",
+		ArgsUsage: "<domain>",
 		Flags: []cli.Flag{
-			requiredString(flagDomain, "Domain name", &in.Domain, nil),
 			requiredString(flagApp, "App name (the value of [app] name in satusky.toml, or --name on deploy)", &in.App, nil),
 			&cli.IntFlag{Name: flagPort, Usage: "Target port on the deployment", Destination: &in.Port, Value: 8080},
 			&cli.BoolFlag{Name: flagCustomDNS, Usage: "Treat the hostname as an external custom domain", Destination: &in.CustomDNS},
@@ -237,6 +245,10 @@ func domainsAddCommand() *cli.Command {
 			&cli.BoolFlag{Name: flagWithWWW, Usage: "Also configure a www redirect for apex domains when supported", Destination: &in.WithWWW},
 		},
 		Action: func(ctx context.Context, cmd *cli.Command) error {
+			if cmd.Args().Len() < 1 {
+				return cli.ShowSubcommandHelp(cmd)
+			}
+			in.Domain = cmd.Args().First()
 			return handleDomainsAdd(ctx, in)
 		},
 	}
@@ -248,12 +260,16 @@ func domainsRemoveCommand() *cli.Command {
 		Name:    "delete",
 		Aliases: []string{"remove", "rm"},
 		Usage:   "Remove a custom domain from an app",
+		ArgsUsage: "<domain>",
 		Flags: []cli.Flag{
-			requiredString(flagDomain, "Domain name", &in.Domain, nil),
 			requiredString(flagApp, "App name (the value of [app] name in satusky.toml)", &in.App, nil),
 			&cli.BoolFlag{Name: flagYes, Aliases: []string{"y"}, Usage: "Skip confirmation prompt", Destination: &in.Yes},
 		},
 		Action: func(ctx context.Context, cmd *cli.Command) error {
+			if cmd.Args().Len() < 1 {
+				return cli.ShowSubcommandHelp(cmd)
+			}
+			in.Domain = cmd.Args().First()
 			return handleDomainsRemove(ctx, in)
 		},
 	}
@@ -262,13 +278,17 @@ func domainsRemoveCommand() *cli.Command {
 func domainsCheckCommand() *cli.Command {
 	var in domainsCheckInput
 	return &cli.Command{
-		Name:  "check",
-		Usage: "Check backend, route, DNS, TLS, and HTTP status for a domain",
+		Name:      "check",
+		Usage:     "Check backend, route, DNS, TLS, and HTTP status for a domain",
+		ArgsUsage: "<domain>",
 		Flags: []cli.Flag{
-			requiredString(flagDomain, "Domain name", &in.Domain, nil),
 			&cli.BoolFlag{Name: flagProbe, Usage: "Run an HTTP reachability probe", Destination: &in.Probe},
 		},
 		Action: func(ctx context.Context, cmd *cli.Command) error {
+			if cmd.Args().Len() < 1 {
+				return cli.ShowSubcommandHelp(cmd)
+			}
+			in.Domain = cmd.Args().First()
 			return handleDomainsCheck(ctx, in)
 		},
 	}
@@ -277,12 +297,15 @@ func domainsCheckCommand() *cli.Command {
 func domainsSetupCommand() *cli.Command {
 	var in domainsSetupInput
 	return &cli.Command{
-		Name:  "setup",
-		Usage: "Show exact DNS setup instructions for a domain",
-		Flags: []cli.Flag{
-			requiredString(flagDomain, "Domain name", &in.Domain, nil),
-		},
+		Name:      "setup",
+		Usage:     "Show exact DNS setup instructions for a domain",
+		ArgsUsage: "<domain>",
+		Flags: []cli.Flag{},
 		Action: func(ctx context.Context, cmd *cli.Command) error {
+			if cmd.Args().Len() < 1 {
+				return cli.ShowSubcommandHelp(cmd)
+			}
+			in.Domain = cmd.Args().First()
 			return handleDomainsSetup(ctx, in)
 		},
 	}

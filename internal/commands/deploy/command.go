@@ -4,6 +4,7 @@ package deploy
 
 import (
 	"context"
+	"strings"
 
 	"github.com/urfave/cli/v3"
 )
@@ -30,7 +31,7 @@ const (
 	flagVolumeMount         = "volume-mount"
 	flagVolumeStorageClass  = "volume-storage-class"
 	flagZone                = "zone"
-	flagMulticluster        = "multicluster"
+	flagMulticluster        = "multi-cluster"
 	flagMulticlusterMode    = "multicluster-mode"
 	flagBackupEnabled       = "backup-enabled"
 	flagBackupSchedule      = "backup-schedule"
@@ -62,7 +63,7 @@ const (
 	flagYes                 = "yes"
 	flagVersion             = "version"
 	flagWatch               = "watch"
-	flagDestroyVol          = "destroy-volumes"
+
 )
 
 // --- Input structs ------------------------------------------------------
@@ -138,7 +139,6 @@ type DestroyInput struct {
 	App          string
 	Config       string
 	Yes          bool
-	DestroyVol   bool
 }
 
 // DeployRefInput holds common deployment-reference flags.
@@ -281,7 +281,12 @@ func deployFlags(in *DeployInput) []cli.Flag {
 		optionalString(flagVolumeMount, "Storage mount path", &in.VolumeMount),
 		optionalStringVal(flagVolumeStorageClass, "Storage class for volumes (e.g., 'ceph-block')", "ceph-block", &in.VolumeStorageClass),
 		optionalString(flagZone, "Target deployment zone (e.g., 'my-kul-1b', 'my-bki-1a')", &in.Zone),
-		optionalBool(flagMulticluster, "Enable multi-cluster deployment across KL and BKI clusters", &in.Multicluster),
+		&cli.BoolFlag{
+			Name:    flagMulticluster,
+			Aliases: []string{"multicluster"},
+			Usage:   "Enable multi-cluster deployment across KL and BKI clusters",
+			Destination: &in.Multicluster,
+		},
 		optionalStringVal(flagMulticlusterMode, "Multi-cluster mode: 'active-active' or 'active-passive'", "active-passive", &in.MulticlusterMode),
 		optionalBoolVal(flagBackupEnabled, "Enable backups (auto-enabled for active-passive)", true, &in.BackupEnabled),
 		optionalStringVal(flagBackupSchedule, "Backup frequency: 'hourly', 'daily', 'weekly'", "daily", &in.BackupSchedule),
@@ -357,17 +362,33 @@ func statusCommand() *cli.Command {
 func destroyCommand() *cli.Command {
 	var in DestroyInput
 	return &cli.Command{
-		Name:    "delete",
-		Aliases: []string{"destroy", "rm"},
-		Usage:   "Delete a deployment and all associated resources",
+		Name:      "delete",
+		Aliases:   []string{"destroy", "rm"},
+		Usage:     "Delete a deployment and all associated resources",
+		ArgsUsage: "<deployment-id-or-name>",
 		Flags: []cli.Flag{
-			optionalString(flagDeploymentID, "Deployment ID to delete", &in.DeploymentID),
-			optionalString(flagApp, "App name to resolve (alternative to --deployment-id)", &in.App),
-			optionalString(flagConfig, "Config name or path", &in.Config),
+			&cli.StringFlag{
+				Name:        flagDeploymentID,
+				Usage:       "Deployment ID (alternative to positional arg)",
+				Destination: &in.DeploymentID,
+			},
+			&cli.StringFlag{
+				Name:        flagApp,
+				Usage:       "App name (alternative to positional arg)",
+				Destination: &in.App,
+			},
 			optionalBool(flagYes, "Skip confirmation prompt", &in.Yes),
-			optionalBool(flagDestroyVol, "Also delete PVCs. Without this, PVCs are retained.", &in.DestroyVol),
+
 		},
 		Action: func(ctx context.Context, cmd *cli.Command) error {
+			if cmd.Args().Len() >= 1 {
+				arg := cmd.Args().First()
+				if looksLikeUUID(arg) {
+					in.DeploymentID = arg
+				} else {
+					in.App = arg
+				}
+			}
 			return handleDestroyDeployment(ctx, in)
 		},
 	}
@@ -459,4 +480,11 @@ func scaleCommand() *cli.Command {
 			return handleScaleDeployment(ctx, in)
 		},
 	}
+}
+
+// looksLikeUUID reports whether s looks like a standard UUID (xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx).
+// This is used to distinguish positional args that are deployment IDs from those
+// that are app names.
+func looksLikeUUID(s string) bool {
+	return len(s) == 36 && strings.Count(s, "-") == 4
 }

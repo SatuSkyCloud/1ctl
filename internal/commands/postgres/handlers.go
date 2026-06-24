@@ -27,6 +27,53 @@ func handlePostgresCreate(ctx context.Context, in postgresCreateInput) error {
 		database = strings.ReplaceAll(name, "-", "_")
 	}
 
+	// Auto-detect default storage class if not provided.
+	storageClass := in.StorageClass
+	if storageClass == "" {
+		classes, listErr := api.ListStorageClasses()
+		if listErr != nil {
+			return utils.NewError(fmt.Sprintf("failed to list storage classes: %s. Provide --storage-class explicitly.", listErr.Error()), nil)
+		}
+		for _, c := range classes {
+			if c.IsDefault {
+				storageClass = c.Name
+				break
+			}
+		}
+		if storageClass == "" {
+			return utils.NewError("no default storage class found in the cluster. Provide --storage-class explicitly.", nil)
+		}
+	}
+
+	// Auto-calculate WAL size as 20% of storage size, minimum 5Gi.
+	walSize := in.WALSize
+	if walSize == "" {
+		if size, err := parseStorageSize(in.StorageSize); err == nil {
+			calculated := int64(float64(size) * 0.2)
+			minWAL, _ := parseStorageSize("5Gi")
+			if calculated < minWAL {
+				calculated = minWAL
+			}
+			walSize = formatStorageSize(calculated)
+		}
+	}
+
+	// Auto-calculate CPU request as 50% of CPU limit.
+	cpuRequest := in.CPURequest
+	if cpuRequest == "" {
+		if cpuMilli, err := parseCpuMilli(in.CPULimit); err == nil {
+			cpuRequest = formatCpuMilli(maxInt(cpuMilli/2, 100))
+		}
+	}
+
+	// Auto-calculate memory request as 50% of memory limit.
+	memRequest := in.MemRequest
+	if memRequest == "" {
+		if memBytes, err := parseMemoryBytes(in.MemLimit); err == nil {
+			memRequest = formatMemoryBytes(int64(float64(memBytes) * 0.5))
+		}
+	}
+
 	opts := api.PostgresCreateOptions{
 		Name:           name,
 		Database:       database,
@@ -34,11 +81,11 @@ func handlePostgresCreate(ctx context.Context, in postgresCreateInput) error {
 		Version:        in.Version,
 		Instances:      in.Instances,
 		StorageSize:    in.StorageSize,
-		StorageClass:   in.StorageClass,
-		WALStorageSize: in.WALSize,
-		CPURequest:     in.CPURequest,
+		StorageClass:   storageClass,
+		WALStorageSize: walSize,
+		CPURequest:     cpuRequest,
 		CPULimit:       in.CPULimit,
-		MemoryRequest:  in.MemRequest,
+		MemoryRequest:  memRequest,
 		MemoryLimit:    in.MemLimit,
 	}
 	if opts.Instances < 1 {
@@ -391,6 +438,101 @@ func handlePostgresStorageClasses(ctx context.Context) error {
 }
 
 // --- Shared helpers -----------------------------------------------------
+
+// --- Size parsing helpers (no external dependencies) -------------------
+
+// parseStorageSize parses a Kubernetes-style size string (e.g. "10Gi", "512Mi")
+// and returns the value in bytes.
+func parseStorageSize(s string) (int64, error) {
+	if len(s) < 3 {
+		return 0, fmt.Errorf("invalid size: %q", s)
+	}
+	suffix := s[len(s)-2:]
+	num := s[:len(s)-2]
+	var multiplier int64
+	switch suffix {
+	case "Ki":
+		multiplier = 1024
+	case "Mi":
+		multiplier = 1024 * 1024
+	case "Gi":
+		multiplier = 1024 * 1024 * 1024
+	case "Ti":
+		multiplier = 1024 * 1024 * 1024 * 1024
+	default:
+		return 0, fmt.Errorf("unknown storage suffix: %q", suffix)
+	}
+	var val int64
+	if _, err := fmt.Sscanf(num, "%d", &val); err != nil {
+		return 0, fmt.Errorf("invalid size value: %q", num)
+	}
+	return val * multiplier, nil
+}
+
+// formatStorageSize converts bytes to the nearest Gi string (e.g. "2Gi").
+func formatStorageSize(bytes int64) string {
+	const gi = 1024 * 1024 * 1024
+	gib := (bytes + gi/2) / gi
+	if gib == 0 {
+		return "1Gi"
+	}
+	return fmt.Sprintf("%dGi", gib)
+}
+
+// parseCpuMilli parses a Kubernetes CPU string (e.g. "1" = 1000m, "500m" = 500).
+func parseCpuMilli(s string) (int, error) {
+	if strings.HasSuffix(s, "m") {
+		trimmed := strings.TrimSuffix(s, "m")
+		var v int
+		if _, err := fmt.Sscanf(trimmed, "%d", &v); err != nil {
+			return 0, fmt.Errorf("invalid CPU value: %q", s)
+		}
+		return v, nil
+	}
+	var v int
+	if _, err := fmt.Sscanf(s, "%d", &v); err != nil {
+		return 0, fmt.Errorf("invalid CPU value: %q", s)
+	}
+	return v * 1000, nil
+}
+
+// formatCpuMilli formats millicores to a Kubernetes CPU string.
+func formatCpuMilli(milli int) string {
+	if milli < 1000 {
+		return fmt.Sprintf("%dm", milli)
+	}
+	if milli%1000 == 0 {
+		return fmt.Sprintf("%d", milli/1000)
+	}
+	return fmt.Sprintf("%dm", milli)
+}
+
+// parseMemoryBytes parses a Kubernetes memory string (e.g. "1Gi", "512Mi") to bytes.
+func parseMemoryBytes(s string) (int64, error) {
+	return parseStorageSize(s)
+}
+
+// formatMemoryBytes formats bytes to a Kubernetes memory string (nearest Mi or Gi).
+func formatMemoryBytes(bytes int64) string {
+	const mi = 1024 * 1024
+	const gi = 1024 * 1024 * 1024
+	if bytes >= gi {
+		gib := (bytes + gi/2) / gi
+		return fmt.Sprintf("%dGi", gib)
+	}
+	mib := (bytes + mi/2) / mi
+	if mib == 0 {
+		return "128Mi"
+	}
+	return fmt.Sprintf("%dMi", mib)
+}
+
+func maxInt(a, b int) int {
+	if a > b {
+		return a
+	}
+	return b
+}
 
 func validatePostgresName(name string) error {
 	if name == "" {

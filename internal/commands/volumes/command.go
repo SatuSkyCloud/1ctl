@@ -3,6 +3,7 @@ package volumes
 
 import (
 	"context"
+	"strings"
 
 	"github.com/urfave/cli/v3"
 )
@@ -26,8 +27,11 @@ type volumesListInput struct {
 }
 
 type volumesActionInput struct {
-	VolumeID string
-	Yes      bool
+	VolumeID     string
+	DeploymentID string
+	App          string
+	Config       string
+	Yes          bool
 }
 
 // --- Flag constructors --------------------------------------------------
@@ -62,17 +66,18 @@ func Command() *cli.Command {
 func volumesListCommand() *cli.Command {
 	var in volumesListInput
 	return &cli.Command{
-		Name:  "list",
-		Usage: "List persistent volumes for a deployment",
+		Name:      "list",
+		Usage:     "List persistent volumes for a deployment",
+		ArgsUsage: "<deployment-id-or-name>",
 		Flags: []cli.Flag{
 			&cli.StringFlag{
 				Name:        flagDeploymentID,
-				Usage:       "Deployment ID",
+				Usage:       "Deployment ID (alternative to positional arg)",
 				Destination: &in.DeploymentID,
 			},
 			&cli.StringFlag{
 				Name:        flagApp,
-				Usage:       "App name to resolve (alternative to --deployment-id)",
+				Usage:       "App name (alternative to positional arg)",
 				Destination: &in.App,
 			},
 			&cli.StringFlag{
@@ -81,7 +86,17 @@ func volumesListCommand() *cli.Command {
 				Destination: &in.Config,
 			},
 		},
-		Action: func(ctx context.Context, cmd *cli.Command) error { return handleVolumesList(ctx, in) },
+		Action: func(ctx context.Context, cmd *cli.Command) error {
+			if cmd.Args().Len() >= 1 {
+				arg := cmd.Args().First()
+				if looksLikeUUID(arg) {
+					in.DeploymentID = arg
+				} else {
+					in.App = arg
+				}
+			}
+			return handleVolumesList(ctx, in)
+		},
 	}
 }
 
@@ -92,7 +107,26 @@ func volumesInspectCommand() *cli.Command {
 		Aliases: []string{"get"},
 		Usage:   "Inspect PVC and mount state for a volume",
 		Flags: []cli.Flag{
-			requiredString(flagVolumeID, "Volume ID", &in.VolumeID, nil),
+			&cli.StringFlag{
+				Name:        flagVolumeID,
+				Usage:       "Volume ID (alternative to --app or --deployment-id)",
+				Destination: &in.VolumeID,
+			},
+			&cli.StringFlag{
+				Name:        flagApp,
+				Usage:       "App name to resolve (alternative to --volume-id)",
+				Destination: &in.App,
+			},
+			&cli.StringFlag{
+				Name:        flagDeploymentID,
+				Usage:       "Deployment ID (alternative to --volume-id)",
+				Destination: &in.DeploymentID,
+			},
+			&cli.StringFlag{
+				Name:        flagConfig,
+				Usage:       "Config name or path. Default: satusky.toml",
+				Destination: &in.Config,
+			},
 		},
 		Action: func(ctx context.Context, cmd *cli.Command) error { return handleVolumesInspect(ctx, in) },
 	}
@@ -133,4 +167,9 @@ func volumesDestroyCommand() *cli.Command {
 		},
 		Action: func(ctx context.Context, cmd *cli.Command) error { return handleVolumesDestroy(ctx, in) },
 	}
+}
+
+// looksLikeUUID reports whether s looks like a standard UUID (xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx).
+func looksLikeUUID(s string) bool {
+	return len(s) == 36 && strings.Count(s, "-") == 4
 }

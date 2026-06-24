@@ -51,8 +51,12 @@ func handleDeploy(ctx context.Context, in DeployInput) error {
 		return utils.NewError(fmt.Sprintf("deployment failed: %s", err.Error()), nil)
 	}
 
-	publicURL := checkPublicURLReadiness(resp)
-	return reportDeployResult(resp, publicURL, merged.HealthPath, merged.StrictSmoke)
+	ingressID := ""
+	if resp != nil && resp.IngressID != uuid.Nil {
+		ingressID = resp.IngressID.String()
+	}
+	publicURL := deploypkg.WaitForPublicURL(ingressID, resp.Domain)
+	return deploypkg.ReportDeployResult(resp.AppLabel, resp.DeploymentID.String(), resp.Domain, publicURL, merged.HealthPath, merged.StrictSmoke)
 }
 
 type mergedInput struct {
@@ -81,7 +85,7 @@ func mergeConfig(in DeployInput, cfg *config.ProjectConfig) mergedInput {
 	trackSet("health-path", in.HealthPath != "")
 	trackSet("rolling-max-surge", in.RollingMaxSurge != "" && in.RollingMaxSurge != "25%")
 	trackSet("rolling-max-unavailable", in.RollingMaxUnavail != "" && in.RollingMaxUnavail != "25%")
-	trackSet("multicluster", in.Multicluster)
+	trackSet("multi-cluster", in.Multicluster)
 	trackSet("fast", in.Fast)
 
 	if cfg != nil {
@@ -236,7 +240,7 @@ func validateInputs(m mergedInput) error {
 		domain := strings.TrimSpace(strings.ToLower(m.Domain))
 		domain = strings.TrimPrefix(domain, "*.")
 		if domain != "" && domain != "satusky.com" && !strings.HasSuffix(domain, ".satusky.com") {
-			return utils.NewError(fmt.Sprintf("--multicluster is not supported with custom domains yet: %q", m.Domain), nil)
+			return utils.NewError(fmt.Sprintf("--multi-cluster is not supported with custom domains yet: %q", m.Domain), nil)
 		}
 	}
 
@@ -547,115 +551,7 @@ func resolveMachineTag(tag string) ([]string, error) {
 	return hostnames, nil
 }
 
-// --- Deploy Result ------------------------------------------------------
 
-type publicURLReadiness struct {
-	Ready  bool
-	Reason string
-}
-
-func reportDeployResult(resp *api.CreateDeploymentResponse, publicURL publicURLReadiness, smokePath string, strictSmoke bool) error {
-	utils.PrintStatusLine("Deployment ID", resp.DeploymentID.String())
-
-	if !publicURL.Ready || resp.Domain == "" {
-		utils.PrintSuccess("Deployment for %s was accepted by the platform.", resp.AppLabel)
-		if resp.Domain != "" {
-			utils.PrintWarning("Public URL is not ready yet: https://%s", resp.Domain)
-			if publicURL.Reason != "" {
-				utils.PrintStatusLine("Public URL reason", publicURL.Reason)
-			}
-			utils.PrintInfo("Run: 1ctl domains check %s --probe", resp.Domain)
-		}
-		return nil
-	}
-
-	smokeURL := "https://" + resp.Domain
-	smokePaths := deploypkg.SmokePathCandidates(smokePath)
-	utils.PrintInfo("Waiting for app to respond at %s...", smokeURL)
-
-	var smoke deploypkg.PublicURLSmokeResult
-	deadline := time.Now().Add(30 * time.Second)
-	for {
-		smoke = deploypkg.CheckPublicURLSmoke(smokeURL, smokePaths, strictSmoke)
-		if smoke.Ready || time.Now().After(deadline) {
-			break
-		}
-		time.Sleep(3 * time.Second)
-	}
-
-	if smoke.Ready {
-		utils.PrintSuccess("🚀 Deployment for %s is successful! Your app is live at: https://%s", resp.AppLabel, resp.Domain)
-		if smoke.Path != "" {
-			utils.PrintInfo("Verified: %s%s", smokeURL, smoke.Path)
-		}
-	} else {
-		utils.PrintWarning("App is starting up — not reachable yet at https://%s", resp.Domain)
-		utils.PrintInfo("The platform accepted your deployment and pods are starting.")
-		utils.PrintInfo("Check status: 1ctl doctor --deployment-id %s", resp.DeploymentID.String())
-		if strictSmoke {
-			return utils.NewError(fmt.Sprintf("smoke check failed for https://%s: %s", resp.Domain, smoke.Reason), nil)
-		}
-	}
-
-	return nil
-}
-
-func checkPublicURLReadiness(resp *api.CreateDeploymentResponse) publicURLReadiness {
-	if resp == nil || resp.IngressID == uuid.Nil || resp.Domain == "" {
-		return publicURLReadiness{Ready: true}
-	}
-
-	readiness := publicURLReadiness{Ready: true}
-	utils.PrintInfo("Waiting for DNS propagation for https://%s...", resp.Domain)
-	if _, err := api.WaitForIngressDNSStatus(resp.IngressID.String(), 2*time.Minute); err != nil {
-		readiness.Ready = false
-		readiness.Reason = fmt.Sprintf("DNS propagation timed out: %s", err.Error())
-		utils.PrintWarning("DNS is still propagating for https://%s: %s", resp.Domain, err.Error())
-	}
-
-	status, err := api.GetDomainStatus(resp.IngressID.String(), resp.Domain, false)
-	if err != nil {
-		if readiness.Ready {
-			readiness.Ready = false
-			readiness.Reason = fmt.Sprintf("domain status unavailable: %s", err.Error())
-		}
-		return readiness
-	}
-	if !domainStatusReady(status) {
-		readiness.Ready = false
-		readiness.Reason = domainStatusReason(status)
-	}
-	return readiness
-}
-
-func domainStatusReady(status *api.DomainStatusResponse) bool {
-	return status != nil &&
-		status.Attached &&
-		status.Route.Attached &&
-		status.DNS.Status == api.DNSStatusResolved
-}
-
-func domainStatusReason(status *api.DomainStatusResponse) string {
-	if status == nil {
-		return "domain status unavailable"
-	}
-	if !status.Attached {
-		return "domain is not attached in backend metadata"
-	}
-	if !status.Route.Attached {
-		if status.Route.Message != "" {
-			return "route is not attached: " + status.Route.Message
-		}
-		return "route is not attached"
-	}
-	if status.DNS.Status != api.DNSStatusResolved {
-		if status.DNS.Message != "" {
-			return fmt.Sprintf("DNS is %s: %s", status.DNS.Status, status.DNS.Message)
-		}
-		return fmt.Sprintf("DNS is %s", status.DNS.Status)
-	}
-	return "public URL is not ready"
-}
 
 // --- List / Get ---------------------------------------------------------
 
@@ -842,16 +738,14 @@ func handleDestroyDeployment(ctx context.Context, in DestroyInput) error {
 	}
 
 	utils.PrintInfo("Destroying deployment %s...", deploymentID)
-	if in.DestroyVol {
-		statuses, volErr := api.GetDeploymentVolumeLifecycleStatuses(deploymentID)
-		if volErr != nil {
-			utils.PrintWarning("Could not list volumes for destruction: %s", volErr.Error())
-		} else {
-			for _, v := range statuses {
-				utils.PrintInfo("Destroying volume %s (PVC: %s)...", v.Volume.VolumeName, v.PVC.Name)
-				if _, delErr := api.DeleteVolumePVC(v.Volume.VolumeID.String()); delErr != nil {
-					utils.PrintWarning("Failed to destroy volume %s: %s", v.Volume.VolumeName, delErr.Error())
-				}
+	statuses, volErr := api.GetDeploymentVolumeLifecycleStatuses(deploymentID)
+	if volErr != nil {
+		utils.PrintWarning("Could not list volumes for destruction: %s", volErr.Error())
+	} else {
+		for _, v := range statuses {
+			utils.PrintInfo("Destroying volume %s (PVC: %s)...", v.Volume.VolumeName, v.PVC.Name)
+			if _, delErr := api.DeleteVolumePVC(v.Volume.VolumeID.String()); delErr != nil {
+				utils.PrintWarning("Failed to destroy volume %s: %s", v.Volume.VolumeName, delErr.Error())
 			}
 		}
 	}

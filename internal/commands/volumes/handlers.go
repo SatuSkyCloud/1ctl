@@ -42,7 +42,29 @@ func handleVolumesList(ctx context.Context, in volumesListInput) error {
 }
 
 func handleVolumesInspect(ctx context.Context, in volumesActionInput) error {
-	status, err := api.GetVolumeLifecycleStatus(in.VolumeID)
+	volumeID := in.VolumeID
+	if volumeID == "" && (in.App != "" || in.DeploymentID != "") {
+		deploymentID, err := deploy.ResolveDeploymentID(in.DeploymentID, in.App, in.Config)
+		if err != nil {
+			return err
+		}
+		statuses, err := api.GetDeploymentVolumeLifecycleStatuses(deploymentID)
+		if err != nil {
+			return utils.NewError(fmt.Sprintf("failed to list volumes: %s", err.Error()), nil)
+		}
+		switch len(statuses) {
+		case 0:
+			return utils.NewError("no volumes found for this deployment", nil)
+		case 1:
+			volumeID = statuses[0].Volume.VolumeID.String()
+		default:
+			return utils.NewError(fmt.Sprintf("deployment has %d volumes — use --volume-id to specify one", len(statuses)), nil)
+		}
+	}
+	if volumeID == "" {
+		return utils.NewError("provide --volume-id, --app, or --deployment-id", nil)
+	}
+	status, err := api.GetVolumeLifecycleStatus(volumeID)
 	if err != nil {
 		return utils.NewError(fmt.Sprintf("failed to inspect volume: %s", err.Error()), nil)
 	}

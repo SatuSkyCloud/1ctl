@@ -17,7 +17,7 @@ import (
 
 // --- Domain listing -----------------------------------------------------
 
-func handleDomainsList(ctx context.Context) error {
+func handleDomainsList(ctx context.Context, appFilter string) error {
 	if _, err := satuskyctx.GetCurrentNamespaceOrError(); err != nil {
 		return err
 	}
@@ -28,6 +28,9 @@ func handleDomainsList(ctx context.Context) error {
 
 	entries := make([]domainListEntry, 0, len(ingresses))
 	for _, ing := range ingresses {
+		if appFilter != "" && ing.AppLabel != appFilter {
+			continue
+		}
 		entries = append(entries, domainListEntry{
 			DomainName: ing.DomainName,
 			AppLabel:   ing.AppLabel,
@@ -55,7 +58,7 @@ func handleDomainsList(ctx context.Context) error {
 		}
 	}
 
-	if utils.PrintListOrJSON(entries, "No domains yet. Add one with: 1ctl domains add --domain <domain> --app <app>") {
+	if utils.PrintListOrJSON(entries, "No domains yet. Add one with: 1ctl domains add <domain> --app <app>") {
 		return nil
 	}
 
@@ -171,9 +174,9 @@ func handleDomainsAdd(ctx context.Context, in domainsAddInput) error {
 		if status, statusErr := api.GetDomainStatus(ing.IngressID.String(), domain, false); statusErr == nil {
 			printDomainSetup(status)
 		} else {
-			utils.PrintInfo("Custom domain: run '1ctl domains setup --domain %s' for exact DNS records.", domain)
+			utils.PrintInfo("Custom domain: run '1ctl domains setup %s' for exact DNS records.", domain)
 		}
-		utils.PrintInfo("  1ctl domains check --domain %s", domain)
+		utils.PrintInfo("  1ctl domains check %s", domain)
 		return nil
 	}
 
@@ -196,9 +199,9 @@ func handleDomainsAdd(ctx context.Context, in domainsAddInput) error {
 		if status, statusErr := api.GetDomainStatus(resp.IngressID.String(), domain, false); statusErr == nil {
 			printDomainSetup(status)
 		} else {
-			utils.PrintInfo("Custom domain: run '1ctl domains setup --domain %s' for exact DNS records.", domain)
+			utils.PrintInfo("Custom domain: run '1ctl domains setup %s' for exact DNS records.", domain)
 		}
-		utils.PrintInfo("  1ctl domains check --domain %s", domain)
+		utils.PrintInfo("  1ctl domains check %s", domain)
 	}
 	return nil
 }
@@ -859,7 +862,7 @@ func printDomainStatus(status *api.DomainStatusResponse) {
 	utils.PrintStatusLine("TLS", domainTLSText(status.TLS))
 	utils.PrintStatusLine("HTTP", domainHTTPText(status.Reachability))
 	if status.DNS.Status != api.DNSStatusResolved {
-		utils.PrintInfo("Run setup details with: 1ctl domains setup --domain %s", status.DomainName)
+		utils.PrintInfo("Run setup details with: 1ctl domains setup %s", status.DomainName)
 	}
 }
 
@@ -883,7 +886,7 @@ func printDomainSetup(status *api.DomainStatusResponse) {
 	utils.PrintStatusLine("Type", recordType)
 	utils.PrintStatusLine("Name", status.DomainName)
 	utils.PrintStatusLine("Value", status.DNS.ExpectedIP)
-	utils.PrintInfo("Next check: 1ctl domains check --domain %s --probe", status.DomainName)
+	utils.PrintInfo("Next check: 1ctl domains check %s --probe", status.DomainName)
 }
 
 func domainRouteText(status api.DomainRouteStatus) string {
