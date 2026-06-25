@@ -19,22 +19,34 @@ func main() {
 	mux.HandleFunc("/", rootHandler)
 
 	log.Printf("server listening on 0.0.0.0:%s", port)
-	if err := http.ListenAndServe("0.0.0.0:"+port, mux); err != nil {
+	server := &http.Server{
+		Addr:              "0.0.0.0:" + port,
+		Handler:           mux,
+		ReadHeaderTimeout: 5 * time.Second,
+		ReadTimeout:       10 * time.Second,
+		WriteTimeout:      10 * time.Second,
+		IdleTimeout:       60 * time.Second,
+	}
+	if err := server.ListenAndServe(); err != nil {
 		log.Fatalf("server exited: %v", err)
 	}
 }
 
 func healthHandler(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(map[string]any{
+	if err := json.NewEncoder(w).Encode(map[string]any{
 		"status": "ok",
 		"time":   time.Now().UTC(),
-	})
+	}); err != nil {
+		log.Printf("failed to encode health response: %v", err)
+	}
 }
 
 func rootHandler(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(map[string]string{
+	if err := json.NewEncoder(w).Encode(map[string]string{
 		"message": "go-backend is running",
-	})
+	}); err != nil {
+		log.Printf("failed to encode root response: %v", err)
+	}
 }

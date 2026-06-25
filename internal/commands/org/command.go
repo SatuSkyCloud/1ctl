@@ -40,10 +40,6 @@ type orgTeamRoleInput struct {
 	Role      string
 }
 
-type orgTeamRemoveInput struct {
-	OrgUserID string
-}
-
 // --- Command tree -------------------------------------------------------
 
 // Command returns the root org command tree.

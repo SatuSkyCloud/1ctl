@@ -6,8 +6,8 @@ import (
 	"strings"
 
 	"1ctl/internal/api"
-	"1ctl/internal/deploy"
 	satuskyctx "1ctl/internal/context"
+	"1ctl/internal/deploy"
 	"1ctl/internal/utils"
 
 	"github.com/google/uuid"
@@ -29,10 +29,7 @@ func handleCreateSecret(ctx context.Context, in secretCreateInput) error {
 	// Collect key-value pairs from BOTH --kv/--env flags AND positional args.
 	// This matches Fly.io's `fly secrets set KEY=VALUE` convention where
 	// secrets are passed as positional arguments, not flags.
-	allKV := in.KV
-	for _, arg := range in.Args {
-		allKV = append(allKV, arg)
-	}
+	allKV := append(in.KV, in.Args...)
 
 	if len(allKV) == 0 {
 		return utils.NewError("at least one KEY=VALUE pair is required", nil)

@@ -8,10 +8,6 @@ import (
 	"github.com/urfave/cli/v3"
 )
 
-// --- Flag name constants ------------------------------------------------
-
-const flagAppName = "app-name"
-
 // --- Input structs ------------------------------------------------------
 
 type completionWriterInput struct {

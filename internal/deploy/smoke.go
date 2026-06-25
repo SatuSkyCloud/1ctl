@@ -5,10 +5,11 @@ import (
 	"fmt"
 	"net"
 	"net/http"
-	"os/exec"
-	"runtime"
+	"net/url"
 	"strings"
 	"time"
+
+	"github.com/pkg/browser"
 )
 
 // PublicURLSmokeResult holds the outcome of a single smoke-test probe.
@@ -86,7 +87,11 @@ func CheckPublicURLSmokeAtPath(baseURL, path string, strict bool) PublicURLSmoke
 	if err != nil {
 		return PublicURLSmokeResult{Ready: false, Reason: fmt.Sprintf("request failed: %s", err.Error()), Path: path}
 	}
-	defer func() { _ = resp.Body.Close() }()
+	defer func() {
+		if closeErr := resp.Body.Close(); closeErr != nil {
+			_ = closeErr
+		}
+	}()
 
 	if resp.StatusCode >= http.StatusBadRequest {
 		if !strict && isReachabilityStatus(resp.StatusCode) {
@@ -122,20 +127,18 @@ func isReachabilityStatus(code int) bool {
 }
 
 // OpenBrowser opens the given URL in the user's default browser.
-func OpenBrowser(url string) error {
-	if url == "" {
+func OpenBrowser(targetURL string) error {
+	if targetURL == "" {
 		return fmt.Errorf("no URL to open")
 	}
-	var cmd *exec.Cmd
-	switch runtime.GOOS {
-	case "darwin":
-		cmd = exec.Command("open", url)
-	case "linux":
-		cmd = exec.Command("xdg-open", url)
-	case "windows":
-		cmd = exec.Command("cmd", "/c", "start", "", url)
-	default:
-		return fmt.Errorf("unsupported OS: %s", runtime.GOOS)
+	parsed, err := url.ParseRequestURI(targetURL)
+	if err != nil {
+		return fmt.Errorf("invalid URL: %w", err)
 	}
-	return cmd.Start()
+	switch parsed.Scheme {
+	case "http", "https":
+		return browser.OpenURL(parsed.String())
+	default:
+		return fmt.Errorf("unsupported URL scheme: %s", parsed.Scheme)
+	}
 }

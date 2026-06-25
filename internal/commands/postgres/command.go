@@ -13,29 +13,29 @@ var postgresNamePattern = regexp.MustCompile(`^[a-z0-9]([-a-z0-9]*[a-z0-9])?$`)
 // --- Flag name constants ------------------------------------------------
 
 const (
-	flagName          = "name"
-	flagDatabase      = "database"
-	flagUser          = "user"
-	flagVersion       = "version"
-	flagInstances     = "instances"
-	flagStorageSize   = "storage-size"
-	flagStorageClass  = "storage-class"
-	flagWALSize       = "wal-storage-size"
-	flagCPURequest    = "cpu-request"
-	flagCPULimit      = "cpu"
-	flagMemRequest    = "memory-request"
-	flagMemLimit      = "memory"
-	flagYes           = "yes"
-	flagBindAddr      = "bind-addr"
-	flagLocalPort     = "local-port"
-	flagSuperuser     = "superuser"
-	flagCreatedb      = "createdb"
-	flagCreaterole    = "createrole"
-	flagReplication   = "replication"
-	flagBypassRLS     = "bypassrls"
-	flagComment       = "comment"
-	flagCIDR          = "cidr"
-	flagDescription   = "description"
+	flagName         = "name"
+	flagDatabase     = "database"
+	flagUser         = "user"
+	flagVersion      = "version"
+	flagInstances    = "instances"
+	flagStorageSize  = "storage-size"
+	flagStorageClass = "storage-class"
+	flagWALSize      = "wal-storage-size"
+	flagCPURequest   = "cpu-request"
+	flagCPULimit     = "cpu"
+	flagMemRequest   = "memory-request"
+	flagMemLimit     = "memory"
+	flagYes          = "yes"
+	flagBindAddr     = "bind-addr"
+	flagLocalPort    = "local-port"
+	flagSuperuser    = "superuser"
+	flagCreatedb     = "createdb"
+	flagCreaterole   = "createrole"
+	flagReplication  = "replication"
+	flagBypassRLS    = "bypassrls"
+	flagComment      = "comment"
+	flagCIDR         = "cidr"
+	flagDescription  = "description"
 )
 
 // --- Input structs ------------------------------------------------------
@@ -75,14 +75,14 @@ type postgresProxyInput struct {
 }
 
 type postgresUsersCreateInput struct {
-	StorageID  string
-	Username   string
-	Superuser  bool
-	Createdb   bool
-	Createrole bool
+	StorageID   string
+	Username    string
+	Superuser   bool
+	Createdb    bool
+	Createrole  bool
 	Replication bool
-	BypassRLS  bool
-	Comment    string
+	BypassRLS   bool
+	Comment     string
 }
 
 type postgresUsersDeleteInput struct {
@@ -114,15 +114,6 @@ type postgresFirewallRemoveInput struct {
 }
 
 // --- Flag constructors --------------------------------------------------
-
-func requiredStringFlag(name, usage string, dest *string) *cli.StringFlag {
-	return &cli.StringFlag{
-		Name:        name,
-		Usage:       usage,
-		Destination: dest,
-		Required:    true,
-	}
-}
 
 func optionalStringFlag(name, usage string, dest *string, def string) *cli.StringFlag {
 	return &cli.StringFlag{

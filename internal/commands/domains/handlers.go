@@ -120,7 +120,10 @@ func handleDomainsAdd(ctx context.Context, in domainsAddInput) error {
 		return utils.NewError("invalid --port value", err)
 	}
 
-	existingIngress, _ := api.GetIngressByDeploymentID(dep.DeploymentID.String())
+	existingIngress, err := api.GetIngressByDeploymentID(dep.DeploymentID.String())
+	if err != nil && !strings.Contains(strings.ToLower(err.Error()), "not found") {
+		return utils.NewError(fmt.Sprintf("failed to inspect existing domain setup: %s", err.Error()), nil)
+	}
 
 	dnsCfg := api.DnsConfigDefault
 	isSatuskyHost := strings.HasSuffix(strings.ToLower(domain), ".satusky.com") || strings.ToLower(domain) == "satusky.com"

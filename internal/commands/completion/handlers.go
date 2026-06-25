@@ -179,10 +179,13 @@ Register-ArgumentCompleter -Native -CommandName '%[1]s' -ScriptBlock {
 	return err
 }
 
-func handleCompletionInstall(ctx context.Context, rootWriter io.Writer) error {
+func handleCompletionInstall(ctx context.Context, rootWriter io.Writer) (err error) {
 	appName := "1ctl"
 	shell := os.Getenv("SHELL")
-	home, _ := os.UserHomeDir()
+	home, err := os.UserHomeDir()
+	if err != nil {
+		return utils.NewError(fmt.Sprintf("failed to resolve home directory: %s", err.Error()), nil)
+	}
 
 	type shellInfo struct {
 		name        string
@@ -221,9 +224,9 @@ func handleCompletionInstall(ctx context.Context, rootWriter io.Writer) error {
 	case strings.Contains(shell, "fish"):
 		installDir := filepath.Join(home, ".config", "fish", "completions")
 		si = shellInfo{
-			name: "fish",
-			dir:  installDir,
-			file: appName + ".fish",
+			name:   "fish",
+			dir:    installDir,
+			file:   appName + ".fish",
 			config: "(auto-loaded by fish, nothing to add)",
 			scriptFunc: func(w io.Writer) error {
 				return handleFishCompletion(ctx, completionWriterInput{Writer: w, Name: appName})
@@ -231,9 +234,15 @@ func handleCompletionInstall(ctx context.Context, rootWriter io.Writer) error {
 		}
 	case strings.Contains(shell, "pwsh") || strings.Contains(shell, "powershell"):
 		utils.PrintInfo("PowerShell detected. Use:")
-		fmt.Println()
-		fmt.Println("  1ctl completion powershell >> $PROFILE")
-		fmt.Println()
+		if _, err := fmt.Fprintln(rootWriter); err != nil {
+			return err
+		}
+		if _, err := fmt.Fprintln(rootWriter, "  1ctl completion powershell >> $PROFILE"); err != nil {
+			return err
+		}
+		if _, err := fmt.Fprintln(rootWriter); err != nil {
+			return err
+		}
 		utils.PrintInfo("Or run in zsh, bash, or fish.")
 		return nil
 	default:
@@ -242,30 +251,44 @@ func handleCompletionInstall(ctx context.Context, rootWriter io.Writer) error {
 		return nil
 	}
 
-	if err := os.MkdirAll(si.dir, 0755); err != nil {
+	if err := os.MkdirAll(si.dir, 0750); err != nil {
 		return utils.NewError(fmt.Sprintf("failed to create %s: %s", si.dir, err.Error()), nil)
 	}
 
 	installPath := filepath.Join(si.dir, si.file)
-	f, err := os.Create(installPath)
+	f, err := os.Create(installPath) // #nosec G304 -- installPath is confined to the user's completion directory
 	if err != nil {
 		return utils.NewError(fmt.Sprintf("failed to write %s: %s", installPath, err.Error()), nil)
 	}
-	defer f.Close()
+	defer func() {
+		if closeErr := f.Close(); closeErr != nil && err == nil {
+			err = utils.NewError(fmt.Sprintf("failed to close %s: %s", installPath, closeErr.Error()), nil)
+		}
+	}()
 
 	if err := si.scriptFunc(f); err != nil {
 		return err
 	}
 
 	utils.PrintSuccess("Installed %s completion at %s", si.name, installPath)
-	fmt.Fprintln(rootWriter)
-	fmt.Fprintf(rootWriter, "  # Add this ONE line to your ~/.%src and never touch it again:\n", si.name)
-	fmt.Fprintf(rootWriter, "  %s\n", si.config)
-	fmt.Fprintln(rootWriter)
+	if _, err := fmt.Fprintln(rootWriter); err != nil {
+		return err
+	}
+	if _, err := fmt.Fprintf(rootWriter, "  # Add this ONE line to your ~/.%src and never touch it again:\n", si.name); err != nil {
+		return err
+	}
+	if _, err := fmt.Fprintf(rootWriter, "  %s\n", si.config); err != nil {
+		return err
+	}
+	if _, err := fmt.Fprintln(rootWriter); err != nil {
+		return err
+	}
 	if si.postInstall != "" {
 		utils.PrintInfo("Then run: %s", si.postInstall)
 	}
-	fmt.Fprintln(rootWriter)
+	if _, err := fmt.Fprintln(rootWriter); err != nil {
+		return err
+	}
 	utils.PrintInfo("Completions auto-update when 1ctl changes \u2014 no re-install needed.")
 	return nil
 }

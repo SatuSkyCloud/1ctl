@@ -2,9 +2,11 @@ package postgres
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"io"
 	"net"
+	"net/url"
 	"os"
 	"os/exec"
 	"os/signal"
@@ -50,7 +52,10 @@ func handlePostgresCreate(ctx context.Context, in postgresCreateInput) error {
 	if walSize == "" {
 		if size, err := parseStorageSize(in.StorageSize); err == nil {
 			calculated := int64(float64(size) * 0.2)
-			minWAL, _ := parseStorageSize("5Gi")
+			minWAL, err := parseStorageSize("5Gi")
+			if err != nil {
+				return utils.NewError(fmt.Sprintf("failed to determine minimum WAL size: %s", err.Error()), nil)
+			}
 			if calculated < minWAL {
 				calculated = minWAL
 			}
@@ -196,7 +201,12 @@ func handlePostgresConnect(ctx context.Context, in postgresConnectInput) error {
 		return utils.NewError("no connection URI available for this Postgres cluster", nil)
 	}
 
-	psqlCmd := exec.Command("psql", uri)
+	psqlCmd := exec.Command("psql")
+	if env, err := postgresEnvFromURI(uri); err == nil {
+		psqlCmd.Env = append(os.Environ(), env...)
+	} else {
+		return utils.NewError(fmt.Sprintf("failed to prepare psql connection: %s", err.Error()), nil)
+	}
 	psqlCmd.Stdin = os.Stdin
 	psqlCmd.Stdout = os.Stdout
 	psqlCmd.Stderr = os.Stderr
@@ -673,7 +683,11 @@ func runTCPProxy(localAddr, remoteAddr string) error {
 	if err != nil {
 		return utils.NewError(fmt.Sprintf("failed to listen on %s: %s", localAddr, err.Error()), nil)
 	}
-	defer func() { _ = listener.Close() }()
+	defer func() {
+		if closeErr := listener.Close(); closeErr != nil {
+			utils.PrintWarning("failed to close proxy listener: %s", closeErr.Error())
+		}
+	}()
 
 	utils.PrintSuccess("Proxy listening on %s -> %s", localAddr, remoteAddr)
 	utils.PrintInfo("Connect with: psql postgresql://USER:PASSWORD@%s/DBNAME?sslmode=require", localAddr)
@@ -704,23 +718,65 @@ func runTCPProxy(localAddr, remoteAddr string) error {
 }
 
 func proxyConnection(local net.Conn, remoteAddr string) {
-	defer func() { _ = local.Close() }()
+	defer func() {
+		if closeErr := local.Close(); closeErr != nil {
+			utils.PrintWarning("failed to close local proxy connection: %s", closeErr.Error())
+		}
+	}()
 
 	remote, err := net.Dial("tcp", remoteAddr)
 	if err != nil {
 		_, _ = fmt.Fprintf(os.Stderr, "failed to connect to %s: %s\n", remoteAddr, err.Error())
 		return
 	}
-	defer func() { _ = remote.Close() }()
+	defer func() {
+		if closeErr := remote.Close(); closeErr != nil {
+			utils.PrintWarning("failed to close remote proxy connection: %s", closeErr.Error())
+		}
+	}()
 
 	done := make(chan struct{}, 2)
 	go func() {
-		_, _ = io.Copy(remote, local)
+		if _, copyErr := io.Copy(remote, local); copyErr != nil && !errors.Is(copyErr, net.ErrClosed) {
+			utils.PrintWarning("proxy copy to remote failed: %s", copyErr.Error())
+		}
 		done <- struct{}{}
 	}()
 	go func() {
-		_, _ = io.Copy(local, remote)
+		if _, copyErr := io.Copy(local, remote); copyErr != nil && !errors.Is(copyErr, net.ErrClosed) {
+			utils.PrintWarning("proxy copy to local failed: %s", copyErr.Error())
+		}
 		done <- struct{}{}
 	}()
 	<-done
+}
+
+func postgresEnvFromURI(rawURL string) ([]string, error) {
+	parsed, err := url.Parse(rawURL)
+	if err != nil {
+		return nil, err
+	}
+
+	env := make([]string, 0, 6)
+	if host := parsed.Hostname(); host != "" {
+		env = append(env, "PGHOST="+host)
+	}
+	if port := parsed.Port(); port != "" {
+		env = append(env, "PGPORT="+port)
+	}
+	if parsed.User != nil {
+		if user := parsed.User.Username(); user != "" {
+			env = append(env, "PGUSER="+user)
+		}
+		if password, ok := parsed.User.Password(); ok {
+			env = append(env, "PGPASSWORD="+password)
+		}
+	}
+	if database := strings.TrimPrefix(parsed.Path, "/"); database != "" {
+		env = append(env, "PGDATABASE="+database)
+	}
+	if sslMode := parsed.Query().Get("sslmode"); sslMode != "" {
+		env = append(env, "PGSSLMODE="+sslMode)
+	}
+	return env, nil
 }

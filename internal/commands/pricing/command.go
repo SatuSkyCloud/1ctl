@@ -58,15 +58,6 @@ func requiredString(name, usage string, dest *string, validate func(string) erro
 	}
 }
 
-func optionalString(name, usage string, dest *string, validate func(string) error) *cli.StringFlag {
-	return &cli.StringFlag{
-		Name:        name,
-		Usage:       usage,
-		Destination: dest,
-		Validator:   validate,
-	}
-}
-
 // --- Input structs ------------------------------------------------------
 // Each struct IS the binding target.  Flag Destinations write directly into
 // struct fields — no per-flag variables, no constructor, no manual wiring.
@@ -98,9 +89,8 @@ type pricingCalculateInput struct {
 // Command returns the root pricing command tree.
 func Command() *cli.Command {
 	return &cli.Command{
-		Name:    "pricing",
-		
-		Usage:   "View machine pricing configurations",
+		Name:  "pricing",
+		Usage: "View machine pricing configurations",
 		Commands: []*cli.Command{
 			pricingListCommand(),
 			pricingGetCommand(),
@@ -197,26 +187,38 @@ func pricingLookupShellComplete(ctx context.Context, cmd *cli.Command) {
 	if flag, ok := currentFlagAssignment(current); ok {
 		switch flag {
 		case flagType:
-			printCompletionValues(cmd, validMachineTypes, "machine type", "--"+flagType+"=")
+			if err := printCompletionValues(cmd, validMachineTypes, "machine type", "--"+flagType+"="); err != nil {
+				return
+			}
 			return
 		case flagSLA:
-			printCompletionValues(cmd, validSLATiers, "SLA tier", "--"+flagSLA+"=")
+			if err := printCompletionValues(cmd, validSLATiers, "SLA tier", "--"+flagSLA+"="); err != nil {
+				return
+			}
 			return
 		case flagRegion:
-			printRegionCompletionValues(cmd, "--"+flagRegion+"=")
+			if err := printRegionCompletionValues(cmd, "--"+flagRegion+"="); err != nil {
+				return
+			}
 			return
 		}
 	}
 
 	switch currentFlagName(current) {
 	case flagType:
-		printCompletionValues(cmd, validMachineTypes, "machine type", "")
+		if err := printCompletionValues(cmd, validMachineTypes, "machine type", ""); err != nil {
+			return
+		}
 		return
 	case flagSLA:
-		printCompletionValues(cmd, validSLATiers, "SLA tier", "")
+		if err := printCompletionValues(cmd, validSLATiers, "SLA tier", ""); err != nil {
+			return
+		}
 		return
 	case flagRegion:
-		printRegionCompletionValues(cmd, "")
+		if err := printRegionCompletionValues(cmd, ""); err != nil {
+			return
+		}
 		return
 	}
 
@@ -227,11 +229,17 @@ func pricingLookupShellComplete(ctx context.Context, cmd *cli.Command) {
 
 	switch currentFlagName(previous) {
 	case flagType:
-		printCompletionValues(cmd, validMachineTypes, "machine type", "")
+		if err := printCompletionValues(cmd, validMachineTypes, "machine type", ""); err != nil {
+			return
+		}
 	case flagSLA:
-		printCompletionValues(cmd, validSLATiers, "SLA tier", "")
+		if err := printCompletionValues(cmd, validSLATiers, "SLA tier", ""); err != nil {
+			return
+		}
 	case flagRegion:
-		printRegionCompletionValues(cmd, "")
+		if err := printRegionCompletionValues(cmd, ""); err != nil {
+			return
+		}
 		return
 	default:
 		cli.DefaultCompleteWithFlags(ctx, cmd)
@@ -264,17 +272,19 @@ func currentFlagName(arg string) string {
 	return strings.TrimPrefix(arg, "--")
 }
 
-func printCompletionValues(cmd *cli.Command, values []string, description string, prefix string) {
+func printCompletionValues(cmd *cli.Command, values []string, description string, prefix string) error {
 	for _, v := range values {
-		fmt.Fprintf(cmd.Root().Writer, "%s%s:%s\n", prefix, v, description)
+		if _, err := fmt.Fprintf(cmd.Root().Writer, "%s%s:%s\n", prefix, v, description); err != nil {
+			return err
+		}
 	}
+	return nil
 }
 
-func printRegionCompletionValues(cmd *cli.Command, prefix string) {
+func printRegionCompletionValues(cmd *cli.Command, prefix string) error {
 	zones, err := getAvailableZones()
 	if err != nil || len(zones) == 0 {
-		printCompletionValues(cmd, []string{"my-kul-1b", "my-bki-1a"}, "region", prefix)
-		return
+		return printCompletionValues(cmd, []string{"my-kul-1b", "my-bki-1a"}, "region", prefix)
 	}
 
 	seen := make(map[string]bool, len(zones))
@@ -288,6 +298,9 @@ func printRegionCompletionValues(cmd *cli.Command, prefix string) {
 		if description == "" {
 			description = "region"
 		}
-		fmt.Fprintf(cmd.Root().Writer, "%s%s:%s\n", prefix, zone.Value, description)
+		if _, err := fmt.Fprintf(cmd.Root().Writer, "%s%s:%s\n", prefix, zone.Value, description); err != nil {
+			return err
+		}
 	}
+	return nil
 }

@@ -35,18 +35,6 @@ type volumesActionInput struct {
 	Yes          bool
 }
 
-// --- Flag constructors --------------------------------------------------
-
-func requiredString(name, usage string, dest *string, validate func(string) error) *cli.StringFlag {
-	return &cli.StringFlag{
-		Name:        name,
-		Usage:       usage,
-		Destination: dest,
-		Required:    true,
-		Validator:   validate,
-	}
-}
-
 // --- Command tree -------------------------------------------------------
 
 // Command returns the root volumes command tree.

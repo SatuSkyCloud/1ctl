@@ -10,41 +10,41 @@ import (
 // --- Flag name constants ------------------------------------------------
 
 const (
-	flagName          = "name"
-	flagType          = "type"
-	flagRegion        = "region"
-	flagZone          = "zone"
-	flagIP            = "ip"
-	flagTalosVersion  = "talos-version"
-	flagK8sVersion    = "kubernetes-version"
-	flagCPU           = "cpu"
-	flagMemory        = "memory"
-	flagStorage       = "storage"
-	flagGPUCount      = "gpu-count"
-	flagGPUType       = "gpu-type"
-	flagBandwidth     = "bandwidth"
-	flagBrand         = "brand"
-	flagModel         = "model"
-	flagManufacturer  = "manufacturer"
-	flagFormFactor    = "form-factor"
-	flagMonetized     = "monetized"
-	flagRecommended   = "recommended"
-	flagPricingTier   = "pricing-tier"
-	flagOrganization  = "organization-id"
-	flagYes           = "yes"
-	flagRefresh       = "refresh"
-	flagSource        = "source"
-	flagTail          = "tail"
-	flagSince         = "since"
-	flagFilter        = "filter"
-	flagComponent     = "component"
-	flagPrev          = "previous"
-	flagMinCPU        = "min-cpu"
-	flagMinMemory     = "min-memory"
-	flagGPU           = "gpu"
-	flagUsageID       = "usage-id"
-	flagKey           = "key"
-	flagValue         = "value"
+	flagName         = "name"
+	flagType         = "type"
+	flagRegion       = "region"
+	flagZone         = "zone"
+	flagIP           = "ip"
+	flagTalosVersion = "talos-version"
+	flagK8sVersion   = "kubernetes-version"
+	flagCPU          = "cpu"
+	flagMemory       = "memory"
+	flagStorage      = "storage"
+	flagGPUCount     = "gpu-count"
+	flagGPUType      = "gpu-type"
+	flagBandwidth    = "bandwidth"
+	flagBrand        = "brand"
+	flagModel        = "model"
+	flagManufacturer = "manufacturer"
+	flagFormFactor   = "form-factor"
+	flagMonetized    = "monetized"
+	flagRecommended  = "recommended"
+	flagPricingTier  = "pricing-tier"
+	flagOrganization = "organization-id"
+	flagYes          = "yes"
+	flagRefresh      = "refresh"
+	flagSource       = "source"
+	flagTail         = "tail"
+	flagSince        = "since"
+	flagFilter       = "filter"
+	flagComponent    = "component"
+	flagPrev         = "previous"
+	flagMinCPU       = "min-cpu"
+	flagMinMemory    = "min-memory"
+	flagGPU          = "gpu"
+	flagUsageID      = "usage-id"
+	flagKey          = "key"
+	flagValue        = "value"
 )
 
 // --- Input structs ------------------------------------------------------
@@ -93,11 +93,11 @@ type machineInspectInput struct {
 }
 
 type machineLogsInput struct {
-	MachineID string
-	Sources   []string
-	Tail      int
-	Since     string
-	Filter    string
+	MachineID  string
+	Sources    []string
+	Tail       int
+	Since      string
+	Filter     string
 	Components []string
 	Previous   bool
 }
@@ -122,15 +122,6 @@ type machineUsageIDInput struct {
 }
 
 // --- Flag constructors --------------------------------------------------
-
-func requiredStringFlag(name, usage string, dest *string) *cli.StringFlag {
-	return &cli.StringFlag{
-		Name:        name,
-		Usage:       usage,
-		Destination: dest,
-		Required:    true,
-	}
-}
 
 func optionalStringFlag(name, usage string, dest *string) *cli.StringFlag {
 	return &cli.StringFlag{
