@@ -1,7 +1,14 @@
+# Go Backend API — minimal example
+# Demonstrates: Dockerfile path, environment vars, rolling updates
+
 [app]
   name       = "my-api"
   port       = 8080
-  dockerfile = "Dockerfile"
   cpu        = "0.5"
   memory     = "256Mi"
 
+[build]
+  dockerfile = "Dockerfile"
+
+[deploy]
+  strategy   = "rolling"

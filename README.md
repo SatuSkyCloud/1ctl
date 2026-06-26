@@ -146,7 +146,8 @@ cd your-project
 # Block until pods are Running (5min default timeout)
 1ctl deploy --cpu-request 250m --cpu-limit 1 --memory 1Gi --wait
 
-# JSON output (global flag — works on deploy list/get/status, env list, secret list, machine list, token list)
+# JSON output (global flag — works on deploy, env, secret, machine, token, ingress, service,
+# credits, audit, notifications, pricing, cluster, domain, postgres, issuer, volumes)
 1ctl --output json deploy list | jq '.[] | select(.status == "Running")'
 
 # List deployments (NAME column shows the app label as of v0.8.0)
@@ -171,7 +172,7 @@ cd your-project
 1ctl deploy restart --deployment-id=123
 
 # Tear down a deployment (prompts for confirmation; use --yes to skip)
-1ctl deploy destroy --deployment-id=123 --yes
+1ctl deploy delete --deployment-id=123 --yes
 ```
 
 > **Default targeting is managed cloud.** Even if you have registered machines, `1ctl deploy` (with no `--machine*` flag) goes to the marketplace. To use your own hardware pass `--machine` or `--machine-tag` explicitly. This changed in v0.8.0.
@@ -253,7 +254,7 @@ cd your-project
 1ctl domains check app.example.com
 
 # Detach a domain (refuses cross-app removal even when the domain matches)
-1ctl domains remove app.example.com --app myapp --yes
+1ctl domains delete app.example.com --app myapp --yes
 ```
 
 > **`1ctl ingress` and `1ctl issuer` were hidden from `--help` in v0.8.0.** Custom-domain workflows go through `1ctl domains`, which resolves IDs internally from `--app <name>` — no more passing deployment / service UUIDs by hand. The hidden commands still work for scripts that depend on them.
@@ -281,7 +282,7 @@ cd your-project
 1ctl org team list
 1ctl org team add --email user@example.com --role member
 1ctl org team role <org-user-id> --role admin
-1ctl org team remove <org-user-id>
+1ctl org team delete <org-user-id>
 ```
 
 ### Credits & Billing
@@ -300,10 +301,47 @@ cd your-project
 
 > Top-up, invoices, auto-topup, and billing notifications were moved from the CLI to the SatuSky Control Panel (web UI). The CLI keeps read-only visibility (`balance` / `transactions` / `usage`).
 
-<!-- `1ctl storage` was removed in the v0.7.x cleanup. The CLI surface will
-     return in a follow-up release (#3 T-04) — the api/storage.go backend
-     calls are present, the command handlers aren't wired yet. For now use
-     the SatuSky Control Panel for storage operations. -->
+### Managed Postgres
+
+`1ctl postgres` manages CNPG-backed Postgres clusters exposed by the SatuSky backend storage API.
+
+```bash
+# See available Kubernetes storage classes
+1ctl postgres storage-classes
+
+# Create a managed Postgres cluster
+1ctl postgres create app-db \
+  --database app \
+  --user app \
+  --storage-class local-path \
+  --storage-size 10Gi
+
+# List, inspect, and watch readiness
+1ctl postgres list
+1ctl postgres get <storage-id>
+1ctl postgres status <storage-id>
+
+# Retrieve credentials or connect with psql
+1ctl postgres credentials <storage-id>
+1ctl postgres connect <storage-id>
+
+# Forward a local port to the cluster service
+1ctl postgres proxy <storage-id> --local-port 15432
+
+# Manage database users
+1ctl postgres users list <storage-id>
+1ctl postgres users create <storage-id> reporting --createdb
+1ctl postgres users delete <storage-id> reporting --yes
+
+# Manage external access rules
+1ctl postgres firewall list <storage-id>
+1ctl postgres firewall add <storage-id> --cidr 203.0.113.10/32 --description "office"
+1ctl postgres firewall disable <storage-id> <rule-id>
+
+# Re-apply resources or destroy the cluster
+1ctl postgres redeploy <storage-id>
+1ctl postgres delete <storage-id> --yes
+```
 
 ### Logs
 
@@ -420,6 +458,35 @@ cd your-project
 
 # Get machine info
 1ctl machine info --machine-name=my-machine
+```
+
+### Shell Completion
+
+Auto-complete commands, flags, and app names with TAB — works across zsh, bash, fish, and PowerShell:
+
+```bash
+# One command to install — auto-detects your shell
+1ctl completion install
+```
+
+This installs a script to the right location for your shell and prints the one config line to add to your `~/.zshrc` / `~/.bashrc`. Completions auto-update when `1ctl` changes — no re-install needed.
+
+Manual generation (if you prefer):
+```bash
+# Zsh (recommended: fpath, lazy-loaded)
+1ctl completion zsh > ~/.zsh/completions/_1ctl
+echo 'fpath=(~/.zsh/completions $fpath)' >> ~/.zshrc
+rm -f ~/.zcompdump && compinit
+
+# Bash
+1ctl completion bash > ~/.bash_completion.d/1ctl
+echo 'source ~/.bash_completion.d/1ctl' >> ~/.bashrc
+
+# Fish (auto-loaded from ~/.config/fish/completions/)
+1ctl completion fish > ~/.config/fish/completions/1ctl.fish
+
+# PowerShell
+1ctl completion powershell >> $PROFILE
 ```
 
 ### Help & Version

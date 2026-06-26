@@ -191,6 +191,29 @@ type Ingress struct {
 	UpdatedAt    time.Time     `json:"updated_at"`
 }
 
+type IngressAlias struct {
+	AliasID    uuid.UUID     `json:"alias_id"`
+	IngressID  uuid.UUID     `json:"ingress_id"`
+	DomainName string        `json:"domain_name"`
+	DnsConfig  DnsConfigType `json:"dns_config"`
+	DomainID   *uuid.UUID    `json:"domain_id,omitempty"`
+	IsRedirect bool          `json:"is_redirect"`
+	RedirectTo string        `json:"redirect_to,omitempty"`
+	CreatedAt  time.Time     `json:"created_at"`
+	UpdatedAt  time.Time     `json:"updated_at"`
+}
+
+type AttachDomainRequest struct {
+	OrgID           uuid.UUID `json:"org_id"`
+	DomainName      string    `json:"domain_name"`
+	WithWWWRedirect bool      `json:"with_www_redirect"`
+}
+
+type DetachDomainRequest struct {
+	OrgID      uuid.UUID `json:"org_id"`
+	DomainName string    `json:"domain_name"`
+}
+
 type DNSStatus string
 
 const (
@@ -262,32 +285,36 @@ type Dependency struct {
 }
 
 type Volume struct {
-	VolumeID     uuid.UUID `json:"volume_id"`
-	DeploymentID uuid.UUID `json:"deployment_id"`
-	VolumeName   string    `json:"volume_name"`
-	StorageClass string    `json:"storage_class"`
-	StorageSize  string    `json:"storage_size"`
-	ClaimName    string    `json:"claim_name"`
-	MountPath    string    `json:"mount_path"`
-	CreatedAt    time.Time `json:"created_at"`
-	UpdatedAt    time.Time `json:"updated_at"`
+	VolumeID        uuid.UUID `json:"volume_id"`
+	DeploymentID    uuid.UUID `json:"deployment_id"`
+	VolumeName      string    `json:"volume_name"`
+	StorageClass    string    `json:"storage_class"`
+	StorageSize     string    `json:"storage_size"`
+	ClaimName       string    `json:"claim_name"`
+	MountPath       string    `json:"mount_path"`
+	Namespace       string    `json:"namespace"`
+	DesiredAttached bool      `json:"desired_attached"`
+	CreatedAt       time.Time `json:"created_at"`
+	UpdatedAt       time.Time `json:"updated_at"`
 }
 
 type VolumePVCStatus struct {
-	Name         string `json:"name"`
-	Namespace    string `json:"namespace"`
-	Exists       bool   `json:"exists"`
-	Phase        string `json:"phase,omitempty"`
-	StorageClass string `json:"storage_class,omitempty"`
-	Capacity     string `json:"capacity,omitempty"`
-	Message      string `json:"message,omitempty"`
+	Name           string     `json:"name"`
+	Namespace      string     `json:"namespace"`
+	Exists         bool       `json:"exists"`
+	Phase          string     `json:"phase,omitempty"`
+	StorageClass   string     `json:"storage_class,omitempty"`
+	Capacity       string     `json:"capacity,omitempty"`
+	Message        string     `json:"message,omitempty"`
+	LastObservedAt *time.Time `json:"last_observed_at,omitempty"`
 }
 
 type VolumeMountStatus struct {
-	Attached bool   `json:"attached"`
-	Mounted  bool   `json:"mounted"`
-	Path     string `json:"path,omitempty"`
-	Message  string `json:"message,omitempty"`
+	Attached       bool       `json:"attached"`
+	Mounted        bool       `json:"mounted"`
+	Path           string     `json:"path,omitempty"`
+	Message        string     `json:"message,omitempty"`
+	LastObservedAt *time.Time `json:"last_observed_at,omitempty"`
 }
 
 type VolumeLifecycleStatus struct {

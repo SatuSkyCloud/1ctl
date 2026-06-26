@@ -12,6 +12,7 @@ import (
 	"os"
 	"regexp"
 	"strings"
+	"time"
 )
 
 type deploymentProgress struct {
@@ -421,9 +422,20 @@ func upsertIngress(deploymentID string, serviceID string, opts DeploymentOptions
 			domainName = opts.Domain
 		}
 	} else {
-		// Use existing domain name if no explicit domain provided
+		// Use existing domain name if no explicit domain provided.
+		// If the existing domain is a custom (non-satusky.com) domain,
+		// generate a fresh auto-domain instead. The user can explicitly
+		// pass --domain (or set domain in satusky.toml) to use a custom domain.
 		if opts.Domain == "" {
-			domainName = existingIngress.DomainName
+			if !strings.HasSuffix(existingIngress.DomainName, ".satusky.com") {
+				domainName, err = api.GenerateDomainName(projectName)
+				if err != nil {
+					return "", "", utils.NewError(fmt.Sprintf("failed to generate domain name: %s", err.Error()), nil)
+				}
+				utils.PrintInfo("Generated new domain: %s", domainName)
+			} else {
+				domainName = existingIngress.DomainName
+			}
 		} else {
 			domainName = opts.Domain
 		}
@@ -525,13 +537,44 @@ func handleEnvironmentAndVolumes(opts DeploymentOptions, deploymentID, projectNa
 			opts.Volume.DeploymentID = api.ToUUID(deploymentID)
 			opts.Volume.VolumeName = fmt.Sprintf("%s-volume", projectName)
 			opts.Volume.ClaimName = fmt.Sprintf("%s-claim", projectName)
+			opts.Volume.DesiredAttached = true
 			if e := api.CreateVolume(*opts.Volume); e != nil {
 				volChan <- volResult{err: utils.NewError(fmt.Sprintf("failed to create volume: %s", e.Error()), nil)}
 				return
 			}
-			// CreateVolume returns no ID today; track by volume name so the
-			// CleanupManager can list it even though the backend doesn't yet
-			// support volume deletion.
+			// Poll for PVC readiness. The storage provisioner (Ceph RBD) typically
+			// binds PVCs in under 30 seconds. We poll for up to 60s with a fast
+			// initial interval then exponential backoff so the deploy doesn't
+			// block unnecessarily while the PVC is provisioning.
+			//
+			// Check both PVC.Exists AND PVC.Phase == "Bound" — a PVC can exist
+			// (created by the backend) but still be Pending while the provisioner
+			// creates the backing volume.
+			bound := false
+			for i := 0; i < 30; i++ {
+				statuses, sErr := api.GetDeploymentVolumeLifecycleStatuses(deploymentID)
+				if sErr == nil {
+					for _, s := range statuses {
+						if s.PVC.Exists && s.PVC.Phase == "Bound" {
+							bound = true
+							break
+						}
+					}
+					if bound {
+						break
+					}
+				}
+				// 2s for first 10 attempts, then 5s — provisions usually
+				// complete quickly and we don't want to hold up deploy.
+				delay := 2 * time.Second
+				if i >= 10 {
+					delay = 5 * time.Second
+				}
+				time.Sleep(delay)
+			}
+			if !bound {
+				utils.PrintWarning("PVC %s is still provisioning after 60s — storage will be available shortly", opts.Volume.ClaimName)
+			}
 			volChan <- volResult{name: opts.Volume.VolumeName}
 			return
 		}

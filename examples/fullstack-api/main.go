@@ -25,12 +25,12 @@ type HealthResponse struct {
 }
 
 type ConfigInfo struct {
-	AppEnv      string `json:"app_env"`
-	DBHost      string `json:"db_host"`
-	LogLevel    string `json:"log_level"`
-	UploadDir   string `json:"upload_dir"`
-	NodeEnv     string `json:"node_env"`
-	FeatureX    bool   `json:"feature_x_enabled"`
+	AppEnv    string `json:"app_env"`
+	DBHost    string `json:"db_host"`
+	LogLevel  string `json:"log_level"`
+	UploadDir string `json:"upload_dir"`
+	NodeEnv   string `json:"node_env"`
+	FeatureX  bool   `json:"feature_x_enabled"`
 }
 
 type Task struct {
@@ -91,7 +91,7 @@ func main() {
 	if uploadDir == "" {
 		uploadDir = "/data/uploads"
 	}
-	if err := os.MkdirAll(uploadDir, 0755); err != nil {
+	if err := os.MkdirAll(uploadDir, 0750); err != nil {
 		log.Printf("WARNING: cannot create upload dir %s: %v", uploadDir, err)
 	}
 
@@ -374,7 +374,7 @@ func handleUpload(w http.ResponseWriter, r *http.Request) {
 	safeName := filepath.Base(header.Filename)
 	destPath := filepath.Join(uploadDir, safeName)
 
-	dst, err := os.Create(destPath)
+	dst, err := os.Create(destPath) // #nosec G304 -- destPath is constrained to the configured upload directory
 	if err != nil {
 		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "cannot save file"})
 		return
@@ -411,7 +411,9 @@ func handleServeFile(w http.ResponseWriter, r *http.Request) {
 func handleStats(w http.ResponseWriter, r *http.Request) {
 	total := 0
 	if db != nil {
-		db.QueryRow("SELECT COUNT(*) FROM tasks").Scan(&total)
+		if err := db.QueryRow("SELECT COUNT(*) FROM tasks").Scan(&total); err != nil {
+			log.Printf("WARNING: cannot read task count: %v", err)
+		}
 	}
 	writeJSON(w, http.StatusOK, StatsResponse{
 		TotalTasks:  total,
@@ -422,10 +424,10 @@ func handleStats(w http.ResponseWriter, r *http.Request) {
 
 func handleSecretsInfo(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, map[string]any{
-		"db_password_set":  os.Getenv("DB_PASSWORD") != "",
-		"api_key_set":      os.Getenv("API_KEY") != "",
+		"db_password_set":   os.Getenv("DB_PASSWORD") != "",
+		"api_key_set":       os.Getenv("API_KEY") != "",
 		"smtp_password_set": os.Getenv("SMTP_PASSWORD") != "",
-		"jwt_secret_set":   os.Getenv("JWT_SECRET") != "",
+		"jwt_secret_set":    os.Getenv("JWT_SECRET") != "",
 		// Never echo secret values — only their presence.
 	})
 }
@@ -458,5 +460,7 @@ func withLogging(next http.Handler) http.Handler {
 func writeJSON(w http.ResponseWriter, status int, data any) {
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(status)
-	json.NewEncoder(w).Encode(data)
+	if err := json.NewEncoder(w).Encode(data); err != nil {
+		log.Printf("WARNING: cannot encode JSON response: %v", err)
+	}
 }
