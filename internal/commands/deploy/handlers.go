@@ -131,9 +131,7 @@ func mergeConfig(in DeployInput, cfg *config.ProjectConfig) mergedInput {
 				m.MulticlusterMode = cfg.Multicluster.Mode
 			}
 		}
-		if !m.Fast && cfg.Build.FastBuild {
-			m.Fast = true
-		}
+		m.Fast = in.Fast || cfg.Build.FastBuild
 		if len(m.WaitFor) == 0 && len(cfg.Deploy.WaitFor) > 0 {
 			m.WaitFor = cfg.Deploy.WaitFor
 		}
