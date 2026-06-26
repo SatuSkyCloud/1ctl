@@ -388,6 +388,18 @@ func CreateVolume(volume Volume) error {
 	return makeRequest("POST", "/volumes/create", volume, nil)
 }
 
+// GetAllVolumes returns all volumes across all namespaces.
+func GetAllVolumes() ([]Volume, error) {
+	var resp struct {
+		Error bool     `json:"error"`
+		Data  []Volume `json:"data"`
+	}
+	if err := makeRequest("GET", "/volumes/all", nil, &resp); err != nil {
+		return nil, err
+	}
+	return resp.Data, nil
+}
+
 // GetVolumeLifecycleStatus reports DB, PVC, and mount state for a volume.
 func GetVolumeLifecycleStatus(volumeID string) (*VolumeLifecycleStatus, error) {
 	var resp struct {
@@ -744,6 +756,33 @@ func GetIngressByDomainName(domainName string) (*Ingress, error) {
 	return &ingress, nil
 }
 
+func ListDomainAliases(ingressID string) ([]IngressAlias, error) {
+	var resp struct {
+		Error bool           `json:"error"`
+		Data  []IngressAlias `json:"data"`
+	}
+	if err := makeRequest("GET", fmt.Sprintf("/ingresses/%s/aliases", ingressID), nil, &resp); err != nil {
+		return nil, err
+	}
+	return resp.Data, nil
+}
+
+func AttachDomain(ingressID string, req AttachDomainRequest) (*IngressAlias, error) {
+	var resp struct {
+		Error bool         `json:"error"`
+		Data  IngressAlias `json:"data"`
+	}
+	if err := makeRequest("POST", fmt.Sprintf("/ingresses/%s/domains", ingressID), req, &resp); err != nil {
+		return nil, err
+	}
+	return &resp.Data, nil
+}
+
+func DetachDomain(ingressID string, req DetachDomainRequest) error {
+	var resp apiResponse
+	return makeRequest("POST", fmt.Sprintf("/ingresses/%s/domains/detach", ingressID), req, &resp)
+}
+
 // GetIngressByDeploymentID gets existing ingress by deployment ID
 func GetIngressByDeploymentID(deploymentID string) (*Ingress, error) {
 	var resp apiResponse
@@ -822,13 +861,49 @@ func GetMachineLabels(machineID string) (map[string]string, error) {
 	var resp struct {
 		Error bool `json:"error"`
 		Data  struct {
-			Labels map[string]string `json:"labels"`
+			Custom map[string]string `json:"custom"`
 		} `json:"data"`
 	}
-	if err := makeRequest("GET", fmt.Sprintf("/machines/%s/labels", machineID), nil, &resp); err != nil {
+	if err := makeRequest("GET", fmt.Sprintf("/machines/%s/labels", url.PathEscape(machineID)), nil, &resp); err != nil {
 		return nil, err
 	}
-	return resp.Data.Labels, nil
+	return resp.Data.Custom, nil
+}
+
+type updateLabelsRequest struct {
+	Labels map[string]string `json:"labels"`
+}
+
+// UpdateMachineLabels sets or removes satusky.com/* labels on a machine.
+// To remove a label, set its value to empty string.
+func UpdateMachineLabels(machineID string, labels map[string]string) error {
+	var resp apiResponse
+	req := updateLabelsRequest{Labels: labels}
+	return makeRequest("PATCH", fmt.Sprintf("/machines/%s/labels", machineID), req, &resp)
+}
+
+// QueryMachinesByLabel finds machines that have ALL the specified labels.
+func QueryMachinesByLabel(labels map[string]string) ([]Machine, error) {
+	var resp struct {
+		Error bool      `json:"error"`
+		Data  []Machine `json:"data"`
+	}
+	if err := makeRequest("POST", "/machines/label-query", labels, &resp); err != nil {
+		return nil, err
+	}
+	return resp.Data, nil
+}
+
+// GetAvailableLabelKeys returns all satusky.com/* label keys currently in use.
+func GetAvailableLabelKeys() ([]string, error) {
+	var resp struct {
+		Error bool     `json:"error"`
+		Data  []string `json:"data"`
+	}
+	if err := makeRequest("GET", "/machines/label-keys", nil, &resp); err != nil {
+		return nil, err
+	}
+	return resp.Data, nil
 }
 
 func CreateMachine(machine Machine) (int64, error) {
@@ -847,6 +922,10 @@ func UpdateMachine(machineID string, machine Machine) error {
 	return makeRequest("POST", fmt.Sprintf("/machines/update/%s", machineID), machine, &resp)
 }
 
+// DeleteMachine decommissions a machine by UUID. Uses the main API route
+// (DELETE /machines/:machineId) rather than the CLI route
+// (POST /machines/delete/:id) because the CLI route expects a numeric
+// database ID, but the CLI operates with UUID machine IDs.
 func DeleteMachine(machineID string) error {
 	var resp apiResponse
 	return makeMainAPIRequest("DELETE", fmt.Sprintf("/machines/%s", url.PathEscape(machineID)), nil, &resp)
@@ -922,13 +1001,59 @@ func GetMachineEvents(machineID string, tail int) (*MachineEventsResponse, error
 	return &resp.Data, nil
 }
 
-// MachineHasTag reports whether the given label set contains the satusky.com/<tag> key.
+// parseTagSpec splits a tag like "production" or "tier=compute" into key and optional value.
+// If the tag contains "=", both key AND value must match.
+// Otherwise, only key existence is checked.
+func parseTagSpec(tag string) (key, value string, hasValue bool) {
+	parts := strings.SplitN(tag, "=", 2)
+	if len(parts) == 2 {
+		return parts[0], parts[1], true
+	}
+	return tag, "", false
+}
+
+// MachineHasTag reports whether the label set matches a tag spec.
+// If tag contains "=" (e.g. "tier=compute"), both key AND value must match.
+// Otherwise, only key existence is checked (e.g. "production").
 func MachineHasTag(labels map[string]string, tag string) bool {
 	if tag == "" || labels == nil {
 		return false
 	}
-	_, ok := labels[MachineTagLabelPrefix+tag]
-	return ok
+	key, value, hasValue := parseTagSpec(tag)
+	actual, ok := labels[MachineTagLabelPrefix+key]
+	if !ok {
+		return false
+	}
+	if hasValue {
+		return actual == value
+	}
+	return true
+}
+
+// MachineHasAllTags reports whether the given label set contains ALL of the specified tags.
+func MachineHasAllTags(labels map[string]string, tags []string) bool {
+	if labels == nil || len(tags) == 0 {
+		return false
+	}
+	for _, tag := range tags {
+		if !MachineHasTag(labels, tag) {
+			return false
+		}
+	}
+	return true
+}
+
+// MachineHasAnyTag reports whether the given label set contains ANY of the specified tags.
+func MachineHasAnyTag(labels map[string]string, tags []string) bool {
+	if labels == nil || len(tags) == 0 {
+		return false
+	}
+	for _, tag := range tags {
+		if MachineHasTag(labels, tag) {
+			return true
+		}
+	}
+	return false
 }
 
 func GetMachinesByOwnerID(ownerID uuid.UUID) ([]Machine, error) {

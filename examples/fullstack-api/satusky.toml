@@ -48,7 +48,7 @@
 
   # ── Scheduling ────────────────────────────────────────────────────────
   zone        = ""            # Target zone, e.g. "my-kul-1b". Empty = auto.
-  machine_tag = "compute"     # Only schedule on machines with this tag.
+  # machine_tag = "compute"     # Only schedule on machines with this tag.
 
   # ── Upgrade Strategy ──────────────────────────────────────────────────
   # strategy   "rolling" (default) or "recreate"
@@ -64,10 +64,28 @@
   # wait_for   PostgreSQL/Redis/etc. that must be reachable before start.
   #            Platform injects init-containers so your main container
   #            never crashes while dependencies boot.
-  wait_for    = ["db:5432", "redis:6379"]
+  # wait_for    = ["db:5432", "redis:6379"]
 
   # organization  Override the CLI auth context.  Rarely needed.
   # organization = ""
+
+  # To build through docker buildx or using depot. if fast_build using depot
+[build]
+  fast_build  = true
+
+
+# =============================================================================
+# [env] — Environment variables (non-sensitive)
+# =============================================================================
+# Following Fly.io's convention: env vars in config, secrets via CLI.
+# Rendered by the app's GET /api/config endpoint.
+# CLI --env flags override individual keys at deploy time.
+# =============================================================================
+
+[env]
+  APP_ENV           = "staging"
+  LOG_LEVEL         = "debug"
+  FEATURE_X_ENABLED = "true"
 
 
 # =============================================================================

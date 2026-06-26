@@ -1,29 +1,30 @@
 package main
 
 import (
+	"context"
 	"fmt"
 	"os"
-	"strings"
 
 	"1ctl/internal/commands"
 	"1ctl/internal/config"
-	"1ctl/internal/context"
+	satuskyctx "1ctl/internal/context"
 	"1ctl/internal/utils"
 	"1ctl/internal/version"
 
-	"github.com/urfave/cli/v2"
+	"github.com/urfave/cli/v3"
 )
 
 // Make run function accessible to tests
 func run() error {
-	app := createApp()
-	return app.Run(normalizeGlobalOutputArgs(os.Args))
+	cmd := createCommand()
+	return cmd.Run(context.Background(), os.Args)
 }
 
-// Make createApp function accessible to tests
-func createApp() *cli.App {
-	app := &cli.App{
-		Name:    "1ctl",
+// Make createCommand function accessible to tests
+func createCommand() *cli.Command {
+	cmd := &cli.Command{
+		EnableShellCompletion: true,
+		Name:                  "1ctl",
 		Usage:   "Deploy and manage applications on SatuSky Cloud",
 		Version: version.GetVersionInfo(),
 		Description: `1ctl is the command-line interface for SatuSky Cloud.
@@ -52,7 +53,7 @@ Tokens: https://cloud.satusky.com/<org-id>/token`,
 				Name:    "profile",
 				Aliases: []string{"p"},
 				Usage:   "Profile to use for this command (e.g. --profile local)",
-				EnvVars: []string{"SATUSKY_PROFILE"},
+				Sources: cli.EnvVars("SATUSKY_PROFILE"),
 			},
 			&cli.StringFlag{
 				Name:  "api-url",
@@ -61,62 +62,67 @@ Tokens: https://cloud.satusky.com/<org-id>/token`,
 			&cli.StringFlag{
 				Name:    "output",
 				Aliases: []string{"o"},
-				Usage:   "Output format: table (default) or json",
+				Usage:   "Output format: table or json",
 				Value:   "table",
 			},
 		},
 		Commands: []*cli.Command{
-			commands.AuthCommand(),
-			commands.ProfileCommand(),
-			commands.OrgCommand(),
-			commands.InitCommand(),
-			commands.LaunchCommand(),
-			commands.DeployCommand(),
-			commands.DoctorCommand(),
+			// 1ctl init → Core workflow
+			cat(commands.InitCommand(), "Core workflow"),
+			cat(commands.LaunchCommand(), "Core workflow"),
+			cat(commands.DeployCommand(), "Core workflow"),
+			cat(commands.AppCommand(), "Applications"),
+			cat(commands.LogsCommand(), "Core workflow"),
+			cat(commands.DoctorCommand(), "Core workflow"),
+			// Applications
+			cat(commands.DomainsCommand(), "Applications"),
+			cat(commands.ConfigCommand(), "Applications"),
+			cat(commands.SecretCommand(), "Applications"),
+			cat(commands.VolumesCommand(), "Applications"),
+			// Data
+			cat(commands.PostgresCommand(), "Data"),
+			// Infrastructure
+			cat(commands.MachineCommand(), "Infrastructure"),
+			cat(commands.ClusterCommand(), "Infrastructure"),
+			// Catalog
+			cat(commands.MarketplaceCommand(), "Catalog"),
+			// Account
+			cat(commands.AuthCommand(), "Account"),
+			cat(commands.ProfileCommand(), "Account"),
+			cat(commands.OrgCommand(), "Account"),
+			cat(commands.UserCommand(), "Account"),
+			cat(commands.TokenCommand(), "Account"),
+			// Billing & operations
+			cat(commands.CreditsCommand(), "Billing & operations"),
+			cat(commands.PricingCommand(), "Billing & operations"),
+			cat(commands.AuditCommand(), "Billing & operations"),
+			cat(commands.NotificationsCommand(), "Billing & operations"),
+			cat(commands.CompletionCommand(), "Billing & operations"),
+			// Internal (hidden)
 			commands.ServiceCommand(),
-			commands.SecretCommand(),
 			commands.IngressCommand(),
 			commands.IssuerCommand(),
-			commands.DomainsCommand(),
-			commands.VolumesCommand(),
-			commands.EnvironmentCommand(),
-			commands.MachineCommand(),
-			commands.CompletionCommand(),
-			// Phase 1: Credits, Logs
-			commands.CreditsCommand(),
-			commands.LogsCommand(),
-			// Phase 2: Notifications
-			commands.NotificationsCommand(),
-			// Phase 3: User, Token
-			commands.UserCommand(),
-			commands.TokenCommand(),
-			// Phase 5: Marketplace, Audit
-			commands.MarketplaceCommand(),
-			commands.AuditCommand(),
-			// Phase 3+4: Pricing
-			commands.PricingCommand(),
-			commands.ClusterCommand(),
 		},
-		Before: func(c *cli.Context) error {
+		Before: func(ctx context.Context, cmd *cli.Command) (context.Context, error) {
 			// Apply --profile flag: sets profile for this process invocation only (not persisted)
-			if profile := c.String("profile"); profile != "" {
-				context.SetProfileOverride(profile)
+			if profile := cmd.String("profile"); profile != "" {
+				satuskyctx.SetProfileOverride(profile)
 			}
 
 			// Apply --api-url flag: highest-priority URL override, set via env var so GetConfig picks it up
-			if apiURL := c.String("api-url"); apiURL != "" {
+			if apiURL := cmd.String("api-url"); apiURL != "" {
 				if err := os.Setenv("SATUSKY_API_URL", apiURL); err != nil {
-					return utils.NewError("failed to set API URL", err)
+					return ctx, utils.NewError("failed to set API URL", err)
 				}
 			}
 
 			// Apply --output flag: sets global output format for this process invocation
-			if format := c.String("output"); format != "" {
+			if format := cmd.String("output"); format != "" {
 				utils.SetOutputFormat(format)
 			}
 
 			// Get the command or first argument
-			cmdName := c.Args().First()
+			cmdName := cmd.Args().First()
 
 			// Skip token validation for these cases
 			if cmdName == "auth" ||
@@ -125,18 +131,18 @@ Tokens: https://cloud.satusky.com/<org-id>/token`,
 				cmdName == "init" ||
 				cmdName == "completion" ||
 				cmdName == "help" ||
-				c.Bool("help") ||
-				c.Bool("h") ||
-				c.Bool("version") ||
-				c.Bool("v") ||
-				len(c.Args().Slice()) == 0 {
-				return nil
+				cmd.Bool("help") ||
+				cmd.Bool("h") ||
+				cmd.Bool("version") ||
+				cmd.Bool("v") ||
+				len(cmd.Args().Slice()) == 0 {
+				return ctx, nil
 			}
 
 			// Check if command exists in our registered commands
 			commandExists := false
-			for _, cmd := range c.App.Commands {
-				if cmd.Name == cmdName || containsString(cmd.Aliases, cmdName) {
+			for _, subCmd := range cmd.Commands {
+				if subCmd.Name == cmdName || containsString(subCmd.Aliases, cmdName) {
 					commandExists = true
 					break
 				}
@@ -144,8 +150,8 @@ Tokens: https://cloud.satusky.com/<org-id>/token`,
 
 			// If command doesn't exist, show help and return error
 			if !commandExists {
-				if err := cli.ShowAppHelp(c); err != nil {
-					return utils.NewError("failed to show help", err)
+				if err := cli.ShowAppHelp(cmd); err != nil {
+					return ctx, utils.NewError("failed to show help", err)
 				}
 				msg := fmt.Sprintf("command %q not found\nRun '1ctl --help' for usage", cmdName)
 				if cmdName == "storage" {
@@ -154,17 +160,23 @@ Tokens: https://cloud.satusky.com/<org-id>/token`,
 				if cmdName == "volume" {
 					msg += "\nPersistent volumes are managed with '1ctl volumes'."
 				}
-				return utils.NewError(msg, nil)
+				return ctx, utils.NewError(msg, nil)
 			}
 
 			// Only validate environment for existing commands
-			return config.ValidateEnvironment()
+			return ctx, config.ValidateEnvironment()
 		},
-		Action: func(c *cli.Context) error {
+		Action: func(ctx context.Context, cmd *cli.Command) error {
 			return utils.NewError("No command specified, use --help for usage", nil)
 		},
 	}
-	return app
+	return cmd
+}
+
+// cat sets the command category and returns the command for chaining.
+func cat(cmd *cli.Command, category string) *cli.Command {
+	cmd.Category = category
+	return cmd
 }
 
 func containsString(values []string, needle string) bool {
@@ -174,42 +186,6 @@ func containsString(values []string, needle string) bool {
 		}
 	}
 	return false
-}
-
-func normalizeGlobalOutputArgs(args []string) []string {
-	if len(args) <= 2 {
-		return args
-	}
-
-	normalized := make([]string, 0, len(args))
-	outputArgs := make([]string, 0, 2)
-	normalized = append(normalized, args[0])
-
-	for i := 1; i < len(args); i++ {
-		arg := args[i]
-		switch {
-		case arg == "-o" || arg == "--output":
-			if i+1 < len(args) {
-				outputArgs = append(outputArgs, arg, args[i+1])
-				i++
-				continue
-			}
-		case strings.HasPrefix(arg, "--output="), strings.HasPrefix(arg, "-o="):
-			outputArgs = append(outputArgs, arg)
-			continue
-		}
-		normalized = append(normalized, arg)
-	}
-
-	if len(outputArgs) == 0 {
-		return args
-	}
-
-	result := make([]string, 0, len(args))
-	result = append(result, normalized[0])
-	result = append(result, outputArgs...)
-	result = append(result, normalized[1:]...)
-	return result
 }
 
 func main() {

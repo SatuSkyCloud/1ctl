@@ -31,33 +31,47 @@ func main() {
 	mux.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
 		w.Header().Set("Access-Control-Allow-Origin", "*")
-		json.NewEncoder(w).Encode(MessageResponse{
+		if err := json.NewEncoder(w).Encode(MessageResponse{
 			Message: "Hello from SatuSky Cloud!",
 			From:    "backend-api",
-		})
+		}); err != nil {
+			log.Printf("failed to encode response: %v", err)
+		}
 	})
 
 	mux.HandleFunc("/health", func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
-		json.NewEncoder(w).Encode(HealthResponse{
+		if err := json.NewEncoder(w).Encode(HealthResponse{
 			Status:    "ok",
 			Timestamp: time.Now().UTC(),
 			Version:   "1.0.0",
-		})
+		}); err != nil {
+			log.Printf("failed to encode health response: %v", err)
+		}
 	})
 
 	mux.HandleFunc("/api/message", func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
 		w.Header().Set("Access-Control-Allow-Origin", "*")
-		json.NewEncoder(w).Encode(MessageResponse{
+		if err := json.NewEncoder(w).Encode(MessageResponse{
 			Message: "Greetings from the SatuSky backend API!",
 			From:    "backend-api",
-		})
+		}); err != nil {
+			log.Printf("failed to encode API response: %v", err)
+		}
 	})
 
 	addr := fmt.Sprintf(":%s", port)
 	log.Printf("Backend API listening on %s", addr)
-	if err := http.ListenAndServe(addr, mux); err != nil {
+	server := &http.Server{
+		Addr:              addr,
+		Handler:           mux,
+		ReadHeaderTimeout: 5 * time.Second,
+		ReadTimeout:       10 * time.Second,
+		WriteTimeout:      10 * time.Second,
+		IdleTimeout:       60 * time.Second,
+	}
+	if err := server.ListenAndServe(); err != nil {
 		log.Fatal(err)
 	}
 }

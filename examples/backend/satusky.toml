@@ -1,5 +1,17 @@
+# Backend API — simple Go REST API example
+# Demonstrates: basic deploy, CPU/memory, health check
+
 [app]
-  name = "backend-api"
-  port = 8080
-  cpu  = "0.5"
-  memory = "256Mi"
+  name    = "backend-api"
+  port    = 8080
+  cpu     = "0.5"       # legacy alias, prefer cpu_request/cpu_limit
+  memory  = "256Mi"
+
+[build]
+  dockerfile = "Dockerfile"
+
+[checks]
+  health_path = "/health"
+
+[deploy]
+  strategy = "rolling"

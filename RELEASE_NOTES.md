@@ -1,5 +1,155 @@
 # Release Notes
 
+## Version 0.11.0 (27-06-2026)
+
+Complete CLI framework upgrade (`urfave/cli` v2→v3), positional args for all resource-targeting commands, structured command packages, config v2 sections, and new `app` / `postgres` / `config` commands.
+
+### BREAKING CHANGES — Positional Args
+
+24 commands now use positional `<target>` args instead of `--id` / `--name` flags:
+- **profile**: `use <name>`, `delete <name>`
+- **machine**: `get <id|name|num>`, `delete`, `inspect`, `logs`, `events`, `update`, `usage get`, `usage cost`
+- **volumes**: `detach <vol>`, `delete <vol>` (with optional `--id` / `--app` fallback)
+- **org**: `switch <org-id|org-name|num>` (UUID auto-detect, optional `--org-id` / `--org-name` flags)
+- **domains managed**: `add <domain>`, `verify <domain>`, `delete <domain>`
+- **token**: `get <id>`, `enable <id>`, `disable <id>`, `delete <id>`
+- **notifications**: `delete <id>`
+- **audit**: `get <id>`
+- **pricing**: `get <id>`
+- **issuer**: `delete <id>`
+- **ingress**: `delete <id>`
+- **domains**: `purchase-status <intent-id>`
+- **service**: `delete <service-id>`
+- **profile / org / token**: `create <name>` (was `--name`)
+
+Pattern: `1ctl <resource> <action> <target> [flags]`. UUID auto-detection, `-o json` support preserved on all commands.
+
+### New Commands
+
+* **`1ctl app`**: Application lifecycle management (splits from `deploy`).
+  - `app list` — list all deployed applications.
+  - `app get <name>` — get application details (accepts UUID or app label).
+  - `app status <name>` — check application status with `--watch` for real-time updates.
+  - `app delete <name>` — delete application (`-y`/`--yes` for non-interactive).
+  - `app restart <name>` — restart application.
+  - `app releases <name>` — list release history.
+  - `app rollback <name> <version>` — rollback to a specific version.
+  - `app open <name>` — open application URL in browser.
+  - `app scale <name> <count>` — scale replicas.
+  - `deploy <subcommands>` continue to work for backward compatibility; both share the same handler code.
+
+* **`1ctl postgres`**: Managed PostgreSQL databases.
+  - `create` — provision a managed Postgres instance (name, version, instances, storage, CPU/memory).
+  - `list` — list all Postgres instances.
+  - `get <id>` — get instance details.
+  - `destroy <id>` — destroy an instance (`-y`/`--yes`).
+  - `connect <id>` — print connection string.
+  - `proxy <id>` — start a local SOCKS5 proxy (`--bind-addr`, `--local-port`).
+  - `user` — manage database users (create, list, delete).
+  - `access` — manage CIDR-based access rules (add, list, remove).
+
+* **`1ctl config`**: Primary name for environment variable management (alias for `env`).
+  - `config create`, `config list`, `config unset`.
+  - `env` and `environment` aliases still work.
+
+* **`1ctl doctor`**: Platform diagnostics command (auth, zones, clusters, deployments, smoke).
+  - `--deployment-id` / `--config` for targeted mode (always runs smoke).
+  - `--smoke` flag to opt into namespace-wide smoke checks.
+  - `--health-path` for app-level path probing with strict 2xx/3xx semantics.
+  - Outputs both structured JSON (`-o json`) and human-readable tables.
+  - Smoke failures are always warnings, never hard errors.
+
+### CLI Framework & Architecture
+
+* **`urfave/cli` v2 → v3 migration**: Complete rewrite of all CLI wiring.
+  - `cli.App` → `cli.Command` with `EnableShellCompletion: true`.
+  - Actions/handlers take `(ctx context.Context, cmd *cli.Command) error`.
+  - `Before` hooks return `(context.Context, error)` — context passes through the chain.
+  - `EnvVars` → `Sources: cli.EnvVars(...)`.
+  - `Destination` binding used on flags for direct struct population.
+  - `UseShortOptionHandling` removed (default in v3).
+  - `IsSet` not available in v3; user-set flags tracked manually via `UserSetFlags` map in deploy merge logic.
+
+* **Sub-package command pattern**: Every command group now lives in `internal/commands/<name>/` with three standard files:
+  - `command.go` — flag constants, input structs, CLI wiring.
+  - `handlers.go` — action handler logic.
+  - `command_test.go` — command tree structure tests.
+  - `internal/commands/cmd.go` re-exports all public constructors for a flat API surface.
+
+* **Command grouping**: Help output now organizes commands into categories:
+  - Core workflow (`init`, `launch`, `deploy`, `app`, `logs`, `doctor`)
+  - Applications (`domains`, `config`, `secret`, `volumes`)
+  - Data (`postgres`)
+  - Infrastructure (`machine`, `cluster`)
+  - Catalog (`marketplace`)
+  - Account (`auth`, `profile`, `org`, `user`, `token`)
+  - Billing & operations (`credits`, `pricing`, `audit`, `notifications`, `completion`)
+
+### Features
+
+* **Post-deploy smoke testing**: After `deploy --wait` succeeds, the CLI probes the public URL to verify real-world reachability.
+  - Default behaviour (no `--health-path`): 401/403/404 are accepted as proof of platform reachability (DNS/TLS/routing proven). Only 5xx and connection errors fail the check.
+  - With `--health-path` set: success requires 2xx/3xx. Failure blocks the deploy.
+  - Non-strict smoke failures are warnings, not deploy-blocking errors.
+
+* **Logs degradation awareness**: `GetStoredLogs` now returns `DeploymentLogsMeta` with explicit `source`, `degraded`, `fallback_reason`, and `fallback_source` fields. The `1ctl logs` command surfaces a clear warning when Loki is unavailable and the response fell back to stored deployment logs.
+
+* **Machine tag expressions**: `--machine-tag` supports key=value matching (e.g., `tier=compute`). `--machine-tag-expr` evaluates native Go AST expressions with `&` (AND), `|` (OR), and parentheses grouping. Keys without `satusky.com/` prefix are automatically prefixed.
+
+* **Shell completion overhaul**:
+  - `1ctl completion install` auto-detects shell (bash, fish, zsh, PowerShell) and installs completions.
+  - Custom bash completion engine with descriptions and subcommand-aware suggestions.
+  - All commands have `EnableShellCompletion: true`.
+
+* **`--app` flag**: Universal app name resolution via `ResolveDeploymentID`. Now supported on deploy subcommands, volumes, logs, doctor, secret, and env/config commands.
+
+* **CLI usability fixes**:
+  - `-o`/`--output` flags normalized to global position.
+  - `-o json` support added for all remaining commands.
+  - Deprecated `storage`/`volume` redirects to `1ctl volumes`.
+  - `-y` alias added to `app delete --yes`.
+  - Removed unnecessary aliases (`notif`, `api-token`, `price`, `tag`, `tags`).
+  - Consistent naming: `destroy` → `delete` across all commands.
+
+### Config v2 — `satusky.toml` Restructuring
+
+* **New sections**: `[build]`, `[checks]`, `[deploy]`, `[env]`.
+  - `[app]` — identity and resources (name, port, cpu, memory, domain, zone).
+  - `[build]` — `dockerfile`, `fast_build`.
+  - `[checks]` — `health_path` for smoke testing.
+  - `[deploy]` — `strategy`, `rolling_max_surge`, `rolling_max_unavailable`, `machine_tag`, `wait_for`.
+  - `[env]` — non-sensitive environment variables (secrets via `1ctl secret`).
+* **Backward compatibility**: `Normalize()` auto-migrates legacy `[app].*` fields to the new sections on load. Existing `satusky.toml` files work without changes.
+* `health_path` validated by `ValidateURLPath()` — must start with `/`.
+
+### Bug Fixes
+
+* Removed dead `SmokePathExplicit` field from deploy types.
+* Fixed `--machine-tag` shadowing by `mergedInput` field.
+* Fixed `GetMachineLabels` URL escaping.
+* Fixed domains `purchase-status` positional arg resolution.
+* Fixed service `delete` positional arg resolution.
+* Fixed profile/org/token `create` to use positional `<name>`.
+* Fixed deploy custom domain reuse when `--domain` is not set.
+* Fixed frontend nginx asset permissions in example Dockerfile.
+* Suppressed `errcheck` lint warnings for `Body.Close()` and test `Fprintf` calls.
+
+### Documentation
+
+* All 12 user journey guides audited and rewritten against live CLI output (122 command verifications).
+  - TOML format: added `[app]` section headers to all deployment guides.
+  - JSON field names corrected: `name` → `app_label`, `url` → `domain`, `cpu` → `cpu_request` / `cpu_limit`, `memory` → `memory_request` / `memory_limit`, `status: 'running'` → `status: 'completed'`.
+  - Deploy output format corrected to match current step-by-step output.
+  - Releases table columns and status values corrected (`inactive` → `superseded` / `rolled_back`).
+  - Removed `--wait` from `deploy rollback` (flag does not exist).
+  - Removed `--config` from `secret list` (flag does not exist).
+  - Added `-y` flag for non-interactive rollback/destroy.
+* New `examples/fullstack-api/` reference project exercising all 40+ `satusky.toml` fields across 8 sections (`app`, `build`, `checks`, `deploy`, `volume`, `hpa`, `vpa`, `pdb`, `multicluster`, `env`) with staging override example.
+* New `ARCHITECTURE_ANALYSIS.md` with root cause analysis for test issues.
+* New `TEST_REPORT.md` with full test results and known issues.
+* New `context.md` with project context documentation.
+* Added shell completion section to README.
+
 ## Version 0.10.0 (19-06-2026)
 
 Platform diagnostics, post-deploy smoke testing, Loki degradation awareness, and a fully verified documentation suite.
@@ -48,6 +198,37 @@ Platform diagnostics, post-deploy smoke testing, Loki degradation awareness, and
 * Removed dead `SmokePathExplicit` field from deploy types (was set but never read; `StrictSmoke` already captures the same value).
 * Suppressed `errcheck` lint warnings for `Body.Close()` and test `Fprintf` calls.
 * Fixed frontend nginx asset permissions in example Dockerfile.
+
+## Version 0.9.1 (15-06-2026)
+
+Machine inventory management and diagnostics for BYOA operators.
+
+### Deployment Builds
+
+* **`deploy --fast` added**: requests the accelerated Depot-backed cloud builder before deployment.
+  - The default deploy path still uses the platform build service.
+  - `--fast` sends `builder=depot` to the backend build API; the backend owns the Depot project/token configuration.
+  - `--fast` is ignored when `--image` is supplied because pre-built images skip cloud builds entirely.
+* **`satusky.toml` supports `fast_build = true`** under `[app]` to opt a project into the accelerated builder by default.
+  - CLI precedence remains: explicit `--fast` overrides config; `--image` still skips all build paths.
+  - Pricing for accelerated builds is intentionally not surfaced yet; this is a platform capability flag only.
+* Build documentation and status text now refer to generic cloud builds instead of Kaniko-specific implementation details.
+
+### New Commands
+
+* **`machine get <machine-id|name|numeric-id>`**: shows the full owned machine inventory record.
+* **`machine create`**: creates an owned machine inventory record with region, zone, hardware specs, pricing tier, monetization, recommendation, Talos/Kubernetes version, and optional organization scope.
+* **`machine update <machine-id|name|numeric-id>`**: updates the same mutable inventory fields while preserving ownership and omitted existing values.
+* **`machine delete <machine-id|name|numeric-id>`**: decommissions an owned machine through the authenticated machine API instead of hard-deleting the database row.
+* **`machine inspect <machine-id|name|numeric-id>`**: combines machine details, hardware inspection, SatuSky node labels, and Talos status in one command.
+* **`machine logs <machine-id|name|numeric-id>`**: fetches SideroLink, Talos, and Kubernetes discovery/config logs with source, component, tail, since, and text filters.
+* **`machine events <machine-id|name|numeric-id>`**: fetches recent runtime events for a machine.
+
+### Reliability And Safety
+
+* Machine references now resolve from the authenticated user's owned machine list, so name-based updates and deletes cannot accidentally target someone else's machine.
+* Main API calls from `1ctl` now preserve the `/v1` API prefix when deriving non-CLI machine endpoints from the configured `/v1/cli` URL.
+* The default machine type for new records is now `worker`, matching backend-supported machine types.
 
 ## Version 0.9.0 (02-06-2026)
 

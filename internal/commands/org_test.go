@@ -3,7 +3,7 @@ package commands
 import (
 	"testing"
 
-	"github.com/urfave/cli/v2"
+	"github.com/urfave/cli/v3"
 )
 
 func TestOrgCommand(t *testing.T) {
@@ -35,7 +35,7 @@ func TestOrgCommand(t *testing.T) {
 		"team":    false,
 	}
 
-	for _, subcmd := range cmd.Subcommands {
+	for _, subcmd := range cmd.Commands {
 		if _, exists := expectedSubcommands[subcmd.Name]; !exists {
 			t.Errorf("Unexpected subcommand: %s", subcmd.Name)
 		}
@@ -54,7 +54,7 @@ func TestOrgSwitchCommand(t *testing.T) {
 
 	// Find the switch subcommand
 	var switchCmd *cli.Command
-	for _, subcmd := range cmd.Subcommands {
+	for _, subcmd := range cmd.Commands {
 		if subcmd.Name == "switch" {
 			switchCmd = subcmd
 			break
@@ -90,7 +90,7 @@ func TestOrgCurrentCommand(t *testing.T) {
 
 	// Find the current subcommand
 	var currentCmd *cli.Command
-	for _, subcmd := range cmd.Subcommands {
+	for _, subcmd := range cmd.Commands {
 		if subcmd.Name == "current" {
 			currentCmd = subcmd
 			break
