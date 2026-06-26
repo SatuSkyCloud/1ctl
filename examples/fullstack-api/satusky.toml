@@ -69,6 +69,10 @@
   # organization  Override the CLI auth context.  Rarely needed.
   # organization = ""
 
+  # To build through docker buildx or using depot. if fast_build using depot
+[build]
+  fast_build  = true
+
 
 # =============================================================================
 # [env] — Environment variables (non-sensitive)
