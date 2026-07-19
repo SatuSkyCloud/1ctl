@@ -46,6 +46,7 @@ func deploymentCommand() *cli.Command {
 		Usage: "Administer deployment reconciliation",
 		Commands: []*cli.Command{
 			deploymentAdoptCommand(),
+			deploymentRoutingAdoptCommand(),
 		},
 	}
 }
@@ -79,6 +80,42 @@ func deploymentAdoptCommand() *cli.Command {
 				return fmt.Errorf("invalid deployment ID: %w", err)
 			}
 			return handleDeploymentAdopt(ctx, in)
+		},
+	}
+}
+
+func deploymentRoutingAdoptCommand() *cli.Command {
+	var in deploymentAdoptInput
+	return &cli.Command{
+		Name:      "routing-adopt",
+		Usage:     "Transfer a legacy HTTPRoute to durable reconciliation",
+		ArgsUsage: "<deployment-id>",
+		Flags: []cli.Flag{
+			requiredString(flagReason, "Audit reason for the ownership transfer", &in.Reason, validateReason),
+			requiredString(flagExpectedUID, "Exact live HTTPRoute UID", &in.ExpectedUID, validateUUID),
+			requiredString(flagExpectedResourceVersion, "Exact live HTTPRoute resourceVersion", &in.ExpectedResourceVersion, validateNonEmpty),
+			&cli.Int64Flag{
+				Name:        flagExpectedGeneration,
+				Usage:       "Exact live HTTPRoute generation",
+				Destination: &in.ExpectedGeneration,
+				Required:    true,
+				Validator:   validateGeneration,
+			},
+			requiredString(flagRequestID, "Stable UUID for this adoption attempt", &in.RequestID, validateUUID),
+			&cli.BoolFlag{
+				Name: flagYes, Aliases: []string{"y"}, Usage: "Confirm the routing ownership transfer",
+				Destination: &in.Yes, Required: true,
+			},
+		},
+		Action: func(ctx context.Context, cmd *cli.Command) error {
+			if cmd.Args().Len() != 1 {
+				return cli.ShowSubcommandHelp(cmd)
+			}
+			in.DeploymentID = strings.TrimSpace(cmd.Args().First())
+			if err := validateUUID(in.DeploymentID); err != nil {
+				return fmt.Errorf("invalid deployment ID: %w", err)
+			}
+			return handleDeploymentRoutingAdopt(ctx, in)
 		},
 	}
 }

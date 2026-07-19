@@ -12,12 +12,23 @@ import (
 )
 
 func TestDeploymentAdoptRequiredFlags(t *testing.T) {
-	adopt := findAdoptCommand(t)
+	assertRequiredAdoptionFlags(t, findDeploymentCommand(t, "adopt"), false)
+}
+
+func TestDeploymentRoutingAdoptRequiredFlags(t *testing.T) {
+	assertRequiredAdoptionFlags(t, findDeploymentCommand(t, "routing-adopt"), true)
+}
+
+func assertRequiredAdoptionFlags(t *testing.T, command *cli.Command, requireYes bool) {
+	t.Helper()
 	required := map[string]bool{
 		flagReason: true, flagExpectedUID: true, flagExpectedResourceVersion: true,
 		flagExpectedGeneration: true, flagRequestID: true,
 	}
-	for _, flag := range adopt.Flags {
+	if requireYes {
+		required[flagYes] = true
+	}
+	for _, flag := range command.Flags {
 		switch typed := flag.(type) {
 		case *cli.StringFlag:
 			if required[typed.Name] {
@@ -27,6 +38,13 @@ func TestDeploymentAdoptRequiredFlags(t *testing.T) {
 				delete(required, typed.Name)
 			}
 		case *cli.Int64Flag:
+			if required[typed.Name] {
+				if !typed.Required || typed.Destination == nil {
+					t.Errorf("flag %q must be required and wired to a destination", typed.Name)
+				}
+				delete(required, typed.Name)
+			}
+		case *cli.BoolFlag:
 			if required[typed.Name] {
 				if !typed.Required || typed.Destination == nil {
 					t.Errorf("flag %q must be required and wired to a destination", typed.Name)
@@ -143,17 +161,130 @@ func TestDeploymentAdoptCommandWiresRequest(t *testing.T) {
 	}
 }
 
-func findAdoptCommand(t *testing.T) *cli.Command {
+func TestDeploymentRoutingAdoptCommandValidatesInput(t *testing.T) {
+	validID := uuid.NewString()
+	base := []string{
+		"admin", "deployment", "routing-adopt", validID,
+		"--reason", "routing cutover",
+		"--expected-uid", uuid.NewString(),
+		"--expected-resource-version", "24",
+		"--expected-generation", "2",
+		"--request-id", uuid.NewString(),
+		"--yes",
+	}
+
+	tests := []struct {
+		name    string
+		mutate  func([]string) []string
+		wantErr string
+	}{
+		{
+			name: "invalid deployment ID",
+			mutate: func(args []string) []string {
+				args[3] = "not-a-uuid"
+				return args
+			},
+			wantErr: "invalid deployment ID",
+		},
+		{
+			name: "invalid expected UID",
+			mutate: func(args []string) []string {
+				return replaceFlagValue(args, "--expected-uid", "not-a-uuid")
+			},
+			wantErr: "non-zero UUID",
+		},
+		{
+			name: "invalid generation",
+			mutate: func(args []string) []string {
+				return replaceFlagValue(args, "--expected-generation", "0")
+			},
+			wantErr: "at least 1",
+		},
+		{
+			name: "missing request ID",
+			mutate: func(args []string) []string {
+				return removeFlag(args, "--request-id")
+			},
+			wantErr: "Required flag",
+		},
+		{
+			name: "missing confirmation",
+			mutate: func(args []string) []string {
+				return removeBoolFlag(args, "--yes")
+			},
+			wantErr: "Required flag",
+		},
+	}
+
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			args := test.mutate(append([]string(nil), base...))
+			err := Command().Run(context.Background(), args)
+			if err == nil || !strings.Contains(err.Error(), test.wantErr) {
+				t.Fatalf("Run() error = %v, want substring %q", err, test.wantErr)
+			}
+		})
+	}
+}
+
+func TestDeploymentRoutingAdoptCommandWiresRequest(t *testing.T) {
+	deploymentID := uuid.NewString()
+	expectedUID := uuid.NewString()
+	requestID := uuid.NewString()
+	original := adoptDeploymentRouting
+	t.Cleanup(func() { adoptDeploymentRouting = original })
+
+	called := false
+	adoptDeploymentRouting = func(gotDeploymentID, gotRequestID string, request api.DeploymentAdoptionRequest) (*api.DeploymentRoutingAdoptionResult, error) {
+		called = true
+		if gotDeploymentID != deploymentID || gotRequestID != requestID {
+			t.Errorf("IDs = %q, %q", gotDeploymentID, gotRequestID)
+		}
+		want := api.DeploymentAdoptionRequest{
+			Reason: "routing cutover", ExpectedUID: expectedUID,
+			ExpectedResourceVersion: "72", ExpectedGeneration: 6,
+		}
+		if request != want {
+			t.Errorf("request = %+v, want %+v", request, want)
+		}
+		return &api.DeploymentRoutingAdoptionResult{
+			DeploymentID: deploymentID, Name: "canary-route", Namespace: "tenant-a",
+			FieldManager: "satusky-routing-controller", Force: true,
+			AlreadyManaged: false, RequestID: requestID,
+		}, nil
+	}
+
+	err := Command().Run(context.Background(), []string{
+		"admin", "deployment", "routing-adopt", deploymentID,
+		"--reason", " routing cutover ",
+		"--expected-uid", expectedUID,
+		"--expected-resource-version", "72",
+		"--expected-generation", "6",
+		"--request-id", requestID,
+		"--yes",
+	})
+	if err != nil {
+		t.Fatalf("Run() error = %v", err)
+	}
+	if !called {
+		t.Fatal("routing adoption API was not called")
+	}
+}
+
+func findDeploymentCommand(t *testing.T, name string) *cli.Command {
 	t.Helper()
 	root := Command()
 	if len(root.Commands) != 1 || root.Commands[0].Name != "deployment" {
 		t.Fatalf("unexpected admin command tree")
 	}
 	deployment := root.Commands[0]
-	if len(deployment.Commands) != 1 || deployment.Commands[0].Name != "adopt" {
-		t.Fatalf("unexpected deployment command tree")
+	for _, command := range deployment.Commands {
+		if command.Name == name {
+			return command
+		}
 	}
-	return deployment.Commands[0]
+	t.Fatalf("deployment command %q not found", name)
+	return nil
 }
 
 func replaceFlagValue(args []string, flag, value string) []string {
@@ -170,6 +301,15 @@ func removeFlag(args []string, flag string) []string {
 	for i := range args {
 		if args[i] == flag && i+1 < len(args) {
 			return append(args[:i], args[i+2:]...)
+		}
+	}
+	return args
+}
+
+func removeBoolFlag(args []string, flag string) []string {
+	for i := range args {
+		if args[i] == flag {
+			return append(args[:i], args[i+1:]...)
 		}
 	}
 	return args

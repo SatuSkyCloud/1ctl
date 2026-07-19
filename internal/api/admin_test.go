@@ -65,6 +65,60 @@ func TestAdoptDeploymentSendsMainAPIPathBodyAndRequestID(t *testing.T) {
 	}
 }
 
+func TestAdoptDeploymentRoutingSendsMainAPIPathBodyAndRequestID(t *testing.T) {
+	deploymentID := uuid.NewString()
+	requestID := uuid.NewString()
+	want := DeploymentAdoptionRequest{
+		Reason:                  "routing cutover",
+		ExpectedUID:             uuid.NewString(),
+		ExpectedResourceVersion: "719",
+		ExpectedGeneration:      9,
+	}
+
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, request *http.Request) {
+		if request.Method != http.MethodPost {
+			t.Errorf("method = %s, want POST", request.Method)
+		}
+		if request.URL.Path != "/v1/admin/deployments/"+deploymentID+"/routing/adopt" {
+			t.Errorf("path = %s", request.URL.Path)
+		}
+		if got := request.Header.Get(requestIDHeader); got != requestID {
+			t.Errorf("%s = %q, want %q", requestIDHeader, got, requestID)
+		}
+		var got DeploymentAdoptionRequest
+		if err := json.NewDecoder(request.Body).Decode(&got); err != nil {
+			t.Fatalf("Decode() error = %v", err)
+		}
+		if got != want {
+			t.Errorf("body = %+v, want %+v", got, want)
+		}
+		w.Header().Set("Content-Type", "application/json")
+		if err := json.NewEncoder(w).Encode(map[string]interface{}{
+			"error": false,
+			"data": map[string]interface{}{
+				"deployment_id":   deploymentID,
+				"name":            "canary-route",
+				"force":           true,
+				"already_managed": false,
+				"request_id":      requestID,
+			},
+		}); err != nil {
+			t.Errorf("Encode() error = %v", err)
+		}
+	}))
+	defer server.Close()
+
+	configureAdminAPITestContext(t, server.URL+"/v1/cli")
+	result, err := AdoptDeploymentRouting(deploymentID, requestID, want)
+	if err != nil {
+		t.Fatalf("AdoptDeploymentRouting() error = %v", err)
+	}
+	if result.DeploymentID != deploymentID || result.RequestID != requestID || result.Name != "canary-route" ||
+		!result.Force || result.AlreadyManaged {
+		t.Fatalf("result = %+v", result)
+	}
+}
+
 func configureAdminAPITestContext(t *testing.T, apiURL string) {
 	t.Helper()
 	originalStore := cliContext.Default()

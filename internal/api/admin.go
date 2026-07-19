@@ -36,6 +36,21 @@ type DeploymentAdoptionResult struct {
 	RequestID             string `json:"request_id"`
 }
 
+// DeploymentRoutingAdoptionResult describes the live HTTPRoute after its
+// field ownership is transferred to the routing reconciler.
+type DeploymentRoutingAdoptionResult struct {
+	DeploymentID        string `json:"deployment_id"`
+	Namespace           string `json:"namespace"`
+	Name                string `json:"name"`
+	LiveUID             string `json:"live_uid"`
+	LiveResourceVersion string `json:"live_resource_version"`
+	LiveGeneration      int64  `json:"live_generation"`
+	FieldManager        string `json:"field_manager"`
+	Force               bool   `json:"force"`
+	AlreadyManaged      bool   `json:"already_managed"`
+	RequestID           string `json:"request_id"`
+}
+
 // AdoptDeployment requests a guarded adoption through the main API. The
 // request ID is caller supplied so a retry is traceable and stable.
 func AdoptDeployment(deploymentID, requestID string, request DeploymentAdoptionRequest) (*DeploymentAdoptionResult, error) {
@@ -46,6 +61,22 @@ func AdoptDeployment(deploymentID, requestID string, request DeploymentAdoptionR
 	headers := make(http.Header)
 	headers.Set(requestIDHeader, requestID)
 	path := fmt.Sprintf("/admin/deployments/%s/adopt", url.PathEscape(deploymentID))
+	if err := makeMainAPIRequestWithHeaders(http.MethodPost, path, request, &response, headers); err != nil {
+		return nil, err
+	}
+	return &response.Data, nil
+}
+
+// AdoptDeploymentRouting requests guarded ownership transfer of a
+// Deployment's canonical HTTPRoute through the main API.
+func AdoptDeploymentRouting(deploymentID, requestID string, request DeploymentAdoptionRequest) (*DeploymentRoutingAdoptionResult, error) {
+	var response struct {
+		Error bool                            `json:"error"`
+		Data  DeploymentRoutingAdoptionResult `json:"data"`
+	}
+	headers := make(http.Header)
+	headers.Set(requestIDHeader, requestID)
+	path := fmt.Sprintf("/admin/deployments/%s/routing/adopt", url.PathEscape(deploymentID))
 	if err := makeMainAPIRequestWithHeaders(http.MethodPost, path, request, &response, headers); err != nil {
 		return nil, err
 	}
