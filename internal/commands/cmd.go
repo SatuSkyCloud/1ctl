@@ -8,6 +8,7 @@
 package commands
 
 import (
+	"1ctl/internal/commands/admin"
 	"1ctl/internal/commands/audit"
 	"1ctl/internal/commands/auth"
 	"1ctl/internal/commands/cluster"
@@ -17,16 +18,16 @@ import (
 	"1ctl/internal/commands/doctor"
 	"1ctl/internal/commands/domains"
 	"1ctl/internal/commands/environment"
-	initcmd "1ctl/internal/commands/init"
 	"1ctl/internal/commands/ingress"
+	initcmd "1ctl/internal/commands/init"
 	"1ctl/internal/commands/issuer"
 	"1ctl/internal/commands/launch"
 	"1ctl/internal/commands/logs"
 	"1ctl/internal/commands/machine"
 	"1ctl/internal/commands/marketplace"
-	"1ctl/internal/commands/postgres"
 	"1ctl/internal/commands/notifications"
 	"1ctl/internal/commands/org"
+	"1ctl/internal/commands/postgres"
 	"1ctl/internal/commands/pricing"
 	"1ctl/internal/commands/profile"
 	"1ctl/internal/commands/secret"
@@ -37,6 +38,9 @@ import (
 
 	"github.com/urfave/cli/v3"
 )
+
+// AdminCommand returns the "1ctl admin" command tree.
+func AdminCommand() *cli.Command { return admin.Command() }
 
 // AuthCommand returns the "1ctl auth" command tree.
 func AuthCommand() *cli.Command { return auth.Command() }

@@ -508,15 +508,23 @@ func makeRequest(method, path string, body interface{}, response interface{}) er
 }
 
 func makeMainAPIRequest(method, path string, body interface{}, response interface{}) error {
+	return makeMainAPIRequestWithHeaders(method, path, body, response, nil)
+}
+
+func makeMainAPIRequestWithHeaders(method, path string, body interface{}, response interface{}, headers http.Header) error {
 	cfg := config.GetConfig()
 	baseURL := strings.TrimSuffix(cfg.ApiURL, "/")
 	baseURL = strings.TrimSuffix(baseURL, "/cli")
 	baseURL = strings.TrimSuffix(baseURL, "/")
 	url := fmt.Sprintf("%s%s", baseURL, path)
-	return makeRequestURL(method, url, body, response)
+	return makeRequestURLWithHeaders(method, url, body, response, headers)
 }
 
 func makeRequestURL(method, url string, body interface{}, response interface{}) error {
+	return makeRequestURLWithHeaders(method, url, body, response, nil)
+}
+
+func makeRequestURLWithHeaders(method, url string, body interface{}, response interface{}, headers http.Header) error {
 	// Enforce HTTPS for non-localhost API URLs to prevent token leakage over plaintext
 	if !utils.IsLocalhostURL(url) && !strings.HasPrefix(url, "https://") {
 		return utils.NewError(fmt.Sprintf("refusing to send auth token over insecure connection (%s). Use HTTPS or http://localhost for local development", url), nil)
@@ -545,6 +553,11 @@ func makeRequestURL(method, url string, body interface{}, response interface{}) 
 	req.Header.Set("x-satusky-api-key", token)
 	if email := context.GetEmail(); email != "" {
 		req.Header.Set("x-satusky-user-email", email)
+	}
+	for key, values := range headers {
+		for _, value := range values {
+			req.Header.Add(key, value)
+		}
 	}
 
 	resp, err := httpClient.Do(req)

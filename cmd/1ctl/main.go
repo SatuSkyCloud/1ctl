@@ -25,8 +25,8 @@ func createCommand() *cli.Command {
 	cmd := &cli.Command{
 		EnableShellCompletion: true,
 		Name:                  "1ctl",
-		Usage:   "Deploy and manage applications on SatuSky Cloud",
-		Version: version.GetVersionInfo(),
+		Usage:                 "Deploy and manage applications on SatuSky Cloud",
+		Version:               version.GetVersionInfo(),
 		Description: `1ctl is the command-line interface for SatuSky Cloud.
 
 Quick start:
@@ -67,6 +67,7 @@ Tokens: https://cloud.satusky.com/<org-id>/token`,
 			},
 		},
 		Commands: []*cli.Command{
+			cat(commands.AdminCommand(), "Billing & operations"),
 			// 1ctl init → Core workflow
 			cat(commands.InitCommand(), "Core workflow"),
 			cat(commands.LaunchCommand(), "Core workflow"),
