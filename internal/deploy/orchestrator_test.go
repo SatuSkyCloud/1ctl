@@ -6,6 +6,8 @@ import (
 	"1ctl/internal/api"
 	"1ctl/internal/context"
 	"1ctl/internal/testutils"
+
+	"github.com/google/uuid"
 )
 
 func TestBuildStrategyConfig(t *testing.T) {
@@ -193,7 +195,7 @@ func TestDeploy(t *testing.T) {
 			// TODO: Replace actual API calls with mock
 			// This requires refactoring the deploy package to accept an API interface
 
-			resp, err := Deploy(tt.opts)
+			resp, err := Deploy(tt.opts, uuid.NewString())
 			if (err != nil) != tt.wantErr {
 				t.Errorf("Deploy() error = %v, wantErr %v", err, tt.wantErr)
 				return

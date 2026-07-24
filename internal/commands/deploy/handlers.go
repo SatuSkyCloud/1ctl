@@ -43,7 +43,8 @@ func handleDeploy(ctx context.Context, in DeployInput) error {
 		return utils.NewError(fmt.Sprintf("deployment preparation failed: %s", err.Error()), nil)
 	}
 
-	resp, err := deploypkg.Deploy(opts)
+	requestID := uuid.NewString()
+	resp, err := deploypkg.Deploy(opts, requestID)
 	if err != nil {
 		if _, ok := err.(*utils.ResourceExhaustedCLIError); ok {
 			return err
@@ -576,8 +577,6 @@ func resolveMachineTagExpr(expr string) ([]string, error) {
 	return hostnames, nil
 }
 
-
-
 // --- List / Get ---------------------------------------------------------
 
 func handleListDeployments(ctx context.Context) error {
@@ -882,7 +881,7 @@ func handleRestartDeployment(ctx context.Context, in DeployRefInput) error {
 		return err
 	}
 	utils.PrintInfo("Initiating rolling restart for deployment %s...", deploymentID)
-	if err := api.RestartDeployment(deploymentID); err != nil {
+	if err := api.RestartDeployment(deploymentID, uuid.NewString()); err != nil {
 		return utils.NewError(fmt.Sprintf("failed to restart: %s", err.Error()), nil)
 	}
 	utils.PrintSuccess("Rolling restart initiated.")
@@ -938,7 +937,7 @@ func handleRollback(ctx context.Context, in RollbackInput) error {
 		return nil
 	}
 
-	if err := api.RollbackDeployment(deploymentID, version); err != nil {
+	if err := api.RollbackDeployment(deploymentID, version, uuid.NewString()); err != nil {
 		return utils.NewError(fmt.Sprintf("rollback failed: %s", err.Error()), nil)
 	}
 	utils.PrintSuccess("Rollback to version %d initiated", version)
@@ -994,7 +993,7 @@ func handleScaleDeployment(ctx context.Context, in ScaleInput) error {
 	current.Replicas = replicas
 
 	var resp string
-	if err := api.UpsertDeployment(*current, &resp); err != nil {
+	if err := api.UpsertDeployment(*current, &resp, uuid.NewString()); err != nil {
 		return utils.NewError(fmt.Sprintf("failed to scale deployment: %s", err.Error()), nil)
 	}
 	utils.PrintSuccess("Scaled deployment %s to %d replicas", deploymentID, replicas)

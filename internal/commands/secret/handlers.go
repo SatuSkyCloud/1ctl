@@ -75,7 +75,7 @@ func handleCreateSecret(ctx context.Context, in secretCreateInput) error {
 	utils.PrintSuccess("Secret %s created successfully\n", displayName)
 
 	utils.PrintInfo("Restarting deployment to activate secrets...")
-	if err := api.RestartDeployment(deploymentIDStr); err != nil {
+	if err := api.RestartDeployment(deploymentIDStr, uuid.NewString()); err != nil {
 		utils.PrintWarning("Secret created, but restart failed: %s", err.Error())
 		utils.PrintInfo("Run: 1ctl deploy restart --app %s", displayName)
 	} else {

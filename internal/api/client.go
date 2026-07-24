@@ -51,8 +51,10 @@ func DeleteDeployment(deploymentID string) (*DeletionResult, error) {
 }
 
 // RestartDeployment triggers a rolling restart of a deployment
-func RestartDeployment(deploymentID string) error {
-	return makeRequest("POST", fmt.Sprintf("/deployments/%s/restart", deploymentID), nil, nil)
+func RestartDeployment(deploymentID, requestID string) error {
+	headers := make(http.Header)
+	headers.Set(requestIDHeader, requestID)
+	return makeMainAPIRequestWithHeadersRetry(http.MethodPost, fmt.Sprintf("/deployments/%s/restart", deploymentID), nil, nil, headers)
 }
 
 // ListDeployments lists all deployments for the current namespace.
@@ -79,8 +81,10 @@ func ListDeploymentVersions(deploymentID string) ([]DeploymentVersion, error) {
 }
 
 // RollbackDeployment initiates a rollback to the specified version number.
-func RollbackDeployment(deploymentID string, versionNumber int) error {
-	return makeRequest("POST", fmt.Sprintf("/deployments/%s/rollback/%d", deploymentID, versionNumber), nil, nil)
+func RollbackDeployment(deploymentID string, versionNumber int, requestID string) error {
+	headers := make(http.Header)
+	headers.Set(requestIDHeader, requestID)
+	return makeMainAPIRequestWithHeadersRetry(http.MethodPost, fmt.Sprintf("/deployments/%s/rollback/%d", deploymentID, versionNumber), nil, nil, headers)
 }
 
 // ListDeploymentsByNamespace lists deployments in a specific namespace
@@ -520,33 +524,66 @@ func makeMainAPIRequestWithHeaders(method, path string, body interface{}, respon
 	return makeRequestURLWithHeaders(method, url, body, response, headers)
 }
 
+func makeMainAPIRequestWithHeadersRetry(method, path string, body interface{}, response interface{}, headers http.Header) error {
+	cfg := config.GetConfig()
+	baseURL := strings.TrimSuffix(cfg.ApiURL, "/")
+	baseURL = strings.TrimSuffix(baseURL, "/cli")
+	baseURL = strings.TrimSuffix(baseURL, "/")
+	url := fmt.Sprintf("%s%s", baseURL, path)
+	return makeRequestURLWithHeadersRetry(method, url, body, response, headers)
+}
+
 func makeRequestURL(method, url string, body interface{}, response interface{}) error {
 	return makeRequestURLWithHeaders(method, url, body, response, nil)
 }
 
 func makeRequestURLWithHeaders(method, url string, body interface{}, response interface{}, headers http.Header) error {
+	_, err := makeRequestURLWithHeadersOnce(method, url, body, response, headers)
+	return err
+}
+
+func makeRequestURLWithHeadersRetry(method, url string, body interface{}, response interface{}, headers http.Header) error {
+	const maxAttempts = 3
+	var err error
+	for attempt := 0; attempt < maxAttempts; attempt++ {
+		status, requestErr := makeRequestURLWithHeadersOnce(method, url, body, response, headers)
+		if requestErr == nil {
+			return nil
+		}
+		err = requestErr
+		if status != 0 && (status < http.StatusInternalServerError || status >= 600) {
+			return err
+		}
+		if attempt < maxAttempts-1 {
+			time.Sleep(time.Duration(attempt+1) * 100 * time.Millisecond)
+		}
+	}
+	return err
+}
+
+func makeRequestURLWithHeadersOnce(method, url string, body interface{}, response interface{}, headers http.Header) (int, error) {
 	// Enforce HTTPS for non-localhost API URLs to prevent token leakage over plaintext
 	if !utils.IsLocalhostURL(url) && !strings.HasPrefix(url, "https://") {
-		return utils.NewError(fmt.Sprintf("refusing to send auth token over insecure connection (%s). Use HTTPS or http://localhost for local development", url), nil)
+		return 0, utils.NewError(fmt.Sprintf("refusing to send auth token over insecure connection (%s). Use HTTPS or http://localhost for local development", url), nil)
 	}
 
 	var bodyReader io.Reader
 	if body != nil {
 		jsonData, err := json.Marshal(body)
 		if err != nil {
-			return utils.NewError(fmt.Sprintf("failed to marshal request body: %s", err.Error()), nil)
+			return 0, utils.NewError(fmt.Sprintf("failed to marshal request body: %s", err.Error()), nil)
 		}
 		bodyReader = bytes.NewReader(jsonData)
 	}
 
 	req, err := http.NewRequest(method, url, bodyReader)
 	if err != nil {
-		return utils.NewError(fmt.Sprintf("failed to create request: %s", err.Error()), nil)
+		return 0, utils.NewError(fmt.Sprintf("failed to create request: %s", err.Error()), nil)
 	}
 
 	token := context.GetToken()
 	if token == "" {
-		return utils.NewError("not authenticated. Please run '1ctl auth login' to authenticate", nil)
+		return 0, utils.NewError("not authenticated. Please run '1ctl auth login' to authenticate", nil)
 	}
 
 	req.Header.Set("Content-Type", "application/json")
@@ -562,39 +599,39 @@ func makeRequestURLWithHeaders(method, url string, body interface{}, response in
 
 	resp, err := httpClient.Do(req)
 	if err != nil {
-		return utils.NewError(fmt.Sprintf("failed to make request: %s", err.Error()), nil)
+		return 0, utils.NewError(fmt.Sprintf("failed to make request: %s", err.Error()), nil)
 	}
 	defer func() { _ = resp.Body.Close() }() //nolint:errcheck
 
 	respBody, err := io.ReadAll(resp.Body)
 	if err != nil {
-		return utils.NewError(fmt.Sprintf("failed to read response body: %s", err.Error()), nil)
+		return resp.StatusCode, utils.NewError(fmt.Sprintf("failed to read response body: %s", err.Error()), nil)
 	}
 
 	if resp.StatusCode >= 400 {
 		// Check for resource exhausted error (422 Unprocessable Entity)
 		resourceErr, parseErr := utils.ParseResourceExhaustedFromBytes(respBody, resp.StatusCode)
 		if parseErr == nil && resourceErr != nil {
-			return utils.NewResourceExhaustedCLIError(resourceErr)
+			return resp.StatusCode, utils.NewResourceExhaustedCLIError(resourceErr)
 		}
 
 		var apiError APIError
 		if err := json.Unmarshal(respBody, &apiError); err != nil {
-			return utils.NewError(fmt.Sprintf("request failed with status %d: %s", resp.StatusCode, string(respBody)), nil)
+			return resp.StatusCode, utils.NewError(fmt.Sprintf("request failed with status %d: %s", resp.StatusCode, string(respBody)), nil)
 		}
 		if resp.StatusCode == 500 {
-			return utils.NewError(fmt.Sprintf("%s — check backend logs for details", apiError.Message), nil)
+			return resp.StatusCode, utils.NewError(fmt.Sprintf("%s — check backend logs for details", apiError.Message), nil)
 		}
-		return utils.NewError(apiError.Message, nil)
+		return resp.StatusCode, utils.NewError(apiError.Message, nil)
 	}
 
 	if response != nil && len(respBody) > 0 {
 		if err := json.Unmarshal(respBody, response); err != nil {
-			return utils.NewError(fmt.Sprintf("failed to parse response: %s", err.Error()), nil)
+			return resp.StatusCode, utils.NewError(fmt.Sprintf("failed to parse response: %s", err.Error()), nil)
 		}
 	}
 
-	return nil
+	return resp.StatusCode, nil
 }
 
 // GetDeploymentLogs gets deployment logs
@@ -1166,12 +1203,14 @@ func SendMachineCommand(machineID string, req SendCommandRequest) (*SendCommandR
 }
 
 // UpsertDeployment creates or updates a deployment and returns the deployment ID
-func UpsertDeployment(req Deployment, response *string) error {
+func UpsertDeployment(req Deployment, response *string, requestID string) error {
 	var resp apiResponse
 	resp.Data = response
 
 	path := fmt.Sprintf("/deployments/upsert/%s/%s", req.Namespace, req.AppLabel)
-	return makeRequest("POST", path, req, &resp)
+	headers := make(http.Header)
+	headers.Set(requestIDHeader, requestID)
+	return makeMainAPIRequestWithHeaders(http.MethodPut, path, req, &resp, headers)
 }
 
 // UpsertService creates or updates a service and returns the service ID

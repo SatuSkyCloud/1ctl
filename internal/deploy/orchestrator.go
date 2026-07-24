@@ -33,7 +33,7 @@ func (dp *deploymentProgress) complete() {
 }
 
 // Deploy handles the sequential deployment process
-func Deploy(opts DeploymentOptions) (*api.CreateDeploymentResponse, error) {
+func Deploy(opts DeploymentOptions, requestID string) (*api.CreateDeploymentResponse, error) {
 	progress := &deploymentProgress{total: 5}
 	cmgr := cleanup.NewCleanupManager()
 
@@ -99,7 +99,7 @@ func Deploy(opts DeploymentOptions) (*api.CreateDeploymentResponse, error) {
 	progress.done = false
 	progress.print()
 
-	deploymentID, err := mainDeploy(opts, image, projectName, userID, opts.Organization, opts.Hostnames)
+	deploymentID, err := mainDeploy(opts, image, projectName, userID, opts.Organization, opts.Hostnames, requestID)
 	if err != nil {
 		return nil, err
 	}
@@ -148,7 +148,7 @@ func Deploy(opts DeploymentOptions) (*api.CreateDeploymentResponse, error) {
 	progress.done = false
 	progress.print()
 
-	domainName, ingressID, err := handleIngressAndDependencies(opts, deploymentID, serviceID, userID, opts.Organization, projectName, opts.Hostnames)
+	domainName, ingressID, err := handleIngressAndDependencies(opts, deploymentID, serviceID, userID, opts.Organization, projectName, opts.Hostnames, requestID)
 	if err != nil {
 		deployCleanup(cmgr)
 		return nil, utils.NewError(fmt.Sprintf("failed to configure ingress and dependencies: %s", err.Error()), nil)
@@ -243,7 +243,7 @@ func normalizeTargetArch(imageArch string) string {
 	}
 }
 
-func mainDeploy(opts DeploymentOptions, image, name, userID, organization string, hostnames []string) (string, error) {
+func mainDeploy(opts DeploymentOptions, image, name, userID, organization string, hostnames []string, requestID string) (string, error) {
 	port, err := api.SafeInt32(opts.Port)
 	if err != nil {
 		return "", utils.NewError(fmt.Sprintf("invalid port: %s", err.Error()), nil)
@@ -372,7 +372,7 @@ func mainDeploy(opts DeploymentOptions, image, name, userID, organization string
 	deployment.TargetArch = opts.TargetArch
 
 	var deploymentID string
-	if err := api.UpsertDeployment(deployment, &deploymentID); err != nil {
+	if err := api.UpsertDeployment(deployment, &deploymentID, requestID); err != nil {
 		// Check if this is a resource exhausted error and handle it specially
 		if resourceErr, ok := err.(*utils.ResourceExhaustedCLIError); ok {
 			utils.PrintResourceExhaustedError(resourceErr.ResourceError)
@@ -464,7 +464,7 @@ func upsertIngress(deploymentID string, serviceID string, opts DeploymentOptions
 	return ingressResp.DomainName, ingressResp.IngressID.String(), nil
 }
 
-func handleDependencies(deps []api.Dependency, userID, organization string, hostnames []string) error {
+func handleDependencies(deps []api.Dependency, userID, organization string, hostnames []string, requestID string) error {
 	for _, dep := range deps {
 		opts := DeploymentOptions{
 			CPURequest:   "125m",  // TODO: change this when CPU is specified for each dependency
@@ -475,7 +475,7 @@ func handleDependencies(deps []api.Dependency, userID, organization string, host
 		}
 
 		// Create deployment for dependency
-		deploymentID, err := mainDeploy(opts, dep.Image, dep.Name, userID, organization, hostnames)
+		deploymentID, err := mainDeploy(opts, dep.Image, dep.Name, userID, organization, hostnames, requestID)
 		if err != nil {
 			return utils.NewError(fmt.Sprintf("failed to create dependency deployment: %s", err.Error()), nil)
 		}
@@ -623,7 +623,7 @@ func buildStrategyConfig(opts DeploymentOptions) *api.DeploymentStrategyConfig {
 // handleIngressAndDependencies returns the resolved domain name and the
 // ingressID of any ingress it created so the caller can register the resource
 // with the cleanup manager.
-func handleIngressAndDependencies(opts DeploymentOptions, deploymentID, serviceID, userID, organization, projectName string, hostnames []string) (domainName, ingressID string, err error) {
+func handleIngressAndDependencies(opts DeploymentOptions, deploymentID, serviceID, userID, organization, projectName string, hostnames []string, requestID string) (domainName, ingressID string, err error) {
 	type ingressResult struct {
 		domain string
 		id     string
@@ -643,7 +643,7 @@ func handleIngressAndDependencies(opts DeploymentOptions, deploymentID, serviceI
 
 	go func() {
 		if len(opts.Dependencies) > 0 {
-			if e := handleDependencies(opts.Dependencies, userID, organization, hostnames); e != nil {
+			if e := handleDependencies(opts.Dependencies, userID, organization, hostnames, requestID); e != nil {
 				depErrChan <- utils.NewError(fmt.Sprintf("failed to handle dependencies: %s", e.Error()), nil)
 				return
 			}
