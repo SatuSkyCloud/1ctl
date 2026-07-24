@@ -10,14 +10,13 @@ import (
 // --- Flag name constants ------------------------------------------------
 
 const (
-	flagHostname     = "hostname"
-	flagCPU          = "cpu"
-	flagMemory       = "memory"
-	flagDomain       = "domain"
-	flagStorageSize  = "storage-size"
-	flagLimit        = "limit"
-	flagOffset       = "offset"
-	flagSort         = "sort"
+	flagHostname    = "hostname"
+	flagCPU         = "cpu"
+	flagMemory      = "memory"
+	flagStorageSize = "storage-size"
+	flagLimit       = "limit"
+	flagOffset      = "offset"
+	flagSort        = "sort"
 )
 
 // --- Input structs ------------------------------------------------------
@@ -29,12 +28,11 @@ type marketplaceListInput struct {
 }
 
 type marketplaceDeployInput struct {
-	AppName     string   // positional: marketplace app name or ID
-	DeployName  string   // optional positional: deployment name (defaults to app name)
+	AppName     string // positional: marketplace app name or ID
+	DeployName  string // optional positional: deployment name (defaults to app name)
 	Hostnames   []string
 	CPU         string
 	Memory      string
-	Domain      string
 	StorageSize string
 }
 
@@ -105,24 +103,20 @@ func marketplaceDeployCommand() *cli.Command {
 		ArgsUsage: "<app> [deployment-name]",
 		Flags: []cli.Flag{
 			&cli.StringSliceFlag{
-				Name:        flagHostname,
-				Usage:       "Machine hostname(s) to deploy to",
+				Name:  flagHostname,
+				Usage: "Machine hostname(s) to deploy to",
 			},
 			&cli.StringFlag{
-				Name:        flagCPU,
-				Usage:       "CPU cores allocation (e.g., '2')",
+				Name:  flagCPU,
+				Usage: "CPU cores allocation (e.g., '2')",
 			},
 			&cli.StringFlag{
-				Name:        flagMemory,
-				Usage:       "Memory allocation (e.g., '4Gi')",
+				Name:  flagMemory,
+				Usage: "Memory allocation (e.g., '4Gi')",
 			},
 			&cli.StringFlag{
-				Name:        flagDomain,
-				Usage:       "Custom domain (default: auto-generated)",
-			},
-			&cli.StringFlag{
-				Name:        flagStorageSize,
-				Usage:       "Storage size for persistent data (e.g., '10Gi')",
+				Name:  flagStorageSize,
+				Usage: "Storage size for persistent data (e.g., '10Gi')",
 			},
 		},
 		Action: func(ctx context.Context, cmd *cli.Command) error {
@@ -135,7 +129,6 @@ func marketplaceDeployCommand() *cli.Command {
 				Hostnames:   cmd.StringSlice(flagHostname),
 				CPU:         cmd.String(flagCPU),
 				Memory:      cmd.String(flagMemory),
-				Domain:      cmd.String(flagDomain),
 				StorageSize: cmd.String(flagStorageSize),
 			}
 			return handleMarketplaceDeploy(ctx, in)

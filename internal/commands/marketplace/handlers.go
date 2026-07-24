@@ -91,6 +91,9 @@ func handleMarketplaceDeploy(ctx context.Context, in marketplaceDeployInput) err
 	if app.ComingSoon {
 		return utils.NewError(fmt.Sprintf("%q is coming soon and cannot be deployed yet", app.MarketplaceName), nil)
 	}
+	if !app.Deployable {
+		return utils.NewError(fmt.Sprintf("%q is not deployable", app.MarketplaceName), nil)
+	}
 
 	deployName := in.DeployName
 	if deployName == "" {
@@ -100,9 +103,8 @@ func handleMarketplaceDeploy(ctx context.Context, in marketplaceDeployInput) err
 	req := api.MarketplaceDeployRequest{
 		DeploymentName: deployName,
 		Hostnames:      in.Hostnames,
-		CPUCores:       in.CPU,
-		Memory:         in.Memory,
-		DomainName:     in.Domain,
+		CPURequest:     in.CPU,
+		MemoryRequest:  in.Memory,
 		StorageSize:    in.StorageSize,
 	}
 
@@ -111,7 +113,7 @@ func handleMarketplaceDeploy(ctx context.Context, in marketplaceDeployInput) err
 		return utils.NewError(fmt.Sprintf("failed to deploy marketplace app: %s", err.Error()), nil)
 	}
 
-	ingressID := deploypkg.ResolveIngressID(resp.DeploymentID.String())
-	publicURL := deploypkg.WaitForPublicURL(ingressID, resp.Domain)
-	return deploypkg.ReportDeployResult(resp.AppLabel, resp.DeploymentID.String(), resp.Domain, publicURL, "", true)
+	// Marketplace create returns 202 Accepted: the request was queued, not made ready.
+	return deploypkg.ReportDeployResult(resp.AppLabel, resp.DeploymentID.String(), resp.Domain,
+		deploypkg.PublicURLReadiness{Ready: false, Reason: "deployment accepted; readiness was not verified"}, "", true)
 }

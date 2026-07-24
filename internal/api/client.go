@@ -34,7 +34,7 @@ type apiResponse struct {
 // DeleteDeployment deletes a deployment
 func DeleteDeployment(deploymentID string) (*DeletionResult, error) {
 	var resp apiResponse
-	if err := makeRequest("POST", fmt.Sprintf("/deployments/delete/%s", deploymentID), nil, &resp); err != nil {
+	if err := makeMainAPIRequest("DELETE", fmt.Sprintf("/deployments/%s", url.PathEscape(deploymentID)), nil, &resp); err != nil {
 		return nil, err
 	}
 
