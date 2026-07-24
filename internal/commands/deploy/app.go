@@ -118,8 +118,18 @@ func appDestroyCommand() *cli.Command {
 			},
 			&cli.BoolFlag{
 				Name:        "retain-volumes",
-				Usage:       "Retain persistent volumes instead of deleting them",
+				Usage:       "Compatibility inverse of --purge-retained",
 				Destination: &in.RetainVolumes,
+			},
+			&cli.BoolFlag{
+				Name:        flagPurgeRetained,
+				Usage:       "Purge retained resources (marketplace-managed deployments only)",
+				Destination: &in.PurgeRetained,
+			},
+			&cli.BoolFlag{
+				Name:        flagNoWait,
+				Usage:       "Return after deletion is accepted",
+				Destination: &in.NoWait,
 			},
 		},
 		Action: func(ctx context.Context, cmd *cli.Command) error {

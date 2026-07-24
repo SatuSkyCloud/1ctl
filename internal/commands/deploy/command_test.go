@@ -33,6 +33,30 @@ func TestDeployCommand_Subcommands(t *testing.T) {
 	}
 }
 
+func TestAppDeleteAsyncFlags(t *testing.T) {
+	var deleteCommand *cli.Command
+	for _, command := range AppCommand().Commands {
+		if command.Name == "delete" {
+			deleteCommand = command
+			break
+		}
+	}
+	if deleteCommand == nil {
+		t.Fatal("app delete command not found")
+	}
+	want := map[string]bool{"purge-retained": false, "retain-volumes": false, "no-wait": false}
+	for _, flag := range deleteCommand.Flags {
+		if name := getFlagName(flag); name == "purge-retained" || name == "retain-volumes" || name == "no-wait" {
+			want[name] = true
+		}
+	}
+	for name, found := range want {
+		if !found {
+			t.Errorf("missing --%s flag", name)
+		}
+	}
+}
+
 func walkCommands(cmd *cli.Command, fn func(*cli.Command)) {
 	fn(cmd)
 	for _, sub := range cmd.Commands {

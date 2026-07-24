@@ -2,6 +2,7 @@ package api
 
 import (
 	"fmt"
+	"strings"
 	"time"
 
 	"github.com/google/uuid"
@@ -105,42 +106,96 @@ type DeploymentStrategyConfig struct {
 }
 
 type Deployment struct {
-	DeploymentID       uuid.UUID                 `json:"deployment_id,omitempty"`
-	UserID             uuid.UUID                 `json:"user_id"`
-	Hostnames          []string                  `json:"hostnames"`
-	Type               string                    `json:"type"`
-	Zone               string                    `json:"zone"`
-	Region             string                    `json:"region"`
-	SSD                string                    `json:"ssd"`
-	GPU                string                    `json:"gpu"`
-	Namespace          string                    `json:"namespace"`
-	Replicas           int32                     `json:"replicas"`
-	Image              string                    `json:"image"`
-	AppLabel           string                    `json:"app_label"`
-	Port               int32                     `json:"port"`
-	CpuRequest         string                    `json:"cpu_request"`
-	CPULimit           string                    `json:"cpu_limit,omitempty"`
-	MemoryRequest      string                    `json:"memory_request"`
-	MemoryLimit        string                    `json:"memory_limit"`
-	RepoURL            string                    `json:"repo_url,omitempty"`
-	BranchName         string                    `json:"branch_name,omitempty"`
-	DockerfilePath     string                    `json:"dockerfile_path,omitempty"`
-	EnvEnabled         bool                      `json:"env_enabled"`
-	SecretEnabled      bool                      `json:"secret_enabled"`
-	VolumeEnabled      bool                      `json:"volume_enabled"`
-	Status             string                    `json:"status"`
-	Environment        string                    `json:"environment"`
-	MarketplaceAppName string                    `json:"marketplace_app_name"`
-	MulticlusterConfig *MulticlusterConfig       `json:"multicluster_config,omitempty"`
-	PDBConfig          *PDBConfig                `json:"pdb_config,omitempty"`
-	HPAConfig          *HPAConfig                `json:"hpa_config,omitempty"`
-	VPAConfig          *VPAConfig                `json:"vpa_config,omitempty"`
-	StrategyConfig     *DeploymentStrategyConfig `json:"deployment_strategy,omitempty"`
-	WaitFor            []WaitFor                 `json:"wait_for,omitempty"`
-	TargetArch         string                    `json:"target_arch,omitempty"`
-	Domain             string                    `json:"domain,omitempty"`
-	CreatedAt          time.Time                 `json:"created_at"`
-	UpdatedAt          time.Time                 `json:"updated_at"`
+	DeploymentID         uuid.UUID                 `json:"deployment_id,omitempty"`
+	UserID               uuid.UUID                 `json:"user_id"`
+	Hostnames            []string                  `json:"hostnames"`
+	Type                 string                    `json:"type"`
+	Zone                 string                    `json:"zone"`
+	Region               string                    `json:"region"`
+	SSD                  string                    `json:"ssd"`
+	GPU                  string                    `json:"gpu"`
+	Namespace            string                    `json:"namespace"`
+	Replicas             int32                     `json:"replicas"`
+	Image                string                    `json:"image"`
+	AppLabel             string                    `json:"app_label"`
+	Port                 int32                     `json:"port"`
+	CpuRequest           string                    `json:"cpu_request"`
+	CPULimit             string                    `json:"cpu_limit,omitempty"`
+	MemoryRequest        string                    `json:"memory_request"`
+	MemoryLimit          string                    `json:"memory_limit"`
+	RepoURL              string                    `json:"repo_url,omitempty"`
+	BranchName           string                    `json:"branch_name,omitempty"`
+	DockerfilePath       string                    `json:"dockerfile_path,omitempty"`
+	EnvEnabled           bool                      `json:"env_enabled"`
+	SecretEnabled        bool                      `json:"secret_enabled"`
+	VolumeEnabled        bool                      `json:"volume_enabled"`
+	Status               string                    `json:"status"`
+	Environment          string                    `json:"environment"`
+	DeploymentSource     string                    `json:"deployment_source,omitempty"`
+	MarketplaceReleaseID string                    `json:"marketplace_release_id,omitempty"`
+	Source               string                    `json:"source,omitempty"`
+	MarketplaceAppID     string                    `json:"marketplace_app_id,omitempty"`
+	MarketplaceAppName   string                    `json:"marketplace_app_name"`
+	MulticlusterConfig   *MulticlusterConfig       `json:"multicluster_config,omitempty"`
+	PDBConfig            *PDBConfig                `json:"pdb_config,omitempty"`
+	HPAConfig            *HPAConfig                `json:"hpa_config,omitempty"`
+	VPAConfig            *VPAConfig                `json:"vpa_config,omitempty"`
+	StrategyConfig       *DeploymentStrategyConfig `json:"deployment_strategy,omitempty"`
+	WaitFor              []WaitFor                 `json:"wait_for,omitempty"`
+	TargetArch           string                    `json:"target_arch,omitempty"`
+	Domain               string                    `json:"domain,omitempty"`
+	CreatedAt            time.Time                 `json:"created_at"`
+	UpdatedAt            time.Time                 `json:"updated_at"`
+}
+
+// IsMarketplaceManaged reports whether the backend metadata identifies this
+// deployment as marketplace-managed. Purging retained resources is only
+// valid for these deployments.
+func (d Deployment) IsMarketplaceManaged() bool {
+	source := d.DeploymentSource
+	if source == "" {
+		source = d.Source
+	}
+	switch strings.ToLower(strings.TrimSpace(source)) {
+	case "marketplace", "marketplace_app", "managed", "managed_marketplace":
+		return true
+	case "generic", "custom", "user", "user_deployed":
+		return false
+	}
+	return d.MarketplaceReleaseID != "" || d.MarketplaceAppID != "" || d.MarketplaceAppName != ""
+}
+
+type DeploymentDeletionLifecycle struct {
+	State     string `json:"state,omitempty"`
+	Terminal  bool   `json:"terminal"`
+	Retryable bool   `json:"retryable,omitempty"`
+	Code      string `json:"code,omitempty"`
+	Message   string `json:"message,omitempty"`
+}
+
+// DeploymentDeletionOperation is the backend-authoritative async deletion
+// contract returned by DELETE /v1/deployments/:id and its status URL.
+type DeploymentDeletionOperation struct {
+	DeploymentID  string                      `json:"deployment_id"`
+	Namespace     string                      `json:"namespace"`
+	AppLabel      string                      `json:"app_label"`
+	Operation     string                      `json:"operation"`
+	Status        string                      `json:"status"`
+	Terminal      bool                        `json:"terminal"`
+	AcceptedAt    time.Time                   `json:"accepted_at,omitempty"`
+	StatusURL     string                      `json:"status_url,omitempty"`
+	PollAfterMs   int                         `json:"poll_after_ms,omitempty"`
+	PurgeRetained bool                        `json:"purge_retained"`
+	CleanupScope  []string                    `json:"cleanup_scope,omitempty"`
+	Lifecycle     DeploymentDeletionLifecycle `json:"lifecycle"`
+}
+
+func (o DeploymentDeletionOperation) IsTerminal() bool {
+	return o.Terminal || o.Lifecycle.Terminal
+}
+
+func (o DeploymentDeletionOperation) IsSuccessful() bool {
+	return o.Status == "deleted" || o.Lifecycle.State == "deleted"
 }
 
 type CreateDeploymentResponse struct {
@@ -412,6 +467,16 @@ type APIError struct {
 	Message string `json:"message"`
 	Code    string `json:"code"`
 }
+
+// HTTPStatusError preserves the HTTP status and retry hint for callers that
+// need contract-specific handling of an API response.
+type HTTPStatusError struct {
+	StatusCode int
+	Message    string
+	RetryAfter time.Duration
+}
+
+func (e *HTTPStatusError) Error() string { return e.Message }
 
 func (e *APIError) Error() string {
 	return fmt.Sprintf("(%s): %s", e.Code, e.Message)

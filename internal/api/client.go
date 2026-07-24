@@ -10,6 +10,7 @@ import (
 	"io"
 	"net/http"
 	"net/url"
+	"strconv"
 	"time"
 
 	"strings"
@@ -31,23 +32,99 @@ type apiResponse struct {
 	Data    interface{} `json:"data"`
 }
 
-// DeleteDeployment deletes a deployment
-func DeleteDeployment(deploymentID string) (*DeletionResult, error) {
-	var resp apiResponse
-	if err := makeMainAPIRequest("DELETE", fmt.Sprintf("/deployments/%s", url.PathEscape(deploymentID)), nil, &resp); err != nil {
+// DeleteDeployment starts the backend-authoritative asynchronous deletion.
+// The DELETE is deliberately issued exactly once; retries could duplicate a
+// destructive operation or change its purge policy.
+func DeleteDeployment(deploymentID string, purge ...bool) (*DeploymentDeletionOperation, error) {
+	purgeRetained := len(purge) > 0 && purge[0]
+	path := fmt.Sprintf("/deployments/%s", url.PathEscape(deploymentID))
+	if purgeRetained {
+		path += "?purge_retained=true"
+	}
+
+	var resp struct {
+		Error bool                        `json:"error"`
+		Data  DeploymentDeletionOperation `json:"data"`
+	}
+	if _, err := makeMainAPIRequestWithStatus(http.MethodDelete, path, nil, &resp); err != nil {
 		return nil, err
 	}
+	return &resp.Data, nil
+}
 
-	data, err := json.Marshal(resp.Data)
-	if err != nil {
-		return nil, utils.NewError(fmt.Sprintf("failed to marshal deletion result: %s", err.Error()), nil)
+// GetDeploymentDeletionStatus retrieves one async deletion operation state.
+func GetDeploymentDeletionStatus(operation *DeploymentDeletionOperation) (*DeploymentDeletionOperation, error) {
+	path := operation.StatusURL
+	if path == "" {
+		path = fmt.Sprintf("/deployments/%s", url.PathEscape(operation.DeploymentID))
 	}
+	requestURL := resolveMainAPIURL(path)
+	var resp struct {
+		Error bool                        `json:"error"`
+		Data  DeploymentDeletionOperation `json:"data"`
+	}
+	if _, err := makeRequestURLWithHeadersOnce(http.MethodGet, requestURL, nil, &resp, nil); err != nil {
+		return nil, err
+	}
+	return &resp.Data, nil
+}
 
-	var result DeletionResult
-	if err := json.Unmarshal(data, &result); err != nil {
-		return nil, utils.NewError(fmt.Sprintf("failed to unmarshal deletion result: %s", err.Error()), nil)
+// WaitForDeploymentDeletion polls until the operation reaches a terminal
+// lifecycle state or the bounded timeout expires. A 404 after acceptance is
+// the backend's successful deletion race and is normalized to deleted.
+func WaitForDeploymentDeletion(operation *DeploymentDeletionOperation, timeout time.Duration) (*DeploymentDeletionOperation, error) {
+	deadline := time.Now().Add(timeout)
+	current := operation
+	for {
+		if current.IsTerminal() {
+			return current, nil
+		}
+		if err := waitForDeletionPoll(deadline, current.PollAfterMs, 0); err != nil {
+			return current, err
+		}
+
+		next, err := GetDeploymentDeletionStatus(current)
+		if err != nil {
+			if statusErr, ok := err.(*HTTPStatusError); ok {
+				switch statusErr.StatusCode {
+				case http.StatusNotFound:
+					current.Status = "deleted"
+					current.Terminal = true
+					current.Lifecycle = DeploymentDeletionLifecycle{State: "deleted", Terminal: true}
+					return current, nil
+				case http.StatusServiceUnavailable:
+					if waitErr := waitForDeletionPoll(deadline, current.PollAfterMs, statusErr.RetryAfter); waitErr != nil {
+						return current, waitErr
+					}
+					continue
+				}
+			}
+			return current, err
+		}
+		current = next
 	}
-	return &result, nil
+}
+
+func waitForDeletionPoll(deadline time.Time, pollAfterMs int, retryAfter time.Duration) error {
+	delay := retryAfter
+	if delay <= 0 {
+		delay = time.Duration(pollAfterMs) * time.Millisecond
+	}
+	if delay <= 0 {
+		delay = time.Second
+	}
+	remaining := time.Until(deadline)
+	if remaining <= 0 {
+		return utils.NewError("timeout waiting for deployment deletion", nil)
+	}
+	if delay > remaining {
+		delay = remaining
+	}
+	time.Sleep(delay)
+	if time.Now().After(deadline) {
+		return utils.NewError("timeout waiting for deployment deletion", nil)
+	}
+	return nil
 }
 
 // RestartDeployment triggers a rolling restart of a deployment
@@ -515,6 +592,10 @@ func makeMainAPIRequest(method, path string, body interface{}, response interfac
 	return makeMainAPIRequestWithHeaders(method, path, body, response, nil)
 }
 
+func makeMainAPIRequestWithStatus(method, path string, body interface{}, response interface{}) (int, error) {
+	return makeRequestURLWithHeadersOnce(method, resolveMainAPIURL(path), body, response, nil)
+}
+
 func makeMainAPIRequestWithHeaders(method, path string, body interface{}, response interface{}, headers http.Header) error {
 	cfg := config.GetConfig()
 	baseURL := strings.TrimSuffix(cfg.ApiURL, "/")
@@ -531,6 +612,26 @@ func makeMainAPIRequestWithHeadersRetry(method, path string, body interface{}, r
 	baseURL = strings.TrimSuffix(baseURL, "/")
 	url := fmt.Sprintf("%s%s", baseURL, path)
 	return makeRequestURLWithHeadersRetry(method, url, body, response, headers)
+}
+
+func resolveMainAPIURL(path string) string {
+	if parsed, err := url.Parse(path); err == nil && parsed.IsAbs() {
+		return path
+	}
+	cfg := config.GetConfig()
+	if strings.HasPrefix(path, "/v1/") {
+		origin := strings.TrimSuffix(cfg.ApiURL, "/")
+		origin = strings.TrimSuffix(origin, "/cli")
+		origin = strings.TrimSuffix(origin, "/v1")
+		return origin + path
+	}
+	baseURL := strings.TrimSuffix(cfg.ApiURL, "/")
+	baseURL = strings.TrimSuffix(baseURL, "/cli")
+	baseURL = strings.TrimSuffix(baseURL, "/")
+	if strings.HasPrefix(path, "/") {
+		return baseURL + path
+	}
+	return baseURL + "/" + path
 }
 
 func makeRequestURL(method, url string, body interface{}, response interface{}) error {
@@ -617,12 +718,13 @@ func makeRequestURLWithHeadersOnce(method, url string, body interface{}, respons
 
 		var apiError APIError
 		if err := json.Unmarshal(respBody, &apiError); err != nil {
-			return resp.StatusCode, utils.NewError(fmt.Sprintf("request failed with status %d: %s", resp.StatusCode, string(respBody)), nil)
+			return resp.StatusCode, &HTTPStatusError{StatusCode: resp.StatusCode, Message: fmt.Sprintf("request failed with status %d: %s", resp.StatusCode, string(respBody)), RetryAfter: parseRetryAfter(resp.Header.Get("Retry-After"))}
 		}
+		message := apiError.Message
 		if resp.StatusCode == 500 {
-			return resp.StatusCode, utils.NewError(fmt.Sprintf("%s — check backend logs for details", apiError.Message), nil)
+			message = fmt.Sprintf("%s — check backend logs for details", message)
 		}
-		return resp.StatusCode, utils.NewError(apiError.Message, nil)
+		return resp.StatusCode, &HTTPStatusError{StatusCode: resp.StatusCode, Message: message, RetryAfter: parseRetryAfter(resp.Header.Get("Retry-After"))}
 	}
 
 	if response != nil && len(respBody) > 0 {
@@ -632,6 +734,14 @@ func makeRequestURLWithHeadersOnce(method, url string, body interface{}, respons
 	}
 
 	return resp.StatusCode, nil
+}
+
+func parseRetryAfter(value string) time.Duration {
+	seconds, err := strconv.Atoi(strings.TrimSpace(value))
+	if err != nil || seconds < 0 {
+		return 0
+	}
+	return time.Duration(seconds) * time.Second
 }
 
 // GetDeploymentLogs gets deployment logs

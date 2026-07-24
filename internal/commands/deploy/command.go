@@ -12,111 +12,112 @@ import (
 // --- Flag name constants ------------------------------------------------
 
 const (
-	flagName                = "name"
-	flagCPU                 = "cpu"
-	flagCPURequest          = "cpu-request"
-	flagCPULimit            = "cpu-limit"
-	flagMemory              = "memory"
-	flagMachine             = "machine"
-	flagMachineTag          = "machine-tag"
+	flagName       = "name"
+	flagCPU        = "cpu"
+	flagCPURequest = "cpu-request"
+	flagCPULimit   = "cpu-limit"
+	flagMemory     = "memory"
+	flagMachine    = "machine"
+	flagMachineTag = "machine-tag"
 
-	flagDomain              = "domain"
-	flagOrganization        = "organization"
-	flagHealthPath          = "health-path"
-	flagDockerfile          = "dockerfile"
-	flagImage               = "image"
-	flagFast                = "fast"
-	flagPort                = "port"
-	flagEnv                 = "env"
-	flagVolumeSize          = "volume-size"
-	flagVolumeMount         = "volume-mount"
-	flagVolumeStorageClass  = "volume-storage-class"
-	flagZone                = "zone"
-	flagMulticluster        = "multi-cluster"
-	flagMulticlusterMode    = "multicluster-mode"
-	flagBackupEnabled       = "backup-enabled"
-	flagBackupSchedule      = "backup-schedule"
-	flagBackupRetention     = "backup-retention"
-	flagBackupPriority      = "backup-priority-cluster"
-	flagReplicas            = "replicas"
-	flagPDB                 = "pdb"
-	flagPDBType             = "pdb-type"
-	flagPDBMinAvailable     = "pdb-min-available"
-	flagPDBPercent          = "pdb-percent"
-	flagHPA                 = "hpa"
-	flagHPAMinReplicas      = "hpa-min-replicas"
-	flagHPAMaxReplicas      = "hpa-max-replicas"
-	flagHPACPUCoreTarget    = "hpa-cpu-target"
-	flagHPAMemoryTarget     = "hpa-memory-target"
-	flagVPA                 = "vpa"
-	flagVPAMode             = "vpa-mode"
-	flagVPAMinCPU           = "vpa-min-cpu"
-	flagVPAMaxCPU           = "vpa-max-cpu"
-	flagVPAMinMemory        = "vpa-min-memory"
-	flagVPAMaxMemory        = "vpa-max-memory"
-	flagWaitFor             = "wait-for"
-	flagStrategy            = "strategy"
-	flagRollingMaxSurge     = "rolling-max-surge"
-	flagRollingMaxUnavail   = "rolling-max-unavailable"
-	flagConfig              = "config"
-	flagDeploymentID        = "deployment-id"
-	flagApp                 = "app"
-	flagYes                 = "yes"
-	flagVersion             = "version"
-	flagWatch               = "watch"
-
+	flagDomain             = "domain"
+	flagOrganization       = "organization"
+	flagHealthPath         = "health-path"
+	flagDockerfile         = "dockerfile"
+	flagImage              = "image"
+	flagFast               = "fast"
+	flagPort               = "port"
+	flagEnv                = "env"
+	flagVolumeSize         = "volume-size"
+	flagVolumeMount        = "volume-mount"
+	flagVolumeStorageClass = "volume-storage-class"
+	flagZone               = "zone"
+	flagMulticluster       = "multi-cluster"
+	flagMulticlusterMode   = "multicluster-mode"
+	flagBackupEnabled      = "backup-enabled"
+	flagBackupSchedule     = "backup-schedule"
+	flagBackupRetention    = "backup-retention"
+	flagBackupPriority     = "backup-priority-cluster"
+	flagReplicas           = "replicas"
+	flagPDB                = "pdb"
+	flagPDBType            = "pdb-type"
+	flagPDBMinAvailable    = "pdb-min-available"
+	flagPDBPercent         = "pdb-percent"
+	flagHPA                = "hpa"
+	flagHPAMinReplicas     = "hpa-min-replicas"
+	flagHPAMaxReplicas     = "hpa-max-replicas"
+	flagHPACPUCoreTarget   = "hpa-cpu-target"
+	flagHPAMemoryTarget    = "hpa-memory-target"
+	flagVPA                = "vpa"
+	flagVPAMode            = "vpa-mode"
+	flagVPAMinCPU          = "vpa-min-cpu"
+	flagVPAMaxCPU          = "vpa-max-cpu"
+	flagVPAMinMemory       = "vpa-min-memory"
+	flagVPAMaxMemory       = "vpa-max-memory"
+	flagWaitFor            = "wait-for"
+	flagStrategy           = "strategy"
+	flagRollingMaxSurge    = "rolling-max-surge"
+	flagRollingMaxUnavail  = "rolling-max-unavailable"
+	flagConfig             = "config"
+	flagDeploymentID       = "deployment-id"
+	flagApp                = "app"
+	flagYes                = "yes"
+	flagVersion            = "version"
+	flagWatch              = "watch"
+	flagPurgeRetained      = "purge-retained"
+	flagNoWait             = "no-wait"
 )
 
 // --- Input structs ------------------------------------------------------
 
 // DeployInput holds all flags for the main deploy action.
 type DeployInput struct {
-	Name                 string
-	CPU                  string
-	CPURequest           string
-	CPULimit             string
-	Memory               string
-	Machine              []string
-	MachineTag           string
-	Domain               string
-	Organization         string
-	HealthPath           string
-	Dockerfile           string
-	Image                string
-	Fast                 bool
-	Port                 int
-	Env                  []string
-	VolumeSize           string
-	VolumeMount          string
-	VolumeStorageClass   string
-	Zone                 string
-	Multicluster         bool
-	MulticlusterMode     string
-	BackupEnabled        bool
-	BackupSchedule       string
-	BackupRetention      string
-	BackupPriority       int
-	Replicas             int
-	PDB                  bool
-	PDBType              string
-	PDBMinAvailable      int
-	PDBPercent           int
-	HPA                  bool
-	HPAMinReplicas       int
-	HPAMaxReplicas       int
-	HPACPUCoreTarget     int
-	HPAMemoryTarget      int
-	VPA                  bool
-	VPAMode              string
-	VPAMinCPU            string
-	VPAMaxCPU            string
-	VPAMinMemory         string
-	VPAMaxMemory         string
-	WaitFor              []string
-	Strategy             string
-	RollingMaxSurge      string
-	RollingMaxUnavail    string
-	Config               string
+	Name               string
+	CPU                string
+	CPURequest         string
+	CPULimit           string
+	Memory             string
+	Machine            []string
+	MachineTag         string
+	Domain             string
+	Organization       string
+	HealthPath         string
+	Dockerfile         string
+	Image              string
+	Fast               bool
+	Port               int
+	Env                []string
+	VolumeSize         string
+	VolumeMount        string
+	VolumeStorageClass string
+	Zone               string
+	Multicluster       bool
+	MulticlusterMode   string
+	BackupEnabled      bool
+	BackupSchedule     string
+	BackupRetention    string
+	BackupPriority     int
+	Replicas           int
+	PDB                bool
+	PDBType            string
+	PDBMinAvailable    int
+	PDBPercent         int
+	HPA                bool
+	HPAMinReplicas     int
+	HPAMaxReplicas     int
+	HPACPUCoreTarget   int
+	HPAMemoryTarget    int
+	VPA                bool
+	VPAMode            string
+	VPAMinCPU          string
+	VPAMaxCPU          string
+	VPAMinMemory       string
+	VPAMaxMemory       string
+	WaitFor            []string
+	Strategy           string
+	RollingMaxSurge    string
+	RollingMaxUnavail  string
+	Config             string
 }
 
 // GetDeploymentInput holds flags for the "get" subcommand.
@@ -140,7 +141,9 @@ type DestroyInput struct {
 	App           string
 	Config        string
 	Yes           bool
-	RetainVolumes bool // if true, skip PVC destruction
+	PurgeRetained bool
+	NoWait        bool
+	RetainVolumes bool // one-release inverse compatibility flag
 }
 
 // DeployRefInput holds common deployment-reference flags.
@@ -283,9 +286,9 @@ func deployFlags(in *DeployInput) []cli.Flag {
 		// ── Placement ──
 		optionalString(flagZone, "Target deployment zone (e.g. 'my-kul-1b')", &in.Zone),
 		&cli.BoolFlag{
-			Name:    flagMulticluster,
-			Aliases: []string{"multicluster"},
-			Usage:   "Enable multi-cluster deployment across KL and BKI clusters",
+			Name:        flagMulticluster,
+			Aliases:     []string{"multicluster"},
+			Usage:       "Enable multi-cluster deployment across KL and BKI clusters",
 			Destination: &in.Multicluster,
 		},
 		optionalStringVal(flagMulticlusterMode, "Multi-cluster mode: 'active-active' or 'active-passive'", "active-passive", &in.MulticlusterMode),
@@ -321,8 +324,6 @@ func deployFlags(in *DeployInput) []cli.Flag {
 		optionalInt(flagPDBPercent, "PDB minimum available %% (for type=percent)", &in.PDBPercent),
 	}
 }
-
-
 
 // looksLikeUUID reports whether s looks like a standard UUID (xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx).
 // This is used to distinguish positional args that are deployment IDs from those

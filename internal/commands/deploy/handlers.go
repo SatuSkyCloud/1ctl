@@ -743,9 +743,22 @@ func handleDeploymentStatus(ctx context.Context, in StatusInput) error {
 // --- Destroy ------------------------------------------------------------
 
 func handleDestroyDeployment(ctx context.Context, in DestroyInput) error {
+	if in.PurgeRetained && in.RetainVolumes {
+		return utils.NewError("--purge-retained conflicts with --retain-volumes", nil)
+	}
 	deploymentID, err := deploypkg.ResolveDeploymentID(in.DeploymentID, in.App, in.Config)
 	if err != nil {
 		return err
+	}
+
+	if in.PurgeRetained {
+		deployment, getErr := api.GetDeployment(deploymentID)
+		if getErr != nil {
+			return utils.NewError(fmt.Sprintf("failed to verify deployment source: %s", getErr.Error()), nil)
+		}
+		if !deployment.IsMarketplaceManaged() {
+			return utils.NewError("--purge-retained is only supported for marketplace-managed deployments; generic deployments must retain their resources", nil)
+		}
 	}
 
 	preview, pErr := previewDeletion(deploymentID)
@@ -761,33 +774,53 @@ func handleDestroyDeployment(ctx context.Context, in DestroyInput) error {
 		return nil
 	}
 
-	utils.PrintInfo("Destroying deployment %s...", deploymentID)
-	statuses, volErr := api.GetDeploymentVolumeLifecycleStatuses(deploymentID)
-	if volErr != nil {
-		utils.PrintWarning("Could not list volumes for destruction: %s", volErr.Error())
-	} else if len(statuses) > 0 {
-		if in.RetainVolumes {
-			utils.PrintInfo("--retain-volumes set: skipping PVC destruction for %d volume(s)", len(statuses))
-		} else {
-			for _, v := range statuses {
-				utils.PrintInfo("Destroying volume %s (PVC: %s)...", v.Volume.VolumeName, v.PVC.Name)
-				if _, delErr := api.DeleteVolumePVC(v.Volume.VolumeID.String()); delErr != nil {
-					utils.PrintWarning("Failed to destroy volume %s: %s", v.Volume.VolumeName, delErr.Error())
-				}
-			}
-		}
-	}
-
-	result, err := api.DeleteDeployment(deploymentID)
+	utils.PrintInfo("Requesting deletion of deployment %s...", deploymentID)
+	operation, err := api.DeleteDeployment(deploymentID, in.PurgeRetained)
 	if err != nil {
 		return utils.NewError(fmt.Sprintf("failed to delete deployment: %s", err.Error()), nil)
 	}
 
-	if utils.TryPrintJSON(result) {
+	if in.NoWait {
+		printDeploymentDeletionOperation(operation)
+		if operation.IsTerminal() && !operation.IsSuccessful() {
+			return utils.NewError(fmt.Sprintf("deployment deletion failed: %s", operation.Lifecycle.Message), nil)
+		}
 		return nil
 	}
-	printDeletionResult(deploymentID, result)
+
+	final, waitErr := api.WaitForDeploymentDeletion(operation, 5*time.Minute)
+	if final != nil {
+		printDeploymentDeletionOperation(final)
+	}
+	if waitErr != nil {
+		return utils.NewError(fmt.Sprintf("deployment deletion did not complete: %s", waitErr.Error()), nil)
+	}
+	if !final.IsSuccessful() {
+		return utils.NewError(fmt.Sprintf("deployment deletion failed: %s", final.Lifecycle.Message), nil)
+	}
 	return nil
+}
+
+func printDeploymentDeletionOperation(operation *api.DeploymentDeletionOperation) {
+	if utils.TryPrintJSON(operation) {
+		return
+	}
+	if !operation.IsTerminal() {
+		utils.PrintInfo("Deletion accepted; waiting for backend convergence.")
+	}
+	utils.PrintHeader("Deployment Deletion")
+	utils.PrintStatusLine("Deployment ID", operation.DeploymentID)
+	utils.PrintStatusLine("Status URL", operation.StatusURL)
+	utils.PrintStatusLine("Purge retained", fmt.Sprintf("%t", operation.PurgeRetained))
+	state := operation.Lifecycle.State
+	if state == "" {
+		state = operation.Status
+	}
+	utils.PrintStatusLine("Current state", state)
+	utils.PrintStatusLine("Terminal", fmt.Sprintf("%t", operation.IsTerminal()))
+	if operation.Lifecycle.Message != "" {
+		utils.PrintStatusLine("Message", operation.Lifecycle.Message)
+	}
 }
 
 func previewDeletion(deploymentID string) ([]string, error) {
