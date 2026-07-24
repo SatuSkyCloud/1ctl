@@ -56,7 +56,7 @@ func DeleteDeployment(deploymentID string, purge ...bool) (*DeploymentDeletionOp
 func GetDeploymentDeletionStatus(operation *DeploymentDeletionOperation) (*DeploymentDeletionOperation, error) {
 	path := operation.StatusURL
 	if path == "" {
-		path = fmt.Sprintf("/deployments/%s", url.PathEscape(operation.DeploymentID))
+		path = fmt.Sprintf("/deployments/id/%s", url.PathEscape(operation.DeploymentID))
 	}
 	requestURL := resolveMainAPIURL(path)
 	var resp struct {
@@ -66,7 +66,67 @@ func GetDeploymentDeletionStatus(operation *DeploymentDeletionOperation) (*Deplo
 	if _, err := makeRequestURLWithHeadersOnce(http.MethodGet, requestURL, nil, &resp, nil); err != nil {
 		return nil, err
 	}
-	return &resp.Data, nil
+	merged := mergeDeploymentDeletionOperation(operation, &resp.Data)
+	if merged.StatusURL == "" {
+		merged.StatusURL = path
+	}
+	return merged, nil
+}
+
+func mergeDeploymentDeletionOperation(previous, next *DeploymentDeletionOperation) *DeploymentDeletionOperation {
+	merged := *previous
+	if merged.DeploymentID == "" {
+		merged.DeploymentID = next.DeploymentID
+	}
+	if merged.Namespace == "" {
+		merged.Namespace = next.Namespace
+	}
+	if merged.AppLabel == "" {
+		merged.AppLabel = next.AppLabel
+	}
+	if merged.Operation == "" {
+		merged.Operation = next.Operation
+	}
+	if next.Status != "" {
+		merged.Status = next.Status
+	}
+	if next.Terminal {
+		merged.Terminal = true
+	}
+	if merged.AcceptedAt.IsZero() {
+		merged.AcceptedAt = next.AcceptedAt
+	}
+	if merged.StatusURL == "" {
+		merged.StatusURL = next.StatusURL
+	}
+	if merged.PollAfterMs == 0 {
+		merged.PollAfterMs = next.PollAfterMs
+	}
+	if len(merged.CleanupScope) == 0 {
+		merged.CleanupScope = next.CleanupScope
+	}
+	if next.Lifecycle.State != "" {
+		merged.Lifecycle.State = next.Lifecycle.State
+	}
+	if next.Lifecycle.Terminal {
+		merged.Lifecycle.Terminal = true
+	}
+	if next.Lifecycle.Retryable {
+		merged.Lifecycle.Retryable = true
+	}
+	if next.Lifecycle.Code != "" {
+		merged.Lifecycle.Code = next.Lifecycle.Code
+	}
+	if next.Lifecycle.Message != "" {
+		merged.Lifecycle.Message = next.Lifecycle.Message
+	}
+	if next.Lifecycle.ErrorCode != "" {
+		merged.Lifecycle.ErrorCode = next.Lifecycle.ErrorCode
+	}
+	if next.Lifecycle.ErrorMessage != "" {
+		merged.Lifecycle.ErrorMessage = next.Lifecycle.ErrorMessage
+	}
+	return &merged
 }
 
 // WaitForDeploymentDeletion polls until the operation reaches a terminal

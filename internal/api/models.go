@@ -166,11 +166,31 @@ func (d Deployment) IsMarketplaceManaged() bool {
 }
 
 type DeploymentDeletionLifecycle struct {
-	State     string `json:"state,omitempty"`
-	Terminal  bool   `json:"terminal"`
-	Retryable bool   `json:"retryable,omitempty"`
-	Code      string `json:"code,omitempty"`
-	Message   string `json:"message,omitempty"`
+	State        string `json:"state,omitempty"`
+	Terminal     bool   `json:"terminal"`
+	Retryable    bool   `json:"retryable,omitempty"`
+	Code         string `json:"code,omitempty"`
+	Message      string `json:"message,omitempty"`
+	ErrorCode    string `json:"errorCode,omitempty"`
+	ErrorMessage string `json:"errorMessage,omitempty"`
+}
+
+func (l DeploymentDeletionLifecycle) ErrorText() string {
+	message := l.ErrorMessage
+	if message == "" {
+		message = l.Message
+	}
+	code := l.ErrorCode
+	if code == "" {
+		code = l.Code
+	}
+	if code != "" && message != "" {
+		return fmt.Sprintf("%s: %s", code, message)
+	}
+	if message != "" {
+		return message
+	}
+	return code
 }
 
 // DeploymentDeletionOperation is the backend-authoritative async deletion

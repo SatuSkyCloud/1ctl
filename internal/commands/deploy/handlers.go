@@ -783,7 +783,7 @@ func handleDestroyDeployment(ctx context.Context, in DestroyInput) error {
 	if in.NoWait {
 		printDeploymentDeletionOperation(operation)
 		if operation.IsTerminal() && !operation.IsSuccessful() {
-			return utils.NewError(fmt.Sprintf("deployment deletion failed: %s", operation.Lifecycle.Message), nil)
+			return utils.NewError(fmt.Sprintf("deployment deletion failed: %s", deletionLifecycleError(operation)), nil)
 		}
 		return nil
 	}
@@ -796,7 +796,7 @@ func handleDestroyDeployment(ctx context.Context, in DestroyInput) error {
 		return utils.NewError(fmt.Sprintf("deployment deletion did not complete: %s", waitErr.Error()), nil)
 	}
 	if !final.IsSuccessful() {
-		return utils.NewError(fmt.Sprintf("deployment deletion failed: %s", final.Lifecycle.Message), nil)
+		return utils.NewError(fmt.Sprintf("deployment deletion failed: %s", deletionLifecycleError(final)), nil)
 	}
 	return nil
 }
@@ -818,9 +818,24 @@ func printDeploymentDeletionOperation(operation *api.DeploymentDeletionOperation
 	}
 	utils.PrintStatusLine("Current state", state)
 	utils.PrintStatusLine("Terminal", fmt.Sprintf("%t", operation.IsTerminal()))
-	if operation.Lifecycle.Message != "" {
+	if operation.Lifecycle.ErrorCode != "" {
+		utils.PrintStatusLine("Error code", operation.Lifecycle.ErrorCode)
+	}
+	if operation.Lifecycle.ErrorMessage != "" {
+		utils.PrintStatusLine("Error message", operation.Lifecycle.ErrorMessage)
+	} else if operation.Lifecycle.Message != "" {
 		utils.PrintStatusLine("Message", operation.Lifecycle.Message)
 	}
+}
+
+func deletionLifecycleError(operation *api.DeploymentDeletionOperation) string {
+	if message := operation.Lifecycle.ErrorText(); message != "" {
+		return message
+	}
+	if operation.Lifecycle.State != "" {
+		return operation.Lifecycle.State
+	}
+	return operation.Status
 }
 
 func previewDeletion(deploymentID string) ([]string, error) {

@@ -88,9 +88,6 @@ func handleMarketplaceDeploy(ctx context.Context, in marketplaceDeployInput) err
 	if err != nil {
 		return err
 	}
-	if app.ComingSoon {
-		return utils.NewError(fmt.Sprintf("%q is coming soon and cannot be deployed yet", app.MarketplaceName), nil)
-	}
 	if !app.Deployable {
 		return utils.NewError(fmt.Sprintf("%q is not deployable", app.MarketplaceName), nil)
 	}

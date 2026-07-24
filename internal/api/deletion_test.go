@@ -113,6 +113,80 @@ func TestWaitForDeploymentDeletion404AfterAcceptanceIsSuccess(t *testing.T) {
 	}
 }
 
+func TestWaitForDeploymentDeletionPreservesAcceptedOperationAcrossDetailPolls(t *testing.T) {
+	acceptedAt := "2026-07-24T01:02:03Z"
+	statusURLPath := "/v1/deployments/id/dep-1"
+	var paths []string
+	var server *httptest.Server
+	server = httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method == http.MethodGet {
+			paths = append(paths, r.URL.Path)
+			if r.URL.Path != statusURLPath {
+				t.Fatalf("poll path = %s, want %s", r.URL.Path, statusURLPath)
+			}
+			if len(paths) == 1 {
+				_, _ = io.WriteString(w, `{"error":false,"data":{"deployment_id":"dep-1","namespace":"ns","app_label":"app","status":"deleting"}}`)
+				return
+			}
+			w.WriteHeader(http.StatusNotFound)
+			return
+		}
+		if r.Method != http.MethodDelete || r.URL.Path != "/v1/deployments/dep-1" {
+			t.Fatalf("request = %s %s", r.Method, r.URL.Path)
+		}
+		_, _ = io.WriteString(w, `{"error":false,"data":{"deployment_id":"dep-1","namespace":"ns","app_label":"app","operation":"delete","status":"deleting","accepted_at":"`+acceptedAt+`","status_url":"`+server.URL+statusURLPath+`","poll_after_ms":1,"purge_retained":true,"cleanup_scope":["deployment","pvc"],"lifecycle":{"state":"deleting","terminal":false}}}`)
+	}))
+	defer server.Close()
+	configureAdminAPITestContext(t, server.URL+"/v1/cli")
+
+	accepted, err := DeleteDeployment("dep-1", true)
+	if err != nil {
+		t.Fatalf("DeleteDeployment() error = %v", err)
+	}
+	final, err := WaitForDeploymentDeletion(accepted, time.Second)
+	if err != nil {
+		t.Fatalf("WaitForDeploymentDeletion() error = %v", err)
+	}
+	if len(paths) != 2 || paths[0] != statusURLPath || paths[1] != statusURLPath {
+		t.Fatalf("poll paths = %v, want two polls to %s", paths, statusURLPath)
+	}
+	if final.StatusURL != server.URL+statusURLPath || !final.PurgeRetained || final.Operation != "delete" ||
+		final.AcceptedAt.IsZero() || final.AcceptedAt.Format(time.RFC3339) != acceptedAt ||
+		len(final.CleanupScope) != 2 {
+		t.Fatalf("final operation lost accepted metadata: %+v", final)
+	}
+}
+
+func TestGetDeploymentDeletionStatusFallsBackToCanonicalDetailURL(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/v1/deployments/id/dep-1" {
+			t.Fatalf("fallback path = %s, want /v1/deployments/id/dep-1", r.URL.Path)
+		}
+		w.WriteHeader(http.StatusNotFound)
+	}))
+	defer server.Close()
+	configureAdminAPITestContext(t, server.URL+"/v1/cli")
+
+	_, err := GetDeploymentDeletionStatus(&DeploymentDeletionOperation{DeploymentID: "dep-1"})
+	if err == nil {
+		t.Fatal("GetDeploymentDeletionStatus() error = nil, want 404")
+	}
+}
+
+func TestDeploymentDeletionLifecycleDecodesWireErrorFields(t *testing.T) {
+	var lifecycle DeploymentDeletionLifecycle
+	if err := json.Unmarshal([]byte(`{"state":"deletion_failed","terminal":true,"errorCode":"PVC_TIMEOUT","errorMessage":"PVC did not detach"}`), &lifecycle); err != nil {
+		t.Fatal(err)
+	}
+	if lifecycle.ErrorCode != "PVC_TIMEOUT" || lifecycle.ErrorMessage != "PVC did not detach" || lifecycle.ErrorText() != "PVC_TIMEOUT: PVC did not detach" {
+		t.Fatalf("lifecycle = %+v", lifecycle)
+	}
+	data, err := json.Marshal(lifecycle)
+	if err != nil || !strings.Contains(string(data), `"errorCode":"PVC_TIMEOUT"`) || !strings.Contains(string(data), `"errorMessage":"PVC did not detach"`) {
+		t.Fatalf("wire JSON = %s, error = %v", data, err)
+	}
+}
+
 func TestWaitForDeploymentDeletionRetries503AndRejects409(t *testing.T) {
 	t.Run("503 retry", func(t *testing.T) {
 		var calls atomic.Int32
