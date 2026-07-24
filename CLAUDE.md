@@ -53,7 +53,7 @@ gosec ./...
   - `IsSet` no longer available; track user-set flags manually or use `cmd.String()`
 - **Sub-package pattern**: Every command group lives in `internal/commands/<name>/` with `command.go` (CLI wiring) + `handlers.go` (logic) + `command_test.go`. `internal/commands/cmd.go` re-exports all public constructors (e.g., `AppCommand()`, `PostgresCommand()`). Import the sub-package directly only if you need its internal types.
 - **Positional args**: 24 commands use `cmd.Args().First()` instead of `--id`/`--name` flags. Pattern: `1ctl <resource> <action> <target> [flags]`. UUIDs are auto-detected via `looksLikeUUID()`; names resolve via app-label lookup. Fallback `--deployment-id`/`--id` flags exist for backward compatibility.
-- **Command grouping**: `main.go` uses a `cat()` helper to assign each command to a category (Core workflow, Applications, Data, Infrastructure, Catalog, Account, Billing & operations). External/internal commands (service, ingress, issuer) are ungrouped/hidden.
+- **Command grouping**: `main.go` uses a `cat()` helper to assign each command to a category (Core workflow, Applications, Data, Infrastructure, Catalog, Account, Billing & operations). External/internal commands (service, ingress) are ungrouped/hidden.
 - **Post-deploy smoke testing**: After `deploy --wait` reports workload healthy, `reportDeployResult()` probes the public URL. Default (no `--health-path`): 401/403/404 are accepted as proof of platform reachability (DNS/TLS/routing worked). With `--health-path` set: only 2xx/3xx pass. Non-strict smoke failures are warnings; strict failures block the deploy. `health_path` should be set in `satusky.toml` `[checks]` section or via `--health-path` flag. Legacy `[app].health_path` still works (auto-migrated by `Normalize()`). Path validated by `ValidateURLPath()` — must start with `/`.
 - **Config v2 sections**: `satusky.toml` has been restructured:
   - `[app]` — identity and resources (name, port, cpu, memory, domain, zone)
@@ -104,7 +104,7 @@ Resolution order at runtime (highest wins): `--api-url` flag → `SATUSKY_API_UR
 - `--wait` flag does NOT exist on `deploy rollback` — use `-y`/`--yes` for non-interactive rollback
 - `secret list` does NOT accept `--config` flag
 - -o json — most list commands support it. Exceptions (table-only):
-  - marketplace list, user me, user permissions, issuer list, credits usage
+  - marketplace list, user me, user permissions, credits usage
   - pricing list -o json returns error while table mode succeeds
 - --app flag — supported on deploy subcommands, volumes list, logs, doctor, secret
   - NOW also supported on env list / env unset (via `ResolveDeploymentID`)

@@ -102,7 +102,6 @@ Tokens: https://cloud.satusky.com/<org-id>/token`,
 			// Internal (hidden)
 			commands.ServiceCommand(),
 			commands.IngressCommand(),
-			commands.IssuerCommand(),
 		},
 		Before: func(ctx context.Context, cmd *cli.Command) (context.Context, error) {
 			// Apply --profile flag: sets profile for this process invocation only (not persisted)

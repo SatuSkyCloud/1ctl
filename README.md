@@ -147,7 +147,7 @@ cd your-project
 1ctl deploy --cpu-request 250m --cpu-limit 1 --memory 1Gi --wait
 
 # JSON output (global flag — works on deploy, env, secret, machine, token, ingress, service,
-# credits, audit, notifications, pricing, cluster, domain, postgres, issuer, volumes)
+# credits, audit, notifications, pricing, cluster, domains, postgres, volumes)
 1ctl --output json deploy list | jq '.[] | select(.status == "Running")'
 
 # List deployments (NAME column shows the app label as of v0.8.0)
@@ -257,7 +257,7 @@ cd your-project
 1ctl domains delete app.example.com --app myapp --yes
 ```
 
-> **`1ctl ingress` and `1ctl issuer` were hidden from `--help` in v0.8.0.** Custom-domain workflows go through `1ctl domains`, which resolves IDs internally from `--app <name>` — no more passing deployment / service UUIDs by hand. The hidden commands still work for scripts that depend on them.
+> **TLS is automatic for custom domains.** Use `1ctl deploy status` or `1ctl domains check` to verify certificate readiness.
 
 ### Organizations (Multi-Tenant)
 

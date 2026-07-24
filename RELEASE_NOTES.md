@@ -16,13 +16,16 @@ Complete CLI framework upgrade (`urfave/cli` v2→v3), positional args for all r
 - **notifications**: `delete <id>`
 - **audit**: `get <id>`
 - **pricing**: `get <id>`
-- **issuer**: `delete <id>`
 - **ingress**: `delete <id>`
 - **domains**: `purchase-status <intent-id>`
 - **service**: `delete <service-id>`
 - **profile / org / token**: `create <name>` (was `--name`)
 
 Pattern: `1ctl <resource> <action> <target> [flags]`. UUID auto-detection, `-o json` support preserved on all commands.
+
+### Certificate status migration
+
+`1ctl issuer` is retired. TLS is automatic; use deployment status or `1ctl domains check` to verify certificate readiness.
 
 ### New Commands
 

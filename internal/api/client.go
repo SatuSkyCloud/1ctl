@@ -766,53 +766,6 @@ func GetDeploymentLogs(deploymentID string) ([]string, error) {
 	return logs.Messages, nil
 }
 
-// Add Issuer methods
-func CreateIssuer(issuer Issuer) (*Issuer, error) {
-	var resp apiResponse
-	var issuerResp Issuer
-	resp.Data = &issuerResp
-
-	err := makeRequest("POST", "/issuers/upsert", issuer, &resp)
-	if err != nil {
-		return nil, err
-	}
-
-	data, err := json.Marshal(resp.Data)
-	if err != nil {
-		return nil, utils.NewError(fmt.Sprintf("failed to marshal response data: %s", err.Error()), nil)
-	}
-
-	if err := json.Unmarshal(data, &issuerResp); err != nil {
-		return nil, utils.NewError(fmt.Sprintf("failed to unmarshal issuer response: %s", err.Error()), nil)
-	}
-	return &issuerResp, nil
-}
-
-func ListIssuers() ([]Issuer, error) {
-	namespace := context.GetCurrentNamespace()
-	var resp apiResponse
-	err := makeRequest("GET", fmt.Sprintf("/issuers/namespace/%s", namespace), nil, &resp)
-	if err != nil {
-		return nil, err
-	}
-
-	data, err := json.Marshal(resp.Data)
-	if err != nil {
-		return nil, utils.NewError(fmt.Sprintf("failed to marshal response data: %s", err.Error()), nil)
-	}
-
-	var issuers []Issuer
-	if err := json.Unmarshal(data, &issuers); err != nil {
-		return nil, utils.NewError(fmt.Sprintf("failed to unmarshal issuers: %s", err.Error()), nil)
-	}
-	return issuers, nil
-}
-
-func DeleteIssuer(issuerID string) error {
-	var resp apiResponse
-	return makeRequest("POST", fmt.Sprintf("/issuers/delete/%s", issuerID), nil, &resp)
-}
-
 // GetOrganizationByID gets organization details by ID
 func GetOrganizationByID(orgID uuid.UUID) (*Organization, error) {
 	var resp apiResponse

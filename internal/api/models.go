@@ -417,18 +417,6 @@ type Environment struct {
 	UpdatedAt     time.Time      `json:"updated_at"`
 }
 
-type Issuer struct {
-	DeploymentID uuid.UUID `json:"deployment_id"`
-	IssuerID     uuid.UUID `json:"issuer_id"`
-	Namespace    string    `json:"namespace"`
-	UserEmail    string    `json:"user_email"`
-	Environment  string    `json:"environment"`
-	AppLabel     string    `json:"app_label"`
-	IssuerName   string    `json:"issuer_name"`
-	CreatedAt    time.Time `json:"created_at"`
-	UpdatedAt    time.Time `json:"updated_at"`
-}
-
 type Organization struct {
 	OrganizationID   uuid.UUID `json:"organization_id"`
 	OrganizationName string    `json:"organization_name"`

@@ -20,7 +20,6 @@ import (
 	"1ctl/internal/commands/environment"
 	"1ctl/internal/commands/ingress"
 	initcmd "1ctl/internal/commands/init"
-	"1ctl/internal/commands/issuer"
 	"1ctl/internal/commands/launch"
 	"1ctl/internal/commands/logs"
 	"1ctl/internal/commands/machine"
@@ -89,9 +88,6 @@ func ServiceCommand() *cli.Command { return service.Command() }
 
 // IngressCommand returns the "1ctl ingress" command tree.
 func IngressCommand() *cli.Command { return ingress.Command() }
-
-// IssuerCommand returns the "1ctl issuer" command tree.
-func IssuerCommand() *cli.Command { return issuer.Command() }
 
 // VolumesCommand returns the "1ctl volumes" command tree.
 func VolumesCommand() *cli.Command { return volumes.Command() }
