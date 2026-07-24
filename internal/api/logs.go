@@ -3,7 +3,6 @@ package api
 import (
 	"1ctl/internal/config"
 	"1ctl/internal/utils"
-	"encoding/json"
 	"fmt"
 	"time"
 
@@ -41,24 +40,6 @@ type deploymentLogsResponse struct {
 	Count          int             `json:"count"`
 }
 
-// LogStats represents log statistics for a deployment
-type LogStats struct {
-	DeploymentID uuid.UUID `json:"deployment_id"`
-	TotalLines   int       `json:"total_lines"`
-	TotalSize    int64     `json:"total_size"`
-	OldestLog    time.Time `json:"oldest_log"`
-	NewestLog    time.Time `json:"newest_log"`
-}
-
-// PodInfo represents pod information
-type PodInfo struct {
-	PodName   string    `json:"name"`
-	Namespace string    `json:"namespace"`
-	Status    string    `json:"status"`
-	CreatedAt time.Time `json:"created_at"`
-	UID       string    `json:"uid"`
-}
-
 // GetStoredLogs retrieves logs for a deployment via Loki (populated by Promtail).
 func GetStoredLogs(deploymentID string, tail int) ([]DeploymentLog, *DeploymentLogsMeta, error) {
 	path := fmt.Sprintf("/loki/logs/%s", deploymentID)
@@ -80,31 +61,6 @@ func GetStoredLogs(deploymentID string, tail int) ([]DeploymentLog, *DeploymentL
 		Message:        resp.Message,
 	}
 	return resp.Data, meta, nil
-}
-
-// GetLogStats retrieves log statistics for a deployment
-func GetLogStats(deploymentID string) (*LogStats, error) {
-	var resp apiResponse
-	err := makeRequest("GET", fmt.Sprintf("/pods/logs/stats/%s", deploymentID), nil, &resp)
-	if err != nil {
-		return nil, err
-	}
-
-	data, err := json.Marshal(resp.Data)
-	if err != nil {
-		return nil, utils.NewError(fmt.Sprintf("failed to marshal response data: %s", err.Error()), nil)
-	}
-
-	var stats LogStats
-	if err := json.Unmarshal(data, &stats); err != nil {
-		return nil, utils.NewError(fmt.Sprintf("failed to unmarshal log stats: %s", err.Error()), nil)
-	}
-	return &stats, nil
-}
-
-// DeleteLogs deletes logs for a deployment
-func DeleteLogs(deploymentID string) error {
-	return makeRequest("DELETE", fmt.Sprintf("/pods/logs/%s", deploymentID), nil, nil)
 }
 
 // StreamPodLogsWSURL returns the WebSocket URL for streaming pod logs.
@@ -131,24 +87,4 @@ func StreamPodLogsWSURL(namespace, appLabel string) (string, error) {
 		return "", utils.NewError("unexpected API URL scheme: "+cfg.ApiURL, nil)
 	}
 	return fmt.Sprintf("%s/v1/pods/stream/logs/%s/%s", base, namespace, appLabel), nil
-}
-
-// GetPodByLabel gets pod information by deployment ID
-func GetPodByLabel(namespace, deploymentID string) (*PodInfo, error) {
-	var resp apiResponse
-	err := makeRequest("GET", fmt.Sprintf("/pods/%s/%s", namespace, deploymentID), nil, &resp)
-	if err != nil {
-		return nil, err
-	}
-
-	data, err := json.Marshal(resp.Data)
-	if err != nil {
-		return nil, utils.NewError(fmt.Sprintf("failed to marshal response data: %s", err.Error()), nil)
-	}
-
-	var pod PodInfo
-	if err := json.Unmarshal(data, &pod); err != nil {
-		return nil, utils.NewError(fmt.Sprintf("failed to unmarshal pod info: %s", err.Error()), nil)
-	}
-	return &pod, nil
 }

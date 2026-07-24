@@ -851,10 +851,6 @@ type SendCommandResponse struct {
 	Status    string `json:"status"`
 }
 
-type MachineLabelsResponse struct {
-	Labels map[string]string `json:"labels"`
-}
-
 type MachineLogFetchRequest struct {
 	MachineID      string   `json:"machine_id,omitempty"`
 	Sources        []string `json:"sources,omitempty"`

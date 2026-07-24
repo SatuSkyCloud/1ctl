@@ -744,28 +744,6 @@ func parseRetryAfter(value string) time.Duration {
 	return time.Duration(seconds) * time.Second
 }
 
-// GetDeploymentLogs gets deployment logs
-func GetDeploymentLogs(deploymentID string) ([]string, error) {
-	var resp apiResponse
-	err := makeRequest("GET", fmt.Sprintf("/logs/%s", deploymentID), nil, &resp)
-	if err != nil {
-		return nil, err
-	}
-
-	data, err := json.Marshal(resp.Data)
-	if err != nil {
-		return nil, utils.NewError(fmt.Sprintf("failed to marshal response data: %s", err.Error()), nil)
-	}
-
-	var logs struct {
-		Messages []string `json:"messages"`
-	}
-	if err := json.Unmarshal(data, &logs); err != nil {
-		return nil, utils.NewError(fmt.Sprintf("failed to unmarshal logs: %s", err.Error()), nil)
-	}
-	return logs.Messages, nil
-}
-
 // GetOrganizationByID gets organization details by ID
 func GetOrganizationByID(orgID uuid.UUID) (*Organization, error) {
 	var resp apiResponse
@@ -786,26 +764,6 @@ func GetOrganizationByID(orgID uuid.UUID) (*Organization, error) {
 	return &org, nil
 }
 
-// User methods
-func GetUserByEmail(email string) (*User, error) {
-	var resp apiResponse
-	err := makeRequest("GET", fmt.Sprintf("/users/email/%s", email), nil, &resp)
-	if err != nil {
-		return nil, err
-	}
-
-	data, err := json.Marshal(resp.Data)
-	if err != nil {
-		return nil, utils.NewError(fmt.Sprintf("failed to marshal response data: %s", err.Error()), nil)
-	}
-
-	var user User
-	if err := json.Unmarshal(data, &user); err != nil {
-		return nil, utils.NewError(fmt.Sprintf("failed to unmarshal user: %s", err.Error()), nil)
-	}
-	return &user, nil
-}
-
 // GetUserProfile gets the current user's profile with organization information
 func GetUserProfile() (*UserProfile, error) {
 	var resp apiResponse
@@ -824,26 +782,6 @@ func GetUserProfile() (*UserProfile, error) {
 		return nil, utils.NewError(fmt.Sprintf("failed to unmarshal user profile: %s", err.Error()), nil)
 	}
 	return &profile, nil
-}
-
-// API Token methods
-func GetUserTokens(userID string, orgID string) ([]APIToken, error) {
-	var resp apiResponse
-	err := makeRequest("GET", fmt.Sprintf("/api-tokens/list/%s/%s", userID, orgID), nil, &resp)
-	if err != nil {
-		return nil, err
-	}
-
-	data, err := json.Marshal(resp.Data)
-	if err != nil {
-		return nil, utils.NewError(fmt.Sprintf("failed to marshal response data: %s", err.Error()), nil)
-	}
-
-	var tokens []APIToken
-	if err := json.Unmarshal(data, &tokens); err != nil {
-		return nil, utils.NewError(fmt.Sprintf("failed to unmarshal tokens: %s", err.Error()), nil)
-	}
-	return tokens, nil
 }
 
 // Ingress methods
@@ -938,26 +876,6 @@ func GetDomainStatus(ingressID, domain string, probe bool) (*DomainStatusRespons
 		return nil, err
 	}
 	return &resp.Data, nil
-}
-
-// Environment methods
-func GetEnvironmentsByNamespace(namespace string) ([]Environment, error) {
-	var resp apiResponse
-	err := makeRequest("GET", fmt.Sprintf("/environments/namespace/%s", namespace), nil, &resp)
-	if err != nil {
-		return nil, err
-	}
-
-	data, err := json.Marshal(resp.Data)
-	if err != nil {
-		return nil, utils.NewError(fmt.Sprintf("failed to marshal response data: %s", err.Error()), nil)
-	}
-
-	var environments []Environment
-	if err := json.Unmarshal(data, &environments); err != nil {
-		return nil, utils.NewError(fmt.Sprintf("failed to unmarshal environments: %s", err.Error()), nil)
-	}
-	return environments, nil
 }
 
 // Machine methods
@@ -1186,25 +1104,6 @@ func GetMachinesByOwnerID(ownerID uuid.UUID) ([]Machine, error) {
 		return nil, utils.NewError(fmt.Sprintf("failed to unmarshal machines: %s", err.Error()), nil)
 	}
 	return machines, nil
-}
-
-func GetMachineByID(machineID uuid.UUID) (*Machine, error) {
-	var resp apiResponse
-	err := makeRequest("GET", fmt.Sprintf("/machines/id/%s", machineID), nil, &resp)
-	if err != nil {
-		return nil, err
-	}
-
-	data, err := json.Marshal(resp.Data)
-	if err != nil {
-		return nil, utils.NewError(fmt.Sprintf("failed to marshal response data: %s", err.Error()), nil)
-	}
-
-	var machine Machine
-	if err := json.Unmarshal(data, &machine); err != nil {
-		return nil, utils.NewError(fmt.Sprintf("failed to unmarshal machine: %s", err.Error()), nil)
-	}
-	return &machine, nil
 }
 
 func GetMachineByName(machineName string) (*Machine, error) {
