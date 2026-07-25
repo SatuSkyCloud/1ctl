@@ -106,25 +106,10 @@ func mergeDeploymentDeletionOperation(previous, next *DeploymentDeletionOperatio
 		merged.CleanupScope = next.CleanupScope
 	}
 	if next.Lifecycle.State != "" {
-		merged.Lifecycle.State = next.Lifecycle.State
-	}
-	if next.Lifecycle.Terminal {
-		merged.Lifecycle.Terminal = true
-	}
-	if next.Lifecycle.Retryable {
-		merged.Lifecycle.Retryable = true
-	}
-	if next.Lifecycle.Code != "" {
-		merged.Lifecycle.Code = next.Lifecycle.Code
-	}
-	if next.Lifecycle.Message != "" {
-		merged.Lifecycle.Message = next.Lifecycle.Message
-	}
-	if next.Lifecycle.ErrorCode != "" {
-		merged.Lifecycle.ErrorCode = next.Lifecycle.ErrorCode
-	}
-	if next.Lifecycle.ErrorMessage != "" {
-		merged.Lifecycle.ErrorMessage = next.Lifecycle.ErrorMessage
+		// A lifecycle projection returned by the detail endpoint is
+		// authoritative. Replace it wholesale so false booleans and cleared
+		// error fields do not retain values from the accepted operation.
+		merged.Lifecycle = next.Lifecycle
 	}
 	return &merged
 }

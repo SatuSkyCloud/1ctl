@@ -187,6 +187,37 @@ func TestDeploymentDeletionLifecycleDecodesWireErrorFields(t *testing.T) {
 	}
 }
 
+func TestMergeDeploymentDeletionOperationReplacesLifecycleProjection(t *testing.T) {
+	previous := &DeploymentDeletionOperation{
+		DeploymentID: "dep-1",
+		Status:       "deleting",
+		Lifecycle: DeploymentDeletionLifecycle{
+			State:        "deleting",
+			Retryable:    true,
+			ErrorCode:    "STALE_CODE",
+			ErrorMessage: "stale error",
+		},
+	}
+	next := &DeploymentDeletionOperation{
+		DeploymentID: "dep-1",
+		Status:       "deletion_failed",
+		Terminal:     true,
+		Lifecycle: DeploymentDeletionLifecycle{
+			State:     "deletion_failed",
+			Terminal:  true,
+			Retryable: false,
+		},
+	}
+
+	merged := mergeDeploymentDeletionOperation(previous, next)
+	if merged.Lifecycle.State != "deletion_failed" || !merged.Lifecycle.Terminal || merged.Lifecycle.Retryable {
+		t.Fatalf("lifecycle = %+v, want terminal non-retryable deletion_failed", merged.Lifecycle)
+	}
+	if merged.Lifecycle.ErrorText() != "" {
+		t.Fatalf("lifecycle error = %q, want stale error fields cleared", merged.Lifecycle.ErrorText())
+	}
+}
+
 func TestWaitForDeploymentDeletionRetries503AndRejects409(t *testing.T) {
 	t.Run("503 retry", func(t *testing.T) {
 		var calls atomic.Int32

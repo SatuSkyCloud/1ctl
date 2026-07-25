@@ -65,6 +65,8 @@ jobs:
       # local dev (`task test`). Use `-covermode=count` since we can't
       # use `-covermode=atomic` without -race.
       - name: Run tests
+        env:
+          SATUSKY_BACKEND_MANIFEST: ${{ vars.SATUSKY_BACKEND_MANIFEST }}
         run: go test -coverprofile=coverage.txt -covermode=count ./...
 
   lint:
