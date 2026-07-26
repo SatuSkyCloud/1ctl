@@ -66,15 +66,20 @@ spec:
 		Properties map[string]struct {
 			Type    string `json:"type"`
 			Minimum int    `json:"minimum"`
-			Default int    `json:"default"`
+			Default any    `json:"default"`
 		} `json:"properties"`
 	}
 	if err := json.Unmarshal([]byte(files["values.schema.json"]), &schema); err != nil {
 		t.Fatalf("unmarshal root values schema: %v", err)
 	}
 	replicas, ok := schema.Properties["replicas"]
-	if !ok || replicas.Type != "integer" || replicas.Minimum != 1 || replicas.Default != 1 {
+	if !ok || replicas.Type != "integer" || replicas.Minimum != 1 || replicas.Default != float64(1) {
 		t.Fatalf("root values schema must normalize replicas to one or more: %#v", replicas)
+	}
+	cpu, cpuOK := schema.Properties["cpu"]
+	memory, memoryOK := schema.Properties["memory"]
+	if !cpuOK || cpu.Type != "string" || cpu.Default != "250m" || !memoryOK || memory.Type != "string" || memory.Default != "256Mi" {
+		t.Fatalf("root values schema must permit platform CPU and memory reservations: cpu=%#v memory=%#v", cpu, memory)
 	}
 	if _, ok := schema.Properties["message"]; !ok {
 		t.Fatal("root values schema discarded chart input properties")
@@ -92,6 +97,49 @@ spec:
 	}
 	if strings.Contains(readArchive(t, archive)["package.yaml"], "requiredSecrets:") {
 		t.Fatal("manifest unexpectedly declares required secrets")
+	}
+}
+
+func TestHelmPlatformValueSchemaPreservesCompatibleProperties(t *testing.T) {
+	properties := map[string]any{
+		"replicas": map[string]any{"type": "integer", "minimum": float64(1), "default": float64(2)},
+		"cpu":      map[string]any{"type": "string", "default": "100m"},
+		"memory":   map[string]any{"type": "string", "default": "128Mi"},
+	}
+	for _, reservation := range []struct {
+		name, typ  string
+		defaultVal any
+		replicas   bool
+	}{
+		{name: "replicas", typ: "integer", defaultVal: float64(1), replicas: true},
+		{name: "cpu", typ: "string", defaultVal: "250m"},
+		{name: "memory", typ: "string", defaultVal: "256Mi"},
+	} {
+		if err := addHelmPlatformValueSchema(properties, reservation.name, reservation.typ, reservation.defaultVal, reservation.replicas); err != nil {
+			t.Fatalf("addHelmPlatformValueSchema(%q): %v", reservation.name, err)
+		}
+	}
+	if properties["replicas"].(map[string]any)["default"] != float64(2) || properties["cpu"].(map[string]any)["default"] != "100m" || properties["memory"].(map[string]any)["default"] != "128Mi" {
+		t.Fatal("compatible chart schema defaults were overwritten")
+	}
+}
+
+func TestHelmPlatformValueSchemaRejectsIncompatibleProperties(t *testing.T) {
+	for _, test := range []struct {
+		name, property, typ string
+		value               map[string]any
+		replicas            bool
+	}{
+		{name: "replicas type", property: "replicas", typ: "integer", value: map[string]any{"type": "string"}, replicas: true},
+		{name: "cpu type", property: "cpu", typ: "string", value: map[string]any{"type": "integer"}},
+		{name: "memory default", property: "memory", typ: "string", value: map[string]any{"type": "string", "default": float64(128)}},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			properties := map[string]any{test.property: test.value}
+			if err := addHelmPlatformValueSchema(properties, test.property, test.typ, nil, test.replicas); err == nil {
+				t.Fatal("addHelmPlatformValueSchema() unexpectedly accepted an incompatible chart property")
+			}
+		})
 	}
 }
 

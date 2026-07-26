@@ -313,10 +313,68 @@ func helmValuesSchema(files map[string][]byte) ([]byte, error) {
 		properties = make(map[string]any)
 		document["properties"] = properties
 	}
-	properties["replicas"] = map[string]any{
-		"type":    "integer",
-		"minimum": 1,
-		"default": 1,
+	if err := addHelmPlatformValueSchema(properties, "replicas", "integer", float64(1), true); err != nil {
+		return nil, err
+	}
+	if err := addHelmPlatformValueSchema(properties, "cpu", "string", "250m", false); err != nil {
+		return nil, err
+	}
+	if err := addHelmPlatformValueSchema(properties, "memory", "string", "256Mi", false); err != nil {
+		return nil, err
 	}
 	return json.Marshal(document)
+}
+
+func addHelmPlatformValueSchema(properties map[string]any, name, expectedType string, defaultValue any, replicas bool) error {
+	property, exists := properties[name]
+	if !exists {
+		property = map[string]any{"type": expectedType, "default": defaultValue}
+		properties[name] = property
+	}
+	definition, ok := property.(map[string]any)
+	if !ok || definition["type"] != expectedType {
+		return fmt.Errorf("chart values.schema.json property %q must have type %q for platform reservation", name, expectedType)
+	}
+	if existingDefault, exists := definition["default"]; exists {
+		if !helmSchemaValueTypeMatches(existingDefault, expectedType) {
+			return fmt.Errorf("chart values.schema.json property %q has an incompatible default", name)
+		}
+	} else {
+		definition["default"] = defaultValue
+	}
+	if !replicas {
+		return nil
+	}
+	if minimum, exists := definition["minimum"]; exists {
+		if value, ok := helmSchemaInteger(minimum); !ok || value < 1 {
+			return fmt.Errorf("chart values.schema.json property %q must have minimum >= 1", name)
+		}
+	} else {
+		definition["minimum"] = 1
+	}
+	if value, ok := helmSchemaInteger(definition["default"]); !ok || value < 1 {
+		return fmt.Errorf("chart values.schema.json property %q must default to at least one", name)
+	}
+	return nil
+}
+
+func helmSchemaValueTypeMatches(value any, expectedType string) bool {
+	switch expectedType {
+	case "integer":
+		_, ok := helmSchemaInteger(value)
+		return ok
+	case "string":
+		_, ok := value.(string)
+		return ok
+	default:
+		return false
+	}
+}
+
+func helmSchemaInteger(value any) (int64, bool) {
+	number, ok := value.(float64)
+	if !ok || number != float64(int64(number)) {
+		return 0, false
+	}
+	return int64(number), true
 }
