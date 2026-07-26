@@ -291,11 +291,29 @@ func helmRequiredSecrets(annotations map[string]string) ([]string, error) {
 }
 
 func helmValuesSchema(files map[string][]byte) ([]byte, error) {
-	if schema, ok := files["values.schema.json"]; ok {
-		if !json.Valid(schema) {
-			return nil, fmt.Errorf("chart values.schema.json is invalid JSON")
-		}
-		return schema, nil
+	schema, exists := files["values.schema.json"]
+	if !exists {
+		schema = []byte("{\n  \"$schema\": \"https://json-schema.org/draft/2020-12/schema\",\n  \"type\": \"object\",\n  \"additionalProperties\": true\n}\n")
 	}
-	return []byte("{\n  \"$schema\": \"https://json-schema.org/draft/2020-12/schema\",\n  \"type\": \"object\",\n  \"additionalProperties\": true\n}\n"), nil
+	var document map[string]any
+	if err := json.Unmarshal(schema, &document); err != nil {
+		return nil, fmt.Errorf("chart values.schema.json is invalid JSON: %w", err)
+	}
+	if document["type"] != "object" {
+		return nil, fmt.Errorf("chart values.schema.json must have root type object")
+	}
+	properties, ok := document["properties"].(map[string]any)
+	if !ok {
+		if _, exists := document["properties"]; exists {
+			return nil, fmt.Errorf("chart values.schema.json properties must be an object")
+		}
+		properties = make(map[string]any)
+		document["properties"] = properties
+	}
+	properties["replicas"] = map[string]any{
+		"type":    "integer",
+		"minimum": 1,
+		"default": 1,
+	}
+	return json.Marshal(document)
 }

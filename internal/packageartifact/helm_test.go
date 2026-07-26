@@ -2,6 +2,7 @@ package packageartifact
 
 import (
 	"bytes"
+	"encoding/json"
 	"os"
 	"path/filepath"
 	"strings"
@@ -61,8 +62,22 @@ spec:
 			t.Errorf("package manifest does not contain %q:\n%s", want, manifest)
 		}
 	}
-	if files["values.schema.json"] != `{"type":"object","properties":{"message":{"type":"string"}},"additionalProperties":false}` {
-		t.Fatalf("root values schema = %s", files["values.schema.json"])
+	var schema struct {
+		Properties map[string]struct {
+			Type    string `json:"type"`
+			Minimum int    `json:"minimum"`
+			Default int    `json:"default"`
+		} `json:"properties"`
+	}
+	if err := json.Unmarshal([]byte(files["values.schema.json"]), &schema); err != nil {
+		t.Fatalf("unmarshal root values schema: %v", err)
+	}
+	replicas, ok := schema.Properties["replicas"]
+	if !ok || replicas.Type != "integer" || replicas.Minimum != 1 || replicas.Default != 1 {
+		t.Fatalf("root values schema must normalize replicas to one or more: %#v", replicas)
+	}
+	if _, ok := schema.Properties["message"]; !ok {
+		t.Fatal("root values schema discarded chart input properties")
 	}
 	withoutSecrets := writeHelmChart(t, map[string]string{
 		"Chart.yaml":               "apiVersion: v2\nname: no-secrets\nversion: 1.2.3\nannotations:\n  satusky.com/supported-architectures: amd64\n",
