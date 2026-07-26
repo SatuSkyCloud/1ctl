@@ -1,0 +1,45 @@
+{{- if .Values.satusky.gatewayMode }}
+apiVersion: gateway.networking.k8s.io/v1
+kind: HTTPRoute
+metadata:
+  name: {{ .Release.Name }}-route
+  namespace: {{ .Release.Namespace }}
+  annotations:
+    external-dns.alpha.kubernetes.io/cloudflare-proxied: "true"
+spec:
+  parentRefs:
+    - name: {{ required "satusky.gatewayName is required" .Values.satusky.gatewayName }}
+      namespace: {{ required "satusky.gatewayNamespace is required" .Values.satusky.gatewayNamespace }}
+  hostnames:
+    - {{ required "satusky.domainName is required" .Values.satusky.domainName }}
+  rules:
+    - matches:
+        - path:
+            type: PathPrefix
+            value: /
+      backendRefs:
+        - name: {{ .Release.Name }}
+          port: 80
+{{- else }}
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: {{ .Release.Name }}-ingress
+  namespace: {{ .Release.Namespace }}
+  annotations:
+    external-dns.alpha.kubernetes.io/cloudflare-proxied: "true"
+    external-dns.alpha.kubernetes.io/hostname: {{ required "satusky.domainName is required" .Values.satusky.domainName | quote }}
+    external-dns.alpha.kubernetes.io/target: {{ required "satusky.cloudflareTunnelTarget is required" .Values.satusky.cloudflareTunnelTarget | quote }}
+spec:
+  rules:
+    - host: {{ required "satusky.domainName is required" .Values.satusky.domainName }}
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: {{ .Release.Name }}
+                port:
+                  number: 80
+{{- end }}

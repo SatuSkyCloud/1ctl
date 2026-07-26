@@ -1,0 +1,18 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ .Values.satusky.appName }}
+  namespace: {{ .Values.satusky.namespace }}
+  labels:
+    app.kubernetes.io/name: stirling-pdf
+    app.kubernetes.io/instance: {{ .Values.satusky.appName }}
+spec:
+  type: ClusterIP
+  selector:
+    app.kubernetes.io/name: stirling-pdf
+    app.kubernetes.io/instance: {{ .Values.satusky.appName }}
+  ports:
+    - name: http
+      port: 8080
+      targetPort: http
+      protocol: TCP
