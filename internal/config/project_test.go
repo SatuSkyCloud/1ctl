@@ -1,6 +1,7 @@
 package config
 
 import (
+	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
@@ -430,6 +431,59 @@ strategy = "rolling"
 	}
 	if cfg.App.Strategy != "" {
 		t.Errorf("App.Strategy = %q, want empty (legacy field should be cleared after Normalize)", cfg.App.Strategy)
+	}
+}
+
+func TestParseBuildImageAndTargetArch(t *testing.T) {
+	_, path := writeToml(t, `
+[app]
+name = "prebuilt-app"
+
+[build]
+image = "  ghcr.io/acme/api:v1  "
+target_arch = " arm64 "
+`)
+	cfg, err := LoadConfig(path)
+	if err != nil {
+		t.Fatalf("LoadConfig: %v", err)
+	}
+	if cfg.Build.Image != "ghcr.io/acme/api:v1" {
+		t.Errorf("Build.Image = %q, want trimmed image reference", cfg.Build.Image)
+	}
+	if cfg.Build.TargetArch != "arm64" {
+		t.Errorf("Build.TargetArch = %q, want arm64", cfg.Build.TargetArch)
+	}
+}
+
+func TestLoadConfigRejectsMutuallyExclusiveBuildSourcesAfterNormalize(t *testing.T) {
+	_, path := writeToml(t, `
+[app]
+dockerfile = "Dockerfile.legacy"
+
+[build]
+image = "ghcr.io/acme/api:v1"
+`)
+	_, err := LoadConfig(path)
+	if err == nil {
+		t.Fatal("LoadConfig() error = nil, want mutually-exclusive build source error")
+	}
+	if !strings.Contains(err.Error(), "[build].image and [build].dockerfile are mutually exclusive") {
+		t.Fatalf("LoadConfig() error = %q, want actionable mutual-exclusion message", err)
+	}
+}
+
+func TestLoadConfigRejectsInvalidTargetArch(t *testing.T) {
+	for _, arch := range []string{"x86_64", "ARM64", "linux/amd64"} {
+		t.Run(arch, func(t *testing.T) {
+			_, path := writeToml(t, "[build]\ntarget_arch = "+fmt.Sprintf("%q", arch)+"\n")
+			_, err := LoadConfig(path)
+			if err == nil {
+				t.Fatal("LoadConfig() error = nil, want target_arch validation error")
+			}
+			if !strings.Contains(err.Error(), `[build].target_arch must be empty, "amd64", or "arm64"`) {
+				t.Fatalf("LoadConfig() error = %q, want actionable target_arch message", err)
+			}
+		})
 	}
 }
 

@@ -66,6 +66,7 @@ type mergedInput struct {
 	StrictSmoke  bool
 	AppName      string
 	Organization string
+	TargetArch   string
 	UserSetFlags map[string]bool
 }
 
@@ -112,6 +113,8 @@ func mergeConfig(in DeployInput, cfg *config.ProjectConfig) mergedInput {
 		}
 		applyIf(&m.Domain, cfg.App.Domain)
 		applyIf(&m.Dockerfile, cfg.Build.Dockerfile)
+		applyIf(&m.Image, cfg.Build.Image)
+		m.TargetArch = cfg.Build.TargetArch
 		if m.Replicas == 0 {
 			if cfg.App.Replicas > 0 {
 				m.Replicas = cfg.App.Replicas
@@ -300,6 +303,7 @@ func prepareDeploymentOptions(m mergedInput, cfg *config.ProjectConfig) (deployp
 		DockerfilePath: dockerfilePath,
 		PrebuiltImage:  m.Image,
 		FastBuild:      m.Fast,
+		TargetArch:     m.TargetArch,
 	}
 
 	opts.Name = m.AppName

@@ -107,6 +107,27 @@ func TestNormalizeTargetArch(t *testing.T) {
 	}
 }
 
+func TestSourceBuildTargetArchIsAuthoritative(t *testing.T) {
+	tests := []struct {
+		name      string
+		imageArch string
+		want      string
+	}{
+		{name: "detected architecture replaces config", imageArch: "linux/amd64", want: "amd64"},
+		{name: "multi-arch detection clears config selector", imageArch: "linux/amd64,linux/arm64", want: ""},
+		{name: "unknown detection clears config selector", imageArch: "", want: ""},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			opts := DeploymentOptions{TargetArch: "arm64"}
+			setSourceBuildTargetArch(&opts, tt.imageArch)
+			if opts.TargetArch != tt.want {
+				t.Errorf("TargetArch = %q, want %q", opts.TargetArch, tt.want)
+			}
+		})
+	}
+}
+
 func TestDeploy(t *testing.T) {
 	// Skip this test in CI - it requires Docker daemon and actual API
 	// This is an integration test that should run with proper setup

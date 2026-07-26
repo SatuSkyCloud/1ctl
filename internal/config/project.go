@@ -62,6 +62,8 @@ type AppConfig struct {
 // BuildConfig controls how the container image is built.
 type BuildConfig struct {
 	Dockerfile string `toml:"dockerfile"`
+	Image      string `toml:"image"`
+	TargetArch string `toml:"target_arch"`
 	FastBuild  bool   `toml:"fast_build"`
 }
 
@@ -164,6 +166,9 @@ func decodeProjectConfig(path string) (*ProjectConfig, error) {
 	}
 	cfg.Path = path
 	cfg.Normalize()
+	if err := cfg.Validate(); err != nil {
+		return nil, fmt.Errorf("invalid %s: %w", path, err)
+	}
 	return &cfg, nil
 }
 
@@ -177,6 +182,9 @@ func (cfg *ProjectConfig) Normalize() {
 	if cfg.Build.Dockerfile == "" {
 		cfg.Build.Dockerfile = cfg.App.Dockerfile
 	}
+	cfg.Build.Dockerfile = strings.TrimSpace(cfg.Build.Dockerfile)
+	cfg.Build.Image = strings.TrimSpace(cfg.Build.Image)
+	cfg.Build.TargetArch = strings.TrimSpace(cfg.Build.TargetArch)
 	if !cfg.Build.FastBuild {
 		cfg.Build.FastBuild = cfg.App.FastBuild
 	}
@@ -211,6 +219,19 @@ func (cfg *ProjectConfig) Normalize() {
 	cfg.App.RollingMaxUnavailable = ""
 	cfg.App.MachineTag = ""
 	cfg.App.WaitFor = nil
+}
+
+// Validate rejects build settings that cannot be applied unambiguously.
+func (cfg *ProjectConfig) Validate() error {
+	if cfg.Build.Image != "" && cfg.Build.Dockerfile != "" {
+		return fmt.Errorf("[build].image and [build].dockerfile are mutually exclusive; remove dockerfile to deploy a pre-built image")
+	}
+	switch cfg.Build.TargetArch {
+	case "", "amd64", "arm64":
+	default:
+		return fmt.Errorf("[build].target_arch must be empty, \"amd64\", or \"arm64\" (got %q)", cfg.Build.TargetArch)
+	}
+	return nil
 }
 
 // Save writes the config back to its original path.

@@ -95,6 +95,18 @@ docker push registry.satusky.com/my-static-site:v1
 1ctl deploy --config satusky.toml --image registry.satusky.com/my-static-site:v1 --wait
 ```
 
+To make the pre-built image canonical in `satusky.toml`, replace the
+`[build].dockerfile` setting rather than keeping both:
+
+```toml
+[build]
+image = "registry.satusky.com/my-static-site:v1"
+target_arch = "amd64" # use "" for a multi-arch image or an unknown architecture
+```
+
+An explicit `--image` still overrides the configured image. `target_arch` accepts
+only `amd64`, `arm64`, or an empty value; empty means no architecture selector.
+
 Output:
 
 ```

@@ -88,7 +88,7 @@ func Deploy(opts DeploymentOptions, requestID string) (*api.CreateDeploymentResp
 		if err != nil {
 			return nil, utils.NewError("Failed to build image", err)
 		}
-		opts.TargetArch = normalizeTargetArch(imageArch)
+		setSourceBuildTargetArch(&opts, imageArch)
 		progress.complete()
 	}
 
@@ -222,6 +222,12 @@ func submitRemoteBuild(dockerfilePath, projectName string, fastBuild bool) (imag
 		utils.PrintInfo("Image architecture: %s", result.ImageArch)
 	}
 	return result.ImageRef, result.ImageArch, nil
+}
+
+// setSourceBuildTargetArch keeps build detection authoritative over any
+// configured architecture that is only meaningful for pre-built images.
+func setSourceBuildTargetArch(opts *DeploymentOptions, imageArch string) {
+	opts.TargetArch = normalizeTargetArch(imageArch)
 }
 
 // normalizeTargetArch converts a build result into a single Kubernetes arch label.
