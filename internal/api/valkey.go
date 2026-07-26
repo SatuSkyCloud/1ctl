@@ -71,15 +71,17 @@ type ValkeyUpdateUserRequest struct {
 }
 
 type ValkeyCreatedUser struct {
-	User     ValkeyUserConfig `json:"user"`
-	Password string           `json:"password"`
-	Notice   string           `json:"notice,omitempty"`
+	User           ValkeyUserConfig `json:"user"`
+	Password       string           `json:"password"`
+	Notice         string           `json:"notice,omitempty"`
+	RestartPending bool             `json:"restart_pending,omitempty"`
 }
 
 type ValkeyRotatedCredential struct {
-	Username string `json:"username"`
-	Password string `json:"password"`
-	Notice   string `json:"notice,omitempty"`
+	Username       string `json:"username"`
+	Password       string `json:"password"`
+	Notice         string `json:"notice,omitempty"`
+	RestartPending bool   `json:"restart_pending,omitempty"`
 }
 
 type ValkeyLogs struct {
@@ -245,9 +247,11 @@ func CreateValkeyUser(storageID string, request ValkeyCreateUserRequest) (*Valke
 		Data  ValkeyCreatedUser `json:"data"`
 	}
 	path := fmt.Sprintf("/databases/%s/valkey/users", url.PathEscape(storageID))
-	if err := makeRequest(http.MethodPost, path, request, &resp); err != nil {
+	status, err := makeRequestWithStatus(http.MethodPost, path, request, &resp)
+	if err != nil {
 		return nil, err
 	}
+	resp.Data.RestartPending = status == http.StatusAccepted
 	return &resp.Data, nil
 }
 
@@ -274,9 +278,11 @@ func RotateValkeyUserPassword(storageID, username string) (*ValkeyRotatedCredent
 		Data  ValkeyRotatedCredential `json:"data"`
 	}
 	path := fmt.Sprintf("/databases/%s/valkey/users/%s/rotate-password", url.PathEscape(storageID), url.PathEscape(username))
-	if err := makeRequest(http.MethodPost, path, nil, &resp); err != nil {
+	status, err := makeRequestWithStatus(http.MethodPost, path, nil, &resp)
+	if err != nil {
 		return nil, err
 	}
+	resp.Data.RestartPending = status == http.StatusAccepted
 	return &resp.Data, nil
 }
 
@@ -286,16 +292,18 @@ func RotateValkeyCredentials(storageID string) (*ValkeyRotatedCredential, error)
 		Data  ValkeyRotatedCredential `json:"data"`
 	}
 	path := fmt.Sprintf("/databases/%s/credentials/rotate", url.PathEscape(storageID))
-	if err := makeRequest(http.MethodPost, path, nil, &resp); err != nil {
+	status, err := makeRequestWithStatus(http.MethodPost, path, nil, &resp)
+	if err != nil {
 		return nil, err
 	}
+	resp.Data.RestartPending = status == http.StatusAccepted
 	return &resp.Data, nil
 }
 
-func GetValkeyMetrics(storageID string) (map[string]interface{}, error) {
+func GetValkeyMetrics(storageID string) (map[string]string, error) {
 	var resp struct {
-		Error bool                   `json:"error"`
-		Data  map[string]interface{} `json:"data"`
+		Error bool              `json:"error"`
+		Data  map[string]string `json:"data"`
 	}
 	path := fmt.Sprintf("/databases/%s/metrics", url.PathEscape(storageID))
 	if err := makeRequest(http.MethodGet, path, nil, &resp); err != nil {

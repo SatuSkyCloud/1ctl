@@ -147,7 +147,7 @@ cd your-project
 1ctl deploy --cpu-request 250m --cpu-limit 1 --memory 1Gi --wait
 
 # JSON output (global flag — works on deploy, env, secret, machine, token, ingress, service,
-# credits, audit, notifications, pricing, cluster, domains, postgres, volumes)
+# credits, audit, notifications, pricing, cluster, domains, postgres, valkey, volumes)
 1ctl --output json deploy list | jq '.[] | select(.status == "Running")'
 
 # List deployments (NAME column shows the app label as of v0.8.0)
@@ -176,6 +176,23 @@ cd your-project
 ```
 
 > **Default targeting is managed cloud.** Even if you have registered machines, `1ctl deploy` (with no `--machine*` flag) goes to the marketplace. To use your own hardware pass `--machine` or `--machine-tag` explicitly. This changed in v0.8.0.
+
+### Managed Valkey
+
+```bash
+# Private standalone cache with persistence, AOF, and metrics
+1ctl valkey create sessions
+
+# Primary plus two read replicas (replicas do not provide automatic failover)
+1ctl valkey create shared-cache --topology replicated --instances 3 --storage-size 16Gi
+
+1ctl valkey status sessions
+1ctl valkey credentials sessions
+```
+
+Managed Valkey uses private ClusterIP endpoints. See the
+[managed Valkey guide](examples/user-journeys/13-managed-valkey.md) for safe
+updates, ACL users, credential rotation, metrics, logs, and current limitations.
 
 ### High Availability (PDB, HPA, VPA)
 

@@ -359,6 +359,7 @@ func handleUsersCreate(_ context.Context, in userMutationInput) error {
 	utils.PrintSuccess("Valkey user created")
 	printUser(created.User)
 	printGeneratedPassword(created.User.Username, created.Password)
+	printRestartPending(created.RestartPending)
 	return nil
 }
 
@@ -452,6 +453,7 @@ func handleUsersRotatePassword(_ context.Context, in confirmedUserInput) error {
 	}
 	utils.PrintSuccess("Valkey user password rotated")
 	printGeneratedPassword(credential.Username, credential.Password)
+	printRestartPending(credential.RestartPending)
 	return nil
 }
 
@@ -474,6 +476,7 @@ func handleRotateCredentials(_ context.Context, in confirmedStorageInput) error 
 	}
 	utils.PrintSuccess("Default Valkey credential rotated")
 	printGeneratedPassword(credential.Username, credential.Password)
+	printRestartPending(credential.RestartPending)
 	utils.PrintWarning("Update every client that uses the previous credential.")
 	return nil
 }
@@ -501,7 +504,11 @@ func handleMetrics(_ context.Context, in storageInput) error {
 	sort.Strings(keys)
 	rows := make([][]string, 0, len(keys))
 	for _, key := range keys {
-		rows = append(rows, []string{key, fmt.Sprint(metrics[key])})
+		value := metrics[key]
+		if value == "" {
+			value = "unavailable"
+		}
+		rows = append(rows, []string{key, value})
 	}
 	utils.PrintTable([]string{"METRIC", "VALUE"}, rows)
 	return nil
@@ -710,6 +717,12 @@ func printGeneratedPassword(username, password string) {
 	utils.PrintStatusLine("Username", username)
 	utils.PrintStatusLine("Password", password)
 	utils.PrintWarning("Save this generated password now; it will not be shown again.")
+}
+
+func printRestartPending(pending bool) {
+	if pending {
+		utils.PrintWarning("The password was saved, but the rolling restart is still pending. Check service status before reconnecting.")
+	}
 }
 
 func patternsValue(patterns []string) string {

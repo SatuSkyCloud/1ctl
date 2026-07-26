@@ -633,6 +633,12 @@ func makeRequest(method, path string, body interface{}, response interface{}) er
 	return makeRequestURL(method, url, body, response)
 }
 
+func makeRequestWithStatus(method, path string, body interface{}, response interface{}) (int, error) {
+	config := config.GetConfig()
+	url := fmt.Sprintf("%s%s", config.ApiURL, path)
+	return makeRequestURLWithHeadersOnce(method, url, body, response, nil)
+}
+
 func makeMainAPIRequest(method, path string, body interface{}, response interface{}) error {
 	return makeMainAPIRequestWithHeaders(method, path, body, response, nil)
 }
