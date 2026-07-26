@@ -87,6 +87,7 @@ Tokens: https://cloud.satusky.com/<org-id>/token`,
 			cat(commands.ClusterCommand(), "Infrastructure"),
 			// Catalog
 			cat(commands.MarketplaceCommand(), "Catalog"),
+			cat(commands.PackageCommand(), "Catalog"),
 			// Account
 			cat(commands.AuthCommand(), "Account"),
 			cat(commands.ProfileCommand(), "Account"),
@@ -125,11 +126,15 @@ Tokens: https://cloud.satusky.com/<org-id>/token`,
 			cmdName := cmd.Args().First()
 
 			// Skip token validation for these cases
+			// Package creation is local-only. Publishing and release queries remain
+			// authenticated because they are organization-scoped publisher calls.
+			packageCreate := cmdName == "package" && cmd.Args().Get(1) == "create"
 			if cmdName == "auth" ||
 				cmdName == "profile" ||
 				cmdName == "org" ||
 				cmdName == "init" ||
 				cmdName == "completion" ||
+				packageCreate ||
 				cmdName == "help" ||
 				cmd.Bool("help") ||
 				cmd.Bool("h") ||

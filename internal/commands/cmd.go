@@ -26,6 +26,7 @@ import (
 	"1ctl/internal/commands/marketplace"
 	"1ctl/internal/commands/notifications"
 	"1ctl/internal/commands/org"
+	packagecmd "1ctl/internal/commands/package"
 	"1ctl/internal/commands/postgres"
 	"1ctl/internal/commands/pricing"
 	"1ctl/internal/commands/profile"
@@ -76,6 +77,9 @@ func TokenCommand() *cli.Command { return token.Command() }
 
 // MarketplaceCommand returns the "1ctl marketplace" command tree.
 func MarketplaceCommand() *cli.Command { return marketplace.Command() }
+
+// PackageCommand returns the "1ctl package" command tree.
+func PackageCommand() *cli.Command { return packagecmd.Command() }
 
 // AuditCommand returns the "1ctl audit" command tree.
 func AuditCommand() *cli.Command { return audit.Command() }
