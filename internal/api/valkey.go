@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"net/http"
 	"net/url"
+	"strconv"
 
 	satuskyctx "1ctl/internal/context"
 
@@ -56,6 +57,36 @@ type ValkeyCredentials struct {
 	TLS          bool   `json:"tls"`
 }
 
+type ValkeyCreateUserRequest struct {
+	Username        string   `json:"username"`
+	AccessPreset    string   `json:"access_preset"`
+	KeyPatterns     []string `json:"key_patterns,omitempty"`
+	ChannelPatterns []string `json:"channel_patterns,omitempty"`
+}
+
+type ValkeyUpdateUserRequest struct {
+	AccessPreset    *string   `json:"access_preset,omitempty"`
+	KeyPatterns     *[]string `json:"key_patterns,omitempty"`
+	ChannelPatterns *[]string `json:"channel_patterns,omitempty"`
+}
+
+type ValkeyCreatedUser struct {
+	User     ValkeyUserConfig `json:"user"`
+	Password string           `json:"password"`
+	Notice   string           `json:"notice,omitempty"`
+}
+
+type ValkeyRotatedCredential struct {
+	Username string `json:"username"`
+	Password string `json:"password"`
+	Notice   string `json:"notice,omitempty"`
+}
+
+type ValkeyLogs struct {
+	Lines []string `json:"lines"`
+	Pod   string   `json:"pod"`
+}
+
 func CreateValkey(opts ValkeyCreateOptions) (*StorageConfig, error) {
 	orgIDString := satuskyctx.GetCurrentOrgID()
 	if orgIDString == "" {
@@ -73,6 +104,8 @@ func CreateValkey(opts ValkeyCreateOptions) (*StorageConfig, error) {
 	port := "6379"
 	name := opts.Name
 	instances := opts.Instances
+	appendOnly := opts.AppendOnly
+	metricsEnabled := opts.MetricsEnabled
 	req := StorageConfig{
 		ResourceID:         uuid.New(),
 		ResourceType:       "standalone",
@@ -93,11 +126,11 @@ func CreateValkey(opts ValkeyCreateOptions) (*StorageConfig, error) {
 		PersistenceEnabled: &opts.Persistence,
 		Valkey: &ValkeyConfig{
 			Topology:         opts.Topology,
-			AppendOnly:       opts.AppendOnly,
+			AppendOnly:       &appendOnly,
 			AppendFsync:      opts.AppendFsync,
 			MaxmemoryPolicy:  opts.MaxmemoryPolicy,
 			MaxmemoryPercent: opts.MaxmemoryPercent,
-			MetricsEnabled:   opts.MetricsEnabled,
+			MetricsEnabled:   &metricsEnabled,
 			ChartVersion:     ValkeyChartVersion,
 			ImageVersion:     ValkeyVersion,
 		},
@@ -181,4 +214,104 @@ func RestartValkey(storageID string) error {
 
 func DeleteValkey(storageID string) error {
 	return makeRequest(http.MethodDelete, fmt.Sprintf("/databases/%s", url.PathEscape(storageID)), nil, nil)
+}
+
+func UpdateValkey(storageID string, config *StorageConfig) (*StorageConfig, error) {
+	var resp struct {
+		Error bool          `json:"error"`
+		Data  StorageConfig `json:"data"`
+	}
+	if err := makeRequest(http.MethodPut, fmt.Sprintf("/databases/update/%s", url.PathEscape(storageID)), config, &resp); err != nil {
+		return nil, err
+	}
+	return &resp.Data, nil
+}
+
+func ListValkeyUsers(storageID string) ([]ValkeyUserConfig, error) {
+	var resp struct {
+		Error bool               `json:"error"`
+		Data  []ValkeyUserConfig `json:"data"`
+	}
+	path := fmt.Sprintf("/databases/%s/valkey/users", url.PathEscape(storageID))
+	if err := makeRequest(http.MethodGet, path, nil, &resp); err != nil {
+		return nil, err
+	}
+	return resp.Data, nil
+}
+
+func CreateValkeyUser(storageID string, request ValkeyCreateUserRequest) (*ValkeyCreatedUser, error) {
+	var resp struct {
+		Error bool              `json:"error"`
+		Data  ValkeyCreatedUser `json:"data"`
+	}
+	path := fmt.Sprintf("/databases/%s/valkey/users", url.PathEscape(storageID))
+	if err := makeRequest(http.MethodPost, path, request, &resp); err != nil {
+		return nil, err
+	}
+	return &resp.Data, nil
+}
+
+func UpdateValkeyUser(storageID, username string, request ValkeyUpdateUserRequest) (*ValkeyUserConfig, error) {
+	var resp struct {
+		Error bool             `json:"error"`
+		Data  ValkeyUserConfig `json:"data"`
+	}
+	path := fmt.Sprintf("/databases/%s/valkey/users/%s", url.PathEscape(storageID), url.PathEscape(username))
+	if err := makeRequest(http.MethodPatch, path, request, &resp); err != nil {
+		return nil, err
+	}
+	return &resp.Data, nil
+}
+
+func DeleteValkeyUser(storageID, username string) error {
+	path := fmt.Sprintf("/databases/%s/valkey/users/%s", url.PathEscape(storageID), url.PathEscape(username))
+	return makeRequest(http.MethodDelete, path, nil, nil)
+}
+
+func RotateValkeyUserPassword(storageID, username string) (*ValkeyRotatedCredential, error) {
+	var resp struct {
+		Error bool                    `json:"error"`
+		Data  ValkeyRotatedCredential `json:"data"`
+	}
+	path := fmt.Sprintf("/databases/%s/valkey/users/%s/rotate-password", url.PathEscape(storageID), url.PathEscape(username))
+	if err := makeRequest(http.MethodPost, path, nil, &resp); err != nil {
+		return nil, err
+	}
+	return &resp.Data, nil
+}
+
+func RotateValkeyCredentials(storageID string) (*ValkeyRotatedCredential, error) {
+	var resp struct {
+		Error bool                    `json:"error"`
+		Data  ValkeyRotatedCredential `json:"data"`
+	}
+	path := fmt.Sprintf("/databases/%s/credentials/rotate", url.PathEscape(storageID))
+	if err := makeRequest(http.MethodPost, path, nil, &resp); err != nil {
+		return nil, err
+	}
+	return &resp.Data, nil
+}
+
+func GetValkeyMetrics(storageID string) (map[string]interface{}, error) {
+	var resp struct {
+		Error bool                   `json:"error"`
+		Data  map[string]interface{} `json:"data"`
+	}
+	path := fmt.Sprintf("/databases/%s/metrics", url.PathEscape(storageID))
+	if err := makeRequest(http.MethodGet, path, nil, &resp); err != nil {
+		return nil, err
+	}
+	return resp.Data, nil
+}
+
+func GetValkeyLogs(storageID string, tail int) (*ValkeyLogs, error) {
+	var resp struct {
+		Error bool       `json:"error"`
+		Data  ValkeyLogs `json:"data"`
+	}
+	path := fmt.Sprintf("/databases/%s/logs?tail=%s", url.PathEscape(storageID), url.QueryEscape(strconv.Itoa(tail)))
+	if err := makeRequest(http.MethodGet, path, nil, &resp); err != nil {
+		return nil, err
+	}
+	return &resp.Data, nil
 }

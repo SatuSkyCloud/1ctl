@@ -12,14 +12,19 @@ func TestCommandTree(t *testing.T) {
 	}
 
 	want := map[string]bool{
-		"create":      false,
-		"list":        false,
-		"get":         false,
-		"status":      false,
-		"credentials": false,
-		"redeploy":    false,
-		"restart":     false,
-		"delete":      false,
+		"create":             false,
+		"list":               false,
+		"get":                false,
+		"status":             false,
+		"credentials":        false,
+		"update":             false,
+		"users":              false,
+		"rotate-credentials": false,
+		"metrics":            false,
+		"logs":               false,
+		"redeploy":           false,
+		"restart":            false,
+		"delete":             false,
 	}
 	for _, subcommand := range cmd.Commands {
 		if _, ok := want[subcommand.Name]; ok {
@@ -30,6 +35,39 @@ func TestCommandTree(t *testing.T) {
 		if !found {
 			t.Errorf("missing %q subcommand", name)
 		}
+	}
+}
+
+func TestValidateUserMutation(t *testing.T) {
+	valid := userMutationInput{
+		Username:        "worker.api",
+		AccessPreset:    "read_write",
+		KeyPatterns:     []string{"jobs:*"},
+		ChannelPatterns: []string{"events:*"},
+	}
+	if err := validateUserMutation(valid, true); err != nil {
+		t.Fatalf("validateUserMutation(valid) returned %v", err)
+	}
+
+	tests := []struct {
+		name   string
+		mutate func(*userMutationInput)
+	}{
+		{name: "reserved default user", mutate: func(in *userMutationInput) { in.Username = "default" }},
+		{name: "reserved replication user", mutate: func(in *userMutationInput) { in.Username = "replication" }},
+		{name: "invalid preset", mutate: func(in *userMutationInput) { in.AccessPreset = "commands" }},
+		{name: "raw key ACL prefix", mutate: func(in *userMutationInput) { in.KeyPatterns = []string{"~jobs:*"} }},
+		{name: "raw channel ACL prefix", mutate: func(in *userMutationInput) { in.ChannelPatterns = []string{"&events:*"} }},
+		{name: "pattern whitespace", mutate: func(in *userMutationInput) { in.KeyPatterns = []string{"jobs: *"} }},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			input := valid
+			test.mutate(&input)
+			if err := validateUserMutation(input, true); err == nil {
+				t.Fatal("validateUserMutation() returned nil, want error")
+			}
+		})
 	}
 }
 

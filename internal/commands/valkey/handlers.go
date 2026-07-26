@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"regexp"
+	"sort"
 	"strings"
 
 	"1ctl/internal/api"
@@ -12,6 +13,7 @@ import (
 )
 
 var valkeyNamePattern = regexp.MustCompile(`^[a-z0-9]([-a-z0-9]*[a-z0-9])?$`)
+var valkeyUsernamePattern = regexp.MustCompile(`^[A-Za-z0-9][A-Za-z0-9._-]{0,31}$`)
 
 var maxmemoryPolicies = map[string]struct{}{
 	"noeviction":      {},
@@ -225,6 +227,314 @@ func handleDestroy(_ context.Context, in destroyInput) error {
 	return nil
 }
 
+func handleUpdate(_ context.Context, in updateInput) error {
+	storageID, err := resolveStorageID(in.StorageID)
+	if err != nil {
+		return err
+	}
+	if in.AppendOnly && in.NoAppendOnly {
+		return utils.NewError("append-only and no-append-only cannot be used together", nil)
+	}
+	if in.MetricsEnabled && in.NoMetrics {
+		return utils.NewError("metrics and no-metrics cannot be used together", nil)
+	}
+	in.AppendFsync = strings.ToLower(strings.TrimSpace(in.AppendFsync))
+	in.MaxmemoryPolicy = strings.ToLower(strings.TrimSpace(in.MaxmemoryPolicy))
+	if err := validateMutableSettings(in); err != nil {
+		return err
+	}
+	if !hasUpdate(in) {
+		return utils.NewError("provide at least one mutable setting to update", nil)
+	}
+
+	instance, err := api.GetValkey(storageID)
+	if err != nil {
+		return utils.NewError(fmt.Sprintf("failed to get Valkey service: %s", err.Error()), nil)
+	}
+	if instance.Engine != api.StorageEngineValkey || instance.Valkey == nil {
+		return utils.NewError(fmt.Sprintf("storage %s is not a Valkey service", storageID), nil)
+	}
+	if in.Instances > 0 {
+		if instance.Valkey.Topology == "standalone" && in.Instances != 1 {
+			return utils.NewError("standalone topology supports exactly one instance", nil)
+		}
+		if instance.Valkey.Topology == "replicated" && in.Instances < 2 {
+			return utils.NewError("replicated topology requires at least two instances", nil)
+		}
+		if instance.Valkey.Topology == "replicated" && in.Instances > 10 {
+			return utils.NewError("replicated topology supports at most ten instances", nil)
+		}
+		instance.Replicas = in.Instances
+		instance.Instances = &in.Instances
+	}
+	if in.CPURequest != "" {
+		instance.CPURequest = in.CPURequest
+	}
+	if in.CPULimit != "" {
+		instance.CPULimit = in.CPULimit
+	}
+	if in.MemoryRequest != "" {
+		instance.MemoryRequest = in.MemoryRequest
+	}
+	if in.MemoryLimit != "" {
+		instance.MemoryLimit = in.MemoryLimit
+	}
+	if in.AppendOnly || in.NoAppendOnly {
+		appendOnly := in.AppendOnly
+		instance.Valkey.AppendOnly = &appendOnly
+	}
+	if in.AppendFsync != "" {
+		instance.Valkey.AppendFsync = in.AppendFsync
+	}
+	if in.MaxmemoryPolicy != "" {
+		instance.Valkey.MaxmemoryPolicy = in.MaxmemoryPolicy
+	}
+	if in.MaxmemoryPercent > 0 {
+		instance.Valkey.MaxmemoryPercent = in.MaxmemoryPercent
+	}
+	if in.MetricsEnabled || in.NoMetrics {
+		metricsEnabled := in.MetricsEnabled
+		instance.Valkey.MetricsEnabled = &metricsEnabled
+	}
+
+	updated, err := api.UpdateValkey(storageID, instance)
+	if err != nil {
+		return utils.NewError(fmt.Sprintf("failed to update Valkey service: %s", err.Error()), nil)
+	}
+	if utils.TryPrintJSON(updated) {
+		return nil
+	}
+	utils.PrintSuccess("Valkey settings updated and reconciled")
+	printInstance(updated)
+	return nil
+}
+
+func handleUsersList(_ context.Context, in storageInput) error {
+	storageID, err := resolveStorageID(in.StorageID)
+	if err != nil {
+		return err
+	}
+	users, err := api.ListValkeyUsers(storageID)
+	if err != nil {
+		return utils.NewError(fmt.Sprintf("failed to list Valkey users: %s", err.Error()), nil)
+	}
+	if utils.PrintListOrJSON(users, "No custom Valkey users found") {
+		return nil
+	}
+	rows := make([][]string, 0, len(users))
+	for _, user := range users {
+		rows = append(rows, []string{
+			user.Username,
+			user.AccessPreset,
+			patternsValue(user.KeyPatterns),
+			patternsValue(user.ChannelPatterns),
+		})
+	}
+	utils.PrintTable([]string{"USERNAME", "PRESET", "KEY PATTERNS", "CHANNEL PATTERNS"}, rows)
+	utils.PrintInfo("The default and replication users are protected system users.")
+	return nil
+}
+
+func handleUsersCreate(_ context.Context, in userMutationInput) error {
+	if err := validateUserMutation(in, true); err != nil {
+		return err
+	}
+	storageID, err := resolveStorageID(in.StorageID)
+	if err != nil {
+		return err
+	}
+	created, err := api.CreateValkeyUser(storageID, api.ValkeyCreateUserRequest{
+		Username:        in.Username,
+		AccessPreset:    strings.ToLower(strings.TrimSpace(in.AccessPreset)),
+		KeyPatterns:     in.KeyPatterns,
+		ChannelPatterns: in.ChannelPatterns,
+	})
+	if err != nil {
+		return utils.NewError(fmt.Sprintf("failed to create Valkey user: %s", err.Error()), nil)
+	}
+	created.Notice = "Save this generated password now; it will not be shown again."
+	if utils.TryPrintJSON(created) {
+		return nil
+	}
+	utils.PrintSuccess("Valkey user created")
+	printUser(created.User)
+	printGeneratedPassword(created.User.Username, created.Password)
+	return nil
+}
+
+func handleUsersUpdate(_ context.Context, in userMutationInput) error {
+	if err := validateUserMutation(in, false); err != nil {
+		return err
+	}
+	if in.ClearKeyPatterns && len(in.KeyPatterns) > 0 {
+		return utils.NewError("key-pattern and clear-key-patterns cannot be used together", nil)
+	}
+	if in.ClearChannelPatterns && len(in.ChannelPatterns) > 0 {
+		return utils.NewError("channel-pattern and clear-channel-patterns cannot be used together", nil)
+	}
+	if in.AccessPreset == "" && in.KeyPatterns == nil && in.ChannelPatterns == nil &&
+		!in.ClearKeyPatterns && !in.ClearChannelPatterns {
+		return utils.NewError("provide a preset or pattern change to update", nil)
+	}
+	storageID, err := resolveStorageID(in.StorageID)
+	if err != nil {
+		return err
+	}
+	request := api.ValkeyUpdateUserRequest{}
+	if in.AccessPreset != "" {
+		preset := strings.ToLower(strings.TrimSpace(in.AccessPreset))
+		request.AccessPreset = &preset
+	}
+	if in.KeyPatterns != nil || in.ClearKeyPatterns {
+		patterns := in.KeyPatterns
+		if in.ClearKeyPatterns {
+			patterns = []string{}
+		}
+		request.KeyPatterns = &patterns
+	}
+	if in.ChannelPatterns != nil || in.ClearChannelPatterns {
+		patterns := in.ChannelPatterns
+		if in.ClearChannelPatterns {
+			patterns = []string{}
+		}
+		request.ChannelPatterns = &patterns
+	}
+	user, err := api.UpdateValkeyUser(storageID, in.Username, request)
+	if err != nil {
+		return utils.NewError(fmt.Sprintf("failed to update Valkey user: %s", err.Error()), nil)
+	}
+	if utils.TryPrintJSON(user) {
+		return nil
+	}
+	utils.PrintSuccess("Valkey user updated")
+	printUser(*user)
+	return nil
+}
+
+func handleUsersDelete(_ context.Context, in confirmedUserInput) error {
+	if err := validateMutableUsername(in.Username); err != nil {
+		return err
+	}
+	storageID, err := resolveStorageID(in.StorageID)
+	if err != nil {
+		return err
+	}
+	if !utils.Confirm(fmt.Sprintf("Delete Valkey user %s?", in.Username), in.Yes) {
+		fmt.Println("Aborted.")
+		return nil
+	}
+	if err := api.DeleteValkeyUser(storageID, in.Username); err != nil {
+		return utils.NewError(fmt.Sprintf("failed to delete Valkey user: %s", err.Error()), nil)
+	}
+	utils.PrintSuccess("Valkey user deleted")
+	return nil
+}
+
+func handleUsersRotatePassword(_ context.Context, in confirmedUserInput) error {
+	if err := validateMutableUsername(in.Username); err != nil {
+		return err
+	}
+	storageID, err := resolveStorageID(in.StorageID)
+	if err != nil {
+		return err
+	}
+	if !utils.Confirm(fmt.Sprintf("Rotate the password for Valkey user %s? Existing clients will lose access.", in.Username), in.Yes) {
+		fmt.Println("Aborted.")
+		return nil
+	}
+	credential, err := api.RotateValkeyUserPassword(storageID, in.Username)
+	if err != nil {
+		return utils.NewError(fmt.Sprintf("failed to rotate Valkey user password: %s", err.Error()), nil)
+	}
+	credential.Notice = "Save this generated password now; it will not be shown again."
+	if utils.TryPrintJSON(credential) {
+		return nil
+	}
+	utils.PrintSuccess("Valkey user password rotated")
+	printGeneratedPassword(credential.Username, credential.Password)
+	return nil
+}
+
+func handleRotateCredentials(_ context.Context, in confirmedStorageInput) error {
+	storageID, err := resolveStorageID(in.StorageID)
+	if err != nil {
+		return err
+	}
+	if !utils.Confirm("Rotate the default Valkey credential? Existing clients will lose access.", in.Yes) {
+		fmt.Println("Aborted.")
+		return nil
+	}
+	credential, err := api.RotateValkeyCredentials(storageID)
+	if err != nil {
+		return utils.NewError(fmt.Sprintf("failed to rotate Valkey credentials: %s", err.Error()), nil)
+	}
+	credential.Notice = "Save this generated password now; it will not be shown again."
+	if utils.TryPrintJSON(credential) {
+		return nil
+	}
+	utils.PrintSuccess("Default Valkey credential rotated")
+	printGeneratedPassword(credential.Username, credential.Password)
+	utils.PrintWarning("Update every client that uses the previous credential.")
+	return nil
+}
+
+func handleMetrics(_ context.Context, in storageInput) error {
+	storageID, err := resolveStorageID(in.StorageID)
+	if err != nil {
+		return err
+	}
+	metrics, err := api.GetValkeyMetrics(storageID)
+	if err != nil {
+		return utils.NewError(fmt.Sprintf("failed to get Valkey metrics: %s", err.Error()), nil)
+	}
+	if utils.TryPrintJSON(metrics) {
+		return nil
+	}
+	if len(metrics) == 0 {
+		utils.PrintInfo("No Valkey metrics are available yet")
+		return nil
+	}
+	keys := make([]string, 0, len(metrics))
+	for key := range metrics {
+		keys = append(keys, key)
+	}
+	sort.Strings(keys)
+	rows := make([][]string, 0, len(keys))
+	for _, key := range keys {
+		rows = append(rows, []string{key, fmt.Sprint(metrics[key])})
+	}
+	utils.PrintTable([]string{"METRIC", "VALUE"}, rows)
+	return nil
+}
+
+func handleLogs(_ context.Context, in logsInput) error {
+	if in.Tail < 1 || in.Tail > 2000 {
+		return utils.NewError("tail must be between 1 and 2000", nil)
+	}
+	storageID, err := resolveStorageID(in.StorageID)
+	if err != nil {
+		return err
+	}
+	logs, err := api.GetValkeyLogs(storageID, in.Tail)
+	if err != nil {
+		return utils.NewError(fmt.Sprintf("failed to get Valkey logs: %s", err.Error()), nil)
+	}
+	if utils.TryPrintJSON(logs) {
+		return nil
+	}
+	if logs.Pod != "" {
+		utils.PrintInfo("Pod: %s", logs.Pod)
+	}
+	if len(logs.Lines) == 0 {
+		utils.PrintInfo("No Valkey log lines are available yet")
+		return nil
+	}
+	for _, line := range logs.Lines {
+		fmt.Println(line)
+	}
+	return nil
+}
+
 func validateCreate(in createInput) error {
 	if in.Name == "" {
 		return utils.NewError("service name cannot be empty", nil)
@@ -247,6 +557,9 @@ func validateCreate(in createInput) error {
 	if in.Topology == "replicated" && in.Instances > 0 && in.Instances < 2 {
 		return utils.NewError("replicated topology requires at least two instances", nil)
 	}
+	if in.Topology == "replicated" && in.Instances > 10 {
+		return utils.NewError("replicated topology supports at most ten instances", nil)
+	}
 	if in.AppendFsync != "always" && in.AppendFsync != "everysec" && in.AppendFsync != "no" {
 		return utils.NewError("append-fsync must be always, everysec, or no", nil)
 	}
@@ -255,6 +568,86 @@ func validateCreate(in createInput) error {
 	}
 	if in.MaxmemoryPercent < 50 || in.MaxmemoryPercent > 90 {
 		return utils.NewError("maxmemory-percent must be between 50 and 90", nil)
+	}
+	return nil
+}
+
+func validateMutableSettings(in updateInput) error {
+	if in.Instances < 0 {
+		return utils.NewError("instances cannot be negative", nil)
+	}
+	if in.AppendFsync != "" && in.AppendFsync != "always" && in.AppendFsync != "everysec" && in.AppendFsync != "no" {
+		return utils.NewError("append-fsync must be always, everysec, or no", nil)
+	}
+	if in.MaxmemoryPolicy != "" {
+		if _, ok := maxmemoryPolicies[in.MaxmemoryPolicy]; !ok {
+			return utils.NewError("unsupported maxmemory-policy", nil)
+		}
+	}
+	if in.MaxmemoryPercent != 0 && (in.MaxmemoryPercent < 50 || in.MaxmemoryPercent > 90) {
+		return utils.NewError("maxmemory-percent must be between 50 and 90", nil)
+	}
+	return nil
+}
+
+func hasUpdate(in updateInput) bool {
+	return in.Instances > 0 || in.CPURequest != "" || in.CPULimit != "" ||
+		in.MemoryRequest != "" || in.MemoryLimit != "" || in.AppendOnly ||
+		in.NoAppendOnly || in.AppendFsync != "" || in.MaxmemoryPolicy != "" ||
+		in.MaxmemoryPercent > 0 || in.MetricsEnabled || in.NoMetrics
+}
+
+func validateUserMutation(in userMutationInput, requirePreset bool) error {
+	if err := validateMutableUsername(in.Username); err != nil {
+		return err
+	}
+	preset := strings.ToLower(strings.TrimSpace(in.AccessPreset))
+	if requirePreset || preset != "" {
+		if preset != "admin" && preset != "read_write" && preset != "read_only" {
+			return utils.NewError("preset must be admin, read_write, or read_only", nil)
+		}
+	}
+	if len(in.KeyPatterns) > 16 {
+		return utils.NewError("at most 16 key patterns are supported", nil)
+	}
+	if len(in.ChannelPatterns) > 16 {
+		return utils.NewError("at most 16 channel patterns are supported", nil)
+	}
+	for _, pattern := range in.KeyPatterns {
+		if err := validateACLPattern(pattern, "~"); err != nil {
+			return utils.NewError(fmt.Sprintf("invalid key pattern %q: %s", pattern, err.Error()), nil)
+		}
+	}
+	for _, pattern := range in.ChannelPatterns {
+		if err := validateACLPattern(pattern, "&"); err != nil {
+			return utils.NewError(fmt.Sprintf("invalid channel pattern %q: %s", pattern, err.Error()), nil)
+		}
+	}
+	return nil
+}
+
+func validateMutableUsername(username string) error {
+	if !valkeyUsernamePattern.MatchString(username) {
+		return utils.NewError("username must be 1-32 characters using only letters, numbers, dots, underscores, and hyphens", nil)
+	}
+	if username == "default" || username == "replication" {
+		return utils.NewError(fmt.Sprintf("%s is a protected system user", username), nil)
+	}
+	return nil
+}
+
+func validateACLPattern(pattern, aclPrefix string) error {
+	if pattern == "" {
+		return fmt.Errorf("pattern cannot be empty")
+	}
+	if len(pattern) > 256 {
+		return fmt.Errorf("pattern must be 256 characters or fewer")
+	}
+	if strings.HasPrefix(pattern, aclPrefix) {
+		return fmt.Errorf("omit the ACL %q prefix", aclPrefix)
+	}
+	if strings.ContainsAny(pattern, " \t\r\n\x00") {
+		return fmt.Errorf("pattern cannot contain whitespace or NUL")
 	}
 	return nil
 }
@@ -297,13 +690,33 @@ func printInstance(instance *api.StorageConfig) {
 	utils.PrintStatusLine("Storage", fmt.Sprintf("%s (%s)", instance.StorageSize, instance.StorageClass))
 	utils.PrintStatusLine("Resources", fmt.Sprintf("%s-%s CPU, %s-%s memory", instance.CPURequest, instance.CPULimit, instance.MemoryRequest, instance.MemoryLimit))
 	if instance.Valkey != nil {
-		utils.PrintStatusLine("Append only", boolStatus(instance.Valkey.AppendOnly))
+		utils.PrintStatusLine("Append only", boolPointerStatus(instance.Valkey.AppendOnly))
 		utils.PrintStatusLine("Append fsync", instance.Valkey.AppendFsync)
 		utils.PrintStatusLine("Maxmemory", fmt.Sprintf("%d%%, %s", instance.Valkey.MaxmemoryPercent, instance.Valkey.MaxmemoryPolicy))
-		utils.PrintStatusLine("Metrics", boolStatus(instance.Valkey.MetricsEnabled))
+		utils.PrintStatusLine("Metrics", boolPointerStatus(instance.Valkey.MetricsEnabled))
 		utils.PrintStatusLine("Chart", instance.Valkey.ChartVersion)
 		utils.PrintStatusLine("Image", instance.Valkey.ImageVersion)
 	}
+}
+
+func printUser(user api.ValkeyUserConfig) {
+	utils.PrintStatusLine("Username", user.Username)
+	utils.PrintStatusLine("Preset", user.AccessPreset)
+	utils.PrintStatusLine("Key patterns", patternsValue(user.KeyPatterns))
+	utils.PrintStatusLine("Channel patterns", patternsValue(user.ChannelPatterns))
+}
+
+func printGeneratedPassword(username, password string) {
+	utils.PrintStatusLine("Username", username)
+	utils.PrintStatusLine("Password", password)
+	utils.PrintWarning("Save this generated password now; it will not be shown again.")
+}
+
+func patternsValue(patterns []string) string {
+	if len(patterns) == 0 {
+		return "preset default"
+	}
+	return strings.Join(patterns, ",")
 }
 
 func topology(instance api.StorageConfig) string {

@@ -16,15 +16,23 @@ const StorageEngineCNPG StorageEngine = "cnpg"
 const StorageEngineValkey StorageEngine = "valkey"
 
 type ValkeyConfig struct {
-	Topology          string `json:"topology"`
-	AppendOnly        bool   `json:"append_only"`
-	AppendFsync       string `json:"append_fsync"`
-	MaxmemoryPolicy   string `json:"maxmemory_policy"`
-	MaxmemoryPercent  int    `json:"maxmemory_percent"`
-	MetricsEnabled    bool   `json:"metrics_enabled"`
-	ChartVersion      string `json:"chart_version"`
-	ImageVersion      string `json:"image_version"`
-	ChartDigestSHA256 string `json:"chart_digest_sha256,omitempty"`
+	Topology          string             `json:"topology"`
+	AppendOnly        *bool              `json:"append_only,omitempty"`
+	AppendFsync       string             `json:"append_fsync"`
+	MaxmemoryPolicy   string             `json:"maxmemory_policy"`
+	MaxmemoryPercent  int                `json:"maxmemory_percent"`
+	MetricsEnabled    *bool              `json:"metrics_enabled,omitempty"`
+	ChartVersion      string             `json:"chart_version"`
+	ImageVersion      string             `json:"image_version"`
+	ChartDigestSHA256 string             `json:"chart_digest_sha256,omitempty"`
+	Users             []ValkeyUserConfig `json:"users,omitempty"`
+}
+
+type ValkeyUserConfig struct {
+	Username        string   `json:"username"`
+	AccessPreset    string   `json:"access_preset"`
+	KeyPatterns     []string `json:"key_patterns,omitempty"`
+	ChannelPatterns []string `json:"channel_patterns,omitempty"`
 }
 
 type StorageConfig struct {
