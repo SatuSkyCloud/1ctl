@@ -309,6 +309,13 @@ func (cfg *ProjectConfig) Validate() error {
 	return nil
 }
 
+// UsesCanonicalVolumes reports whether the source config used [[volumes]].
+// Callers use this to avoid silently dropping repeated volume declarations
+// when they must fall back to an older deployment workflow.
+func (cfg *ProjectConfig) UsesCanonicalVolumes() bool {
+	return !cfg.legacyVolumeSet && len(cfg.Volumes) > 0
+}
+
 func legacyVolumeName(appName string) string {
 	if appName == "" {
 		return "volume"

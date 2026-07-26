@@ -14,6 +14,16 @@ var memoryPattern = regexp.MustCompile(`^(\d+)(Mi|Gi)$`)
 var cpuPattern = regexp.MustCompile(`^(\d+)(m)?$`)
 var cpuFloatPattern = regexp.MustCompile(`^\d+\.\d+$`)
 var domainPattern = regexp.MustCompile(`^(\*\.)?[a-zA-Z0-9][-a-zA-Z0-9]*(\.[a-zA-Z0-9][-a-zA-Z0-9]*)*\.[a-zA-Z]{2,}$`)
+var imageReferencePattern = regexp.MustCompile(`^(?:[a-zA-Z0-9](?:[a-zA-Z0-9-]*[a-zA-Z0-9])?(?:\.[a-zA-Z0-9](?:[a-zA-Z0-9-]*[a-zA-Z0-9])?)*(?::[0-9]+)?/)?[a-zA-Z0-9]+(?:[._-][a-zA-Z0-9]+)*(?:/[a-zA-Z0-9]+(?:[._-][a-zA-Z0-9]+)*)*(?::[a-zA-Z0-9]+(?:[._-][a-zA-Z0-9]+)*)?(?:@sha256:[a-f0-9]{64})?$`)
+
+// ValidateImageReference accepts the Docker/OCI image-reference subset the
+// cloud build and atomic deployment APIs can pull without shell interpretation.
+func ValidateImageReference(image string) error {
+	if image == "" || strings.TrimSpace(image) != image || !imageReferencePattern.MatchString(image) {
+		return utils.NewError("image must be a valid container image reference", nil)
+	}
+	return nil
+}
 
 func ValidateCPU(cpu string) error {
 	if cpuFloatPattern.MatchString(cpu) {

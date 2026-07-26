@@ -51,6 +51,16 @@ func TestValidateMemory(t *testing.T) {
 	runValidatorTests(t, tests, ValidateMemory)
 }
 
+func TestValidateImageReference(t *testing.T) {
+	runValidatorTests(t, []validatorTestCase{
+		{name: "registry image", input: "ghcr.io/acme/api:v1"},
+		{name: "digest image", input: "registry.example:5000/acme/api@sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"},
+		{name: "empty", input: "", wantErr: true},
+		{name: "whitespace", input: "ghcr.io/acme/api:latest ", wantErr: true},
+		{name: "invalid", input: "not a valid image", wantErr: true},
+	}, ValidateImageReference)
+}
+
 func TestValidateDomain(t *testing.T) {
 	tests := []struct {
 		name    string

@@ -223,6 +223,9 @@ type CreateDeploymentResponse struct {
 	IngressID    uuid.UUID `json:"ingress_id,omitempty"`
 	AppLabel     string    `json:"app_label"`
 	Domain       string    `json:"domain"`
+	// Intent is populated only for the atomic desired-state workflow. It is
+	// intentionally not serialized as part of legacy API responses.
+	Intent *DeploymentIntentAccepted `json:"-"`
 }
 
 // DeploymentVersion represents a single release in the deployment version history.

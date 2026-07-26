@@ -66,6 +66,7 @@ const (
 	flagWatch              = "watch"
 	flagPurgeRetained      = "purge-retained"
 	flagNoWait             = "no-wait"
+	flagWait               = "wait"
 )
 
 // --- Input structs ------------------------------------------------------
@@ -118,6 +119,7 @@ type DeployInput struct {
 	RollingMaxSurge    string
 	RollingMaxUnavail  string
 	Config             string
+	Wait               bool
 }
 
 // GetDeploymentInput holds flags for the "get" subcommand.
@@ -295,6 +297,7 @@ func deployFlags(in *DeployInput) []cli.Flag {
 		// ── Reliability ──
 		optionalString(flagHealthPath, "HTTP path for post-deploy smoke test (default: tries /health then /)", &in.HealthPath),
 		optionalStringSlice(flagWaitFor, "TCP dependency to wait for (format: host:port). Repeatable.", &in.WaitFor),
+		optionalBool(flagWait, "Wait for the accepted deployment to become healthy", &in.Wait),
 		optionalStringVal(flagStrategy, "Rollout strategy: rolling, recreate", "rolling", &in.Strategy),
 		optionalStringVal(flagRollingMaxSurge, "Rolling update max surge (pods or %)", "25%", &in.RollingMaxSurge),
 		optionalStringVal(flagRollingMaxUnavail, "Rolling update max unavailable (pods or %)", "25%", &in.RollingMaxUnavail),

@@ -92,6 +92,14 @@ func Deploy(opts DeploymentOptions, requestID string) (*api.CreateDeploymentResp
 		progress.complete()
 	}
 
+	if fallbackReason := atomicIntentFallbackReason(opts); fallbackReason == "" {
+		return deployAtomicIntent(opts, image, projectName, userID, requestID)
+	} else if opts.AtomicOnlyConfig {
+		return nil, utils.NewError(fmt.Sprintf("canonical deployment declarations require the atomic intent path, but this deploy requires legacy fallback: %s", fallbackReason), nil)
+	} else {
+		reportLegacyFallback(fallbackReason)
+	}
+
 	// Step 2: Create deployment
 	progress.step = 2
 	progress.message = "Creating/updating deployment"
@@ -163,6 +171,129 @@ func Deploy(opts DeploymentOptions, requestID string) (*api.CreateDeploymentResp
 		IngressID:    api.ToUUID(ingressID),
 		AppLabel:     projectName,
 		Domain:       domainName,
+	}, nil
+}
+
+// atomicIntentFallbackReason returns the first setting the durable intent
+// endpoint cannot faithfully express. The legacy workflow remains explicit so
+// no setting is silently omitted during a partial cutover.
+func atomicIntentFallbackReason(opts DeploymentOptions) string {
+	switch {
+	case opts.Domain != "":
+		return "custom domain routing"
+	case len(opts.Hostnames) > 0:
+		return "explicit machine placement"
+	case opts.MulticlusterEnabled:
+		return "multi-cluster deployment"
+	case len(opts.Dependencies) > 0:
+		return "dependent workload creation"
+	default:
+		return ""
+	}
+}
+
+func reportLegacyFallback(reason string) {
+	if utils.IsJSONOutput() {
+		utils.TryPrintJSON(map[string]string{"mode": "legacy", "fallback_reason": reason})
+		return
+	}
+	utils.PrintInfo("Deployment path: legacy fallback (%s)", reason)
+}
+
+func deployAtomicIntent(opts DeploymentOptions, image, projectName, userID, requestID string) (*api.CreateDeploymentResponse, error) {
+	intent, err := buildAtomicDeploymentIntent(opts, image, projectName, userID)
+	if err != nil {
+		return nil, err
+	}
+	utils.PrintInfo("Deployment path: atomic intent")
+	accepted, err := api.CreateDeploymentIntent(intent, requestID)
+	if err != nil {
+		return nil, err
+	}
+	return &api.CreateDeploymentResponse{
+		DeploymentID: api.ToUUID(accepted.DeploymentID),
+		AppLabel:     accepted.AppLabel,
+		Intent:       accepted,
+	}, nil
+}
+
+func buildAtomicDeploymentIntent(opts DeploymentOptions, image, projectName, userID string) (api.DeploymentIntent, error) {
+	port, err := api.SafeInt32(opts.Port)
+	if err != nil {
+		return api.DeploymentIntent{}, utils.NewError(fmt.Sprintf("invalid port: %s", err.Error()), nil)
+	}
+	cpuRequest := opts.CPURequest
+	if cpuRequest == "" {
+		cpuRequest = "250m"
+	}
+	cpuLimit := opts.CPULimit
+	if cpuLimit == "" {
+		cpuLimit = opts.CPU
+	}
+	if cpuLimit == "" {
+		cpuLimit = "1"
+	}
+	replicas := opts.Replicas
+	if replicas == 0 {
+		replicas = 1
+	}
+	replicaCount, err := api.SafeInt32(replicas)
+	if err != nil {
+		return api.DeploymentIntent{}, utils.NewError(fmt.Sprintf("invalid replicas count: %s", err.Error()), nil)
+	}
+
+	deployment := api.Deployment{
+		UserID:         api.ToUUID(userID),
+		Type:           "production",
+		Environment:    "production",
+		CpuRequest:     cpuRequest,
+		CPULimit:       cpuLimit,
+		MemoryRequest:  opts.Memory,
+		MemoryLimit:    opts.Memory,
+		Namespace:      opts.Organization,
+		Port:           port,
+		Image:          image,
+		Zone:           opts.Zone,
+		SSD:            "true",
+		GPU:            "false",
+		AppLabel:       projectName,
+		Replicas:       replicaCount,
+		EnvEnabled:     opts.EnvEnabled,
+		VolumeEnabled:  opts.VolumeEnabled || len(opts.IntentVolumes) > 0,
+		WaitFor:        opts.WaitFor,
+		StrategyConfig: buildStrategyConfig(opts),
+		TargetArch:     opts.TargetArch,
+	}
+	if opts.PDBConfig != nil && opts.PDBConfig.Enabled {
+		deployment.PDBConfig = &api.PDBConfig{Enabled: true, Type: string(opts.PDBConfig.Type), MinAvailable: opts.PDBConfig.MinAvailable, Percent: opts.PDBConfig.Percent}
+	} else if replicaCount > 1 {
+		deployment.PDBConfig = &api.PDBConfig{Enabled: true, Type: "auto"}
+	}
+	if opts.HPAConfig != nil {
+		deployment.HPAConfig = opts.HPAConfig
+	}
+	if opts.VPAConfig != nil {
+		deployment.VPAConfig = opts.VPAConfig
+	}
+
+	volumes := append([]api.DeploymentIntentVolume(nil), opts.IntentVolumes...)
+	if len(volumes) == 0 && opts.VolumeEnabled && opts.Volume != nil {
+		volumes = append(volumes, api.DeploymentIntentVolume{
+			VolumeName: projectName + "-volume", ClaimName: projectName + "-claim",
+			StorageClass: opts.Volume.StorageClass, StorageSize: opts.Volume.StorageSize, MountPath: opts.Volume.MountPath,
+		})
+	}
+	var environment []api.KeyValuePair
+	if opts.Environment != nil {
+		environment = append(environment, opts.Environment.KeyValues...)
+	}
+	return api.DeploymentIntent{
+		Deployment:  deployment,
+		Environment: environment,
+		Config:      opts.DesiredStateConfig,
+		Volumes:     volumes,
+		Service:     &api.DeploymentIntentService{Name: projectName, Port: port},
+		PublicRoute: &api.DeploymentIntentPublicRoute{Kind: "default_dns"},
 	}, nil
 }
 

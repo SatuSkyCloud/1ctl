@@ -51,6 +51,9 @@ func handleDeploy(ctx context.Context, in DeployInput) error {
 		}
 		return utils.NewError(fmt.Sprintf("deployment failed: %s", err.Error()), nil)
 	}
+	if resp.Intent != nil {
+		return reportAtomicIntent(resp.Intent, merged.Wait)
+	}
 
 	ingressID := ""
 	if resp != nil && resp.IngressID != uuid.Nil {
@@ -58,6 +61,30 @@ func handleDeploy(ctx context.Context, in DeployInput) error {
 	}
 	publicURL := deploypkg.WaitForPublicURL(ingressID, resp.Domain)
 	return deploypkg.ReportDeployResult(resp.AppLabel, resp.DeploymentID.String(), resp.Domain, publicURL, merged.HealthPath, merged.StrictSmoke)
+}
+
+func reportAtomicIntent(accepted *api.DeploymentIntentAccepted, wait bool) error {
+	if utils.TryPrintJSON(map[string]interface{}{"mode": "atomic", "intent": accepted}) {
+		return nil
+	}
+	utils.PrintStatusLine("Deployment path", "atomic intent")
+	utils.PrintStatusLine("Operation ID", accepted.OperationID)
+	utils.PrintStatusLine("Deployment ID", accepted.DeploymentID)
+	utils.PrintStatusLine("Generation", fmt.Sprintf("%d", accepted.Generation))
+	utils.PrintStatusLine("State", accepted.State)
+	if len(accepted.MissingRequiredSecrets) > 0 {
+		utils.PrintWarning("Required secret keys are not supplied by satusky.toml: %s", strings.Join(accepted.MissingRequiredSecrets, ", "))
+	}
+	if !wait {
+		utils.PrintInfo("Deployment intent was accepted and is pending reconciliation. Use --wait to observe readiness.")
+		return nil
+	}
+	final, err := api.WaitForDeployment(accepted.DeploymentID, 5*time.Minute)
+	if err != nil {
+		return utils.NewError(fmt.Sprintf("deployment intent accepted but readiness failed: %s", err.Error()), nil)
+	}
+	utils.PrintSuccess("Deployment %s is healthy (%s)", accepted.AppLabel, final.Status)
+	return nil
 }
 
 type mergedInput struct {
@@ -195,6 +222,11 @@ func shouldShowDeployHelp(m mergedInput, cfg *config.ProjectConfig) bool {
 }
 
 func validateInputs(m mergedInput) error {
+	if m.Image != "" {
+		if err := validator.ValidateImageReference(m.Image); err != nil {
+			return utils.NewError(fmt.Sprintf("invalid image: %v", err), nil)
+		}
+	}
 	if m.Image == "" {
 		if err := validator.ValidateDockerfile(m.Dockerfile); err != nil {
 			_, findErr := validator.FindDockerfile(".")
@@ -314,6 +346,15 @@ func prepareDeploymentOptions(m mergedInput, cfg *config.ProjectConfig) (deployp
 		opts.Environment = &api.Environment{
 			KeyValues: parseEnvVars(m.Env),
 		}
+	}
+	if cfg != nil {
+		opts.DesiredStateConfig = deploymentDesiredStateConfig(cfg)
+		opts.IntentVolumes = deploymentIntentVolumes(cfg.Volumes)
+		opts.AtomicOnlyConfig = len(cfg.Secrets.Required) > 0 ||
+			opts.DesiredStateConfig.StartupProbe != nil ||
+			opts.DesiredStateConfig.ReadinessProbe != nil ||
+			opts.DesiredStateConfig.LivenessProbe != nil ||
+			cfg.UsesCanonicalVolumes()
 	}
 
 	if len(m.Machine) > 0 {
@@ -468,6 +509,57 @@ func prepareDeploymentOptions(m mergedInput, cfg *config.ProjectConfig) (deployp
 	}
 
 	return opts, nil
+}
+
+func deploymentDesiredStateConfig(cfg *config.ProjectConfig) api.DeploymentDesiredStateConfig {
+	return api.DeploymentDesiredStateConfig{
+		StartupProbe:    deploymentProbe(cfg.Checks.Startup),
+		ReadinessProbe:  deploymentProbe(cfg.Checks.Readiness),
+		LivenessProbe:   deploymentProbe(cfg.Checks.Liveness),
+		RequiredSecrets: requiredSecretDeclarations(cfg.Secrets.Required),
+	}
+}
+
+func requiredSecretDeclarations(keys []string) []api.DeploymentRequiredSecret {
+	declarations := make([]api.DeploymentRequiredSecret, 0, len(keys))
+	for _, key := range keys {
+		declarations = append(declarations, api.DeploymentRequiredSecret{Key: key})
+	}
+	return declarations
+}
+
+func deploymentProbe(probe *config.ProbeConfig) *api.DeploymentProbe {
+	if probe == nil {
+		return nil
+	}
+	converted := &api.DeploymentProbe{
+		InitialDelaySeconds: probe.InitialDelaySeconds,
+		TimeoutSeconds:      probe.TimeoutSeconds,
+		PeriodSeconds:       probe.PeriodSeconds,
+		SuccessThreshold:    probe.SuccessThreshold,
+		FailureThreshold:    probe.FailureThreshold,
+	}
+	if probe.HTTPGet != nil {
+		converted.HTTPGet = &api.DeploymentHTTPGetProbe{Path: probe.HTTPGet.Path, Port: probe.HTTPGet.Port}
+	}
+	if probe.TCPSocket != nil {
+		converted.TCPSocket = &api.DeploymentTCPSocketProbe{Port: probe.TCPSocket.Port}
+	}
+	if probe.Exec != nil {
+		converted.Exec = &api.DeploymentExecProbe{Command: append([]string(nil), probe.Exec.Command...)}
+	}
+	return converted
+}
+
+func deploymentIntentVolumes(volumes []config.VolumeConfig) []api.DeploymentIntentVolume {
+	converted := make([]api.DeploymentIntentVolume, 0, len(volumes))
+	for _, volume := range volumes {
+		converted = append(converted, api.DeploymentIntentVolume{
+			VolumeName: volume.Name, ClaimName: volume.Claim, StorageClass: volume.StorageClass,
+			StorageSize: volume.Size, MountPath: volume.Mount,
+		})
+	}
+	return converted
 }
 
 func applyConfigHPA(opts *deploypkg.DeploymentOptions, hpa config.HPAConfig) {

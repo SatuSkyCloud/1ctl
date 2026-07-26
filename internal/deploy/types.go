@@ -20,22 +20,29 @@ type PDBConfig struct {
 }
 
 type DeploymentOptions struct {
-	Name              string // App name (from satusky.toml or git remote fallback)
-	CPU               string // Deprecated: legacy burst CPU flag alias.
-	CPURequest        string
-	CPULimit          string
-	Memory            string
-	Domain            string
-	SmokePath         string
-	Organization      string
-	Port              int
-	DockerfilePath    string
-	Hostnames         []string
-	Dependencies      []api.Dependency
-	VolumeEnabled     bool
-	Volume            *api.Volume
-	EnvEnabled        bool
-	Environment       *api.Environment
+	Name           string // App name (from satusky.toml or git remote fallback)
+	CPU            string // Deprecated: legacy burst CPU flag alias.
+	CPURequest     string
+	CPULimit       string
+	Memory         string
+	Domain         string
+	SmokePath      string
+	Organization   string
+	Port           int
+	DockerfilePath string
+	Hostnames      []string
+	Dependencies   []api.Dependency
+	VolumeEnabled  bool
+	Volume         *api.Volume
+	// IntentVolumes are the canonical repeated volume declarations accepted by
+	// the atomic desired-state endpoint. Volume remains for legacy compatibility.
+	IntentVolumes      []api.DeploymentIntentVolume
+	EnvEnabled         bool
+	Environment        *api.Environment
+	DesiredStateConfig api.DeploymentDesiredStateConfig
+	// AtomicOnlyConfig marks declarations that the legacy resource-by-resource
+	// workflow cannot safely represent without dropping user intent.
+	AtomicOnlyConfig bool
 	// Multi-cluster deployment options
 	MulticlusterEnabled   bool
 	MulticlusterMode      string // "active-active" or "active-passive"

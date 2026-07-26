@@ -61,6 +61,27 @@
   # Enforce a 2xx/3xx response on this path after deployment.
   health_path = "/health"
 
+  # Runtime probes are durable Kubernetes declarations. Each probe has exactly
+  # one of http_get, tcp_socket, or exec handlers.
+[checks.startup]
+  failure_threshold = 12
+  period_seconds = 5
+[checks.startup.http_get]
+  path = "/health"
+  port = 8080
+
+[checks.readiness]
+  timeout_seconds = 2
+[checks.readiness.http_get]
+  path = "/health"
+  port = 8080
+
+[checks.liveness]
+  period_seconds = 10
+[checks.liveness.http_get]
+  path = "/health"
+  port = 8080
+
 
 # =============================================================================
 # [deploy] — Upgrade strategy, scheduling, and dependencies
@@ -95,15 +116,29 @@
 
 
 # =============================================================================
-# [volume] — Persistent Storage
+# [secrets] — Required secret key declarations (never values)
+# =============================================================================
+# Declare only the environment keys that must be supplied separately with
+# `1ctl secret`. This file deliberately contains no secret material.
+# =============================================================================
+
+[secrets]
+  required = ["DATABASE_URL", "EXTERNAL_API_TOKEN"]
+
+
+# =============================================================================
+# [[volumes]] — Persistent Storage
 # =============================================================================
 # Attaches a block storage volume to your deployment.  Data survives pod
 # restarts and redeploys.  Use for databases, file uploads, ML models, etc.
 # =============================================================================
 
-[volume]
-  size  = "1Gi"              # Storage size: "1Gi", "10Gi", "100Gi", "1Ti"
-  mount = "/data/uploads"    # Container mount path
+[[volumes]]
+  name          = "uploads"
+  claim         = "fullstack-api-uploads"
+  size          = "1Gi"              # Storage size: "1Gi", "10Gi", "100Gi", "1Ti"
+  mount         = "/data/uploads"    # Container mount path
+  storage_class = "ceph-block"
 
 
 # =============================================================================
