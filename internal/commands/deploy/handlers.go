@@ -760,8 +760,18 @@ func handleDeploymentStatus(ctx context.Context, in StatusInput) error {
 		return err
 	}
 
-	if in.Watch {
-		status, err := api.WaitForDeployment(deploymentID, 5*time.Minute)
+	deployment, err := api.GetDeployment(deploymentID)
+	if err != nil {
+		return utils.NewError(fmt.Sprintf("failed to get deployment details: %s", err.Error()), nil)
+	}
+
+	var status *api.DeploymentStatus
+	if deployment.IsMarketplaceManaged() {
+		// Marketplace deployments are reconciled through the canonical deployment
+		// record. The legacy /deployments/status endpoint has no marketplace row.
+		status = &api.DeploymentStatus{Status: deployment.Status}
+	} else if in.Watch {
+		status, err = api.WaitForDeployment(deploymentID, 5*time.Minute)
 		if err != nil {
 			return utils.NewError(fmt.Sprintf("failed to watch deployment: %s", err.Error()), nil)
 		}
@@ -770,16 +780,11 @@ func handleDeploymentStatus(ctx context.Context, in StatusInput) error {
 			utils.PrintStatusLine("Message", status.Message)
 		}
 		return nil
-	}
-
-	status, err := api.GetDeploymentStatus(deploymentID)
-	if err != nil {
-		return utils.NewError(fmt.Sprintf("failed to get deployment status: %s", err.Error()), nil)
-	}
-
-	deployment, err := api.GetDeployment(deploymentID)
-	if err != nil {
-		return utils.NewError(fmt.Sprintf("failed to get deployment details: %s", err.Error()), nil)
+	} else {
+		status, err = api.GetDeploymentStatus(deploymentID)
+		if err != nil {
+			return utils.NewError(fmt.Sprintf("failed to get deployment status: %s", err.Error()), nil)
+		}
 	}
 
 	var ingress *api.Ingress

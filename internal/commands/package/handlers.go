@@ -56,6 +56,9 @@ func handleCreate(_ context.Context, input createInput) error {
 	if writeErr != nil || closeErr != nil {
 		return fmt.Errorf("write package artifact %s", output)
 	}
+	if utils.TryPrintJSON(map[string]string{"package_name": packageName, "output": output}) {
+		return nil
+	}
 	utils.PrintSuccess("Created unsigned marketplace package: %s", output)
 	return nil
 }
@@ -142,6 +145,9 @@ func currentOrganizationID() (string, error) {
 }
 
 func printArtifact(artifact *api.MarketplacePackageArtifact) {
+	if utils.TryPrintJSON(artifact) {
+		return
+	}
 	utils.PrintStatusLine("Marketplace ID", artifact.MarketplaceID)
 	utils.PrintStatusLine("Release ID", artifact.ReleaseID)
 	utils.PrintStatusLine("Archive Digest", artifact.ArchiveDigest)
