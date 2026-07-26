@@ -77,6 +77,8 @@ name = "my-app"
 port = 8080
 cpu = "0.5"
 memory = "256Mi"
+
+[build]
 dockerfile = "Dockerfile"
 ```
 

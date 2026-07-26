@@ -137,8 +137,9 @@ Never put secrets in `satusky.toml` or CLI `--env` flags.
 1ctl deploy --config staging --wait
 ```
 
-Staged configs inherit from the base `satusky.toml`. Fields set in
-`satusky.staging.toml` override the base. See the file for details.
+Named configs are loaded independently. The checked-in
+`satusky.staging.toml` repeats the required build and app settings so it can be
+deployed on its own.
 
 ## Volume Workflow
 

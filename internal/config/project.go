@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"sort"
 	"strings"
 
 	"github.com/BurntSushi/toml"
@@ -35,16 +36,16 @@ type ProjectConfig struct {
 // AppConfig holds app identity and resource fields.
 // For build, health-check, and deploy-strategy settings see [build], [checks], [deploy].
 type AppConfig struct {
-	Name                  string   `toml:"name"`
-	Port                  int      `toml:"port"`
-	CPU                   string   `toml:"cpu"` // Deprecated: legacy burst CPU alias.
-	CPURequest            string   `toml:"cpu_request"`
-	CPULimit              string   `toml:"cpu_limit"`
-	Memory                string   `toml:"memory"`
-	Replicas              int      `toml:"replicas"`
-	Domain                string   `toml:"domain"`
-	Zone                  string   `toml:"zone"`
-	Organization          string   `toml:"organization"`
+	Name         string `toml:"name"`
+	Port         int    `toml:"port"`
+	CPU          string `toml:"cpu"` // Deprecated: legacy burst CPU alias.
+	CPURequest   string `toml:"cpu_request"`
+	CPULimit     string `toml:"cpu_limit"`
+	Memory       string `toml:"memory"`
+	Replicas     int    `toml:"replicas"`
+	Domain       string `toml:"domain"`
+	Zone         string `toml:"zone"`
+	Organization string `toml:"organization"`
 
 	// Backward-compat: fields below were moved to [build], [checks], or [deploy] in the v2 schema.
 	// Normalize() copies them to the preferred location when the target section is empty.
@@ -132,13 +133,7 @@ func LoadConfig(configArg string) (*ProjectConfig, error) {
 	if err != nil {
 		return nil, err
 	}
-	var cfg ProjectConfig
-	if _, err := toml.DecodeFile(path, &cfg); err != nil {
-		return nil, fmt.Errorf("invalid %s: %w", path, err)
-	}
-	cfg.Path = path
-	cfg.Normalize()
-	return &cfg, nil
+	return decodeProjectConfig(path)
 }
 
 // FindConfig looks for a config file without requiring one to exist. Returns nil, nil if not found.
@@ -150,9 +145,22 @@ func FindConfig(configArg string) (*ProjectConfig, error) {
 		}
 		return nil, err
 	}
+	return decodeProjectConfig(path)
+}
+
+func decodeProjectConfig(path string) (*ProjectConfig, error) {
 	var cfg ProjectConfig
-	if _, err := toml.DecodeFile(path, &cfg); err != nil {
+	metadata, err := toml.DecodeFile(path, &cfg)
+	if err != nil {
 		return nil, fmt.Errorf("invalid %s: %w", path, err)
+	}
+	if undecoded := metadata.Undecoded(); len(undecoded) > 0 {
+		keys := make([]string, 0, len(undecoded))
+		for _, key := range undecoded {
+			keys = append(keys, key.String())
+		}
+		sort.Strings(keys)
+		return nil, fmt.Errorf("invalid %s: unknown configuration keys: %s", path, strings.Join(keys, ", "))
 	}
 	cfg.Path = path
 	cfg.Normalize()

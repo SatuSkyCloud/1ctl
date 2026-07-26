@@ -362,11 +362,13 @@ Multi-arch images used with `--image` (e.g. `nginx:alpine`) have no arch filter 
 [app]
   name       = "backend-api"   # K8s app label — identifier for all commands
   port       = 8080            # container port (required)
-  dockerfile = "Dockerfile"    # path to Dockerfile (default: ./Dockerfile)
   cpu        = "0.5"           # CPU cores — platform default 0.5 if omitted
   memory     = "256Mi"         # memory — platform default 256Mi if omitted
   replicas   = 1               # replica count — default 1 if omitted
   domain     = ""              # custom domain — empty = auto backend-assigned random name (adjective+animal-XXXXXXX.satusky.com)
+
+[build]
+  dockerfile = "Dockerfile"    # path to Dockerfile (default: ./Dockerfile)
 ```
 
 **Not in the file:** `org` (auth context), `deployment_id` (runtime lookup). Safe to commit as-is.

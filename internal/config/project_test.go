@@ -3,6 +3,7 @@ package config
 import (
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 )
 
@@ -429,5 +430,74 @@ strategy = "rolling"
 	}
 	if cfg.App.Strategy != "" {
 		t.Errorf("App.Strategy = %q, want empty (legacy field should be cleared after Normalize)", cfg.App.Strategy)
+	}
+}
+
+func TestLoadConfigRejectsUnknownKeys(t *testing.T) {
+	contents := `
+unknown_section = true
+
+[app]
+name = "myapp"
+
+[build]
+dockerfle = "Dockerfile"
+`
+	_, path := writeToml(t, contents)
+	_, err := LoadConfig(path)
+	if err == nil {
+		t.Fatal("LoadConfig() error = nil, want unknown-key error")
+	}
+	for _, key := range []string{"build.dockerfle", "unknown_section"} {
+		if !strings.Contains(err.Error(), key) {
+			t.Errorf("LoadConfig() error = %q, want fully-qualified key %q", err, key)
+		}
+	}
+}
+
+func TestFindConfigRejectsUnknownKeys(t *testing.T) {
+	_, path := writeToml(t, `
+[app]
+name = "myapp"
+memroy = "256Mi"
+`)
+	_, err := FindConfig(path)
+	if err == nil || !strings.Contains(err.Error(), "app.memroy") {
+		t.Fatalf("FindConfig() error = %v, want fully-qualified unknown key app.memroy", err)
+	}
+}
+
+func TestLoadConfigAcceptsDynamicEnvKeys(t *testing.T) {
+	_, path := writeToml(t, `
+[app]
+name = "myapp"
+
+[env]
+ARBITRARY_NAME = "value"
+`)
+	cfg, err := LoadConfig(path)
+	if err != nil {
+		t.Fatalf("LoadConfig: %v", err)
+	}
+	if cfg.Env["ARBITRARY_NAME"] != "value" {
+		t.Errorf("Env[ARBITRARY_NAME] = %q, want value", cfg.Env["ARBITRARY_NAME"])
+	}
+}
+
+func TestCheckedInExamplesLoad(t *testing.T) {
+	paths, err := filepath.Glob(filepath.Join("..", "..", "examples", "*", "satusky*.toml"))
+	if err != nil {
+		t.Fatalf("glob examples: %v", err)
+	}
+	if len(paths) == 0 {
+		t.Fatal("no checked-in example configs found")
+	}
+	for _, path := range paths {
+		path := path
+		t.Run(filepath.ToSlash(path), func(t *testing.T) {
+			if _, err := LoadConfig(path); err != nil {
+				t.Fatalf("LoadConfig(%q): %v", path, err)
+			}
+		})
 	}
 }
