@@ -79,6 +79,9 @@ spec:
 	if _, ok := schema.Properties["message"]; !ok {
 		t.Fatal("root values schema discarded chart input properties")
 	}
+	if files["chart/values.schema.json"] != files["values.schema.json"] {
+		t.Fatal("embedded chart values schema does not match the normalized root schema")
+	}
 	withoutSecrets := writeHelmChart(t, map[string]string{
 		"Chart.yaml":               "apiVersion: v2\nname: no-secrets\nversion: 1.2.3\nannotations:\n  satusky.com/supported-architectures: amd64\n",
 		"templates/configmap.yaml": "apiVersion: v1\nkind: ConfigMap\n",

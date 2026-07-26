@@ -73,6 +73,9 @@ func CreateHelm(chartDir string) ([]byte, string, error) {
 		"values.schema.json": schema,
 	}
 	for relative, contents := range files {
+		if relative == "values.schema.json" {
+			contents = schema
+		}
 		artifactFiles[helmChartDirectory+"/"+relative] = contents
 	}
 	archive, err := deterministicArchive(metadata.Name, artifactFiles)
