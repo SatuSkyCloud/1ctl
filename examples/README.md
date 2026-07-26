@@ -6,7 +6,7 @@ Two sample applications for demonstrating and testing `1ctl` against a SatuSky b
 |-----|-------|------|-----|--------|
 | `backend` | Go HTTP API | 8080 | 0.5 | 256Mi |
 | `frontend` | Nginx static site | 80 | 0.25 | 128Mi |
-| `marketplace-it-tools` | Immutable, ARM64 marketplace package | 8080 | 0.05 | 128Mi |
+| `marketplace-it-tools-gateway` | Immutable, ARM64 marketplace package | 8080 | 0.05 | 128Mi |
 
 ---
 
@@ -287,27 +287,28 @@ Use `--kv` for secrets (`--env` is a backward-compatible alias). Like `env unset
 
 ## 12. Create a private marketplace package
 
-`marketplace-it-tools` is the canonical package example. It uses a verified,
+`marketplace-it-tools-gateway` is the canonical package example. It uses a verified,
 digest-pinned image already running on the Satusky ARM64 worker. The generated
-bundle includes a ClusterIP Service, an Ingress that receives the platform's
-default DNS name at deployment, and startup/readiness/liveness probes. IT-Tools
-is stateless, so it intentionally has no persistent volume.
+bundle includes a ClusterIP Service and a default-DNS route: an Ingress on
+Ingress platforms or an HTTPRoute on Gateway API platforms. It also includes
+startup/readiness/liveness probes. IT-Tools is stateless, so it intentionally
+has no persistent volume.
 
 ```bash
 cd examples/marketplace-it-tools
 
 # Creating the same package twice yields byte-identical archives.
-1ctl package create --config satusky.toml --output /tmp/marketplace-it-tools-a.tar.gz
-1ctl package create --config satusky.toml --output /tmp/marketplace-it-tools-b.tar.gz
-shasum -a 256 /tmp/marketplace-it-tools-a.tar.gz /tmp/marketplace-it-tools-b.tar.gz
+1ctl package create --config satusky.toml --output /tmp/marketplace-it-tools-gateway-a.tar.gz
+1ctl package create --config satusky.toml --output /tmp/marketplace-it-tools-gateway-b.tar.gz
+shasum -a 256 /tmp/marketplace-it-tools-gateway-a.tar.gz /tmp/marketplace-it-tools-gateway-b.tar.gz
 
 # The default publication visibility is private. Do not add --public for this flow.
-1ctl -o json package publish /tmp/marketplace-it-tools-a.tar.gz
+1ctl -o json package publish /tmp/marketplace-it-tools-gateway-a.tar.gz
 1ctl -o json package list
 1ctl -o json package status <release-id>
 
 # Deploy the returned marketplace ID into the active organization.
-1ctl marketplace deploy <marketplace-id> marketplace-it-tools-demo
+1ctl marketplace deploy <marketplace-id> marketplace-it-tools-gateway-demo
 ```
 
 ---

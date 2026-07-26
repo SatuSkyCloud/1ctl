@@ -18,7 +18,7 @@ import (
 	"1ctl/internal/config"
 )
 
-const Version = "1.0.0"
+const Version = "1.0.1"
 
 var packageNamePattern = regexp.MustCompile(`^[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?$`)
 var immutableImagePattern = regexp.MustCompile(`^.+@sha256:[a-f0-9]{64}$`)
@@ -153,7 +153,7 @@ func manifestYAML(project *config.ProjectConfig) string {
 			fmt.Fprintf(&b, "      - %s\n", yamlString(secret))
 		}
 	}
-	b.WriteString("  capabilities:\n    minPlatformVersion: \"1.0.0\"\n    requiredAPIs:\n      - v1\n      - apps/v1\n      - networking.k8s.io/v1\n    supportedArchitectures:\n")
+	b.WriteString("  capabilities:\n    minPlatformVersion: \"1.0.0\"\n    requiredAPIs:\n      - v1\n      - apps/v1\n      - networking.k8s.io/v1\n      - gateway.networking.k8s.io/v1\n    supportedArchitectures:\n")
 	for _, arch := range archs {
 		fmt.Fprintf(&b, "      - %s\n", arch)
 	}
@@ -232,6 +232,29 @@ spec:
       port: {{index .Metadata "port"}}
       targetPort: {{index .Metadata "port"}}
 ---
+{{if .GatewayMode}}
+apiVersion: gateway.networking.k8s.io/v1
+kind: HTTPRoute
+metadata:
+  name: {{.AppName}}-route
+  namespace: {{.Namespace}}
+  annotations:
+    external-dns.alpha.kubernetes.io/cloudflare-proxied: "true"
+spec:
+  parentRefs:
+    - name: {{.GatewayName}}
+      namespace: {{.GatewayNamespace}}
+  hostnames:
+    - {{.DomainName}}
+  rules:
+    - matches:
+        - path:
+            type: PathPrefix
+            value: /
+      backendRefs:
+        - name: {{.AppName}}
+          port: {{index .Metadata "port"}}
+{{else}}
 apiVersion: networking.k8s.io/v1
 kind: Ingress
 metadata:
@@ -250,6 +273,7 @@ spec:
                 port:
                   number: {{index .Metadata "port"}}
 `)
+	b.WriteString("{{end}}\n")
 	for _, volume := range project.Volumes {
 		fmt.Fprintf(&b, `---
 apiVersion: v1

@@ -7,6 +7,7 @@ import (
 	"io"
 	"strings"
 	"testing"
+	"text/template"
 
 	"1ctl/internal/config"
 )
@@ -49,11 +50,62 @@ func TestCreateIsDeterministicAndDoesNotEmbedSecretValues(t *testing.T) {
 	if !strings.Contains(files["package.yaml"], "requiredSecrets:\n      - \"API_TOKEN\"") {
 		t.Fatalf("manifest did not preserve required secret name:\n%s", files["package.yaml"])
 	}
-	for _, want := range []string{"image: \"" + testImage + "\"", "startupProbe:", "claimName: \"demo-data\"", "kind: Service", "kind: Ingress"} {
+	for _, want := range []string{"image: \"" + testImage + "\"", "startupProbe:", "claimName: \"demo-data\"", "kind: Service", "kind: Ingress", "kind: HTTPRoute"} {
 		if !strings.Contains(files["deploy.yaml"], want) {
 			t.Errorf("deploy.yaml does not contain %q", want)
 		}
 	}
+}
+
+func TestCreateRendersBothDefaultDNSRoutingVariants(t *testing.T) {
+	project := &config.ProjectConfig{
+		App:   config.AppConfig{Name: "demo", Port: 8080},
+		Build: config.BuildConfig{Image: testImage, TargetArch: "arm64"},
+	}
+	archive, _, err := Create(project, "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	files := readArchive(t, archive)
+	if !strings.Contains(files["package.yaml"], "gateway.networking.k8s.io/v1") {
+		t.Fatal("package manifest does not declare the Gateway API used by the routing branch")
+	}
+
+	gateway := renderDeployTemplate(t, files["deploy.yaml"], map[string]any{
+		"AppName": "demo-instance", "Namespace": "tenant-a", "DomainName": "demo.example.com",
+		"GatewayMode": true, "GatewayName": "satusky-gateway", "GatewayNamespace": "gateway-system",
+		"Metadata": map[string]any{"replicas": 1, "cpu": "250m", "cpuLimit": "1", "memory": "256Mi", "memoryLimit": "256Mi", "port": 8080},
+	})
+	for _, want := range []string{"kind: HTTPRoute", "name: satusky-gateway", "namespace: gateway-system", "hostnames:", "- demo.example.com", "port: 8080"} {
+		if !strings.Contains(gateway, want) {
+			t.Errorf("Gateway API render does not contain %q:\n%s", want, gateway)
+		}
+	}
+	if strings.Contains(gateway, "kind: Ingress") {
+		t.Errorf("Gateway API render unexpectedly contains Ingress:\n%s", gateway)
+	}
+
+	ingress := renderDeployTemplate(t, files["deploy.yaml"], map[string]any{
+		"AppName": "demo-instance", "Namespace": "tenant-a", "DomainName": "demo.example.com",
+		"GatewayMode": false,
+		"Metadata":    map[string]any{"replicas": 1, "cpu": "250m", "cpuLimit": "1", "memory": "256Mi", "memoryLimit": "256Mi", "port": 8080},
+	})
+	if !strings.Contains(ingress, "kind: Ingress") || strings.Contains(ingress, "kind: HTTPRoute") {
+		t.Errorf("Ingress render did not select only the Ingress branch:\n%s", ingress)
+	}
+}
+
+func renderDeployTemplate(t *testing.T, source string, data map[string]any) string {
+	t.Helper()
+	tmpl, err := template.New("deploy.yaml").Parse(source)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var output bytes.Buffer
+	if err := tmpl.Execute(&output, data); err != nil {
+		t.Fatal(err)
+	}
+	return output.String()
 }
 
 func TestCreateRejectsMutableImagesAndUnrepresentableValues(t *testing.T) {

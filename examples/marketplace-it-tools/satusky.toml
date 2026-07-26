@@ -5,7 +5,7 @@
 # does not declare a persistent volume.
 
 [app]
-name        = "marketplace-it-tools"
+name        = "marketplace-it-tools-gateway"
 port        = 8080
 cpu_request = "50m"
 cpu_limit   = "200m"
