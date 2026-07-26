@@ -123,8 +123,22 @@ func handleList(ctx context.Context) error {
 		return utils.NewError(fmt.Sprintf("failed to list NATS deployments: %s", err.Error()), nil)
 	}
 	natsDeployments := make([]api.Deployment, 0)
+	var natsApp *api.MarketplaceApp
 	for _, deployment := range deployments {
-		if isNATSDeployment(deployment) {
+		if isNATSDeployment(deployment, natsApp) {
+			natsDeployments = append(natsDeployments, deployment)
+			continue
+		}
+		if strings.TrimSpace(deployment.MarketplaceReleaseID) == "" {
+			continue
+		}
+		if natsApp == nil {
+			natsApp, err = resolveNATSMarketplaceApp()
+			if err != nil {
+				return err
+			}
+		}
+		if isNATSDeployment(deployment, natsApp) {
 			natsDeployments = append(natsDeployments, deployment)
 		}
 	}
@@ -218,19 +232,53 @@ func writeCredentialFiles(outputDir string, outputs map[string][]byte) error {
 	if err := os.MkdirAll(outputDir, 0700); err != nil {
 		return utils.NewError(fmt.Sprintf("failed to create credential directory: %s", err.Error()), nil)
 	}
-	for name, value := range outputs {
+	info, err := os.Lstat(outputDir)
+	if err != nil {
+		return utils.NewError(fmt.Sprintf("failed to inspect credential directory: %s", err.Error()), nil)
+	}
+	if info.Mode()&os.ModeSymlink != 0 || !info.IsDir() {
+		return utils.NewError(fmt.Sprintf("credential output path is not a directory: %s", outputDir), nil)
+	}
+
+	paths := make(map[string]string, len(outputs))
+	for name := range outputs {
 		path := filepath.Join(outputDir, name+".txt")
+		paths[name] = path
 		if info, err := os.Lstat(path); err == nil && info.Mode()&os.ModeSymlink != 0 {
 			return utils.NewError(fmt.Sprintf("refusing to overwrite symlink %s", path), nil)
+		} else if err == nil {
+			return utils.NewError(fmt.Sprintf("refusing to overwrite existing credential file %s", path), nil)
 		} else if err != nil && !os.IsNotExist(err) {
 			return utils.NewError(fmt.Sprintf("failed to inspect credential file: %s", err.Error()), nil)
 		}
-		if err := os.WriteFile(path, value, 0600); err != nil {
+	}
+
+	created := make([]string, 0, len(outputs))
+	for name, value := range outputs {
+		path := paths[name]
+		file, err := os.OpenFile(path, os.O_WRONLY|os.O_CREATE|os.O_EXCL, 0600)
+		if err != nil {
+			for _, createdPath := range created {
+				_ = os.Remove(createdPath)
+			}
 			return utils.NewError(fmt.Sprintf("failed to write credential file: %s", err.Error()), nil)
 		}
-		if err := os.Chmod(path, 0600); err != nil {
-			return utils.NewError(fmt.Sprintf("failed to secure credential file: %s", err.Error()), nil)
+		if _, err := file.Write(value); err != nil {
+			_ = file.Close()
+			_ = os.Remove(path)
+			for _, createdPath := range created {
+				_ = os.Remove(createdPath)
+			}
+			return utils.NewError(fmt.Sprintf("failed to write credential file: %s", err.Error()), nil)
 		}
+		if err := file.Close(); err != nil {
+			_ = os.Remove(path)
+			for _, createdPath := range created {
+				_ = os.Remove(createdPath)
+			}
+			return utils.NewError(fmt.Sprintf("failed to close credential file: %s", err.Error()), nil)
+		}
+		created = append(created, path)
 	}
 	return nil
 }
@@ -290,14 +338,40 @@ func resolveNATSDeployment(reference string) (*api.Deployment, error) {
 	if err != nil {
 		return nil, utils.NewError(fmt.Sprintf("NATS deployment %q not found: %s", reference, err.Error()), nil)
 	}
-	if !isNATSDeployment(*deployment) {
+	if isNATSDeployment(*deployment, nil) {
+		return deployment, nil
+	}
+	if strings.TrimSpace(deployment.MarketplaceReleaseID) == "" {
+		return nil, utils.NewError(fmt.Sprintf("deployment %q is not a NATS marketplace deployment", reference), nil)
+	}
+	natsApp, err := resolveNATSMarketplaceApp()
+	if err != nil {
+		return nil, err
+	}
+	if !isNATSDeployment(*deployment, natsApp) {
 		return nil, utils.NewError(fmt.Sprintf("deployment %q is not a NATS marketplace deployment", reference), nil)
 	}
 	return deployment, nil
 }
 
-func isNATSDeployment(deployment api.Deployment) bool {
-	return strings.EqualFold(strings.TrimSpace(deployment.MarketplaceAppName), natsMarketplaceName)
+func resolveNATSMarketplaceApp() (*api.MarketplaceApp, error) {
+	app, err := api.ResolveMarketplaceApp(natsMarketplaceName)
+	if err != nil {
+		return nil, utils.NewError(fmt.Sprintf("failed to resolve NATS marketplace app: %s", err.Error()), nil)
+	}
+	if app.PackageRelease == nil || app.PackageRelease.ReleaseID == uuid.Nil {
+		return nil, utils.NewError("NATS marketplace app has no package release identity", nil)
+	}
+	return app, nil
+}
+
+func isNATSDeployment(deployment api.Deployment, natsApp *api.MarketplaceApp) bool {
+	if strings.EqualFold(strings.TrimSpace(deployment.MarketplaceAppName), natsMarketplaceName) {
+		return true
+	}
+	return natsApp != nil &&
+		natsApp.PackageRelease != nil &&
+		strings.EqualFold(strings.TrimSpace(deployment.MarketplaceReleaseID), natsApp.PackageRelease.ReleaseID.String())
 }
 
 func printNATSDeployment(deployment *api.Deployment) {
