@@ -1,6 +1,7 @@
 package api
 
 import (
+	cliContext "1ctl/internal/context"
 	"1ctl/internal/utils"
 	"encoding/json"
 	"fmt"
@@ -86,7 +87,7 @@ func GetMarketplaceApps(limit, offset int, sortBy string) ([]MarketplaceApp, err
 	}
 
 	var resp apiResponse
-	err := makeMainAPIRequest(http.MethodGet, path, nil, &resp)
+	err := makeMainAPIRequestWithHeaders(http.MethodGet, path, nil, &resp, marketplaceOrganizationHeaders())
 	if err != nil {
 		return nil, err
 	}
@@ -106,7 +107,7 @@ func GetMarketplaceApps(limit, offset int, sortBy string) ([]MarketplaceApp, err
 // GetMarketplaceApp gets a specific marketplace app
 func GetMarketplaceApp(marketplaceID string) (*MarketplaceApp, error) {
 	var resp apiResponse
-	err := makeMainAPIRequest(http.MethodGet, fmt.Sprintf("/marketplaces/id/%s", url.PathEscape(marketplaceID)), nil, &resp)
+	err := makeMainAPIRequestWithHeaders(http.MethodGet, fmt.Sprintf("/marketplaces/id/%s", url.PathEscape(marketplaceID)), nil, &resp, marketplaceOrganizationHeaders())
 	if err != nil {
 		return nil, err
 	}
@@ -153,7 +154,7 @@ func ResolveMarketplaceApp(nameOrID string) (*MarketplaceApp, error) {
 // DeployMarketplaceApp deploys a marketplace app
 func DeployMarketplaceApp(namespace, marketplaceID string, req MarketplaceDeployRequest) (*MarketplaceDeployResponse, error) {
 	var resp apiResponse
-	err := makeMainAPIRequest(http.MethodPost, fmt.Sprintf("/marketplaces/deploy/create/%s/%s", url.PathEscape(namespace), url.PathEscape(marketplaceID)), req, &resp)
+	err := makeMainAPIRequestWithHeaders(http.MethodPost, fmt.Sprintf("/marketplaces/deploy/create/%s/%s", url.PathEscape(namespace), url.PathEscape(marketplaceID)), req, &resp, marketplaceOrganizationHeaders())
 	if err != nil {
 		return nil, err
 	}
@@ -168,4 +169,15 @@ func DeployMarketplaceApp(namespace, marketplaceID string, req MarketplaceDeploy
 		return nil, utils.NewError(fmt.Sprintf("failed to unmarshal deploy response: %s", err.Error()), nil)
 	}
 	return &deployResp, nil
+}
+
+// marketplaceOrganizationHeaders carries the user's selected organization for
+// owner-private marketplace visibility. The backend validates membership; an
+// empty context retains the public catalog behavior.
+func marketplaceOrganizationHeaders() http.Header {
+	headers := make(http.Header)
+	if organizationID := strings.TrimSpace(cliContext.GetCurrentOrgID()); organizationID != "" {
+		headers.Set("x-satusky-organization-id", organizationID)
+	}
+	return headers
 }

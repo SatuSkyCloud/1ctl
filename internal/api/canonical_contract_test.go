@@ -14,10 +14,14 @@ import (
 
 func TestMarketplaceCanonicalRequests(t *testing.T) {
 	marketplaceID := uuid.NewString()
+	organizationID := uuid.NewString()
 	namespace := "tenant-a"
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if got := r.Header.Get("x-satusky-api-key"); got != "test-token" {
 			t.Errorf("auth header = %q, want test-token", got)
+		}
+		if got := r.Header.Get("x-satusky-organization-id"); got != organizationID {
+			t.Errorf("marketplace organization header = %q, want %q", got, organizationID)
 		}
 		switch r.URL.Path {
 		case "/v1/marketplaces/all":
@@ -61,6 +65,9 @@ func TestMarketplaceCanonicalRequests(t *testing.T) {
 	}))
 	defer server.Close()
 	configureAdminAPITestContext(t, server.URL+"/v1/cli")
+	if err := cliContext.SetCurrentOrgID(organizationID); err != nil {
+		t.Fatal(err)
+	}
 
 	if _, err := GetMarketplaceApps(25, 2, "name"); err != nil {
 		t.Fatalf("GetMarketplaceApps() error = %v", err)
