@@ -24,6 +24,16 @@ func TestPackageCommandIsRegistered(t *testing.T) {
 	t.Fatal("package command is not registered")
 }
 
+func TestNATSCommandIsRegistered(t *testing.T) {
+	cmd := createCommand()
+	for _, subcommand := range cmd.Commands {
+		if subcommand.Name == "nats" {
+			return
+		}
+	}
+	t.Fatal("nats command is not registered")
+}
+
 func TestPackageCreateIsLocalAndUsesItsOutputFlag(t *testing.T) {
 	dir := t.TempDir()
 	configPath := filepath.Join(dir, "satusky.toml")

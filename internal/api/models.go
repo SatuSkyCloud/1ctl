@@ -123,6 +123,7 @@ type Deployment struct {
 	CPULimit             string                    `json:"cpu_limit,omitempty"`
 	MemoryRequest        string                    `json:"memory_request"`
 	MemoryLimit          string                    `json:"memory_limit"`
+	StorageSize          string                    `json:"storage_size,omitempty"`
 	RepoURL              string                    `json:"repo_url,omitempty"`
 	BranchName           string                    `json:"branch_name,omitempty"`
 	DockerfilePath       string                    `json:"dockerfile_path,omitempty"`
