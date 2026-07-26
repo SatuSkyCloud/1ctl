@@ -4,9 +4,11 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"regexp"
 	"sort"
 	"strings"
 
+	"1ctl/internal/validator"
 	"github.com/BurntSushi/toml"
 )
 
@@ -23,14 +25,18 @@ type ProjectConfig struct {
 	App          AppConfig          `toml:"app"`
 	Build        BuildConfig        `toml:"build"`
 	Checks       ChecksConfig       `toml:"checks"`
+	Secrets      SecretsConfig      `toml:"secrets"`
 	Deploy       DeployConfig       `toml:"deploy"`
 	Volume       VolumeConfig       `toml:"volume"`
+	Volumes      []VolumeConfig     `toml:"volumes"`
 	HPA          HPAConfig          `toml:"hpa"`
 	VPA          VPAConfig          `toml:"vpa"`
 	PDB          PDBConfig          `toml:"pdb"`
 	Env          EnvConfig          `toml:"env"`
 	Multicluster MulticlusterConfig `toml:"multicluster"`
 	Path         string             `toml:"-"`
+
+	legacyVolumeSet bool
 }
 
 // AppConfig holds app identity and resource fields.
@@ -69,7 +75,43 @@ type BuildConfig struct {
 
 // ChecksConfig controls deployment health checks and smoke testing.
 type ChecksConfig struct {
-	HealthPath string `toml:"health_path"`
+	HealthPath string       `toml:"health_path"`
+	Startup    *ProbeConfig `toml:"startup"`
+	Readiness  *ProbeConfig `toml:"readiness"`
+	Liveness   *ProbeConfig `toml:"liveness"`
+}
+
+// ProbeConfig is the Kubernetes-compatible subset of a container probe.
+// Exactly one handler must be configured when a probe is declared.
+type ProbeConfig struct {
+	HTTPGet   *HTTPGetProbeConfig   `toml:"http_get"`
+	TCPSocket *TCPSocketProbeConfig `toml:"tcp_socket"`
+	Exec      *ExecProbeConfig      `toml:"exec"`
+
+	InitialDelaySeconds *int32 `toml:"initial_delay_seconds"`
+	TimeoutSeconds      *int32 `toml:"timeout_seconds"`
+	PeriodSeconds       *int32 `toml:"period_seconds"`
+	SuccessThreshold    *int32 `toml:"success_threshold"`
+	FailureThreshold    *int32 `toml:"failure_threshold"`
+}
+
+type HTTPGetProbeConfig struct {
+	Path string `toml:"path"`
+	Port int32  `toml:"port"`
+}
+
+type TCPSocketProbeConfig struct {
+	Port int32 `toml:"port"`
+}
+
+type ExecProbeConfig struct {
+	Command []string `toml:"command"`
+}
+
+// SecretsConfig declares required secret environment-variable keys only.
+// Values remain managed outside satusky.toml.
+type SecretsConfig struct {
+	Required []string `toml:"required"`
 }
 
 // DeployConfig controls deployment strategy and runtime placement.
@@ -82,9 +124,14 @@ type DeployConfig struct {
 }
 
 type VolumeConfig struct {
-	Size  string `toml:"size"`
-	Mount string `toml:"mount"`
+	Name         string `toml:"name"`
+	Claim        string `toml:"claim"`
+	Size         string `toml:"size"`
+	Mount        string `toml:"mount"`
+	StorageClass string `toml:"storage_class"`
 }
+
+var environmentVariableNamePattern = regexp.MustCompile(`^[-._A-Za-z][-._A-Za-z0-9]*$`)
 
 type HPAConfig struct {
 	Enabled      bool  `toml:"enabled"`
@@ -165,6 +212,7 @@ func decodeProjectConfig(path string) (*ProjectConfig, error) {
 		return nil, fmt.Errorf("invalid %s: unknown configuration keys: %s", path, strings.Join(keys, ", "))
 	}
 	cfg.Path = path
+	cfg.legacyVolumeSet = metadata.IsDefined("volume")
 	cfg.Normalize()
 	if err := cfg.Validate(); err != nil {
 		return nil, fmt.Errorf("invalid %s: %w", path, err)
@@ -208,6 +256,15 @@ func (cfg *ProjectConfig) Normalize() {
 	if len(cfg.Deploy.WaitFor) == 0 {
 		cfg.Deploy.WaitFor = cfg.App.WaitFor
 	}
+	if cfg.legacyVolumeSet {
+		cfg.Volumes = append(cfg.Volumes, VolumeConfig{
+			Name:         legacyVolumeName(cfg.App.Name),
+			Claim:        legacyVolumeClaim(cfg.App.Name),
+			Size:         cfg.Volume.Size,
+			Mount:        cfg.Volume.Mount,
+			StorageClass: "ceph-block",
+		})
+	}
 
 	// Clear legacy [app] fields so downstream consumers always read from
 	// the canonical v2 sections.
@@ -231,6 +288,153 @@ func (cfg *ProjectConfig) Validate() error {
 	default:
 		return fmt.Errorf("[build].target_arch must be empty, \"amd64\", or \"arm64\" (got %q)", cfg.Build.TargetArch)
 	}
+	if cfg.legacyVolumeSet && len(cfg.Volumes) > 1 {
+		return fmt.Errorf("[volume] and [[volumes]] cannot be used together")
+	}
+	if err := validateSecrets(cfg.Secrets); err != nil {
+		return err
+	}
+	if err := validateProbe("[checks.startup]", cfg.Checks.Startup, true); err != nil {
+		return err
+	}
+	if err := validateProbe("[checks.readiness]", cfg.Checks.Readiness, false); err != nil {
+		return err
+	}
+	if err := validateProbe("[checks.liveness]", cfg.Checks.Liveness, true); err != nil {
+		return err
+	}
+	if err := validateVolumes(cfg.Volumes); err != nil {
+		return err
+	}
+	return nil
+}
+
+func legacyVolumeName(appName string) string {
+	if appName == "" {
+		return "volume"
+	}
+	return appName + "-volume"
+}
+
+func legacyVolumeClaim(appName string) string {
+	if appName == "" {
+		return "claim"
+	}
+	return appName + "-claim"
+}
+
+func validateSecrets(secrets SecretsConfig) error {
+	seen := make(map[string]struct{}, len(secrets.Required))
+	for _, key := range secrets.Required {
+		if !environmentVariableNamePattern.MatchString(key) || key == "." || key == ".." || strings.HasPrefix(key, "..") {
+			return fmt.Errorf("[secrets].required key %q must be a Kubernetes environment-variable name", key)
+		}
+		if _, duplicate := seen[key]; duplicate {
+			return fmt.Errorf("[secrets].required key %q is declared more than once", key)
+		}
+		seen[key] = struct{}{}
+	}
+	return nil
+}
+
+func validateProbe(name string, probe *ProbeConfig, successThresholdMustBeOne bool) error {
+	if probe == nil {
+		return nil
+	}
+
+	handlers := 0
+	if probe.HTTPGet != nil {
+		handlers++
+		if !strings.HasPrefix(probe.HTTPGet.Path, "/") {
+			return fmt.Errorf("%s.http_get.path must start with /", name)
+		}
+		if err := validateProbePort(name+".http_get.port", probe.HTTPGet.Port); err != nil {
+			return err
+		}
+	}
+	if probe.TCPSocket != nil {
+		handlers++
+		if err := validateProbePort(name+".tcp_socket.port", probe.TCPSocket.Port); err != nil {
+			return err
+		}
+	}
+	if probe.Exec != nil {
+		handlers++
+		if len(probe.Exec.Command) == 0 {
+			return fmt.Errorf("%s.exec.command must not be empty", name)
+		}
+		for _, command := range probe.Exec.Command {
+			if strings.TrimSpace(command) == "" {
+				return fmt.Errorf("%s.exec.command must not contain an empty argument", name)
+			}
+		}
+	}
+	if handlers != 1 {
+		return fmt.Errorf("%s must declare exactly one handler", name)
+	}
+
+	if probe.InitialDelaySeconds != nil && *probe.InitialDelaySeconds < 0 {
+		return fmt.Errorf("%s.initial_delay_seconds must be nonnegative", name)
+	}
+	for field, value := range map[string]*int32{
+		"timeout_seconds":   probe.TimeoutSeconds,
+		"period_seconds":    probe.PeriodSeconds,
+		"success_threshold": probe.SuccessThreshold,
+		"failure_threshold": probe.FailureThreshold,
+	} {
+		if value != nil && *value < 1 {
+			return fmt.Errorf("%s.%s must be at least 1", name, field)
+		}
+	}
+	if successThresholdMustBeOne && probe.SuccessThreshold != nil && *probe.SuccessThreshold != 1 {
+		return fmt.Errorf("%s.success_threshold must be 1", name)
+	}
+	return nil
+}
+
+func validateProbePort(name string, port int32) error {
+	if port < 1 || port > 65535 {
+		return fmt.Errorf("%s must be between 1 and 65535", name)
+	}
+	return nil
+}
+
+func validateVolumes(volumes []VolumeConfig) error {
+	names := make(map[string]struct{}, len(volumes))
+	claims := make(map[string]struct{}, len(volumes))
+	mounts := make(map[string]struct{}, len(volumes))
+	for index, volume := range volumes {
+		prefix := fmt.Sprintf("[[volumes]][%d]", index)
+		for field, value := range map[string]string{
+			"name":          volume.Name,
+			"claim":         volume.Claim,
+			"size":          volume.Size,
+			"mount":         volume.Mount,
+			"storage_class": volume.StorageClass,
+		} {
+			if strings.TrimSpace(value) == "" {
+				return fmt.Errorf("%s.%s is required", prefix, field)
+			}
+		}
+		if err := validator.ValidateMemory(volume.Size); err != nil {
+			return fmt.Errorf("%s.size must be a positive Kubernetes quantity: %w", prefix, err)
+		}
+		if !strings.HasPrefix(volume.Mount, "/") {
+			return fmt.Errorf("%s.mount must start with /", prefix)
+		}
+		if _, duplicate := names[volume.Name]; duplicate {
+			return fmt.Errorf("duplicate volume name %q", volume.Name)
+		}
+		if _, duplicate := claims[volume.Claim]; duplicate {
+			return fmt.Errorf("duplicate volume claim %q", volume.Claim)
+		}
+		if _, duplicate := mounts[volume.Mount]; duplicate {
+			return fmt.Errorf("duplicate volume mount %q", volume.Mount)
+		}
+		names[volume.Name] = struct{}{}
+		claims[volume.Claim] = struct{}{}
+		mounts[volume.Mount] = struct{}{}
+	}
 	return nil
 }
 
@@ -241,7 +445,13 @@ func (cfg *ProjectConfig) Save() error {
 		return err
 	}
 	defer func() { _ = f.Close() }() //nolint:errcheck
-	return toml.NewEncoder(f).Encode(cfg)
+	toWrite := *cfg
+	if cfg.legacyVolumeSet {
+		// Normalize exposes the legacy volume through Volumes for consumers of
+		// the canonical schema, but writing both declarations would be invalid.
+		toWrite.Volumes = nil
+	}
+	return toml.NewEncoder(f).Encode(&toWrite)
 }
 
 func resolveConfigPath(configArg string) (string, error) {
