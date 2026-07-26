@@ -82,6 +82,7 @@ Tokens: https://cloud.satusky.com/<org-id>/token`,
 			cat(commands.VolumesCommand(), "Applications"),
 			// Data
 			cat(commands.PostgresCommand(), "Data"),
+			cat(commands.ValkeyCommand(), "Data"),
 			// Infrastructure
 			cat(commands.MachineCommand(), "Infrastructure"),
 			cat(commands.ClusterCommand(), "Infrastructure"),
