@@ -17,11 +17,26 @@ import (
 )
 
 func handleCreate(_ context.Context, input createInput) error {
-	project, err := config.LoadConfig(input.Config)
-	if err != nil {
-		return fmt.Errorf("load package config: %w", err)
+	var (
+		archive     []byte
+		packageName string
+		err         error
+	)
+	if input.Chart != "" {
+		if input.Config != "" || input.Image != "" {
+			return fmt.Errorf("--chart cannot be combined with --config or --image")
+		}
+		if input.Output == "" {
+			return fmt.Errorf("--output is required with --chart")
+		}
+		archive, packageName, err = packageartifact.CreateHelm(input.Chart)
+	} else {
+		project, loadErr := config.LoadConfig(input.Config)
+		if loadErr != nil {
+			return fmt.Errorf("load package config: %w", loadErr)
+		}
+		archive, packageName, err = packageartifact.Create(project, input.Image)
 	}
-	archive, packageName, err := packageartifact.Create(project, input.Image)
 	if err != nil {
 		return err
 	}
