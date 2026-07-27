@@ -34,6 +34,7 @@ import (
 	"1ctl/internal/commands/service"
 	"1ctl/internal/commands/token"
 	"1ctl/internal/commands/user"
+	"1ctl/internal/commands/valkey"
 	"1ctl/internal/commands/volumes"
 
 	"github.com/urfave/cli/v3"
@@ -133,3 +134,6 @@ func AppCommand() *cli.Command { return deploycmd.AppCommand() }
 
 // PostgresCommand returns the "1ctl postgres" command tree.
 func PostgresCommand() *cli.Command { return postgres.Command() }
+
+// ValkeyCommand returns the "1ctl valkey" command tree.
+func ValkeyCommand() *cli.Command { return valkey.Command() }
