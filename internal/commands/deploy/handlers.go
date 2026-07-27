@@ -111,6 +111,7 @@ func mergeConfig(in DeployInput, cfg *config.ProjectConfig) mergedInput {
 	trackSet("memory", in.Memory != "" && in.Memory != "256Mi")
 	trackSet("domain", in.Domain != "")
 	trackSet("health-path", in.HealthPath != "")
+	trackSet("strategy", in.Strategy != "" && in.Strategy != "rolling")
 	trackSet("rolling-max-surge", in.RollingMaxSurge != "" && in.RollingMaxSurge != "25%")
 	trackSet("rolling-max-unavailable", in.RollingMaxUnavail != "" && in.RollingMaxUnavail != "25%")
 	trackSet("machine-tag", in.MachineTag != "")
@@ -150,9 +151,15 @@ func mergeConfig(in DeployInput, cfg *config.ProjectConfig) mergedInput {
 		applyIf(&m.Zone, cfg.App.Zone)
 		applyIf(&m.Organization, cfg.App.Organization)
 		applyIf(&m.HealthPath, cfg.Checks.HealthPath)
-		applyIf(&m.Strategy, cfg.Deploy.Strategy)
-		applyIf(&m.RollingMaxSurge, cfg.Deploy.RollingMaxSurge)
-		applyIf(&m.RollingMaxUnavail, cfg.Deploy.RollingMaxUnavailable)
+		if !m.UserSetFlags["strategy"] && cfg.Deploy.Strategy != "" {
+			m.Strategy = cfg.Deploy.Strategy
+		}
+		if !m.UserSetFlags["rolling-max-surge"] && cfg.Deploy.RollingMaxSurge != "" {
+			m.RollingMaxSurge = cfg.Deploy.RollingMaxSurge
+		}
+		if !m.UserSetFlags["rolling-max-unavailable"] && cfg.Deploy.RollingMaxUnavailable != "" {
+			m.RollingMaxUnavail = cfg.Deploy.RollingMaxUnavailable
+		}
 		applyIf(&m.VolumeSize, cfg.Volume.Size)
 		applyIf(&m.VolumeMount, cfg.Volume.Mount)
 		applyIf(&m.MachineTag, cfg.Deploy.MachineTag)

@@ -85,3 +85,29 @@ func TestPrepareDeploymentOptionsUsesConfigPrebuiltImage(t *testing.T) {
 		t.Errorf("TargetArch = %q, want amd64", opts.TargetArch)
 	}
 }
+
+func TestMergeConfigUsesDeployStrategyInsteadOfCommandDefaults(t *testing.T) {
+	cfg := &config.ProjectConfig{
+		Deploy: config.DeployConfig{
+			Strategy:              "rolling",
+			RollingMaxSurge:       "1",
+			RollingMaxUnavailable: "0",
+		},
+	}
+
+	merged := mergeConfig(DeployInput{
+		Strategy:          "rolling",
+		RollingMaxSurge:   "25%",
+		RollingMaxUnavail: "25%",
+	}, cfg)
+
+	if merged.Strategy != "rolling" {
+		t.Errorf("Strategy = %q, want rolling", merged.Strategy)
+	}
+	if merged.RollingMaxSurge != "1" {
+		t.Errorf("RollingMaxSurge = %q, want 1", merged.RollingMaxSurge)
+	}
+	if merged.RollingMaxUnavail != "0" {
+		t.Errorf("RollingMaxUnavail = %q, want 0", merged.RollingMaxUnavail)
+	}
+}
