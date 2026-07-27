@@ -1,6 +1,6 @@
 # Release Notes
 
-## Version 0.11.0 (Unreleased)
+## Version 0.11.0 (27-06-2026)
 
 Complete CLI framework upgrade (`urfave/cli` v2→v3), positional args for all resource-targeting commands, structured command packages, config v2 sections, and new `app` / `postgres` / `config` commands.
 
