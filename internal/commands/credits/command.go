@@ -56,8 +56,8 @@ func Command() *cli.Command {
 
 func creditsBalanceCommand() *cli.Command {
 	return &cli.Command{
-		Name:   "balance",
-		Usage:  "Show current credit balance",
+		Name:  "balance",
+		Usage: "Show current credit balance",
 		Action: func(ctx context.Context, cmd *cli.Command) error {
 			return handleCreditsBalance(ctx)
 		},

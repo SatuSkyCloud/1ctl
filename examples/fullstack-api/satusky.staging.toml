@@ -1,11 +1,13 @@
 # =============================================================================
-# satusky.staging.toml — Staging environment overrides
+# satusky.staging.toml — Standalone staging configuration
 # =============================================================================
-# Inherits all fields from satusky.toml.  Fields set here override the
-# base file.  Deploy with:  1ctl deploy --config staging
+# Named configs are loaded independently and do not inherit satusky.toml.
+# Deploy with:  1ctl deploy --config staging
 # =============================================================================
 
 [app]
+  name        = "fullstack-api-staging"
+  port        = 8080
   cpu_request = "0.5"
   cpu_limit   = "1.0"
   memory      = "256Mi"
@@ -13,8 +15,26 @@
   # staging domain override
   # domain      = "staging-api.mycompany.com"
 
+[build]
+  dockerfile = "Dockerfile"
+  fast_build = true
+
+[checks]
+  health_path = "/health"
+
+[deploy]
+  strategy                = "rolling"
+  rolling_max_surge       = "25%"
+  rolling_max_unavailable = "0"
+
+[env]
+  APP_ENV           = "staging"
+  LOG_LEVEL         = "debug"
+  FEATURE_X_ENABLED = "true"
+
 [volume]
   size  = "1Gi"
+  mount = "/data/uploads"
 
 [hpa]
   enabled      = false       # Disable autoscaling in staging

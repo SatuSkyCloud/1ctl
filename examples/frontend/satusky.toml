@@ -3,7 +3,7 @@
 
 [app]
   name    = "frontend"
-  port    = 80
+  port    = 8080
   cpu     = "0.25"
   memory  = "128Mi"
 

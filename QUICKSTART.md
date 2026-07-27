@@ -56,7 +56,7 @@ Active Profile
 ──────────────
 Profile: local
 API URL: http://localhost:8080/v1/cli
-Auth:    mingerz.k@gmail.com
+Auth:    user@example.com
 ```
 
 ---
@@ -77,6 +77,8 @@ name = "my-app"
 port = 8080
 cpu = "0.5"
 memory = "256Mi"
+
+[build]
 dockerfile = "Dockerfile"
 ```
 
@@ -285,7 +287,7 @@ go build -o 1ctl ./cmd/...
 # 3. Switch to local profile and authenticate
 ./1ctl profile use local
 ./1ctl auth login --token <your-api-token>
-# ✅ Logged in successfully to SatuSky 1ctl as mingerz.k@gmail.com!
+# ✅ Logged in successfully to SatuSky 1ctl as user@example.com!
 
 # 4. List existing deployments
 ./1ctl deploy list

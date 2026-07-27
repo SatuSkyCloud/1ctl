@@ -93,7 +93,7 @@ func createTestDeployment(t *testing.T) uuid.UUID {
 		DockerfilePath: dockerfilePath,
 	}
 
-	resp, err := deploy.Deploy(opts)
+	resp, err := deploy.Deploy(opts, uuid.NewString())
 	if err != nil {
 		t.Fatalf("Failed to create test deployment: %v", err)
 	}

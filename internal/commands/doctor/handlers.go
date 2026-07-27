@@ -26,11 +26,11 @@ type doctorReport struct {
 }
 
 type doctorDeploymentReport struct {
-	DeploymentID string                    `json:"deployment_id"`
-	AppLabel     string                    `json:"app_label"`
-	Domain       string                    `json:"domain,omitempty"`
-	Status       string                    `json:"status"`
-	DomainStatus *api.DomainStatusResponse `json:"domain_status,omitempty"`
+	DeploymentID string                       `json:"deployment_id"`
+	AppLabel     string                       `json:"app_label"`
+	Domain       string                       `json:"domain,omitempty"`
+	Status       string                       `json:"status"`
+	DomainStatus *api.DomainStatusResponse    `json:"domain_status,omitempty"`
 	Smoke        *deploy.PublicURLSmokeResult `json:"smoke,omitempty"`
 }
 

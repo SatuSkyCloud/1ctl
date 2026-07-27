@@ -6,6 +6,7 @@ Two sample applications for demonstrating and testing `1ctl` against a SatuSky b
 |-----|-------|------|-----|--------|
 | `backend` | Go HTTP API | 8080 | 0.5 | 256Mi |
 | `frontend` | Nginx static site | 80 | 0.25 | 128Mi |
+| `marketplace-it-tools-gateway` | Immutable, ARM64 marketplace package | 8080 | 0.05 | 128Mi |
 
 ---
 
@@ -191,9 +192,9 @@ cd examples/backend
 
 Verify in K8s:
 ```bash
-kubectl -n org3-b322955e get configmap backend-api-environments -o jsonpath='{.data}'
+kubectl -n <namespace> get configmap backend-api-environments -o jsonpath='{.data}'
 # Deployment env is also clean:
-kubectl -n org3-b322955e get deployment backend-api \
+kubectl -n <namespace> get deployment backend-api \
   -o jsonpath='{.spec.template.spec.containers[0].env}'
 ```
 
@@ -284,7 +285,35 @@ Use `--kv` for secrets (`--env` is a backward-compatible alias). Like `env unset
 
 ---
 
-## 12. Full cluster state
+## 12. Create a private marketplace package
+
+`marketplace-it-tools-gateway` is the canonical package example. It uses a verified,
+digest-pinned image already running on the Satusky ARM64 worker. The generated
+bundle includes a ClusterIP Service and a default-DNS route: an Ingress on
+Ingress platforms or an HTTPRoute on Gateway API platforms. It also includes
+startup/readiness/liveness probes. IT-Tools is stateless, so it intentionally
+has no persistent volume.
+
+```bash
+cd examples/marketplace-it-tools
+
+# Creating the same package twice yields byte-identical archives.
+1ctl package create --config satusky.toml --output /tmp/marketplace-it-tools-gateway-a.tar.gz
+1ctl package create --config satusky.toml --output /tmp/marketplace-it-tools-gateway-b.tar.gz
+shasum -a 256 /tmp/marketplace-it-tools-gateway-a.tar.gz /tmp/marketplace-it-tools-gateway-b.tar.gz
+
+# The default publication visibility is private. Do not add --public for this flow.
+1ctl -o json package publish /tmp/marketplace-it-tools-gateway-a.tar.gz
+1ctl -o json package list
+1ctl -o json package status <release-id>
+
+# Deploy the returned marketplace ID into the active organization.
+1ctl marketplace deploy <marketplace-id> marketplace-it-tools-gateway-demo
+```
+
+---
+
+## 13. Full cluster state
 
 ```bash
 1ctl deploy list
@@ -362,11 +391,13 @@ Multi-arch images used with `--image` (e.g. `nginx:alpine`) have no arch filter 
 [app]
   name       = "backend-api"   # K8s app label — identifier for all commands
   port       = 8080            # container port (required)
-  dockerfile = "Dockerfile"    # path to Dockerfile (default: ./Dockerfile)
   cpu        = "0.5"           # CPU cores — platform default 0.5 if omitted
   memory     = "256Mi"         # memory — platform default 256Mi if omitted
   replicas   = 1               # replica count — default 1 if omitted
   domain     = ""              # custom domain — empty = auto backend-assigned random name (adjective+animal-XXXXXXX.satusky.com)
+
+[build]
+  dockerfile = "Dockerfile"    # path to Dockerfile (default: ./Dockerfile)
 ```
 
 **Not in the file:** `org` (auth context), `deployment_id` (runtime lookup). Safe to commit as-is.

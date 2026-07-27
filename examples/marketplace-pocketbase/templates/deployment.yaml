@@ -1,0 +1,102 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ .Values.satusky.appName }}
+  namespace: {{ .Values.satusky.namespace }}
+  labels:
+    app.kubernetes.io/name: pocketbase
+    app.kubernetes.io/instance: {{ .Values.satusky.appName }}
+spec:
+  replicas: 1
+  strategy:
+    type: Recreate
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: pocketbase
+      app.kubernetes.io/instance: {{ .Values.satusky.appName }}
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: pocketbase
+        app.kubernetes.io/instance: {{ .Values.satusky.appName }}
+    spec:
+      automountServiceAccountToken: false
+      nodeSelector:
+        kubernetes.io/arch: arm64
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 1000
+        runAsGroup: 1000
+        fsGroup: 1000
+        fsGroupChangePolicy: OnRootMismatch
+        seccompProfile:
+          type: RuntimeDefault
+      containers:
+        - name: pocketbase
+          image: ghcr.io/muchobien/pocketbase@sha256:9221b0f6c9148fee5977f1c5532bd1f3de970d6b3028fd02886b6edf37054829
+          imagePullPolicy: IfNotPresent
+          command:
+            - /usr/local/bin/pocketbase
+          args:
+            - serve
+            - --http=0.0.0.0:8090
+            - --dir=/pb_data
+            - --publicDir=/pb_public
+            - --hooksDir=/pb_hooks
+          env:
+            - name: GOMEMLIMIT
+              value: 460MiB
+          ports:
+            - name: http
+              containerPort: 8090
+              protocol: TCP
+          resources:
+            requests:
+              cpu: 100m
+              memory: 128Mi
+            limits:
+              cpu: 500m
+              memory: 512Mi
+          startupProbe:
+            httpGet:
+              path: /api/health
+              port: http
+            initialDelaySeconds: 5
+            periodSeconds: 5
+            timeoutSeconds: 3
+            failureThreshold: 12
+          livenessProbe:
+            httpGet:
+              path: /api/health
+              port: http
+            periodSeconds: 30
+            timeoutSeconds: 5
+            failureThreshold: 3
+          readinessProbe:
+            httpGet:
+              path: /api/health
+              port: http
+            periodSeconds: 10
+            timeoutSeconds: 3
+            failureThreshold: 3
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: false
+            capabilities:
+              drop:
+                - ALL
+          volumeMounts:
+            - name: pb-data
+              mountPath: /pb_data
+            - name: pb-public
+              mountPath: /pb_public
+            - name: pb-hooks
+              mountPath: /pb_hooks
+      volumes:
+        - name: pb-data
+          persistentVolumeClaim:
+            claimName: {{ .Values.satusky.appName }}-data
+        - name: pb-public
+          emptyDir: {}
+        - name: pb-hooks
+          emptyDir: {}

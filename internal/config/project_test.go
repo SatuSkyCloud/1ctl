@@ -1,8 +1,10 @@
 package config
 
 import (
+	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 )
 
@@ -429,5 +431,326 @@ strategy = "rolling"
 	}
 	if cfg.App.Strategy != "" {
 		t.Errorf("App.Strategy = %q, want empty (legacy field should be cleared after Normalize)", cfg.App.Strategy)
+	}
+}
+
+func TestParseBuildImageAndTargetArch(t *testing.T) {
+	_, path := writeToml(t, `
+[app]
+name = "prebuilt-app"
+
+[build]
+image = "  ghcr.io/acme/api:v1  "
+target_arch = " arm64 "
+`)
+	cfg, err := LoadConfig(path)
+	if err != nil {
+		t.Fatalf("LoadConfig: %v", err)
+	}
+	if cfg.Build.Image != "ghcr.io/acme/api:v1" {
+		t.Errorf("Build.Image = %q, want trimmed image reference", cfg.Build.Image)
+	}
+	if cfg.Build.TargetArch != "arm64" {
+		t.Errorf("Build.TargetArch = %q, want arm64", cfg.Build.TargetArch)
+	}
+}
+
+func TestLoadConfigRejectsMutuallyExclusiveBuildSourcesAfterNormalize(t *testing.T) {
+	_, path := writeToml(t, `
+[app]
+dockerfile = "Dockerfile.legacy"
+
+[build]
+image = "ghcr.io/acme/api:v1"
+`)
+	_, err := LoadConfig(path)
+	if err == nil {
+		t.Fatal("LoadConfig() error = nil, want mutually-exclusive build source error")
+	}
+	if !strings.Contains(err.Error(), "[build].image and [build].dockerfile are mutually exclusive") {
+		t.Fatalf("LoadConfig() error = %q, want actionable mutual-exclusion message", err)
+	}
+}
+
+func TestLoadConfigRejectsInvalidTargetArch(t *testing.T) {
+	for _, arch := range []string{"x86_64", "ARM64", "linux/amd64"} {
+		t.Run(arch, func(t *testing.T) {
+			_, path := writeToml(t, "[build]\ntarget_arch = "+fmt.Sprintf("%q", arch)+"\n")
+			_, err := LoadConfig(path)
+			if err == nil {
+				t.Fatal("LoadConfig() error = nil, want target_arch validation error")
+			}
+			if !strings.Contains(err.Error(), `[build].target_arch must be empty, "amd64", or "arm64"`) {
+				t.Fatalf("LoadConfig() error = %q, want actionable target_arch message", err)
+			}
+		})
+	}
+}
+
+func TestLoadConfigRejectsUnknownKeys(t *testing.T) {
+	contents := `
+unknown_section = true
+
+[app]
+name = "myapp"
+
+[build]
+dockerfle = "Dockerfile"
+`
+	_, path := writeToml(t, contents)
+	_, err := LoadConfig(path)
+	if err == nil {
+		t.Fatal("LoadConfig() error = nil, want unknown-key error")
+	}
+	for _, key := range []string{"build.dockerfle", "unknown_section"} {
+		if !strings.Contains(err.Error(), key) {
+			t.Errorf("LoadConfig() error = %q, want fully-qualified key %q", err, key)
+		}
+	}
+}
+
+func TestFindConfigRejectsUnknownKeys(t *testing.T) {
+	_, path := writeToml(t, `
+[app]
+name = "myapp"
+memroy = "256Mi"
+`)
+	_, err := FindConfig(path)
+	if err == nil || !strings.Contains(err.Error(), "app.memroy") {
+		t.Fatalf("FindConfig() error = %v, want fully-qualified unknown key app.memroy", err)
+	}
+}
+
+func TestLoadConfigAcceptsDynamicEnvKeys(t *testing.T) {
+	_, path := writeToml(t, `
+[app]
+name = "myapp"
+
+[env]
+ARBITRARY_NAME = "value"
+`)
+	cfg, err := LoadConfig(path)
+	if err != nil {
+		t.Fatalf("LoadConfig: %v", err)
+	}
+	if cfg.Env["ARBITRARY_NAME"] != "value" {
+		t.Errorf("Env[ARBITRARY_NAME] = %q, want value", cfg.Env["ARBITRARY_NAME"])
+	}
+}
+
+func TestLoadConfigParsesCanonicalDesiredStateDeclarations(t *testing.T) {
+	_, path := writeToml(t, `
+[app]
+name = "api"
+
+[secrets]
+required = ["DATABASE_URL", "API_TOKEN"]
+
+[checks.startup]
+initial_delay_seconds = 0
+timeout_seconds = 2
+period_seconds = 5
+success_threshold = 1
+failure_threshold = 3
+[checks.startup.http_get]
+path = "/startup"
+port = 8080
+
+[checks.readiness]
+[checks.readiness.tcp_socket]
+port = 8080
+
+[checks.liveness]
+[checks.liveness.exec]
+command = ["/bin/check", "--live"]
+
+[[volumes]]
+name = "data"
+claim = "api-data-pvc"
+size = "10Gi"
+mount = "/data"
+storage_class = "ceph-block"
+`)
+	cfg, err := LoadConfig(path)
+	if err != nil {
+		t.Fatalf("LoadConfig: %v", err)
+	}
+	if got, want := cfg.Secrets.Required, []string{"DATABASE_URL", "API_TOKEN"}; strings.Join(got, ",") != strings.Join(want, ",") {
+		t.Errorf("Secrets.Required = %v, want %v", got, want)
+	}
+	if cfg.Checks.Startup == nil || cfg.Checks.Startup.HTTPGet == nil || cfg.Checks.Startup.HTTPGet.Path != "/startup" || cfg.Checks.Startup.HTTPGet.Port != 8080 {
+		t.Errorf("Startup = %+v, want http_get /startup:8080", cfg.Checks.Startup)
+	}
+	if cfg.Checks.Readiness == nil || cfg.Checks.Readiness.TCPSocket == nil || cfg.Checks.Readiness.TCPSocket.Port != 8080 {
+		t.Errorf("Readiness = %+v, want tcp_socket 8080", cfg.Checks.Readiness)
+	}
+	if cfg.Checks.Liveness == nil || cfg.Checks.Liveness.Exec == nil || strings.Join(cfg.Checks.Liveness.Exec.Command, ",") != "/bin/check,--live" {
+		t.Errorf("Liveness = %+v, want exec command", cfg.Checks.Liveness)
+	}
+	if len(cfg.Volumes) != 1 || cfg.Volumes[0] != (VolumeConfig{Name: "data", Claim: "api-data-pvc", Size: "10Gi", Mount: "/data", StorageClass: "ceph-block"}) {
+		t.Errorf("Volumes = %+v, want canonical data volume", cfg.Volumes)
+	}
+}
+
+func TestLoadConfigRejectsInvalidCanonicalDesiredStateDeclarations(t *testing.T) {
+	tests := []struct {
+		name     string
+		contents string
+		want     string
+	}{
+		{
+			name: "mixed legacy and canonical volumes",
+			contents: `
+[volume]
+size = "1Gi"
+mount = "/legacy"
+[[volumes]]
+name = "data"
+claim = "data-pvc"
+size = "1Gi"
+mount = "/data"
+storage_class = "ceph-block"`,
+			want: "[volume] and [[volumes]] cannot be used together",
+		},
+		{
+			name: "duplicate secret key",
+			contents: `
+[secrets]
+required = ["TOKEN", "TOKEN"]`,
+			want: "declared more than once",
+		},
+		{
+			name: "duplicate volume name",
+			contents: `
+[[volumes]]
+name = "data"
+claim = "data-pvc"
+size = "1Gi"
+mount = "/data"
+storage_class = "ceph-block"
+[[volumes]]
+name = "data"
+claim = "cache-pvc"
+size = "1Gi"
+mount = "/cache"
+storage_class = "ceph-block"`,
+			want: "duplicate volume name",
+		},
+		{
+			name: "duplicate volume claim",
+			contents: `
+[[volumes]]
+name = "data"
+claim = "shared-pvc"
+size = "1Gi"
+mount = "/data"
+storage_class = "ceph-block"
+[[volumes]]
+name = "cache"
+claim = "shared-pvc"
+size = "1Gi"
+mount = "/cache"
+storage_class = "ceph-block"`,
+			want: "duplicate volume claim",
+		},
+		{
+			name: "duplicate volume mount",
+			contents: `
+[[volumes]]
+name = "data"
+claim = "data-pvc"
+size = "1Gi"
+mount = "/data"
+storage_class = "ceph-block"
+[[volumes]]
+name = "cache"
+claim = "cache-pvc"
+size = "1Gi"
+mount = "/data"
+storage_class = "ceph-block"`,
+			want: "duplicate volume mount",
+		},
+		{
+			name: "incomplete volume",
+			contents: `
+[[volumes]]
+name = "data"
+claim = "data-pvc"
+size = "0Gi"
+mount = "data"
+storage_class = "ceph-block"`,
+			want: "positive Kubernetes quantity",
+		},
+		{
+			name: "probe without handler",
+			contents: `
+[checks.startup]
+period_seconds = 5`,
+			want: "exactly one handler",
+		},
+		{
+			name: "probe with multiple handlers",
+			contents: `
+[checks.readiness]
+[checks.readiness.http_get]
+path = "/ready"
+port = 8080
+[checks.readiness.tcp_socket]
+port = 8080`,
+			want: "exactly one handler",
+		},
+		{
+			name: "invalid http probe path",
+			contents: `
+[checks.liveness]
+[checks.liveness.http_get]
+path = "health"
+port = 8080`,
+			want: "path must start with /",
+		},
+		{
+			name: "invalid probe port and thresholds",
+			contents: `
+[checks.startup]
+success_threshold = 2
+[checks.startup.tcp_socket]
+port = 0`,
+			want: "port must be between 1 and 65535",
+		},
+		{
+			name: "invalid exec command",
+			contents: `
+[checks.liveness]
+[checks.liveness.exec]
+command = [" "]`,
+			want: "must not contain an empty argument",
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			_, path := writeToml(t, tt.contents)
+			_, err := LoadConfig(path)
+			if err == nil || !strings.Contains(err.Error(), tt.want) {
+				t.Fatalf("LoadConfig() error = %v, want substring %q", err, tt.want)
+			}
+		})
+	}
+}
+
+func TestCheckedInExamplesLoad(t *testing.T) {
+	paths, err := filepath.Glob(filepath.Join("..", "..", "examples", "*", "satusky*.toml"))
+	if err != nil {
+		t.Fatalf("glob examples: %v", err)
+	}
+	if len(paths) == 0 {
+		t.Fatal("no checked-in example configs found")
+	}
+	for _, path := range paths {
+		path := path
+		t.Run(filepath.ToSlash(path), func(t *testing.T) {
+			if _, err := LoadConfig(path); err != nil {
+				t.Fatalf("LoadConfig(%q): %v", path, err)
+			}
+		})
 	}
 }

@@ -1,9 +1,11 @@
 package api
 
 import (
+	cliContext "1ctl/internal/context"
 	"1ctl/internal/utils"
 	"encoding/json"
 	"fmt"
+	"net/http"
 	"time"
 )
 
@@ -51,7 +53,7 @@ func GetCurrentUser() (*CLIUserProfile, error) {
 // UpdateUser updates user profile
 func UpdateUser(userID string, req UpdateUserRequest) (*CLIUserProfile, error) {
 	var resp apiResponse
-	err := makeRequest("PUT", fmt.Sprintf("/users/%s", userID), req, &resp)
+	err := makeMainAPIRequest(http.MethodPut, fmt.Sprintf("/users/%s", userID), req, &resp)
 	if err != nil {
 		return nil, err
 	}
@@ -74,7 +76,7 @@ func ChangePassword(currentPassword, newPassword string) error {
 		CurrentPassword: currentPassword,
 		NewPassword:     newPassword,
 	}
-	return makeRequest("POST", "/auth/change-password", req, nil)
+	return makeMainAPIRequest(http.MethodPost, "/auth/change-password", req, nil)
 }
 
 // GetUserPermissions gets user permissions for an organization
@@ -99,5 +101,9 @@ func GetUserPermissions(orgID string) ([]UserPermission, error) {
 
 // RevokeAllSessions revokes all user sessions
 func RevokeAllSessions() error {
-	return makeRequest("POST", "/auth/revoke-all", nil, nil)
+	if err := makeMainAPIRequest(http.MethodPost, "/auth/revoke-all", nil, nil); err != nil {
+		return err
+	}
+	// This endpoint revokes the token used for the request as part of all sessions.
+	return cliContext.ClearAuthState()
 }

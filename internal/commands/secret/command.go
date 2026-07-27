@@ -66,8 +66,9 @@ func Command() *cli.Command {
 func secretCreateCommand() *cli.Command {
 	var in secretCreateInput
 	return &cli.Command{
-		Name:  "create",
-		Usage: "Create a new secret",
+		Name:      "create",
+		Usage:     "Create a new secret",
+		ArgsUsage: "[key=value...]",
 		Flags: []cli.Flag{
 			&cli.StringFlag{
 				Name:        flagDeploymentID,

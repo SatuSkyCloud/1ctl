@@ -40,7 +40,7 @@ type UnreadCount struct {
 
 // GetNotifications gets notifications for an organization
 func GetNotifications(orgID string, unreadOnly bool, limit int) ([]Notification, error) {
-	path := fmt.Sprintf("/notifications/organizations/%s", orgID)
+	path := fmt.Sprintf("/organizations/%s/notifications", orgID)
 	params := []string{}
 	if unreadOnly {
 		params = append(params, "unread=true")
@@ -85,7 +85,7 @@ func GetNotifications(orgID string, unreadOnly bool, limit int) ([]Notification,
 // GetUnreadCount gets unread notification count
 func GetUnreadCount(orgID string) (int, error) {
 	var resp apiResponse
-	err := makeRequest("GET", fmt.Sprintf("/notifications/organizations/%s/unread-count", orgID), nil, &resp)
+	err := makeRequest("GET", fmt.Sprintf("/organizations/%s/notifications/unread-count", orgID), nil, &resp)
 	if err != nil {
 		return 0, err
 	}
@@ -104,23 +104,23 @@ func GetUnreadCount(orgID string) (int, error) {
 
 // MarkNotificationAsRead marks a notification as read
 func MarkNotificationAsRead(orgID, notifID string) error {
-	return makeRequest("PATCH", fmt.Sprintf("/notifications/organizations/%s/%s/read", orgID, notifID), nil, nil)
+	return makeRequest("PATCH", fmt.Sprintf("/organizations/%s/notifications/%s/read", orgID, notifID), nil, nil)
 }
 
 // MarkAllNotificationsAsRead marks all notifications as read
 func MarkAllNotificationsAsRead(orgID string) error {
-	return makeRequest("POST", fmt.Sprintf("/notifications/organizations/%s/mark-all-read", orgID), nil, nil)
+	return makeRequest("POST", fmt.Sprintf("/organizations/%s/notifications/mark-all-read", orgID), nil, nil)
 }
 
 // DeleteNotification deletes a notification
 func DeleteNotification(orgID, notifID string) error {
-	return makeRequest("DELETE", fmt.Sprintf("/notifications/organizations/%s/%s", orgID, notifID), nil, nil)
+	return makeRequest("DELETE", fmt.Sprintf("/organizations/%s/notifications/%s", orgID, notifID), nil, nil)
 }
 
 // GetNotification gets a single notification
 func GetNotification(orgID, notifID string) (*Notification, error) {
 	var resp apiResponse
-	err := makeRequest("GET", fmt.Sprintf("/notifications/organizations/%s/%s", orgID, notifID), nil, &resp)
+	err := makeRequest("GET", fmt.Sprintf("/organizations/%s/notifications/%s", orgID, notifID), nil, &resp)
 	if err != nil {
 		return nil, err
 	}

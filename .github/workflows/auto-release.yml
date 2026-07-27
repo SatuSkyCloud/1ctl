@@ -5,19 +5,21 @@ on:
     branches:
       - main
 
-# Creates the next release tag from the top RELEASE_NOTES.md entry and runs
-# GoReleaser in the same workflow. The existing tag-triggered release workflow
-# remains available for manual/emergency releases.
+# Creates the next release tag from the top RELEASE_NOTES.md entry. The
+# tag-triggered release workflow is the single publisher for binaries and
+# contract artifacts.
 
 permissions:
   contents: write
 
 jobs:
   release:
-    runs-on: ${{ vars.USE_SELF_HOSTED == 'true' && vars.SELF_HOSTED_RUNNER_LABEL || 'ubuntu-latest' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    environment: release
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
         with:
           fetch-depth: 0
 
@@ -56,21 +58,3 @@ jobs:
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git tag -a "${{ steps.release.outputs.tag }}" -m "Release ${{ steps.release.outputs.tag }}"
           git push origin "${{ steps.release.outputs.tag }}"
-
-      - name: Set up Go
-        if: steps.release.outputs.skip != 'true'
-        uses: actions/setup-go@v5
-        with:
-          go-version: "1.21"
-          cache: true
-
-      - name: Run GoReleaser
-        if: steps.release.outputs.skip != 'true'
-        uses: goreleaser/goreleaser-action@v6
-        with:
-          distribution: goreleaser
-          version: "~> v2"
-          args: release --clean
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          HOMEBREW_TAP_TOKEN: ${{ secrets.HOMEBREW_TAP_TOKEN }}

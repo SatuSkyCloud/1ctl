@@ -80,7 +80,7 @@ cd examples/fullstack-api
 # 3. Inject secrets
 1ctl secret create --config satusky.toml --wait \
   --kv DB_PASSWORD=your-db-password \
-  --kv API_KEY=sk-live-xxxx
+  --kv API_KEY="$API_KEY"
 
 # 4. Upload a file (exercises the volume mount)
 curl -F "file=@README.md" https://<your-domain>/api/upload
@@ -137,8 +137,9 @@ Never put secrets in `satusky.toml` or CLI `--env` flags.
 1ctl deploy --config staging --wait
 ```
 
-Staged configs inherit from the base `satusky.toml`. Fields set in
-`satusky.staging.toml` override the base. See the file for details.
+Named configs are loaded independently. The checked-in
+`satusky.staging.toml` repeats the required build and app settings so it can be
+deployed on its own.
 
 ## Volume Workflow
 
@@ -284,7 +285,7 @@ kubectl -n <namespace> get secret <app>-custom-letsencrypt-tls
 # Username: app
 # Password: <32-char-hex>
 # Database: fullstack_db       ← NB: backend may append _db suffix
-# Host: 211.25.36.186 (external) / fullstack-db-pg-rw.<ns>.svc.cluster.local (internal)
+# Host: 203.0.113.10 (example) / <database-service>.<namespace>.svc.cluster.local (internal)
 # Port: 31560 (external) / 5432 (internal)
 ```
 
@@ -300,7 +301,7 @@ cd examples/fullstack-api
 1ctl deploy --config satusky.toml --wait \
   --env APP_ENV=production \
   --env LOG_LEVEL=debug \
-  --env DB_HOST=fullstack-db-pg-rw.org123-c0bee423.svc.cluster.local \
+  --env DB_HOST="<database-service>.<namespace>.svc.cluster.local" \
   --env DB_PORT=5432 \
   --env DB_USER=app \
   --env DB_NAME=fullstack_db \
@@ -327,7 +328,7 @@ cd examples/fullstack-api
 #     Use the DB_PASSWORD from step 9 (postgres credentials output).
 1ctl secret create --config satusky.toml \
   --kv DB_PASSWORD=<password-from-step-9> \
-  --kv API_KEY=sk-test-fullstack-api-key \
+  --kv API_KEY="$API_KEY" \
   --kv SMTP_PASSWORD=test-smtp-password \
   --kv JWT_SECRET=super-secret-jwt-key-at-least-256-bits-long
 # ✅ Secret fullstack-api created successfully
@@ -379,7 +380,7 @@ cd examples/fullstack-api
 
 # 20. Create the DNS A record (requires OpenProvider credentials in backend):
 1ctl domains dns create --type A --name fullstack \
-  --data 211.25.36.186 flyingchicken.xyz
+  --data 203.0.113.10 example.com
 # ✅ DNS record created
 
 # 21. Verify DNS records for the domain
@@ -392,15 +393,15 @@ cd examples/fullstack-api
 # 23. Check domain health (DNS, TLS, HTTP reachability)
 1ctl domains check fullstack.flyingchicken.xyz --probe
 # Backend: attached   Route: Ingress/ingress-fullstack-api-custom
-# DNS: resolved - 211.25.36.186   TLS: active, expires YYYY-MM-DD
+# DNS: resolved - 203.0.113.10   TLS: active, expires YYYY-MM-DD
 
 # 24. Show exact DNS setup instructions
 1ctl domains setup fullstack.flyingchicken.xyz
 
 # 25. Verify via kubectl:
-kubectl -n org123-c0bee423 get httproute fullstack-api-route
-kubectl -n org123-c0bee423 get ingress ingress-fullstack-api-custom
-kubectl -n org123-c0bee423 get secret fullstack-api-custom-letsencrypt-tls
+kubectl -n <namespace> get httproute fullstack-api-route
+kubectl -n <namespace> get ingress ingress-fullstack-api-custom
+kubectl -n <namespace> get secret fullstack-api-custom-letsencrypt-tls
 ```
 
 ### Phase 6 — DB Migration (if needed)
@@ -410,7 +411,7 @@ kubectl -n org123-c0bee423 get secret fullstack-api-custom-letsencrypt-tls
 # If /api/tasks returns "relation does not exist", run the migration
 # as the superuser via kubectl exec:
 
-kubectl -n org123-c0bee423 exec -it fullstack-db-pg-1 -- \
+kubectl -n <namespace> exec -it <database-pod> -- \
   psql -U postgres -d fullstack_db -c "
     CREATE TABLE IF NOT EXISTS tasks (
       id SERIAL PRIMARY KEY,
@@ -472,7 +473,7 @@ curl -sk -F "file=@README.md" https://<CUSTOM_DOMAIN>/api/upload | jq
 curl -sk https://<CUSTOM_DOMAIN>/api/files/README.md | head -5
 
 # NOTE: If DNS hasn't propagated locally yet, use --resolve to bypass:
-# curl -sk --resolve <CUSTOM_DOMAIN>:443:211.25.36.186 https://<CUSTOM_DOMAIN>/health
+# curl -sk --resolve <CUSTOM_DOMAIN>:443:203.0.113.10 https://<CUSTOM_DOMAIN>/health
 ```
 
 ### Phase 8 — Feature-Specific Checks
@@ -491,9 +492,9 @@ curl -sk https://<CUSTOM_DOMAIN>/api/files/README.md | head -5
 1ctl deploy restart --config satusky.toml
 
 # Ingress architecture verification
-kubectl -n org123-c0bee423 get httproute   # Gateway API routes
-kubectl -n org123-c0bee423 get ingress     # Legacy Ingress routes
-kubectl -n org123-c0bee423 get gateway     # Gateway resources (cluster-level)
+kubectl -n <namespace> get httproute   # Gateway API routes
+kubectl -n <namespace> get ingress     # Legacy Ingress routes
+kubectl -n <namespace> get gateway     # Gateway resources (cluster-level)
 ```
 
 ---

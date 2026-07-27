@@ -1,0 +1,13 @@
+apiVersion: v2
+name: wordpress-mariadb-helm
+description: Immutable ARM64 WordPress and MariaDB marketplace package
+type: application
+version: 1.0.2
+appVersion: "6.7.1"
+annotations:
+  # `supported-architectures` is consumed by `1ctl package create --chart`.
+  satusky.com/supported-architectures: arm64
+  # Kept for the provisional chart convention while the package credential
+  # projection is being landed in the backend.
+  satusky.com/architectures: arm64
+  satusky.com/required-secrets: databasePassword,databaseRootPassword

@@ -6,6 +6,8 @@ import (
 	"1ctl/internal/api"
 	"1ctl/internal/context"
 	"1ctl/internal/testutils"
+
+	"github.com/google/uuid"
 )
 
 func TestBuildStrategyConfig(t *testing.T) {
@@ -105,6 +107,77 @@ func TestNormalizeTargetArch(t *testing.T) {
 	}
 }
 
+func TestSourceBuildTargetArchIsAuthoritative(t *testing.T) {
+	tests := []struct {
+		name      string
+		imageArch string
+		want      string
+	}{
+		{name: "detected architecture replaces config", imageArch: "linux/amd64", want: "amd64"},
+		{name: "multi-arch detection clears config selector", imageArch: "linux/amd64,linux/arm64", want: ""},
+		{name: "unknown detection clears config selector", imageArch: "", want: ""},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			opts := DeploymentOptions{TargetArch: "arm64"}
+			setSourceBuildTargetArch(&opts, tt.imageArch)
+			if opts.TargetArch != tt.want {
+				t.Errorf("TargetArch = %q, want %q", opts.TargetArch, tt.want)
+			}
+		})
+	}
+}
+
+func TestBuildAtomicDeploymentIntentMapsRuntimeOptions(t *testing.T) {
+	intended, err := buildAtomicDeploymentIntent(DeploymentOptions{
+		CPURequest: "500m", CPULimit: "1", Memory: "512Mi", Organization: "tenant-a", Port: 8080,
+		Replicas: 2, Zone: "my-kul-1b", TargetArch: "arm64", EnvEnabled: true,
+		Environment:   &api.Environment{KeyValues: []api.KeyValuePair{{Key: "LOG_LEVEL", Value: "info"}}},
+		IntentVolumes: []api.DeploymentIntentVolume{{VolumeName: "data", ClaimName: "data-pvc", StorageClass: "ceph-block", StorageSize: "1Gi", MountPath: "/data"}},
+		DesiredStateConfig: api.DeploymentDesiredStateConfig{
+			ReadinessProbe:  &api.DeploymentProbe{TCPSocket: &api.DeploymentTCPSocketProbe{Port: 8080}},
+			RequiredSecrets: []api.DeploymentRequiredSecret{{Key: "DATABASE_URL"}},
+		},
+		HPAConfig: &api.HPAConfig{Enabled: true, MinReplicas: 2, MaxReplicas: 5},
+		VPAConfig: &api.VPAConfig{Enabled: true, UpdateMode: "Initial"},
+		PDBConfig: &PDBConfig{Enabled: true, Type: PDBTypeFixed},
+		WaitFor:   []api.WaitFor{{Host: "postgres", Port: 5432}}, Strategy: "recreate",
+	}, "registry.example/api:v1", "api", uuid.NewString())
+	if err != nil {
+		t.Fatalf("buildAtomicDeploymentIntent: %v", err)
+	}
+	if intended.Deployment.Image != "registry.example/api:v1" || intended.Deployment.Namespace != "tenant-a" || intended.Deployment.Replicas != 2 || intended.Deployment.TargetArch != "arm64" {
+		t.Fatalf("deployment = %+v", intended.Deployment)
+	}
+	if intended.Service == nil || intended.Service.Name != "api" || intended.PublicRoute == nil || intended.PublicRoute.Kind != "default_dns" {
+		t.Fatalf("intent route/service = %+v/%+v", intended.Service, intended.PublicRoute)
+	}
+	if len(intended.Environment) != 1 || len(intended.Volumes) != 1 || intended.Config.ReadinessProbe == nil || len(intended.Config.RequiredSecrets) != 1 {
+		t.Fatalf("intent did not preserve declarations: %+v", intended)
+	}
+	if intended.Deployment.HPAConfig == nil || intended.Deployment.VPAConfig == nil || intended.Deployment.PDBConfig == nil || intended.Deployment.StrategyConfig == nil || len(intended.Deployment.WaitFor) != 1 {
+		t.Fatalf("runtime options not mapped: %+v", intended.Deployment)
+	}
+}
+
+func TestAtomicIntentFallbackIsExplicit(t *testing.T) {
+	tests := []struct {
+		opts DeploymentOptions
+		want string
+	}{
+		{opts: DeploymentOptions{Domain: "api.example.com"}, want: "custom domain routing"},
+		{opts: DeploymentOptions{Hostnames: []string{"machine-a"}}, want: "explicit machine placement"},
+		{opts: DeploymentOptions{MulticlusterEnabled: true}, want: "multi-cluster deployment"},
+		{opts: DeploymentOptions{Dependencies: []api.Dependency{{Name: "redis"}}}, want: "dependent workload creation"},
+		{opts: DeploymentOptions{}, want: ""},
+	}
+	for _, tt := range tests {
+		if got := atomicIntentFallbackReason(tt.opts); got != tt.want {
+			t.Errorf("atomicIntentFallbackReason(%+v) = %q, want %q", tt.opts, got, tt.want)
+		}
+	}
+}
+
 func TestDeploy(t *testing.T) {
 	// Skip this test in CI - it requires Docker daemon and actual API
 	// This is an integration test that should run with proper setup
@@ -193,7 +266,7 @@ func TestDeploy(t *testing.T) {
 			// TODO: Replace actual API calls with mock
 			// This requires refactoring the deploy package to accept an API interface
 
-			resp, err := Deploy(tt.opts)
+			resp, err := Deploy(tt.opts, uuid.NewString())
 			if (err != nil) != tt.wantErr {
 				t.Errorf("Deploy() error = %v, wantErr %v", err, tt.wantErr)
 				return

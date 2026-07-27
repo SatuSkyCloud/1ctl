@@ -63,8 +63,17 @@ func (cm *CleanupManager) cleanupResource(resource Resource) error {
 
 	switch resource.Type {
 	case ResourceDeployment:
-		_, err := api.DeleteDeployment(resource.ID)
-		return err
+		operation, err := api.DeleteDeployment(resource.ID)
+		if err != nil {
+			return err
+		}
+		if operation != nil && !operation.IsTerminal() && (operation.Status != "" || operation.Operation != "" || operation.StatusURL != "") {
+			return fmt.Errorf("deletion accepted asynchronously and remains in progress")
+		}
+		if operation != nil && operation.IsTerminal() && !operation.IsSuccessful() {
+			return fmt.Errorf("deletion failed: %s", operation.Lifecycle.ErrorText())
+		}
+		return nil
 	case ResourceService:
 		return api.DeleteService(resource.ID)
 	case ResourceIngress:

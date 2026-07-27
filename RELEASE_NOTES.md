@@ -16,7 +16,6 @@ Complete CLI framework upgrade (`urfave/cli` v2→v3), positional args for all r
 - **notifications**: `delete <id>`
 - **audit**: `get <id>`
 - **pricing**: `get <id>`
-- **issuer**: `delete <id>`
 - **ingress**: `delete <id>`
 - **domains**: `purchase-status <intent-id>`
 - **service**: `delete <service-id>`
@@ -24,7 +23,17 @@ Complete CLI framework upgrade (`urfave/cli` v2→v3), positional args for all r
 
 Pattern: `1ctl <resource> <action> <target> [flags]`. UUID auto-detection, `-o json` support preserved on all commands.
 
+### Certificate status migration
+
+`1ctl issuer` is retired. TLS is automatic; use deployment status or `1ctl domains check` to verify certificate readiness.
+
 ### New Commands
+
+* **`1ctl valkey`**: Private managed Valkey services with persistent placement.
+  - `valkey create <name>` uses validated automatic machine placement.
+  - `valkey create <name> --machine-id <id>` pins a new service to a specific eligible machine.
+  - The selected machine is durable intent and is reused by update, redeploy, and restart workflows.
+  - Workloads require the selected machine to remain rentable and open for marketplace admission.
 
 * **`1ctl app`**: Application lifecycle management (splits from `deploy`).
   - `app list` — list all deployed applications.

@@ -1,9 +1,12 @@
 package api
 
 import (
+	cliContext "1ctl/internal/context"
 	"1ctl/internal/utils"
 	"encoding/json"
 	"fmt"
+	"net/http"
+	"net/url"
 	"strings"
 	"time"
 
@@ -12,28 +15,52 @@ import (
 
 // MarketplaceApp represents a marketplace application
 type MarketplaceApp struct {
-	MarketplaceID   uuid.UUID              `json:"marketplace_id"`
-	MarketplaceName string                 `json:"marketplace_name"`
-	Description     string                 `json:"description"`
-	ImageURL        string                 `json:"image_url"`
-	Category        string                 `json:"category"`
-	Metadata        map[string]interface{} `json:"metadata,omitempty"`
-	ComingSoon      bool                   `json:"coming_soon"`
-	DeploymentCount int                    `json:"deployment_count,omitempty"`
-	CreatedAt       time.Time              `json:"created_at"`
-	UpdatedAt       time.Time              `json:"updated_at"`
+	MarketplaceID    uuid.UUID                  `json:"marketplace_id"`
+	MarketplaceName  string                     `json:"marketplace_name"`
+	Description      string                     `json:"description"`
+	ImageURL         string                     `json:"image_url"`
+	Category         string                     `json:"category"`
+	Metadata         map[string]interface{}     `json:"metadata,omitempty"`
+	SupportedArchs   []string                   `json:"supported_archs,omitempty"`
+	PackageReleaseID *uuid.UUID                 `json:"package_release_id,omitempty"`
+	PackageRelease   *MarketplacePackageRelease `json:"package_release,omitempty"`
+	Deployable       bool                       `json:"deployable"`
+	ComingSoon       bool                       `json:"coming_soon"`
+	DeploymentCount  int                        `json:"deployment_count,omitempty"`
+	CreatedAt        time.Time                  `json:"created_at"`
+	UpdatedAt        time.Time                  `json:"updated_at"`
+}
+
+// MarketplacePackageRelease is the immutable package release pinned to a catalog app.
+type MarketplacePackageRelease struct {
+	ReleaseID             uuid.UUID                            `json:"release_id"`
+	PackageName           string                               `json:"package_name"`
+	PackageVersion        string                               `json:"package_version"`
+	ContentDigest         string                               `json:"content_digest"`
+	ManifestMetadata      map[string]interface{}               `json:"manifest_metadata,omitempty"`
+	CertificationMetadata map[string]interface{}               `json:"certification_metadata,omitempty"`
+	Trusted               bool                                 `json:"trusted"`
+	CertifiedAt           time.Time                            `json:"certified_at"`
+	RegisteredAt          time.Time                            `json:"registered_at"`
+	Governance            *MarketplacePackageReleaseGovernance `json:"governance,omitempty"`
+}
+
+type MarketplacePackageReleaseGovernance struct {
+	State      string    `json:"state"`
+	Actor      string    `json:"actor"`
+	Reason     string    `json:"reason"`
+	OccurredAt time.Time `json:"occurred_at"`
 }
 
 // MarketplaceDeployRequest represents a request to deploy a marketplace app
 type MarketplaceDeployRequest struct {
-	DeploymentName     string              `json:"deployment_name"`
-	Hostnames          []string            `json:"hostnames,omitempty"`
-	CPUCores           string              `json:"cpu_cores,omitempty"`
-	Memory             string              `json:"memory,omitempty"`
-	DomainName         string              `json:"domain_name,omitempty"`
-	StorageSize        string              `json:"storage_size,omitempty"`
-	StorageClass       string              `json:"storage_class,omitempty"`
-	MulticlusterConfig *MulticlusterConfig `json:"multicluster_config,omitempty"`
+	DeploymentName string                 `json:"deployment_name"`
+	Hostnames      []string               `json:"hostnames,omitempty"`
+	Replicas       int32                  `json:"replicas,omitempty"`
+	CPURequest     string                 `json:"cpu_request,omitempty"`
+	MemoryRequest  string                 `json:"memory_request,omitempty"`
+	StorageSize    string                 `json:"storage_size,omitempty"`
+	Values         map[string]interface{} `json:"values,omitempty"`
 }
 
 // MarketplaceDeployResponse represents a marketplace deployment response
@@ -46,29 +73,23 @@ type MarketplaceDeployResponse struct {
 
 // GetMarketplaceApps gets all marketplace apps
 func GetMarketplaceApps(limit, offset int, sortBy string) ([]MarketplaceApp, error) {
-	path := "/marketplace/all"
-	params := []string{}
+	path := "/marketplaces/all"
+	params := url.Values{}
 	if limit > 0 {
-		params = append(params, fmt.Sprintf("limit=%d", limit))
+		params.Set("limit", fmt.Sprintf("%d", limit))
 	}
 	if offset > 0 {
-		params = append(params, fmt.Sprintf("offset=%d", offset))
+		params.Set("offset", fmt.Sprintf("%d", offset))
 	}
 	if sortBy != "" {
-		params = append(params, fmt.Sprintf("sort=%s", sortBy))
+		params.Set("sortBy", sortBy)
 	}
-	if len(params) > 0 {
-		path = path + "?"
-		for i, p := range params {
-			if i > 0 {
-				path += "&"
-			}
-			path += p
-		}
+	if encoded := params.Encode(); encoded != "" {
+		path += "?" + encoded
 	}
 
 	var resp apiResponse
-	err := makeRequest("GET", path, nil, &resp)
+	err := makeMainAPIRequestWithHeaders(http.MethodGet, path, nil, &resp, marketplaceOrganizationHeaders())
 	if err != nil {
 		return nil, err
 	}
@@ -88,7 +109,7 @@ func GetMarketplaceApps(limit, offset int, sortBy string) ([]MarketplaceApp, err
 // GetMarketplaceApp gets a specific marketplace app
 func GetMarketplaceApp(marketplaceID string) (*MarketplaceApp, error) {
 	var resp apiResponse
-	err := makeRequest("GET", fmt.Sprintf("/marketplace/id/%s", marketplaceID), nil, &resp)
+	err := makeMainAPIRequestWithHeaders(http.MethodGet, fmt.Sprintf("/marketplaces/id/%s", url.PathEscape(marketplaceID)), nil, &resp, marketplaceOrganizationHeaders())
 	if err != nil {
 		return nil, err
 	}
@@ -135,7 +156,7 @@ func ResolveMarketplaceApp(nameOrID string) (*MarketplaceApp, error) {
 // DeployMarketplaceApp deploys a marketplace app
 func DeployMarketplaceApp(namespace, marketplaceID string, req MarketplaceDeployRequest) (*MarketplaceDeployResponse, error) {
 	var resp apiResponse
-	err := makeRequest("POST", fmt.Sprintf("/marketplace/deploy/create/%s/%s", namespace, marketplaceID), req, &resp)
+	err := makeMainAPIRequestWithHeaders(http.MethodPost, fmt.Sprintf("/marketplaces/deploy/create/%s/%s", url.PathEscape(namespace), url.PathEscape(marketplaceID)), req, &resp, marketplaceOrganizationHeaders())
 	if err != nil {
 		return nil, err
 	}
@@ -150,4 +171,27 @@ func DeployMarketplaceApp(namespace, marketplaceID string, req MarketplaceDeploy
 		return nil, utils.NewError(fmt.Sprintf("failed to unmarshal deploy response: %s", err.Error()), nil)
 	}
 	return &deployResp, nil
+}
+
+// DownloadMarketplaceDeploymentOutput downloads one package-declared output.
+// Outputs may be sensitive, so callers must not include the returned bytes in
+// ordinary structured output.
+func DownloadMarketplaceDeploymentOutput(deploymentID, outputName string) ([]byte, error) {
+	path := fmt.Sprintf(
+		"/marketplace-outputs/deployments/%s/outputs/%s/download",
+		url.PathEscape(deploymentID),
+		url.PathEscape(outputName),
+	)
+	return downloadMainAPIResponse(path, marketplaceOrganizationHeaders())
+}
+
+// marketplaceOrganizationHeaders carries the user's selected organization for
+// owner-private marketplace visibility. The backend validates membership; an
+// empty context retains the public catalog behavior.
+func marketplaceOrganizationHeaders() http.Header {
+	headers := make(http.Header)
+	if organizationID := strings.TrimSpace(cliContext.GetCurrentOrgID()); organizationID != "" {
+		headers.Set("x-satusky-organization-id", organizationID)
+	}
+	return headers
 }

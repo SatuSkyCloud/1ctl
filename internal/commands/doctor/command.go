@@ -20,12 +20,12 @@ const (
 // --- Input structs ------------------------------------------------------
 
 type doctorInput struct {
-	DeploymentID   string
-	App            string
-	Config         string
-	HealthPath     string
-	HealthPathSet  bool  // true when --health-path was explicitly passed
-	Smoke          bool
+	DeploymentID  string
+	App           string
+	Config        string
+	HealthPath    string
+	HealthPathSet bool // true when --health-path was explicitly passed
+	Smoke         bool
 }
 
 // --- Command tree -------------------------------------------------------

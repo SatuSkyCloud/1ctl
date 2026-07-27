@@ -43,12 +43,16 @@ func handleDeploy(ctx context.Context, in DeployInput) error {
 		return utils.NewError(fmt.Sprintf("deployment preparation failed: %s", err.Error()), nil)
 	}
 
-	resp, err := deploypkg.Deploy(opts)
+	requestID := uuid.NewString()
+	resp, err := deploypkg.Deploy(opts, requestID)
 	if err != nil {
 		if _, ok := err.(*utils.ResourceExhaustedCLIError); ok {
 			return err
 		}
 		return utils.NewError(fmt.Sprintf("deployment failed: %s", err.Error()), nil)
+	}
+	if resp.Intent != nil {
+		return reportAtomicIntent(resp.Intent, merged.Wait)
 	}
 
 	ingressID := ""
@@ -59,12 +63,37 @@ func handleDeploy(ctx context.Context, in DeployInput) error {
 	return deploypkg.ReportDeployResult(resp.AppLabel, resp.DeploymentID.String(), resp.Domain, publicURL, merged.HealthPath, merged.StrictSmoke)
 }
 
+func reportAtomicIntent(accepted *api.DeploymentIntentAccepted, wait bool) error {
+	if utils.TryPrintJSON(map[string]interface{}{"mode": "atomic", "intent": accepted}) {
+		return nil
+	}
+	utils.PrintStatusLine("Deployment path", "atomic intent")
+	utils.PrintStatusLine("Operation ID", accepted.OperationID)
+	utils.PrintStatusLine("Deployment ID", accepted.DeploymentID)
+	utils.PrintStatusLine("Generation", fmt.Sprintf("%d", accepted.Generation))
+	utils.PrintStatusLine("State", accepted.State)
+	if len(accepted.MissingRequiredSecrets) > 0 {
+		utils.PrintWarning("Required secret keys are not supplied by satusky.toml: %s", strings.Join(accepted.MissingRequiredSecrets, ", "))
+	}
+	if !wait {
+		utils.PrintInfo("Deployment intent was accepted and is pending reconciliation. Use --wait to observe readiness.")
+		return nil
+	}
+	final, err := api.WaitForDeployment(accepted.DeploymentID, 5*time.Minute)
+	if err != nil {
+		return utils.NewError(fmt.Sprintf("deployment intent accepted but readiness failed: %s", err.Error()), nil)
+	}
+	utils.PrintSuccess("Deployment %s is healthy (%s)", accepted.AppLabel, final.Status)
+	return nil
+}
+
 type mergedInput struct {
 	DeployInput
 	Fast         bool
 	StrictSmoke  bool
 	AppName      string
 	Organization string
+	TargetArch   string
 	UserSetFlags map[string]bool
 }
 
@@ -111,6 +140,8 @@ func mergeConfig(in DeployInput, cfg *config.ProjectConfig) mergedInput {
 		}
 		applyIf(&m.Domain, cfg.App.Domain)
 		applyIf(&m.Dockerfile, cfg.Build.Dockerfile)
+		applyIf(&m.Image, cfg.Build.Image)
+		m.TargetArch = cfg.Build.TargetArch
 		if m.Replicas == 0 {
 			if cfg.App.Replicas > 0 {
 				m.Replicas = cfg.App.Replicas
@@ -191,6 +222,11 @@ func shouldShowDeployHelp(m mergedInput, cfg *config.ProjectConfig) bool {
 }
 
 func validateInputs(m mergedInput) error {
+	if m.Image != "" {
+		if err := validator.ValidateImageReference(m.Image); err != nil {
+			return utils.NewError(fmt.Sprintf("invalid image: %v", err), nil)
+		}
+	}
 	if m.Image == "" {
 		if err := validator.ValidateDockerfile(m.Dockerfile); err != nil {
 			_, findErr := validator.FindDockerfile(".")
@@ -299,6 +335,7 @@ func prepareDeploymentOptions(m mergedInput, cfg *config.ProjectConfig) (deployp
 		DockerfilePath: dockerfilePath,
 		PrebuiltImage:  m.Image,
 		FastBuild:      m.Fast,
+		TargetArch:     m.TargetArch,
 	}
 
 	opts.Name = m.AppName
@@ -309,6 +346,15 @@ func prepareDeploymentOptions(m mergedInput, cfg *config.ProjectConfig) (deployp
 		opts.Environment = &api.Environment{
 			KeyValues: parseEnvVars(m.Env),
 		}
+	}
+	if cfg != nil {
+		opts.DesiredStateConfig = deploymentDesiredStateConfig(cfg)
+		opts.IntentVolumes = deploymentIntentVolumes(cfg.Volumes)
+		opts.AtomicOnlyConfig = len(cfg.Secrets.Required) > 0 ||
+			opts.DesiredStateConfig.StartupProbe != nil ||
+			opts.DesiredStateConfig.ReadinessProbe != nil ||
+			opts.DesiredStateConfig.LivenessProbe != nil ||
+			cfg.UsesCanonicalVolumes()
 	}
 
 	if len(m.Machine) > 0 {
@@ -465,6 +511,57 @@ func prepareDeploymentOptions(m mergedInput, cfg *config.ProjectConfig) (deployp
 	return opts, nil
 }
 
+func deploymentDesiredStateConfig(cfg *config.ProjectConfig) api.DeploymentDesiredStateConfig {
+	return api.DeploymentDesiredStateConfig{
+		StartupProbe:    deploymentProbe(cfg.Checks.Startup),
+		ReadinessProbe:  deploymentProbe(cfg.Checks.Readiness),
+		LivenessProbe:   deploymentProbe(cfg.Checks.Liveness),
+		RequiredSecrets: requiredSecretDeclarations(cfg.Secrets.Required),
+	}
+}
+
+func requiredSecretDeclarations(keys []string) []api.DeploymentRequiredSecret {
+	declarations := make([]api.DeploymentRequiredSecret, 0, len(keys))
+	for _, key := range keys {
+		declarations = append(declarations, api.DeploymentRequiredSecret{Key: key})
+	}
+	return declarations
+}
+
+func deploymentProbe(probe *config.ProbeConfig) *api.DeploymentProbe {
+	if probe == nil {
+		return nil
+	}
+	converted := &api.DeploymentProbe{
+		InitialDelaySeconds: probe.InitialDelaySeconds,
+		TimeoutSeconds:      probe.TimeoutSeconds,
+		PeriodSeconds:       probe.PeriodSeconds,
+		SuccessThreshold:    probe.SuccessThreshold,
+		FailureThreshold:    probe.FailureThreshold,
+	}
+	if probe.HTTPGet != nil {
+		converted.HTTPGet = &api.DeploymentHTTPGetProbe{Path: probe.HTTPGet.Path, Port: probe.HTTPGet.Port}
+	}
+	if probe.TCPSocket != nil {
+		converted.TCPSocket = &api.DeploymentTCPSocketProbe{Port: probe.TCPSocket.Port}
+	}
+	if probe.Exec != nil {
+		converted.Exec = &api.DeploymentExecProbe{Command: append([]string(nil), probe.Exec.Command...)}
+	}
+	return converted
+}
+
+func deploymentIntentVolumes(volumes []config.VolumeConfig) []api.DeploymentIntentVolume {
+	converted := make([]api.DeploymentIntentVolume, 0, len(volumes))
+	for _, volume := range volumes {
+		converted = append(converted, api.DeploymentIntentVolume{
+			VolumeName: volume.Name, ClaimName: volume.Claim, StorageClass: volume.StorageClass,
+			StorageSize: volume.Size, MountPath: volume.Mount,
+		})
+	}
+	return converted
+}
+
 func applyConfigHPA(opts *deploypkg.DeploymentOptions, hpa config.HPAConfig) {
 	cfg := &api.HPAConfig{
 		Enabled:     true,
@@ -576,8 +673,6 @@ func resolveMachineTagExpr(expr string) ([]string, error) {
 	return hostnames, nil
 }
 
-
-
 // --- List / Get ---------------------------------------------------------
 
 func handleListDeployments(ctx context.Context) error {
@@ -665,8 +760,18 @@ func handleDeploymentStatus(ctx context.Context, in StatusInput) error {
 		return err
 	}
 
-	if in.Watch {
-		status, err := api.WaitForDeployment(deploymentID, 5*time.Minute)
+	deployment, err := api.GetDeployment(deploymentID)
+	if err != nil {
+		return utils.NewError(fmt.Sprintf("failed to get deployment details: %s", err.Error()), nil)
+	}
+
+	var status *api.DeploymentStatus
+	if deployment.IsMarketplaceManaged() {
+		// Marketplace deployments are reconciled through the canonical deployment
+		// record. The legacy /deployments/status endpoint has no marketplace row.
+		status = &api.DeploymentStatus{Status: deployment.Status}
+	} else if in.Watch {
+		status, err = api.WaitForDeployment(deploymentID, 5*time.Minute)
 		if err != nil {
 			return utils.NewError(fmt.Sprintf("failed to watch deployment: %s", err.Error()), nil)
 		}
@@ -675,16 +780,11 @@ func handleDeploymentStatus(ctx context.Context, in StatusInput) error {
 			utils.PrintStatusLine("Message", status.Message)
 		}
 		return nil
-	}
-
-	status, err := api.GetDeploymentStatus(deploymentID)
-	if err != nil {
-		return utils.NewError(fmt.Sprintf("failed to get deployment status: %s", err.Error()), nil)
-	}
-
-	deployment, err := api.GetDeployment(deploymentID)
-	if err != nil {
-		return utils.NewError(fmt.Sprintf("failed to get deployment details: %s", err.Error()), nil)
+	} else {
+		status, err = api.GetDeploymentStatus(deploymentID)
+		if err != nil {
+			return utils.NewError(fmt.Sprintf("failed to get deployment status: %s", err.Error()), nil)
+		}
 	}
 
 	var ingress *api.Ingress
@@ -744,9 +844,22 @@ func handleDeploymentStatus(ctx context.Context, in StatusInput) error {
 // --- Destroy ------------------------------------------------------------
 
 func handleDestroyDeployment(ctx context.Context, in DestroyInput) error {
+	if in.PurgeRetained && in.RetainVolumes {
+		return utils.NewError("--purge-retained conflicts with --retain-volumes", nil)
+	}
 	deploymentID, err := deploypkg.ResolveDeploymentID(in.DeploymentID, in.App, in.Config)
 	if err != nil {
 		return err
+	}
+
+	if in.PurgeRetained {
+		deployment, getErr := api.GetDeployment(deploymentID)
+		if getErr != nil {
+			return utils.NewError(fmt.Sprintf("failed to verify deployment source: %s", getErr.Error()), nil)
+		}
+		if !deployment.IsMarketplaceManaged() {
+			return utils.NewError("--purge-retained is only supported for marketplace-managed deployments; generic deployments must retain their resources", nil)
+		}
 	}
 
 	preview, pErr := previewDeletion(deploymentID)
@@ -762,33 +875,68 @@ func handleDestroyDeployment(ctx context.Context, in DestroyInput) error {
 		return nil
 	}
 
-	utils.PrintInfo("Destroying deployment %s...", deploymentID)
-	statuses, volErr := api.GetDeploymentVolumeLifecycleStatuses(deploymentID)
-	if volErr != nil {
-		utils.PrintWarning("Could not list volumes for destruction: %s", volErr.Error())
-	} else if len(statuses) > 0 {
-		if in.RetainVolumes {
-			utils.PrintInfo("--retain-volumes set: skipping PVC destruction for %d volume(s)", len(statuses))
-		} else {
-			for _, v := range statuses {
-				utils.PrintInfo("Destroying volume %s (PVC: %s)...", v.Volume.VolumeName, v.PVC.Name)
-				if _, delErr := api.DeleteVolumePVC(v.Volume.VolumeID.String()); delErr != nil {
-					utils.PrintWarning("Failed to destroy volume %s: %s", v.Volume.VolumeName, delErr.Error())
-				}
-			}
-		}
-	}
-
-	result, err := api.DeleteDeployment(deploymentID)
+	utils.PrintInfo("Requesting deletion of deployment %s...", deploymentID)
+	operation, err := api.DeleteDeployment(deploymentID, in.PurgeRetained)
 	if err != nil {
 		return utils.NewError(fmt.Sprintf("failed to delete deployment: %s", err.Error()), nil)
 	}
 
-	if utils.TryPrintJSON(result) {
+	if in.NoWait {
+		printDeploymentDeletionOperation(operation)
+		if operation.IsTerminal() && !operation.IsSuccessful() {
+			return utils.NewError(fmt.Sprintf("deployment deletion failed: %s", deletionLifecycleError(operation)), nil)
+		}
 		return nil
 	}
-	printDeletionResult(deploymentID, result)
+
+	final, waitErr := api.WaitForDeploymentDeletion(operation, 5*time.Minute)
+	if final != nil {
+		printDeploymentDeletionOperation(final)
+	}
+	if waitErr != nil {
+		return utils.NewError(fmt.Sprintf("deployment deletion did not complete: %s", waitErr.Error()), nil)
+	}
+	if !final.IsSuccessful() {
+		return utils.NewError(fmt.Sprintf("deployment deletion failed: %s", deletionLifecycleError(final)), nil)
+	}
 	return nil
+}
+
+func printDeploymentDeletionOperation(operation *api.DeploymentDeletionOperation) {
+	if utils.TryPrintJSON(operation) {
+		return
+	}
+	if !operation.IsTerminal() {
+		utils.PrintInfo("Deletion accepted; waiting for backend convergence.")
+	}
+	utils.PrintHeader("Deployment Deletion")
+	utils.PrintStatusLine("Deployment ID", operation.DeploymentID)
+	utils.PrintStatusLine("Status URL", operation.StatusURL)
+	utils.PrintStatusLine("Purge retained", fmt.Sprintf("%t", operation.PurgeRetained))
+	state := operation.Lifecycle.State
+	if state == "" {
+		state = operation.Status
+	}
+	utils.PrintStatusLine("Current state", state)
+	utils.PrintStatusLine("Terminal", fmt.Sprintf("%t", operation.IsTerminal()))
+	if operation.Lifecycle.ErrorCode != "" {
+		utils.PrintStatusLine("Error code", operation.Lifecycle.ErrorCode)
+	}
+	if operation.Lifecycle.ErrorMessage != "" {
+		utils.PrintStatusLine("Error message", operation.Lifecycle.ErrorMessage)
+	} else if operation.Lifecycle.Message != "" {
+		utils.PrintStatusLine("Message", operation.Lifecycle.Message)
+	}
+}
+
+func deletionLifecycleError(operation *api.DeploymentDeletionOperation) string {
+	if message := operation.Lifecycle.ErrorText(); message != "" {
+		return message
+	}
+	if operation.Lifecycle.State != "" {
+		return operation.Lifecycle.State
+	}
+	return operation.Status
 }
 
 func previewDeletion(deploymentID string) ([]string, error) {
@@ -836,44 +984,6 @@ func previewDeletion(deploymentID string) ([]string, error) {
 	return lines, nil
 }
 
-func printDeletionResult(deploymentID string, result *api.DeletionResult) {
-	utils.PrintSuccess("Deployment %s delete completed", deploymentID)
-	if result == nil {
-		return
-	}
-	utils.PrintHeader("Deleted Resources")
-	if result.AppLabel != "" {
-		utils.PrintStatusLine("App", result.AppLabel)
-	}
-	if result.Namespace != "" {
-		utils.PrintStatusLine("Namespace", result.Namespace)
-	}
-	if len(result.DeletedDeployments) > 0 {
-		utils.PrintStatusLine("Deployments", strings.Join(result.DeletedDeployments, ", "))
-	} else {
-		utils.PrintStatusLine("Deployments", "none reported")
-	}
-	if result.IsCNPGDeployment {
-		utils.PrintStatusLine("CNPG", "database deployment cleanup applied")
-	}
-	if len(result.Volumes) == 0 {
-		utils.PrintStatusLine("PVCs", "none reported")
-		return
-	}
-	headers := []string{"PVC", "VOLUME", "STATUS", "POLICY", "MESSAGE"}
-	rows := make([][]string, 0, len(result.Volumes))
-	for _, volume := range result.Volumes {
-		rows = append(rows, []string{
-			volume.ClaimName,
-			volume.VolumeName,
-			volume.Status,
-			volume.DestroyPolicy,
-			volume.Message,
-		})
-	}
-	utils.PrintTable(headers, rows)
-}
-
 // --- Restart / Releases / Rollback / Open / Scale -----------------------
 
 func handleRestartDeployment(ctx context.Context, in DeployRefInput) error {
@@ -882,7 +992,7 @@ func handleRestartDeployment(ctx context.Context, in DeployRefInput) error {
 		return err
 	}
 	utils.PrintInfo("Initiating rolling restart for deployment %s...", deploymentID)
-	if err := api.RestartDeployment(deploymentID); err != nil {
+	if err := api.RestartDeployment(deploymentID, uuid.NewString()); err != nil {
 		return utils.NewError(fmt.Sprintf("failed to restart: %s", err.Error()), nil)
 	}
 	utils.PrintSuccess("Rolling restart initiated.")
@@ -938,7 +1048,7 @@ func handleRollback(ctx context.Context, in RollbackInput) error {
 		return nil
 	}
 
-	if err := api.RollbackDeployment(deploymentID, version); err != nil {
+	if err := api.RollbackDeployment(deploymentID, version, uuid.NewString()); err != nil {
 		return utils.NewError(fmt.Sprintf("rollback failed: %s", err.Error()), nil)
 	}
 	utils.PrintSuccess("Rollback to version %d initiated", version)
@@ -994,7 +1104,7 @@ func handleScaleDeployment(ctx context.Context, in ScaleInput) error {
 	current.Replicas = replicas
 
 	var resp string
-	if err := api.UpsertDeployment(*current, &resp); err != nil {
+	if err := api.UpsertDeployment(*current, &resp, uuid.NewString()); err != nil {
 		return utils.NewError(fmt.Sprintf("failed to scale deployment: %s", err.Error()), nil)
 	}
 	utils.PrintSuccess("Scaled deployment %s to %d replicas", deploymentID, replicas)

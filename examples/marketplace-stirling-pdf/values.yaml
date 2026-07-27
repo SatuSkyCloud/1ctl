@@ -1,0 +1,12 @@
+# The backend replaces this reserved object after coalescing chart defaults and
+# validated package inputs. It is present only so Helm can lint this chart
+# locally; it must never be supplied as a package input.
+satusky:
+  appName: stirling-pdf
+  namespace: default
+  domainName: stirling-pdf.example.invalid
+  gatewayMode: false
+  gatewayName: ""
+  gatewayNamespace: ""
+  cloudflareTunnelTarget: ""
+  credentials: {}

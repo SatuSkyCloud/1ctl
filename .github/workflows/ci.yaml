@@ -3,136 +3,128 @@ name: CI
 on:
   push:
     branches: [main, development]
-    paths-ignore:
-      - "**/*.md"
-      - "docs/**"
-      - "LICENSE"
   pull_request:
     branches:
       - main
       - development
       - feature/**
-    paths-ignore:
-      - "**/*.md"
-      - "docs/**"
-      - "LICENSE"
+  workflow_dispatch:
+
+permissions:
+  contents: read
 
 concurrency:
   group: ci-${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
-# Self-hosted runner toggle. Set repo VARS (not secrets — these are
-# plain strings):
-#   USE_SELF_HOSTED=true                 to opt in
-#   SELF_HOSTED_RUNNER_LABEL=<label>     the runner-group label
-# Falls back to GitHub-hosted ubuntu-latest when the flag is off or the
-# variables are unset.
-#
-# Tests run on Linux only by default — Go's stdlib handles filepath/env
-# portability and the `build` job below cross-compiles all 5 OS/arch
-# combinations as a smoke test. To exercise the full mac/windows test
-# matrix (e.g. before a release), trigger this workflow via
-# workflow_dispatch with run_cross_os=true.
+# Public pull requests execute repository-controlled code, so CI always uses
+# isolated GitHub-hosted runners. Release workflows follow the same policy.
 
 jobs:
-  test:
-    name: Test
-    runs-on: ${{ vars.USE_SELF_HOSTED == 'true' && vars.SELF_HOSTED_RUNNER_LABEL || 'ubuntu-latest' }}
-
+  contract:
+    name: Contract Freshness
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
     steps:
-      - uses: actions/checkout@v4
-        with:
-          token: ${{ secrets.GITHUB_TOKEN }}
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
 
       - name: Set up Go
-        uses: actions/setup-go@v5
+        uses: actions/setup-go@924ae3a1cded613372ab5595356fb5720e22ba16 # v6
         with:
-          go-version: "1.21"
+          go-version: "1.26.5"
           cache: true
 
-      - name: Install Task
-        uses: arduino/setup-task@v2
+      - name: Verify generated contract artifacts
+        run: go run ./cmd/contractgen --check
+
+  test:
+    name: Test
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+
+      - name: Set up Go
+        uses: actions/setup-go@924ae3a1cded613372ab5595356fb5720e22ba16 # v6
         with:
-          version: 3.x
-          repo-token: ${{ secrets.GITHUB_TOKEN }}
+          go-version: "1.26.5"
+          cache: true
 
-      - name: Install dependencies
-        run: task init
+      - name: Verify dependencies
+        run: go mod download && go mod verify
 
-      # `task test` uses `-race`, which needs cgo + gcc. The current
-      # self-hosted runner image doesn't bundle gcc, so race detection
-      # is disabled in CI. Race detection is still on by default for
-      # local dev (`task test`). Use `-covermode=count` since we can't
-      # use `-covermode=atomic` without -race.
       - name: Run tests
-        run: go test -coverprofile=coverage.txt -covermode=count ./...
+        env:
+          SATUSKY_BACKEND_MANIFEST: ${{ vars.SATUSKY_BACKEND_MANIFEST }}
+        run: go test -race -coverprofile=coverage.txt -covermode=atomic ./...
 
   lint:
     name: Lint
-    runs-on: ${{ vars.USE_SELF_HOSTED == 'true' && vars.SELF_HOSTED_RUNNER_LABEL || 'ubuntu-latest' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
     steps:
-      - uses: actions/checkout@v4
-        with:
-          token: ${{ secrets.GITHUB_TOKEN }}
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
 
       - name: Set up Go
-        uses: actions/setup-go@v5
+        uses: actions/setup-go@924ae3a1cded613372ab5595356fb5720e22ba16 # v6
         with:
-          go-version: "1.21"
+          go-version: "1.26.5"
           cache: true
-
-      - name: Install Task
-        uses: arduino/setup-task@v2
 
       - name: Install golangci-lint
         run: go install github.com/golangci/golangci-lint/v2/cmd/golangci-lint@v2.8.0
 
       - name: Run linters
-        run: task lint
+        run: |
+          test -z "$(gofmt -l .)"
+          go vet ./...
+          golangci-lint run ./...
 
   security:
     name: Security Scan
-    runs-on: ${{ vars.USE_SELF_HOSTED == 'true' && vars.SELF_HOSTED_RUNNER_LABEL || 'ubuntu-latest' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
     steps:
-      - uses: actions/checkout@v4
-        with:
-          token: ${{ secrets.GITHUB_TOKEN }}
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
 
-      - name: Run Gosec Security Scanner
-        uses: securego/gosec@master
+      - name: Set up Go
+        uses: actions/setup-go@924ae3a1cded613372ab5595356fb5720e22ba16 # v6
         with:
-          args: ./...
+          go-version: "1.26.5"
+          cache: true
+
+      - name: Install pinned security tools
+        run: |
+          go install github.com/securego/gosec/v2/cmd/gosec@v2.28.0
+          go install github.com/zricethezav/gitleaks/v8@v8.30.1
+          go install golang.org/x/vuln/cmd/govulncheck@v1.6.0
+
+      - name: Scan source and dependencies
+        run: |
+          gosec -quiet ./...
+          gitleaks dir . --redact --no-banner
+          govulncheck ./...
 
   build:
     name: Build Linux AMD64
-    runs-on: ${{ vars.USE_SELF_HOSTED == 'true' && vars.SELF_HOSTED_RUNNER_LABEL || 'ubuntu-latest' }}
-    needs: [test, lint, security]
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    needs: [contract, test, lint, security]
     steps:
-      - uses: actions/checkout@v4
-        with:
-          token: ${{ secrets.GITHUB_TOKEN }}
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
 
       - name: Set up Go
-        uses: actions/setup-go@v5
+        uses: actions/setup-go@924ae3a1cded613372ab5595356fb5720e22ba16 # v6
         with:
-          go-version: "1.21"
+          go-version: "1.26.5"
           cache: true
-
-      - name: Install Task
-        uses: arduino/setup-task@v2
 
       - name: Build
         env:
           GOOS: linux
           GOARCH: amd64
-        run: task build
+        run: go build -trimpath -o bin/1ctl ./cmd/1ctl
 
       - name: Test binary
         run: ./bin/1ctl --version
-
-      - name: Upload artifact
-        uses: actions/upload-artifact@v4
-        with:
-          name: 1ctl-linux-amd64
-          path: bin/1ctl
-          retention-days: 7

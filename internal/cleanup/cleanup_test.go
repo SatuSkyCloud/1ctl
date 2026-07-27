@@ -2,7 +2,15 @@ package cleanup
 
 import (
 	"fmt"
+	"io"
+	"net/http"
+	"net/http/httptest"
+	"os"
+	"path/filepath"
+	"strings"
 	"testing"
+
+	cliContext "1ctl/internal/context"
 )
 
 func TestCleanupManager_AddAndCleanupRegistry(t *testing.T) {
@@ -21,6 +29,41 @@ func TestCleanupManager_AddAndCleanupRegistry(t *testing.T) {
 		cm.resources[1].Type != ResourceService ||
 		cm.resources[2].Type != ResourceVolume {
 		t.Errorf("registration order wrong: %+v", cm.resources)
+	}
+}
+
+func TestCleanupManagerReportsAcceptedDeletionAsInProgress(t *testing.T) {
+	var server *httptest.Server
+	server = httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodDelete || r.URL.Path != "/v1/deployments/dep-1" {
+			t.Fatalf("request = %s %s", r.Method, r.URL.Path)
+		}
+		_, _ = io.WriteString(w, `{"error":false,"data":{"deployment_id":"dep-1","operation":"delete","status":"deleting","status_url":"`+server.URL+`/v1/deployments/id/dep-1"}}`)
+	}))
+	defer server.Close()
+	originalStore := cliContext.Default()
+	configDir := filepath.Join(t.TempDir(), ".satusky")
+	if err := os.MkdirAll(filepath.Join(configDir, "profiles"), 0750); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(configDir, "profiles", "test.json"), []byte("{}"), 0600); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(configDir, "context.json"), []byte(`{"active_profile":"test"}`), 0600); err != nil {
+		t.Fatal(err)
+	}
+	cliContext.SetDefault(cliContext.NewTestStore(configDir))
+	t.Cleanup(func() { cliContext.SetDefault(originalStore) })
+	if err := cliContext.SetToken("test-token"); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("SATUSKY_API_URL", server.URL+"/v1/cli")
+
+	cm := NewCleanupManager()
+	cm.AddResource(ResourceDeployment, "dep-1", "app")
+	errs := cm.Cleanup()
+	if len(errs) != 1 || !strings.Contains(errs[0].Error(), "accepted asynchronously") || !strings.Contains(errs[0].Error(), "in progress") {
+		t.Fatalf("cleanup errors = %v", errs)
 	}
 }
 

@@ -147,7 +147,7 @@ cd your-project
 1ctl deploy --cpu-request 250m --cpu-limit 1 --memory 1Gi --wait
 
 # JSON output (global flag — works on deploy, env, secret, machine, token, ingress, service,
-# credits, audit, notifications, pricing, cluster, domain, postgres, issuer, volumes)
+# credits, audit, notifications, pricing, cluster, domains, postgres, valkey, volumes)
 1ctl --output json deploy list | jq '.[] | select(.status == "Running")'
 
 # List deployments (NAME column shows the app label as of v0.8.0)
@@ -176,6 +176,28 @@ cd your-project
 ```
 
 > **Default targeting is managed cloud.** Even if you have registered machines, `1ctl deploy` (with no `--machine*` flag) goes to the marketplace. To use your own hardware pass `--machine` or `--machine-tag` explicitly. This changed in v0.8.0.
+
+### Managed Valkey
+
+```bash
+# Private standalone cache with persistence, AOF, and metrics
+1ctl valkey create sessions
+
+# Pin to a specific eligible machine instead of automatic placement
+1ctl valkey create sessions-local --machine-id 89905f5f769867452a7bd6c7505ab34d
+
+# Primary plus two read replicas (replicas do not provide automatic failover)
+1ctl valkey create shared-cache --topology replicated --instances 3 --storage-size 16Gi
+
+1ctl valkey status sessions
+1ctl valkey credentials sessions
+```
+
+When `--machine-id` is omitted, the platform selects an eligible live machine,
+persists that placement, and reuses it during reconciliation. Managed Valkey
+uses private ClusterIP endpoints. See the
+[managed Valkey guide](examples/user-journeys/13-managed-valkey.md) for safe
+updates, ACL users, credential rotation, metrics, logs, and current limitations.
 
 ### High Availability (PDB, HPA, VPA)
 
@@ -257,7 +279,7 @@ cd your-project
 1ctl domains delete app.example.com --app myapp --yes
 ```
 
-> **`1ctl ingress` and `1ctl issuer` were hidden from `--help` in v0.8.0.** Custom-domain workflows go through `1ctl domains`, which resolves IDs internally from `--app <name>` — no more passing deployment / service UUIDs by hand. The hidden commands still work for scripts that depend on them.
+> **TLS is automatic for custom domains.** Use `1ctl deploy status` or `1ctl domains check` to verify certificate readiness.
 
 ### Organizations (Multi-Tenant)
 

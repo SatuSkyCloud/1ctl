@@ -90,8 +90,8 @@ The Redis URL contains credentials and the OpenAI key is sensitive — both go i
 ```bash
 1ctl secret create \
   --config satusky.toml \
-  --kv REDIS_URL=rediss://default:AXabCDEFgh123456@us1-cool-stork-12345.upstash.io:6380 \
-  --kv OPENAI_API_KEY=sk-proj-AbCdEfGhIjKlMnOpQrStUvWxYz1234567890abcdefghijklmnop
+  --kv REDIS_URL="$REDIS_URL" \
+  --kv OPENAI_API_KEY="$OPENAI_API_KEY"
 ```
 
 Verify your app can reach Redis. If it can't, check the URL in the logs:
@@ -173,7 +173,7 @@ Your API key was compromised or you're doing a planned rotation. `secret create`
 ```bash
 1ctl secret create \
   --config satusky.toml \
-  --kv OPENAI_API_KEY=sk-proj-NewKeyHere9876543210zyxwvutsrqponmlkjihgfedcba
+  --kv OPENAI_API_KEY="$OPENAI_API_KEY"
 ```
 
 Restart to inject the new secret into the running container:

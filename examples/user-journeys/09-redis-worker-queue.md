@@ -128,10 +128,10 @@ cd ../worker
 
 ```bash
 1ctl secret create --config api/satusky.toml \
-  --kv REDIS_URL=rediss://default:token@global-fly-12345.upstash.io:6379
+  --kv REDIS_URL="$REDIS_URL"
 
 1ctl secret create --config worker/satusky.toml \
-  --kv REDIS_URL=rediss://default:token@global-fly-12345.upstash.io:6379
+  --kv REDIS_URL="$REDIS_URL"
 ```
 
 Restart both to pick up secrets:

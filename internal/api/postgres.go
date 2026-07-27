@@ -13,8 +13,31 @@ type StorageEngine string
 
 const StorageEngineCNPG StorageEngine = "cnpg"
 
+const StorageEngineValkey StorageEngine = "valkey"
+
+type ValkeyConfig struct {
+	Topology          string             `json:"topology"`
+	MachineID         string             `json:"machine_id,omitempty"`
+	AppendOnly        *bool              `json:"append_only,omitempty"`
+	AppendFsync       string             `json:"append_fsync"`
+	MaxmemoryPolicy   string             `json:"maxmemory_policy"`
+	MaxmemoryPercent  int                `json:"maxmemory_percent"`
+	MetricsEnabled    *bool              `json:"metrics_enabled,omitempty"`
+	ChartVersion      string             `json:"chart_version"`
+	ImageVersion      string             `json:"image_version"`
+	ChartDigestSHA256 string             `json:"chart_digest_sha256,omitempty"`
+	Users             []ValkeyUserConfig `json:"users,omitempty"`
+}
+
+type ValkeyUserConfig struct {
+	Username        string   `json:"username"`
+	AccessPreset    string   `json:"access_preset"`
+	KeyPatterns     []string `json:"key_patterns,omitempty"`
+	ChannelPatterns []string `json:"channel_patterns,omitempty"`
+}
+
 type StorageConfig struct {
-	StorageID          uuid.UUID         `json:"storage_id,omitempty"`
+	StorageID          uuid.UUID         `json:"storage_id,omitempty" tstype:",required"`
 	ResourceID         uuid.UUID         `json:"resource_id"`
 	ResourceType       string            `json:"resource_type"`
 	Namespace          string            `json:"namespace"`
@@ -37,11 +60,12 @@ type StorageConfig struct {
 	Instances          *int              `json:"instances,omitempty"`
 	ReplicationMode    *string           `json:"replication_mode,omitempty"`
 	PersistenceEnabled *bool             `json:"persistence_enabled,omitempty"`
+	Valkey             *ValkeyConfig     `json:"valkey,omitempty"`
 	AdminUIEnabled     *bool             `json:"admin_ui_enabled,omitempty"`
 	Labels             map[string]string `json:"labels,omitempty"`
 	Annotations        map[string]string `json:"annotations,omitempty"`
-	CreatedAt          time.Time         `json:"created_at,omitempty"`
-	UpdatedAt          time.Time         `json:"updated_at,omitempty"`
+	CreatedAt          time.Time         `json:"created_at,omitempty" tstype:",required"`
+	UpdatedAt          time.Time         `json:"updated_at,omitempty" tstype:",required"`
 }
 
 type PostgresCreateOptions struct {
@@ -190,7 +214,7 @@ func CreatePostgresCluster(opts PostgresCreateOptions) (*StorageConfig, error) {
 		Error bool          `json:"error"`
 		Data  StorageConfig `json:"data"`
 	}
-	if err := makeRequest("POST", "/storage/create", req, &resp); err != nil {
+	if err := makeRequest("POST", "/databases/create", req, &resp); err != nil {
 		return nil, err
 	}
 	return &resp.Data, nil
@@ -209,7 +233,7 @@ func ListPostgresClusters(namespace string) ([]StorageConfig, error) {
 		Error bool            `json:"error"`
 		Data  []StorageConfig `json:"data"`
 	}
-	if err := makeRequest("GET", fmt.Sprintf("/storage/namespace/%s", url.PathEscape(namespace)), nil, &resp); err != nil {
+	if err := makeRequest("GET", fmt.Sprintf("/databases/namespace/%s", url.PathEscape(namespace)), nil, &resp); err != nil {
 		return nil, err
 	}
 
@@ -227,18 +251,18 @@ func GetPostgresCluster(storageID string) (*StorageConfig, error) {
 		Error bool          `json:"error"`
 		Data  StorageConfig `json:"data"`
 	}
-	if err := makeRequest("GET", fmt.Sprintf("/storage/id/%s", url.PathEscape(storageID)), nil, &resp); err != nil {
+	if err := makeRequest("GET", fmt.Sprintf("/databases/id/%s", url.PathEscape(storageID)), nil, &resp); err != nil {
 		return nil, err
 	}
 	return &resp.Data, nil
 }
 
 func DeletePostgresCluster(storageID string) error {
-	return makeRequest("DELETE", fmt.Sprintf("/storage/%s", url.PathEscape(storageID)), nil, nil)
+	return makeRequest("DELETE", fmt.Sprintf("/databases/%s", url.PathEscape(storageID)), nil, nil)
 }
 
 func RedeployPostgresCluster(storageID string) error {
-	return makeRequest("POST", fmt.Sprintf("/storage/%s/redeploy", url.PathEscape(storageID)), nil, nil)
+	return makeRequest("POST", fmt.Sprintf("/databases/%s/redeploy", url.PathEscape(storageID)), nil, nil)
 }
 
 func GetPostgresStatus(storageID string) (*PostgresStatus, error) {
@@ -246,7 +270,7 @@ func GetPostgresStatus(storageID string) (*PostgresStatus, error) {
 		Error bool           `json:"error"`
 		Data  PostgresStatus `json:"data"`
 	}
-	if err := makeRequest("GET", fmt.Sprintf("/storage/%s/status", url.PathEscape(storageID)), nil, &resp); err != nil {
+	if err := makeRequest("GET", fmt.Sprintf("/databases/%s/status", url.PathEscape(storageID)), nil, &resp); err != nil {
 		return nil, err
 	}
 	return &resp.Data, nil
@@ -257,7 +281,7 @@ func GetPostgresCredentials(storageID string) (*PostgresCredentials, error) {
 		Error bool                `json:"error"`
 		Data  PostgresCredentials `json:"data"`
 	}
-	if err := makeRequest("GET", fmt.Sprintf("/storage/%s/credentials", url.PathEscape(storageID)), nil, &resp); err != nil {
+	if err := makeRequest("GET", fmt.Sprintf("/databases/%s/credentials", url.PathEscape(storageID)), nil, &resp); err != nil {
 		return nil, err
 	}
 	return &resp.Data, nil
@@ -268,7 +292,7 @@ func ListPostgresUsers(storageID string) ([]CNPGDatabaseUser, error) {
 		Error bool               `json:"error"`
 		Data  []CNPGDatabaseUser `json:"data"`
 	}
-	if err := makeRequest("GET", fmt.Sprintf("/storage/%s/database-users", url.PathEscape(storageID)), nil, &resp); err != nil {
+	if err := makeRequest("GET", fmt.Sprintf("/databases/%s/database-users", url.PathEscape(storageID)), nil, &resp); err != nil {
 		return nil, err
 	}
 	return resp.Data, nil
@@ -283,7 +307,7 @@ func CreatePostgresUser(storageID string, req CreateDatabaseUserRequest) (*Creat
 		ReconciliationStatus string           `json:"reconciliation_status,omitempty"`
 		ReadinessMessage     string           `json:"readiness_message,omitempty"`
 	}
-	if err := makeRequest("POST", fmt.Sprintf("/storage/%s/database-users", url.PathEscape(storageID)), req, &resp); err != nil {
+	if err := makeRequest("POST", fmt.Sprintf("/databases/%s/database-users", url.PathEscape(storageID)), req, &resp); err != nil {
 		return nil, err
 	}
 	return &CreateDatabaseUserResponse{
@@ -296,7 +320,7 @@ func CreatePostgresUser(storageID string, req CreateDatabaseUserRequest) (*Creat
 }
 
 func DeletePostgresUser(storageID, username string) error {
-	return makeRequest("DELETE", fmt.Sprintf("/storage/%s/database-users/%s", url.PathEscape(storageID), url.PathEscape(username)), nil, nil)
+	return makeRequest("DELETE", fmt.Sprintf("/databases/%s/database-users/%s", url.PathEscape(storageID), url.PathEscape(username)), nil, nil)
 }
 
 func ListPostgresFirewallRules(storageID string) ([]CNPGFirewallRule, error) {
@@ -304,7 +328,7 @@ func ListPostgresFirewallRules(storageID string) ([]CNPGFirewallRule, error) {
 		Error bool               `json:"error"`
 		Data  []CNPGFirewallRule `json:"data"`
 	}
-	if err := makeRequest("GET", fmt.Sprintf("/storage/%s/firewall-rules", url.PathEscape(storageID)), nil, &resp); err != nil {
+	if err := makeRequest("GET", fmt.Sprintf("/databases/%s/firewall-rules", url.PathEscape(storageID)), nil, &resp); err != nil {
 		return nil, err
 	}
 	return resp.Data, nil
@@ -315,7 +339,7 @@ func CreatePostgresFirewallRule(storageID string, req CreateFirewallRuleRequest)
 		Error bool             `json:"error"`
 		Data  CNPGFirewallRule `json:"data"`
 	}
-	if err := makeRequest("POST", fmt.Sprintf("/storage/%s/firewall-rules", url.PathEscape(storageID)), req, &resp); err != nil {
+	if err := makeRequest("POST", fmt.Sprintf("/databases/%s/firewall-rules", url.PathEscape(storageID)), req, &resp); err != nil {
 		return nil, err
 	}
 	return &resp.Data, nil
@@ -326,14 +350,14 @@ func UpdatePostgresFirewallRule(storageID, ruleID string, req UpdateFirewallRule
 		Error bool             `json:"error"`
 		Data  CNPGFirewallRule `json:"data"`
 	}
-	if err := makeRequest("PATCH", fmt.Sprintf("/storage/%s/firewall-rules/%s", url.PathEscape(storageID), url.PathEscape(ruleID)), req, &resp); err != nil {
+	if err := makeRequest("PATCH", fmt.Sprintf("/databases/%s/firewall-rules/%s", url.PathEscape(storageID), url.PathEscape(ruleID)), req, &resp); err != nil {
 		return nil, err
 	}
 	return &resp.Data, nil
 }
 
 func DeletePostgresFirewallRule(storageID, ruleID string) error {
-	return makeRequest("DELETE", fmt.Sprintf("/storage/%s/firewall-rules/%s", url.PathEscape(storageID), url.PathEscape(ruleID)), nil, nil)
+	return makeRequest("DELETE", fmt.Sprintf("/databases/%s/firewall-rules/%s", url.PathEscape(storageID), url.PathEscape(ruleID)), nil, nil)
 }
 
 func ListStorageClasses() ([]StorageClassInfo, error) {
@@ -341,7 +365,7 @@ func ListStorageClasses() ([]StorageClassInfo, error) {
 		Error bool               `json:"error"`
 		Data  []StorageClassInfo `json:"data"`
 	}
-	if err := makeRequest("GET", "/storage/storage-classes", nil, &resp); err != nil {
+	if err := makeRequest("GET", "/databases/storage-classes", nil, &resp); err != nil {
 		return nil, err
 	}
 	return resp.Data, nil

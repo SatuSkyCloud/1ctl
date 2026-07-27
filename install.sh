@@ -2,7 +2,7 @@
 set -euo pipefail
 
 # SatuSky CLI (1ctl) installer
-# Usage: curl -sSL https://raw.githubusercontent.com/SatuSkyCloud/1ctl/main/install.sh | bash
+# Usage: curl -fsSL https://raw.githubusercontent.com/SatuSkyCloud/1ctl/main/install.sh | bash
 
 REPO="SatuSkyCloud/1ctl"
 INSTALL_DIR="/usr/local/bin"
@@ -35,7 +35,7 @@ esac
 
 # Get latest version
 echo "Fetching latest version..."
-VERSION=$(curl -s "https://api.github.com/repos/$REPO/releases/latest" | grep '"tag_name"' | sed -E 's/.*"([^"]+)".*/\1/')
+VERSION=$(curl -fsSL "https://api.github.com/repos/$REPO/releases/latest" | grep '"tag_name"' | sed -E 's/.*"([^"]+)".*/\1/')
 if [ -z "$VERSION" ] || [ "$VERSION" = "null" ]; then
   echo "Failed to fetch latest version. Check your internet connection."
   exit 1
@@ -44,13 +44,32 @@ CLEAN_VERSION="${VERSION#v}"
 
 echo "Installing 1ctl $VERSION ($OS/$ARCH)..."
 
-# Download and extract
-URL="https://github.com/$REPO/releases/download/$VERSION/1ctl-$CLEAN_VERSION-$OS-$ARCH.tar.gz"
+# Download, verify, and extract
+ARCHIVE="1ctl-$CLEAN_VERSION-$OS-$ARCH.tar.gz"
+CHECKSUMS="1ctl-$CLEAN_VERSION-checksums.sha256"
+RELEASE_URL="https://github.com/$REPO/releases/download/$VERSION"
 TMPDIR=$(mktemp -d)
 trap 'rm -rf "$TMPDIR"' EXIT
 
-curl -sL "$URL" -o "$TMPDIR/1ctl.tar.gz"
-tar -xzf "$TMPDIR/1ctl.tar.gz" -C "$TMPDIR"
+curl -fsSL "$RELEASE_URL/$ARCHIVE" -o "$TMPDIR/$ARCHIVE"
+curl -fsSL "$RELEASE_URL/$CHECKSUMS" -o "$TMPDIR/$CHECKSUMS"
+
+EXPECTED_SHA256=$(awk -v archive="$ARCHIVE" '$2 == archive { print $1 }' "$TMPDIR/$CHECKSUMS")
+if ! printf '%s' "$EXPECTED_SHA256" | grep -Eq '^[0-9a-fA-F]{64}$'; then
+  echo "Release checksum for $ARCHIVE is missing or invalid."
+  exit 1
+fi
+if command -v sha256sum >/dev/null 2>&1; then
+  ACTUAL_SHA256=$(sha256sum "$TMPDIR/$ARCHIVE" | awk '{ print $1 }')
+else
+  ACTUAL_SHA256=$(shasum -a 256 "$TMPDIR/$ARCHIVE" | awk '{ print $1 }')
+fi
+if [ "$ACTUAL_SHA256" != "$EXPECTED_SHA256" ]; then
+  echo "Checksum verification failed for $ARCHIVE."
+  exit 1
+fi
+
+tar -xzf "$TMPDIR/$ARCHIVE" -C "$TMPDIR"
 chmod +x "$TMPDIR/1ctl"
 
 # Install

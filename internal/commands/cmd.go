@@ -8,6 +8,7 @@
 package commands
 
 import (
+	"1ctl/internal/commands/admin"
 	"1ctl/internal/commands/audit"
 	"1ctl/internal/commands/auth"
 	"1ctl/internal/commands/cluster"
@@ -17,26 +18,31 @@ import (
 	"1ctl/internal/commands/doctor"
 	"1ctl/internal/commands/domains"
 	"1ctl/internal/commands/environment"
-	initcmd "1ctl/internal/commands/init"
 	"1ctl/internal/commands/ingress"
-	"1ctl/internal/commands/issuer"
+	initcmd "1ctl/internal/commands/init"
 	"1ctl/internal/commands/launch"
 	"1ctl/internal/commands/logs"
 	"1ctl/internal/commands/machine"
 	"1ctl/internal/commands/marketplace"
-	"1ctl/internal/commands/postgres"
+	"1ctl/internal/commands/nats"
 	"1ctl/internal/commands/notifications"
 	"1ctl/internal/commands/org"
+	packagecmd "1ctl/internal/commands/package"
+	"1ctl/internal/commands/postgres"
 	"1ctl/internal/commands/pricing"
 	"1ctl/internal/commands/profile"
 	"1ctl/internal/commands/secret"
 	"1ctl/internal/commands/service"
 	"1ctl/internal/commands/token"
 	"1ctl/internal/commands/user"
+	"1ctl/internal/commands/valkey"
 	"1ctl/internal/commands/volumes"
 
 	"github.com/urfave/cli/v3"
 )
+
+// AdminCommand returns the "1ctl admin" command tree.
+func AdminCommand() *cli.Command { return admin.Command() }
 
 // AuthCommand returns the "1ctl auth" command tree.
 func AuthCommand() *cli.Command { return auth.Command() }
@@ -74,6 +80,12 @@ func TokenCommand() *cli.Command { return token.Command() }
 // MarketplaceCommand returns the "1ctl marketplace" command tree.
 func MarketplaceCommand() *cli.Command { return marketplace.Command() }
 
+// NATSCommand returns the "1ctl nats" command tree.
+func NATSCommand() *cli.Command { return nats.Command() }
+
+// PackageCommand returns the "1ctl package" command tree.
+func PackageCommand() *cli.Command { return packagecmd.Command() }
+
 // AuditCommand returns the "1ctl audit" command tree.
 func AuditCommand() *cli.Command { return audit.Command() }
 
@@ -85,9 +97,6 @@ func ServiceCommand() *cli.Command { return service.Command() }
 
 // IngressCommand returns the "1ctl ingress" command tree.
 func IngressCommand() *cli.Command { return ingress.Command() }
-
-// IssuerCommand returns the "1ctl issuer" command tree.
-func IssuerCommand() *cli.Command { return issuer.Command() }
 
 // VolumesCommand returns the "1ctl volumes" command tree.
 func VolumesCommand() *cli.Command { return volumes.Command() }
@@ -129,3 +138,6 @@ func AppCommand() *cli.Command { return deploycmd.AppCommand() }
 
 // PostgresCommand returns the "1ctl postgres" command tree.
 func PostgresCommand() *cli.Command { return postgres.Command() }
+
+// ValkeyCommand returns the "1ctl valkey" command tree.
+func ValkeyCommand() *cli.Command { return valkey.Command() }

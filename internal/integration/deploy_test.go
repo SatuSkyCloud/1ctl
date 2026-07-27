@@ -8,6 +8,8 @@ import (
 	"1ctl/internal/deploy"
 	"testing"
 	"time"
+
+	"github.com/google/uuid"
 )
 
 func TestDeploymentFlow(t *testing.T) {
@@ -25,7 +27,7 @@ func TestDeploymentFlow(t *testing.T) {
 		}
 
 		// Create deployment
-		resp, err := deploy.Deploy(opts)
+		resp, err := deploy.Deploy(opts, uuid.NewString())
 		if err != nil {
 			t.Fatalf("Deploy() error = %v", err)
 		}

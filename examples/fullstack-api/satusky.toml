@@ -14,10 +14,6 @@
   # port       Container port your app listens on.  Required.
   port        = 8080
 
-  # dockerfile Path to Dockerfile for cloud build.
-  #            Default: "Dockerfile" in the same directory as satusky.toml.
-  dockerfile  = "Dockerfile"
-
   # ── Compute ───────────────────────────────────────────────────────────
   # cpu        Legacy burst CPU alias (deprecated).
   #            Prefer cpu_request + cpu_limit below.
@@ -41,37 +37,68 @@
   #            (adjective-animal-XXXXXXX.satusky.com).
   # domain     = "api.mycompany.com"
 
-  # health_path  Path used for post-deploy smoke checks.
-  #              When set, the CLI enforces 2xx/3xx on this exact path.
-  #              When empty, checks /health then / (non-strict mode).
-  health_path = "/health"
-
   # ── Scheduling ────────────────────────────────────────────────────────
   zone        = ""            # Target zone, e.g. "my-kul-1b". Empty = auto.
-  # machine_tag = "compute"     # Only schedule on machines with this tag.
-
-  # ── Upgrade Strategy ──────────────────────────────────────────────────
-  # strategy   "rolling" (default) or "recreate"
-  strategy    = "rolling"
-
-  # rolling_max_surge       Additional pods during rollout (number or %).
-  rolling_max_surge       = "25%"
-
-  # rolling_max_unavailable Max pods unavailable during rollout (number or %).
-  rolling_max_unavailable = "0"
-
-  # ── TCP Dependencies ──────────────────────────────────────────────────
-  # wait_for   PostgreSQL/Redis/etc. that must be reachable before start.
-  #            Platform injects init-containers so your main container
-  #            never crashes while dependencies boot.
-  # wait_for    = ["db:5432", "redis:6379"]
 
   # organization  Override the CLI auth context.  Rarely needed.
   # organization = ""
 
-  # To build through docker buildx or using depot. if fast_build using depot
+# =============================================================================
+# [build] — Container image build
+# =============================================================================
 [build]
+  # Path to Dockerfile for cloud build. Default: "Dockerfile".
+  dockerfile = "Dockerfile"
+
+  # Use the accelerated Depot build backend.
   fast_build  = true
+
+
+# =============================================================================
+# [checks] — Post-deploy smoke checks
+# =============================================================================
+[checks]
+  # Enforce a 2xx/3xx response on this path after deployment.
+  health_path = "/health"
+
+  # Runtime probes are durable Kubernetes declarations. Each probe has exactly
+  # one of http_get, tcp_socket, or exec handlers.
+[checks.startup]
+  failure_threshold = 12
+  period_seconds = 5
+[checks.startup.http_get]
+  path = "/health"
+  port = 8080
+
+[checks.readiness]
+  timeout_seconds = 2
+[checks.readiness.http_get]
+  path = "/health"
+  port = 8080
+
+[checks.liveness]
+  period_seconds = 10
+[checks.liveness.http_get]
+  path = "/health"
+  port = 8080
+
+
+# =============================================================================
+# [deploy] — Upgrade strategy, scheduling, and dependencies
+# =============================================================================
+[deploy]
+  # "rolling" (default) or "recreate".
+  strategy = "rolling"
+
+  # Additional pods and maximum unavailable pods during rollout.
+  rolling_max_surge       = "25%"
+  rolling_max_unavailable = "0"
+
+  # Only schedule on machines with this tag.
+  # machine_tag = "compute"
+
+  # TCP dependencies that must be reachable before the app starts.
+  # wait_for = ["db:5432", "redis:6379"]
 
 
 # =============================================================================
@@ -89,15 +116,29 @@
 
 
 # =============================================================================
-# [volume] — Persistent Storage
+# [secrets] — Required secret key declarations (never values)
+# =============================================================================
+# Declare only the environment keys that must be supplied separately with
+# `1ctl secret`. This file deliberately contains no secret material.
+# =============================================================================
+
+[secrets]
+  required = ["DATABASE_URL", "EXTERNAL_API_TOKEN"]
+
+
+# =============================================================================
+# [[volumes]] — Persistent Storage
 # =============================================================================
 # Attaches a block storage volume to your deployment.  Data survives pod
 # restarts and redeploys.  Use for databases, file uploads, ML models, etc.
 # =============================================================================
 
-[volume]
-  size  = "1Gi"              # Storage size: "1Gi", "10Gi", "100Gi", "1Ti"
-  mount = "/data/uploads"    # Container mount path
+[[volumes]]
+  name          = "uploads"
+  claim         = "fullstack-api-uploads"
+  size          = "1Gi"              # Storage size: "1Gi", "10Gi", "100Gi", "1Ti"
+  mount         = "/data/uploads"    # Container mount path
+  storage_class = "ceph-block"
 
 
 # =============================================================================

@@ -66,6 +66,16 @@ tasks:
       - golangci-lint run ./...
       - echo "✅ Linting completed successfully"
 
+  contract:check:
+    desc: Verify generated contract artifacts are up to date
+    cmds:
+      - go run ./cmd/contractgen --check
+
+  contract:generate:
+    desc: Regenerate CLI and TypeScript API contracts
+    cmds:
+      - go run ./cmd/contractgen
+
   run:
     env:
       APP_ENV: development

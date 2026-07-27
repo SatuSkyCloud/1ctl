@@ -10,6 +10,7 @@ import (
 	"io"
 	"net/http"
 	"net/url"
+	"strconv"
 	"time"
 
 	"strings"
@@ -31,28 +32,151 @@ type apiResponse struct {
 	Data    interface{} `json:"data"`
 }
 
-// DeleteDeployment deletes a deployment
-func DeleteDeployment(deploymentID string) (*DeletionResult, error) {
-	var resp apiResponse
-	if err := makeRequest("POST", fmt.Sprintf("/deployments/delete/%s", deploymentID), nil, &resp); err != nil {
+// DeleteDeployment starts the backend-authoritative asynchronous deletion.
+// The DELETE is deliberately issued exactly once; retries could duplicate a
+// destructive operation or change its purge policy.
+func DeleteDeployment(deploymentID string, purge ...bool) (*DeploymentDeletionOperation, error) {
+	purgeRetained := len(purge) > 0 && purge[0]
+	path := fmt.Sprintf("/deployments/%s", url.PathEscape(deploymentID))
+	if purgeRetained {
+		path += "?purge_retained=true"
+	}
+
+	var resp struct {
+		Error bool                        `json:"error"`
+		Data  DeploymentDeletionOperation `json:"data"`
+	}
+	if _, err := makeMainAPIRequestWithStatus(http.MethodDelete, path, nil, &resp); err != nil {
 		return nil, err
 	}
+	return &resp.Data, nil
+}
 
-	data, err := json.Marshal(resp.Data)
-	if err != nil {
-		return nil, utils.NewError(fmt.Sprintf("failed to marshal deletion result: %s", err.Error()), nil)
+// GetDeploymentDeletionStatus retrieves one async deletion operation state.
+func GetDeploymentDeletionStatus(operation *DeploymentDeletionOperation) (*DeploymentDeletionOperation, error) {
+	path := operation.StatusURL
+	if path == "" {
+		path = fmt.Sprintf("/deployments/id/%s", url.PathEscape(operation.DeploymentID))
 	}
+	requestURL := resolveMainAPIURL(path)
+	var resp struct {
+		Error bool                        `json:"error"`
+		Data  DeploymentDeletionOperation `json:"data"`
+	}
+	if _, err := makeRequestURLWithHeadersOnce(http.MethodGet, requestURL, nil, &resp, nil); err != nil {
+		return nil, err
+	}
+	merged := mergeDeploymentDeletionOperation(operation, &resp.Data)
+	if merged.StatusURL == "" {
+		merged.StatusURL = path
+	}
+	return merged, nil
+}
 
-	var result DeletionResult
-	if err := json.Unmarshal(data, &result); err != nil {
-		return nil, utils.NewError(fmt.Sprintf("failed to unmarshal deletion result: %s", err.Error()), nil)
+func mergeDeploymentDeletionOperation(previous, next *DeploymentDeletionOperation) *DeploymentDeletionOperation {
+	merged := *previous
+	if merged.DeploymentID == "" {
+		merged.DeploymentID = next.DeploymentID
 	}
-	return &result, nil
+	if merged.Namespace == "" {
+		merged.Namespace = next.Namespace
+	}
+	if merged.AppLabel == "" {
+		merged.AppLabel = next.AppLabel
+	}
+	if merged.Operation == "" {
+		merged.Operation = next.Operation
+	}
+	if next.Status != "" {
+		merged.Status = next.Status
+	}
+	if next.Terminal {
+		merged.Terminal = true
+	}
+	if merged.AcceptedAt.IsZero() {
+		merged.AcceptedAt = next.AcceptedAt
+	}
+	if merged.StatusURL == "" {
+		merged.StatusURL = next.StatusURL
+	}
+	if merged.PollAfterMs == 0 {
+		merged.PollAfterMs = next.PollAfterMs
+	}
+	if len(merged.CleanupScope) == 0 {
+		merged.CleanupScope = next.CleanupScope
+	}
+	if next.Lifecycle.State != "" {
+		// A lifecycle projection returned by the detail endpoint is
+		// authoritative. Replace it wholesale so false booleans and cleared
+		// error fields do not retain values from the accepted operation.
+		merged.Lifecycle = next.Lifecycle
+	}
+	return &merged
+}
+
+// WaitForDeploymentDeletion polls until the operation reaches a terminal
+// lifecycle state or the bounded timeout expires. A 404 after acceptance is
+// the backend's successful deletion race and is normalized to deleted.
+func WaitForDeploymentDeletion(operation *DeploymentDeletionOperation, timeout time.Duration) (*DeploymentDeletionOperation, error) {
+	deadline := time.Now().Add(timeout)
+	current := operation
+	for {
+		if current.IsTerminal() {
+			return current, nil
+		}
+		if err := waitForDeletionPoll(deadline, current.PollAfterMs, 0); err != nil {
+			return current, err
+		}
+
+		next, err := GetDeploymentDeletionStatus(current)
+		if err != nil {
+			if statusErr, ok := err.(*HTTPStatusError); ok {
+				switch statusErr.StatusCode {
+				case http.StatusNotFound:
+					current.Status = "deleted"
+					current.Terminal = true
+					current.Lifecycle = DeploymentDeletionLifecycle{State: "deleted", Terminal: true}
+					return current, nil
+				case http.StatusServiceUnavailable:
+					if waitErr := waitForDeletionPoll(deadline, current.PollAfterMs, statusErr.RetryAfter); waitErr != nil {
+						return current, waitErr
+					}
+					continue
+				}
+			}
+			return current, err
+		}
+		current = next
+	}
+}
+
+func waitForDeletionPoll(deadline time.Time, pollAfterMs int, retryAfter time.Duration) error {
+	delay := retryAfter
+	if delay <= 0 {
+		delay = time.Duration(pollAfterMs) * time.Millisecond
+	}
+	if delay <= 0 {
+		delay = time.Second
+	}
+	remaining := time.Until(deadline)
+	if remaining <= 0 {
+		return utils.NewError("timeout waiting for deployment deletion", nil)
+	}
+	if delay > remaining {
+		delay = remaining
+	}
+	time.Sleep(delay)
+	if time.Now().After(deadline) {
+		return utils.NewError("timeout waiting for deployment deletion", nil)
+	}
+	return nil
 }
 
 // RestartDeployment triggers a rolling restart of a deployment
-func RestartDeployment(deploymentID string) error {
-	return makeRequest("POST", fmt.Sprintf("/deployments/%s/restart", deploymentID), nil, nil)
+func RestartDeployment(deploymentID, requestID string) error {
+	headers := make(http.Header)
+	headers.Set(requestIDHeader, requestID)
+	return makeMainAPIRequestWithHeadersRetry(http.MethodPost, fmt.Sprintf("/deployments/%s/restart", deploymentID), nil, nil, headers)
 }
 
 // ListDeployments lists all deployments for the current namespace.
@@ -79,8 +203,10 @@ func ListDeploymentVersions(deploymentID string) ([]DeploymentVersion, error) {
 }
 
 // RollbackDeployment initiates a rollback to the specified version number.
-func RollbackDeployment(deploymentID string, versionNumber int) error {
-	return makeRequest("POST", fmt.Sprintf("/deployments/%s/rollback/%d", deploymentID, versionNumber), nil, nil)
+func RollbackDeployment(deploymentID string, versionNumber int, requestID string) error {
+	headers := make(http.Header)
+	headers.Set(requestIDHeader, requestID)
+	return makeMainAPIRequestWithHeadersRetry(http.MethodPost, fmt.Sprintf("/deployments/%s/rollback/%d", deploymentID, versionNumber), nil, nil, headers)
 }
 
 // ListDeploymentsByNamespace lists deployments in a specific namespace
@@ -507,38 +633,109 @@ func makeRequest(method, path string, body interface{}, response interface{}) er
 	return makeRequestURL(method, url, body, response)
 }
 
+func makeRequestWithStatus(method, path string, body interface{}, response interface{}) (int, error) {
+	config := config.GetConfig()
+	url := fmt.Sprintf("%s%s", config.ApiURL, path)
+	return makeRequestURLWithHeadersOnce(method, url, body, response, nil)
+}
+
 func makeMainAPIRequest(method, path string, body interface{}, response interface{}) error {
+	return makeMainAPIRequestWithHeaders(method, path, body, response, nil)
+}
+
+func makeMainAPIRequestWithStatus(method, path string, body interface{}, response interface{}) (int, error) {
+	return makeRequestURLWithHeadersOnce(method, resolveMainAPIURL(path), body, response, nil)
+}
+
+func makeMainAPIRequestWithHeaders(method, path string, body interface{}, response interface{}, headers http.Header) error {
 	cfg := config.GetConfig()
 	baseURL := strings.TrimSuffix(cfg.ApiURL, "/")
 	baseURL = strings.TrimSuffix(baseURL, "/cli")
 	baseURL = strings.TrimSuffix(baseURL, "/")
 	url := fmt.Sprintf("%s%s", baseURL, path)
-	return makeRequestURL(method, url, body, response)
+	return makeRequestURLWithHeaders(method, url, body, response, headers)
+}
+
+func makeMainAPIRequestWithHeadersRetry(method, path string, body interface{}, response interface{}, headers http.Header) error {
+	cfg := config.GetConfig()
+	baseURL := strings.TrimSuffix(cfg.ApiURL, "/")
+	baseURL = strings.TrimSuffix(baseURL, "/cli")
+	baseURL = strings.TrimSuffix(baseURL, "/")
+	url := fmt.Sprintf("%s%s", baseURL, path)
+	return makeRequestURLWithHeadersRetry(method, url, body, response, headers)
+}
+
+func resolveMainAPIURL(path string) string {
+	if parsed, err := url.Parse(path); err == nil && parsed.IsAbs() {
+		return path
+	}
+	cfg := config.GetConfig()
+	if strings.HasPrefix(path, "/v1/") {
+		origin := strings.TrimSuffix(cfg.ApiURL, "/")
+		origin = strings.TrimSuffix(origin, "/cli")
+		origin = strings.TrimSuffix(origin, "/v1")
+		return origin + path
+	}
+	baseURL := strings.TrimSuffix(cfg.ApiURL, "/")
+	baseURL = strings.TrimSuffix(baseURL, "/cli")
+	baseURL = strings.TrimSuffix(baseURL, "/")
+	if strings.HasPrefix(path, "/") {
+		return baseURL + path
+	}
+	return baseURL + "/" + path
 }
 
 func makeRequestURL(method, url string, body interface{}, response interface{}) error {
+	return makeRequestURLWithHeaders(method, url, body, response, nil)
+}
+
+func makeRequestURLWithHeaders(method, url string, body interface{}, response interface{}, headers http.Header) error {
+	_, err := makeRequestURLWithHeadersOnce(method, url, body, response, headers)
+	return err
+}
+
+func makeRequestURLWithHeadersRetry(method, url string, body interface{}, response interface{}, headers http.Header) error {
+	const maxAttempts = 3
+	var err error
+	for attempt := 0; attempt < maxAttempts; attempt++ {
+		status, requestErr := makeRequestURLWithHeadersOnce(method, url, body, response, headers)
+		if requestErr == nil {
+			return nil
+		}
+		err = requestErr
+		if status != 0 && (status < http.StatusInternalServerError || status >= 600) {
+			return err
+		}
+		if attempt < maxAttempts-1 {
+			time.Sleep(time.Duration(attempt+1) * 100 * time.Millisecond)
+		}
+	}
+	return err
+}
+
+func makeRequestURLWithHeadersOnce(method, url string, body interface{}, response interface{}, headers http.Header) (int, error) {
 	// Enforce HTTPS for non-localhost API URLs to prevent token leakage over plaintext
 	if !utils.IsLocalhostURL(url) && !strings.HasPrefix(url, "https://") {
-		return utils.NewError(fmt.Sprintf("refusing to send auth token over insecure connection (%s). Use HTTPS or http://localhost for local development", url), nil)
+		return 0, utils.NewError(fmt.Sprintf("refusing to send auth token over insecure connection (%s). Use HTTPS or http://localhost for local development", url), nil)
 	}
 
 	var bodyReader io.Reader
 	if body != nil {
 		jsonData, err := json.Marshal(body)
 		if err != nil {
-			return utils.NewError(fmt.Sprintf("failed to marshal request body: %s", err.Error()), nil)
+			return 0, utils.NewError(fmt.Sprintf("failed to marshal request body: %s", err.Error()), nil)
 		}
 		bodyReader = bytes.NewReader(jsonData)
 	}
 
 	req, err := http.NewRequest(method, url, bodyReader)
 	if err != nil {
-		return utils.NewError(fmt.Sprintf("failed to create request: %s", err.Error()), nil)
+		return 0, utils.NewError(fmt.Sprintf("failed to create request: %s", err.Error()), nil)
 	}
 
 	token := context.GetToken()
 	if token == "" {
-		return utils.NewError("not authenticated. Please run '1ctl auth login' to authenticate", nil)
+		return 0, utils.NewError("not authenticated. Please run '1ctl auth login' to authenticate", nil)
 	}
 
 	req.Header.Set("Content-Type", "application/json")
@@ -546,111 +743,59 @@ func makeRequestURL(method, url string, body interface{}, response interface{}) 
 	if email := context.GetEmail(); email != "" {
 		req.Header.Set("x-satusky-user-email", email)
 	}
+	for key, values := range headers {
+		for _, value := range values {
+			req.Header.Add(key, value)
+		}
+	}
 
 	resp, err := httpClient.Do(req)
 	if err != nil {
-		return utils.NewError(fmt.Sprintf("failed to make request: %s", err.Error()), nil)
+		return 0, utils.NewError(fmt.Sprintf("failed to make request: %s", err.Error()), nil)
 	}
 	defer func() { _ = resp.Body.Close() }() //nolint:errcheck
 
 	respBody, err := io.ReadAll(resp.Body)
 	if err != nil {
-		return utils.NewError(fmt.Sprintf("failed to read response body: %s", err.Error()), nil)
+		return resp.StatusCode, utils.NewError(fmt.Sprintf("failed to read response body: %s", err.Error()), nil)
 	}
 
 	if resp.StatusCode >= 400 {
 		// Check for resource exhausted error (422 Unprocessable Entity)
 		resourceErr, parseErr := utils.ParseResourceExhaustedFromBytes(respBody, resp.StatusCode)
 		if parseErr == nil && resourceErr != nil {
-			return utils.NewResourceExhaustedCLIError(resourceErr)
+			return resp.StatusCode, utils.NewResourceExhaustedCLIError(resourceErr)
 		}
 
 		var apiError APIError
 		if err := json.Unmarshal(respBody, &apiError); err != nil {
-			return utils.NewError(fmt.Sprintf("request failed with status %d: %s", resp.StatusCode, string(respBody)), nil)
+			return resp.StatusCode, &HTTPStatusError{StatusCode: resp.StatusCode, Message: fmt.Sprintf("request failed with status %d: %s", resp.StatusCode, string(respBody)), RetryAfter: parseRetryAfter(resp.Header.Get("Retry-After"))}
+		}
+		message := apiError.Message
+		if apiError.Details != "" {
+			message = fmt.Sprintf("%s: %s", message, apiError.Details)
 		}
 		if resp.StatusCode == 500 {
-			return utils.NewError(fmt.Sprintf("%s — check backend logs for details", apiError.Message), nil)
+			message = fmt.Sprintf("%s — check backend logs for details", message)
 		}
-		return utils.NewError(apiError.Message, nil)
+		return resp.StatusCode, &HTTPStatusError{StatusCode: resp.StatusCode, Message: message, RetryAfter: parseRetryAfter(resp.Header.Get("Retry-After"))}
 	}
 
 	if response != nil && len(respBody) > 0 {
 		if err := json.Unmarshal(respBody, response); err != nil {
-			return utils.NewError(fmt.Sprintf("failed to parse response: %s", err.Error()), nil)
+			return resp.StatusCode, utils.NewError(fmt.Sprintf("failed to parse response: %s", err.Error()), nil)
 		}
 	}
 
-	return nil
+	return resp.StatusCode, nil
 }
 
-// GetDeploymentLogs gets deployment logs
-func GetDeploymentLogs(deploymentID string) ([]string, error) {
-	var resp apiResponse
-	err := makeRequest("GET", fmt.Sprintf("/logs/%s", deploymentID), nil, &resp)
-	if err != nil {
-		return nil, err
+func parseRetryAfter(value string) time.Duration {
+	seconds, err := strconv.Atoi(strings.TrimSpace(value))
+	if err != nil || seconds < 0 {
+		return 0
 	}
-
-	data, err := json.Marshal(resp.Data)
-	if err != nil {
-		return nil, utils.NewError(fmt.Sprintf("failed to marshal response data: %s", err.Error()), nil)
-	}
-
-	var logs struct {
-		Messages []string `json:"messages"`
-	}
-	if err := json.Unmarshal(data, &logs); err != nil {
-		return nil, utils.NewError(fmt.Sprintf("failed to unmarshal logs: %s", err.Error()), nil)
-	}
-	return logs.Messages, nil
-}
-
-// Add Issuer methods
-func CreateIssuer(issuer Issuer) (*Issuer, error) {
-	var resp apiResponse
-	var issuerResp Issuer
-	resp.Data = &issuerResp
-
-	err := makeRequest("POST", "/issuers/upsert", issuer, &resp)
-	if err != nil {
-		return nil, err
-	}
-
-	data, err := json.Marshal(resp.Data)
-	if err != nil {
-		return nil, utils.NewError(fmt.Sprintf("failed to marshal response data: %s", err.Error()), nil)
-	}
-
-	if err := json.Unmarshal(data, &issuerResp); err != nil {
-		return nil, utils.NewError(fmt.Sprintf("failed to unmarshal issuer response: %s", err.Error()), nil)
-	}
-	return &issuerResp, nil
-}
-
-func ListIssuers() ([]Issuer, error) {
-	namespace := context.GetCurrentNamespace()
-	var resp apiResponse
-	err := makeRequest("GET", fmt.Sprintf("/issuers/namespace/%s", namespace), nil, &resp)
-	if err != nil {
-		return nil, err
-	}
-
-	data, err := json.Marshal(resp.Data)
-	if err != nil {
-		return nil, utils.NewError(fmt.Sprintf("failed to marshal response data: %s", err.Error()), nil)
-	}
-
-	var issuers []Issuer
-	if err := json.Unmarshal(data, &issuers); err != nil {
-		return nil, utils.NewError(fmt.Sprintf("failed to unmarshal issuers: %s", err.Error()), nil)
-	}
-	return issuers, nil
-}
-
-func DeleteIssuer(issuerID string) error {
-	var resp apiResponse
-	return makeRequest("POST", fmt.Sprintf("/issuers/delete/%s", issuerID), nil, &resp)
+	return time.Duration(seconds) * time.Second
 }
 
 // GetOrganizationByID gets organization details by ID
@@ -673,26 +818,6 @@ func GetOrganizationByID(orgID uuid.UUID) (*Organization, error) {
 	return &org, nil
 }
 
-// User methods
-func GetUserByEmail(email string) (*User, error) {
-	var resp apiResponse
-	err := makeRequest("GET", fmt.Sprintf("/users/email/%s", email), nil, &resp)
-	if err != nil {
-		return nil, err
-	}
-
-	data, err := json.Marshal(resp.Data)
-	if err != nil {
-		return nil, utils.NewError(fmt.Sprintf("failed to marshal response data: %s", err.Error()), nil)
-	}
-
-	var user User
-	if err := json.Unmarshal(data, &user); err != nil {
-		return nil, utils.NewError(fmt.Sprintf("failed to unmarshal user: %s", err.Error()), nil)
-	}
-	return &user, nil
-}
-
 // GetUserProfile gets the current user's profile with organization information
 func GetUserProfile() (*UserProfile, error) {
 	var resp apiResponse
@@ -711,26 +836,6 @@ func GetUserProfile() (*UserProfile, error) {
 		return nil, utils.NewError(fmt.Sprintf("failed to unmarshal user profile: %s", err.Error()), nil)
 	}
 	return &profile, nil
-}
-
-// API Token methods
-func GetUserTokens(userID string, orgID string) ([]APIToken, error) {
-	var resp apiResponse
-	err := makeRequest("GET", fmt.Sprintf("/api-tokens/list/%s/%s", userID, orgID), nil, &resp)
-	if err != nil {
-		return nil, err
-	}
-
-	data, err := json.Marshal(resp.Data)
-	if err != nil {
-		return nil, utils.NewError(fmt.Sprintf("failed to marshal response data: %s", err.Error()), nil)
-	}
-
-	var tokens []APIToken
-	if err := json.Unmarshal(data, &tokens); err != nil {
-		return nil, utils.NewError(fmt.Sprintf("failed to unmarshal tokens: %s", err.Error()), nil)
-	}
-	return tokens, nil
 }
 
 // Ingress methods
@@ -825,26 +930,6 @@ func GetDomainStatus(ingressID, domain string, probe bool) (*DomainStatusRespons
 		return nil, err
 	}
 	return &resp.Data, nil
-}
-
-// Environment methods
-func GetEnvironmentsByNamespace(namespace string) ([]Environment, error) {
-	var resp apiResponse
-	err := makeRequest("GET", fmt.Sprintf("/environments/namespace/%s", namespace), nil, &resp)
-	if err != nil {
-		return nil, err
-	}
-
-	data, err := json.Marshal(resp.Data)
-	if err != nil {
-		return nil, utils.NewError(fmt.Sprintf("failed to marshal response data: %s", err.Error()), nil)
-	}
-
-	var environments []Environment
-	if err := json.Unmarshal(data, &environments); err != nil {
-		return nil, utils.NewError(fmt.Sprintf("failed to unmarshal environments: %s", err.Error()), nil)
-	}
-	return environments, nil
 }
 
 // Machine methods
@@ -1075,25 +1160,6 @@ func GetMachinesByOwnerID(ownerID uuid.UUID) ([]Machine, error) {
 	return machines, nil
 }
 
-func GetMachineByID(machineID uuid.UUID) (*Machine, error) {
-	var resp apiResponse
-	err := makeRequest("GET", fmt.Sprintf("/machines/id/%s", machineID), nil, &resp)
-	if err != nil {
-		return nil, err
-	}
-
-	data, err := json.Marshal(resp.Data)
-	if err != nil {
-		return nil, utils.NewError(fmt.Sprintf("failed to marshal response data: %s", err.Error()), nil)
-	}
-
-	var machine Machine
-	if err := json.Unmarshal(data, &machine); err != nil {
-		return nil, utils.NewError(fmt.Sprintf("failed to unmarshal machine: %s", err.Error()), nil)
-	}
-	return &machine, nil
-}
-
 func GetMachineByName(machineName string) (*Machine, error) {
 	var resp apiResponse
 	err := makeRequest("GET", fmt.Sprintf("/machines/name/%s", machineName), nil, &resp)
@@ -1153,12 +1219,14 @@ func SendMachineCommand(machineID string, req SendCommandRequest) (*SendCommandR
 }
 
 // UpsertDeployment creates or updates a deployment and returns the deployment ID
-func UpsertDeployment(req Deployment, response *string) error {
+func UpsertDeployment(req Deployment, response *string, requestID string) error {
 	var resp apiResponse
 	resp.Data = response
 
 	path := fmt.Sprintf("/deployments/upsert/%s/%s", req.Namespace, req.AppLabel)
-	return makeRequest("POST", path, req, &resp)
+	headers := make(http.Header)
+	headers.Set(requestIDHeader, requestID)
+	return makeMainAPIRequestWithHeaders(http.MethodPut, path, req, &resp, headers)
 }
 
 // UpsertService creates or updates a service and returns the service ID

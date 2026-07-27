@@ -1,0 +1,8 @@
+apiVersion: v2
+name: pocketbase
+description: Production-shaped single-instance PocketBase deployment for the Satusky marketplace
+type: application
+version: 0.1.4
+appVersion: "digest-pinned"
+annotations:
+  satusky.com/supported-architectures: "arm64"

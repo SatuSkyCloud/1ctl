@@ -100,7 +100,7 @@ Database URL and JWT secret are credentials — store them as secrets, not env v
 ```bash
 1ctl secret create \
   --config satusky.toml \
-  --kv DB_URL=postgresql://alice:s3cr3t@ep-cool-cloud-123456.us-east-2.aws.neon.tech/mydb?sslmode=require \
+  --kv DB_URL="$DB_URL" \
   --kv JWT_SECRET=hs256-super-long-random-string-change-me-in-prod
 ```
 
@@ -166,7 +166,7 @@ curl https://happyotter-x3k9m2.satusky.com/health
 curl -X POST https://happyotter-x3k9m2.satusky.com/api/auth/login \
   -H "Content-Type: application/json" \
   -d '{"email":"alice@example.com","password":"hunter2"}'
-# {"token":"eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9..."}
+# {"token":"<redacted>"}
 ```
 
 ---

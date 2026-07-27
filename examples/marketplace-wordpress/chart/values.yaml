@@ -1,0 +1,11 @@
+# SatuSky overwrites the `satusky` object at render time. Empty local defaults
+# make Helm's strict renderer validate the chart without storing credentials.
+satusky:
+  appName: ""
+  namespace: ""
+  domainName: ""
+  gatewayMode: false
+  gatewayName: ""
+  gatewayNamespace: ""
+  cloudflareTunnelTarget: ""
+  credentials: {}
