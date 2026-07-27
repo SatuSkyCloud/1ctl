@@ -24,6 +24,7 @@ import (
 	"1ctl/internal/commands/logs"
 	"1ctl/internal/commands/machine"
 	"1ctl/internal/commands/marketplace"
+	"1ctl/internal/commands/nats"
 	"1ctl/internal/commands/notifications"
 	"1ctl/internal/commands/org"
 	packagecmd "1ctl/internal/commands/package"
@@ -78,6 +79,9 @@ func TokenCommand() *cli.Command { return token.Command() }
 
 // MarketplaceCommand returns the "1ctl marketplace" command tree.
 func MarketplaceCommand() *cli.Command { return marketplace.Command() }
+
+// NATSCommand returns the "1ctl nats" command tree.
+func NATSCommand() *cli.Command { return nats.Command() }
 
 // PackageCommand returns the "1ctl package" command tree.
 func PackageCommand() *cli.Command { return packagecmd.Command() }

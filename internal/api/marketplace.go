@@ -54,11 +54,13 @@ type MarketplacePackageReleaseGovernance struct {
 
 // MarketplaceDeployRequest represents a request to deploy a marketplace app
 type MarketplaceDeployRequest struct {
-	DeploymentName string   `json:"deployment_name"`
-	Hostnames      []string `json:"hostnames,omitempty"`
-	CPURequest     string   `json:"cpu_request,omitempty"`
-	MemoryRequest  string   `json:"memory_request,omitempty"`
-	StorageSize    string   `json:"storage_size,omitempty"`
+	DeploymentName string                 `json:"deployment_name"`
+	Hostnames      []string               `json:"hostnames,omitempty"`
+	Replicas       int32                  `json:"replicas,omitempty"`
+	CPURequest     string                 `json:"cpu_request,omitempty"`
+	MemoryRequest  string                 `json:"memory_request,omitempty"`
+	StorageSize    string                 `json:"storage_size,omitempty"`
+	Values         map[string]interface{} `json:"values,omitempty"`
 }
 
 // MarketplaceDeployResponse represents a marketplace deployment response
@@ -169,6 +171,18 @@ func DeployMarketplaceApp(namespace, marketplaceID string, req MarketplaceDeploy
 		return nil, utils.NewError(fmt.Sprintf("failed to unmarshal deploy response: %s", err.Error()), nil)
 	}
 	return &deployResp, nil
+}
+
+// DownloadMarketplaceDeploymentOutput downloads one package-declared output.
+// Outputs may be sensitive, so callers must not include the returned bytes in
+// ordinary structured output.
+func DownloadMarketplaceDeploymentOutput(deploymentID, outputName string) ([]byte, error) {
+	path := fmt.Sprintf(
+		"/marketplace-outputs/deployments/%s/outputs/%s/download",
+		url.PathEscape(deploymentID),
+		url.PathEscape(outputName),
+	)
+	return downloadMainAPIResponse(path, marketplaceOrganizationHeaders())
 }
 
 // marketplaceOrganizationHeaders carries the user's selected organization for
