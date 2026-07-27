@@ -57,7 +57,7 @@ type MachineUsage struct {
 	Cost           float64   `json:"cost"`
 	Status         string    `json:"status"`
 	StartTime      time.Time `json:"start_time"`
-	EndTime        time.Time `json:"end_time,omitempty"`
+	EndTime        time.Time `json:"end_time,omitempty" tstype:",required"`
 }
 
 // TopupRequest represents a credit topup request
@@ -83,8 +83,8 @@ type Invoice struct {
 	Status         string    `json:"status"`
 	PeriodStart    time.Time `json:"period_start"`
 	PeriodEnd      time.Time `json:"period_end"`
-	DueDate        time.Time `json:"due_date,omitempty"`
-	PaidAt         time.Time `json:"paid_at,omitempty"`
+	DueDate        time.Time `json:"due_date,omitempty" tstype:",required"`
+	PaidAt         time.Time `json:"paid_at,omitempty" tstype:",required"`
 	CreatedAt      time.Time `json:"created_at"`
 }
 

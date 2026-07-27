@@ -256,7 +256,9 @@ func writeCredentialFiles(outputDir string, outputs map[string][]byte) error {
 	created := make([]string, 0, len(outputs))
 	for name, value := range outputs {
 		path := paths[name]
-		file, err := os.OpenFile(path, os.O_WRONLY|os.O_CREATE|os.O_EXCL, 0600)
+		// path is constrained to the validated, non-symlink output directory;
+		// O_EXCL and the checks above prevent overwrites and symlink traversal.
+		file, err := os.OpenFile(path, os.O_WRONLY|os.O_CREATE|os.O_EXCL, 0600) // #nosec G304
 		if err != nil {
 			for _, createdPath := range created {
 				_ = os.Remove(createdPath)

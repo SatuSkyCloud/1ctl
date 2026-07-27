@@ -100,7 +100,7 @@ The cloud build downloads torch and transformers (~3 minutes). Docker layer cach
 ```bash
 1ctl secret create \
   --config satusky.toml \
-  --kv MODEL_API_KEY=sk-ml-prod-f83a91bc2e4d5071
+  --kv MODEL_API_KEY="$MODEL_API_KEY"
 
 1ctl deploy restart --config satusky.toml
 ```
@@ -111,7 +111,7 @@ The cloud build downloads torch and transformers (~3 minutes). Docker layer cach
 
 ```bash
 curl -X POST https://ml-api.satusky.com/predict \
-  -H "Authorization: Bearer sk-ml-prod-f83a91bc2e4d5071" \
+  -H "Authorization: Bearer $MODEL_API_KEY" \
   -H "Content-Type: application/json" \
   -d '{"text": "Summarize: The quick brown fox..."}'
 ```

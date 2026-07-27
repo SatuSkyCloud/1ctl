@@ -23,7 +23,7 @@ type MarketplacePackageArtifact struct {
 	OwnerOrganizationID string    `json:"owner_organization_id,omitempty"`
 	ArchiveDigest       string    `json:"archive_digest"`
 	Visibility          string    `json:"visibility"`
-	CreatedAt           time.Time `json:"created_at,omitempty"`
+	CreatedAt           time.Time `json:"created_at,omitempty" tstype:",required"`
 }
 
 func UploadMarketplacePackageArtifact(organizationID, packageName string, archive []byte) (*MarketplacePackageArtifact, error) {

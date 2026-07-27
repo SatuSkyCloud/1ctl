@@ -75,7 +75,7 @@ brews:
     directory: Formula
     homepage: "https://github.com/SatuSkyCloud/1ctl"
     description: "CLI for SatuSky Cloud Platform"
-    license: "MIT"
+    license: "Apache-2.0"
     install: |
       bin.install "1ctl"
     test: |

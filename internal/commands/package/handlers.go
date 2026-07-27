@@ -47,7 +47,9 @@ func handleCreate(_ context.Context, input createInput) error {
 	if filepath.Ext(output) != ".gz" || !strings.HasSuffix(output, ".tar.gz") {
 		return fmt.Errorf("package output must end in .tar.gz")
 	}
-	file, err := os.OpenFile(output, os.O_WRONLY|os.O_CREATE|os.O_EXCL, 0640)
+	// output is an explicit user-selected local artifact path and O_EXCL
+	// prevents overwriting an existing file.
+	file, err := os.OpenFile(output, os.O_WRONLY|os.O_CREATE|os.O_EXCL, 0600) // #nosec G304
 	if err != nil {
 		return fmt.Errorf("create package artifact %s: %w", output, err)
 	}
@@ -72,7 +74,9 @@ func handlePublish(_ context.Context, input publishInput) error {
 	if artifactPath == "" {
 		return fmt.Errorf("package artifact is required")
 	}
-	archive, err := os.ReadFile(artifactPath)
+	// artifactPath is an explicit CLI input; ArchivePackageName validates the
+	// archive before it is uploaded.
+	archive, err := os.ReadFile(artifactPath) // #nosec G304
 	if err != nil {
 		return fmt.Errorf("read package artifact %s: %w", artifactPath, err)
 	}

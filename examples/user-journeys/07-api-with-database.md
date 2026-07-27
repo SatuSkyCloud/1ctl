@@ -16,7 +16,7 @@
 > (Neon, Supabase, PlanetScale, etc.) and store the full `DATABASE_URL` as a secret:
 > ```bash
 > 1ctl secret create --config satusky.toml \
->   --kv DATABASE_URL=postgres://user:pass@host/db?sslmode=require
+>   --kv DATABASE_URL="$DATABASE_URL"
 > ```
 
 ---
@@ -95,7 +95,7 @@ The app crashes because `DATABASE_URL` is not set. This is fine — the next ste
 
 ```bash
 1ctl secret create --config satusky.toml \
-  --kv DATABASE_URL=postgres://api-user:strongpassword@db.internal:5432/myapp?sslmode=require
+  --kv DATABASE_URL="$DATABASE_URL"
 ```
 
 ---
@@ -155,7 +155,7 @@ Progress: 100%
 
 ```bash
 1ctl secret create --config satusky.toml \
-  --kv DATABASE_URL=postgres://api-user:newpassword@db.internal:5432/myapp?sslmode=require
+  --kv DATABASE_URL="$DATABASE_URL"
 
 1ctl deploy restart --config satusky.toml
 ```

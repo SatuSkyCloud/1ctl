@@ -203,7 +203,7 @@ type DeploymentDeletionOperation struct {
 	Operation     string                      `json:"operation"`
 	Status        string                      `json:"status"`
 	Terminal      bool                        `json:"terminal"`
-	AcceptedAt    time.Time                   `json:"accepted_at,omitempty"`
+	AcceptedAt    time.Time                   `json:"accepted_at,omitempty" tstype:",required"`
 	StatusURL     string                      `json:"status_url,omitempty"`
 	PollAfterMs   int                         `json:"poll_after_ms,omitempty"`
 	PurgeRetained bool                        `json:"purge_retained"`
@@ -538,18 +538,18 @@ type Machine struct {
 	FormFactor          string     `db:"form_factor" json:"form_factor" validate:"required"`
 	Monetized           bool       `db:"monetized" json:"monetized" validate:"required"`
 	Status              string     `db:"status" json:"status"`
-	LastHealthCheck     *time.Time `db:"last_health_check" json:"last_health_check"`
+	LastHealthCheck     *time.Time `db:"last_health_check" json:"last_health_check" tstype:"string | null,required"`
 	Recommended         bool       `db:"recommended" json:"recommended"`
-	ResourceScore       *float64   `db:"resource_score" json:"resource_score"`
-	CPUUsagePercent     *float64   `db:"cpu_usage_percent" json:"cpu_usage_percent"`
-	MemoryUsagePercent  *float64   `db:"memory_usage_percent" json:"memory_usage_percent"`
-	StorageUsagePercent *float64   `db:"storage_usage_percent" json:"storage_usage_percent"`
-	NetworkUsageGbps    *float64   `db:"network_usage_gbps" json:"network_usage_gbps"`
+	ResourceScore       *float64   `db:"resource_score" json:"resource_score" tstype:"number | null,required"`
+	CPUUsagePercent     *float64   `db:"cpu_usage_percent" json:"cpu_usage_percent" tstype:"number | null,required"`
+	MemoryUsagePercent  *float64   `db:"memory_usage_percent" json:"memory_usage_percent" tstype:"number | null,required"`
+	StorageUsagePercent *float64   `db:"storage_usage_percent" json:"storage_usage_percent" tstype:"number | null,required"`
+	NetworkUsageGbps    *float64   `db:"network_usage_gbps" json:"network_usage_gbps" tstype:"number | null,required"`
 	NetworkMetricsType  string     `db:"network_metrics_type" json:"network_metrics_type"`
 	ConnectionMode      *string    `db:"connection_mode" json:"connection_mode,omitempty"`
 	VMState             *string    `db:"vm_state" json:"vm_state,omitempty"`
-	UptimePercent       *float64   `db:"uptime_percent" json:"uptime_percent"`
-	ResponseTimeMs      *int       `db:"response_time_ms" json:"response_time_ms"`
+	UptimePercent       *float64   `db:"uptime_percent" json:"uptime_percent" tstype:"number | null,required"`
+	ResponseTimeMs      *int       `db:"response_time_ms" json:"response_time_ms" tstype:"number | null,required"`
 	NodeType            string     `db:"node_type" json:"node_type"`
 	HasGPU              bool       `db:"has_gpu" json:"has_gpu"`
 	HasHDD              bool       `db:"has_hdd" json:"has_hdd"`
@@ -682,7 +682,7 @@ type DomainSearchRequest struct {
 type DomainPurchaseRequest struct {
 	Domain  string             `json:"domain"`
 	Period  int                `json:"period,omitempty"`
-	Contact *DomainContactInfo `json:"contact"`
+	Contact *DomainContactInfo `json:"contact" tstype:"DomainContactInfo | null,required"`
 }
 
 // DomainPurchaseIntentResponse is returned when a domain purchase intent is created

@@ -75,8 +75,8 @@ func userUpdateCommand() *cli.Command {
 
 func userPasswordCommand() *cli.Command {
 	return &cli.Command{
-		Name:   "password",
-		Usage:  "Change password (interactive)",
+		Name:  "password",
+		Usage: "Change password (interactive)",
 		Action: func(ctx context.Context, cmd *cli.Command) error {
 			return handleUserPassword(ctx)
 		},
@@ -85,8 +85,8 @@ func userPasswordCommand() *cli.Command {
 
 func userPermissionsCommand() *cli.Command {
 	return &cli.Command{
-		Name:   "permissions",
-		Usage:  "Show current permissions",
+		Name:  "permissions",
+		Usage: "Show current permissions",
 		Action: func(ctx context.Context, cmd *cli.Command) error {
 			return handleUserPermissions(ctx)
 		},
@@ -99,8 +99,8 @@ func userSessionsCommand() *cli.Command {
 		Usage: "Manage sessions",
 		Commands: []*cli.Command{
 			{
-				Name:   "revoke",
-				Usage:  "Revoke all sessions",
+				Name:  "revoke",
+				Usage: "Revoke all sessions",
 				Action: func(ctx context.Context, cmd *cli.Command) error {
 					return handleUserSessionsRevoke(ctx)
 				},

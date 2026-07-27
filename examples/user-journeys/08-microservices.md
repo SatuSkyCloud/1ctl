@@ -103,7 +103,7 @@ echo "$USER_SERVICE_URL"
 # order-service database
 1ctl secret create \
   --config services/order-service/satusky.toml \
-  --kv DATABASE_URL=postgres://orders:pass@db.internal:5432/orders
+  --kv DATABASE_URL="$DATABASE_URL"
 ```
 
 Secrets are scoped per deployment name — no cross-contamination.

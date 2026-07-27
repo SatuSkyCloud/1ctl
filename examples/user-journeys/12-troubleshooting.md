@@ -43,7 +43,7 @@ Workload: Pending   (or show restart count)
 ### Fix
 
 ```bash
-1ctl secret create --config satusky.toml --kv DATABASE_URL=postgres://user:pass@host/db
+1ctl secret create --config satusky.toml --kv DATABASE_URL="$DATABASE_URL"
 1ctl deploy restart --config satusky.toml
 ```
 

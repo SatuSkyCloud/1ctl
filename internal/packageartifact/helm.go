@@ -16,7 +16,7 @@ import (
 const (
 	helmChartDirectory                  = "chart"
 	helmArchitecturesAnnotation         = "satusky.com/supported-architectures"
-	helmRequiredSecretsAnnotation       = "satusky.com/required-secrets"
+	helmRequiredSecretsAnnotation       = "satusky.com/required-secrets" // #nosec G101 -- Kubernetes annotation name, not a credential.
 	helmMaxChartFiles                   = 96
 	helmMaxChartBytes             int64 = 24 << 20
 	helmMaxArchiveBytes                 = 8 << 20
@@ -146,7 +146,8 @@ func readHelmChart(chartDir string) (helmChartMetadata, map[string][]byte, []str
 		if fileCount > helmMaxChartFiles || byteCount > helmMaxChartBytes {
 			return fmt.Errorf("Helm chart exceeds packaging limits")
 		}
-		contents, err := os.ReadFile(filePath)
+		// filePath comes from WalkDir under the validated, non-symlink chart root.
+		contents, err := os.ReadFile(filePath) // #nosec G304
 		if err != nil {
 			return err
 		}

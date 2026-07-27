@@ -36,9 +36,9 @@ type tokenDeleteInput struct {
 // Command returns the root token command tree.
 func Command() *cli.Command {
 	return &cli.Command{
-		Name:    "token",
-		
-		Usage:   "Manage API tokens",
+		Name: "token",
+
+		Usage: "Manage API tokens",
 		Commands: []*cli.Command{
 			tokenListCommand(),
 			tokenCreateCommand(),

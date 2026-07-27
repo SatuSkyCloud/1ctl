@@ -41,9 +41,9 @@ type notifDeleteInput struct {
 // Command returns the root notifications command tree.
 func Command() *cli.Command {
 	return &cli.Command{
-		Name:    "notifications",
-		
-		Usage:   "Manage notifications",
+		Name: "notifications",
+
+		Usage: "Manage notifications",
 		Commands: []*cli.Command{
 			notifListCommand(),
 			notifCountCommand(),
@@ -139,5 +139,3 @@ func notifDeleteCommand() *cli.Command {
 		},
 	}
 }
-
-

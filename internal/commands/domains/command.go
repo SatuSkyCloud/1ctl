@@ -71,13 +71,13 @@ func optionalString(name, usage string, dest *string, validate func(string) erro
 // --- Input structs ------------------------------------------------------
 
 type domainsAddInput struct {
-	Domain   string
-	App      string
-	Port     int
+	Domain    string
+	App       string
+	Port      int
 	CustomDNS bool
-	Wait     bool
-	NoWait   bool
-	WithWWW  bool
+	Wait      bool
+	NoWait    bool
+	WithWWW   bool
 }
 
 type domainsRemoveInput struct {
@@ -125,39 +125,39 @@ type dnsListInput struct {
 }
 
 type dnsCreateInput struct {
-	Domain       string
-	Type         string
-	Name         string
-	Data         string
-	TTL          int
-	Priority     int
-	Port         int
-	Weight       int
-	Flags        int
-	Tag          string
+	Domain   string
+	Type     string
+	Name     string
+	Data     string
+	TTL      int
+	Priority int
+	Port     int
+	Weight   int
+	Flags    int
+	Tag      string
 }
 
 type dnsUpdateInput struct {
-	Domain       string
-	RecordID     string
-	Type         string
-	Name         string
-	Data         string
-	TTL          int
-	Priority     int
-	Port         int
-	Weight       int
-	Flags        int
-	Tag          string
-	TypeSet      bool
-	NameSet      bool
-	DataSet      bool
-	TTLSet       bool
-	PrioritySet  bool
-	PortSet      bool
-	WeightSet    bool
-	FlagsSet     bool
-	TagSet       bool
+	Domain      string
+	RecordID    string
+	Type        string
+	Name        string
+	Data        string
+	TTL         int
+	Priority    int
+	Port        int
+	Weight      int
+	Flags       int
+	Tag         string
+	TypeSet     bool
+	NameSet     bool
+	DataSet     bool
+	TTLSet      bool
+	PrioritySet bool
+	PortSet     bool
+	WeightSet   bool
+	FlagsSet    bool
+	TagSet      bool
 }
 
 type dnsDeleteInput struct {
@@ -256,9 +256,9 @@ func domainsAddCommand() *cli.Command {
 func domainsRemoveCommand() *cli.Command {
 	var in domainsRemoveInput
 	return &cli.Command{
-		Name:    "delete",
-		Aliases: []string{"remove", "rm"},
-		Usage:   "Remove a custom domain from an app",
+		Name:      "delete",
+		Aliases:   []string{"remove", "rm"},
+		Usage:     "Remove a custom domain from an app",
 		ArgsUsage: "<domain>",
 		Flags: []cli.Flag{
 			requiredString(flagApp, "App name (the value of [app] name in satusky.toml)", &in.App, nil),
@@ -299,7 +299,7 @@ func domainsSetupCommand() *cli.Command {
 		Name:      "setup",
 		Usage:     "Show exact DNS setup instructions for a domain",
 		ArgsUsage: "<domain>",
-		Flags: []cli.Flag{},
+		Flags:     []cli.Flag{},
 		Action: func(ctx context.Context, cmd *cli.Command) error {
 			if cmd.Args().Len() < 1 {
 				return cli.ShowSubcommandHelp(cmd)
@@ -347,8 +347,8 @@ func domainsManagedCommand() *cli.Command {
 		Usage: "Manage domains owned or delegated to SatuSky DNS",
 		Commands: []*cli.Command{
 			{
-				Name:   "list",
-				Usage:  "List managed domains",
+				Name:  "list",
+				Usage: "List managed domains",
 				Action: func(ctx context.Context, cmd *cli.Command) error {
 					return handleManagedDomainsList(ctx)
 				},

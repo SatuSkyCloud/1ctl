@@ -37,7 +37,7 @@ type ValkeyUserConfig struct {
 }
 
 type StorageConfig struct {
-	StorageID          uuid.UUID         `json:"storage_id,omitempty"`
+	StorageID          uuid.UUID         `json:"storage_id,omitempty" tstype:",required"`
 	ResourceID         uuid.UUID         `json:"resource_id"`
 	ResourceType       string            `json:"resource_type"`
 	Namespace          string            `json:"namespace"`
@@ -64,8 +64,8 @@ type StorageConfig struct {
 	AdminUIEnabled     *bool             `json:"admin_ui_enabled,omitempty"`
 	Labels             map[string]string `json:"labels,omitempty"`
 	Annotations        map[string]string `json:"annotations,omitempty"`
-	CreatedAt          time.Time         `json:"created_at,omitempty"`
-	UpdatedAt          time.Time         `json:"updated_at,omitempty"`
+	CreatedAt          time.Time         `json:"created_at,omitempty" tstype:",required"`
+	UpdatedAt          time.Time         `json:"updated_at,omitempty" tstype:",required"`
 }
 
 type PostgresCreateOptions struct {

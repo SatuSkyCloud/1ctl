@@ -192,9 +192,9 @@ cd examples/backend
 
 Verify in K8s:
 ```bash
-kubectl -n org3-b322955e get configmap backend-api-environments -o jsonpath='{.data}'
+kubectl -n <namespace> get configmap backend-api-environments -o jsonpath='{.data}'
 # Deployment env is also clean:
-kubectl -n org3-b322955e get deployment backend-api \
+kubectl -n <namespace> get deployment backend-api \
   -o jsonpath='{.spec.template.spec.containers[0].env}'
 ```
 

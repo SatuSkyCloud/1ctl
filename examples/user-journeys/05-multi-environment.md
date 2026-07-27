@@ -67,10 +67,10 @@ Secrets are isolated per deployment name.
 
 ```bash
 # Staging
-1ctl secret create --config staging --kv DATABASE_URL=postgres://test:pass@staging-db.internal:5432/myapp_staging
+1ctl secret create --config staging --kv DATABASE_URL="$STAGING_DATABASE_URL"
 
 # Production
-1ctl secret create --kv DATABASE_URL=postgres://prod:secret@prod-db.internal:5432/myapp
+1ctl secret create --kv DATABASE_URL="$PRODUCTION_DATABASE_URL"
 ```
 
 ---

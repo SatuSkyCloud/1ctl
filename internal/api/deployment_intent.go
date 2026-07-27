@@ -14,7 +14,7 @@ import (
 type DeploymentIntent struct {
 	Deployment  Deployment                   `json:"deployment"`
 	Environment []KeyValuePair               `json:"environment,omitempty"`
-	Config      DeploymentDesiredStateConfig `json:"config,omitempty"`
+	Config      DeploymentDesiredStateConfig `json:"config,omitempty" tstype:",required"`
 	Volumes     []DeploymentIntentVolume     `json:"volumes,omitempty"`
 	Service     *DeploymentIntentService     `json:"service,omitempty"`
 	PublicRoute *DeploymentIntentPublicRoute `json:"public_route,omitempty"`

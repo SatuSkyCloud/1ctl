@@ -43,7 +43,7 @@ Profiles
 ────────
 * local
   API URL: http://localhost:8080/v1/cli
-  Auth: mingerz.k@gmail.com
+  Auth: freelancer@example.com
   Org: org123
 ---
   client-a
