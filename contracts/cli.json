@@ -678,6 +678,17 @@
           "envVars": []
         },
         {
+          "name": "wait-mode",
+          "aliases": [],
+          "type": "string",
+          "takesValue": true,
+          "required": false,
+          "multiple": false,
+          "default": "\"application\"",
+          "usage": "Readiness threshold: application (default) or workload (bypasses application verification)",
+          "envVars": []
+        },
+        {
           "name": "strategy",
           "aliases": [],
           "type": "string",
@@ -1103,6 +1114,17 @@
           "multiple": false,
           "default": "false",
           "usage": "Watch status in real-time",
+          "envVars": []
+        },
+        {
+          "name": "wait-mode",
+          "aliases": [],
+          "type": "string",
+          "takesValue": true,
+          "required": false,
+          "multiple": false,
+          "default": "\"application\"",
+          "usage": "Readiness threshold when watching: application (default) or workload (bypasses application verification)",
           "envVars": []
         },
         {

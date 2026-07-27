@@ -527,9 +527,133 @@ const (
 )
 
 type DeploymentStatus struct {
-	Status   string `json:"status"`
-	Message  string `json:"message,omitempty"`
-	Progress int    `json:"progress"`
+	Status        string               `json:"status"`
+	Message       string               `json:"message,omitempty"`
+	Progress      int                  `json:"progress"`
+	ReplicaStatus string               `json:"replica_status,omitempty"`
+	Readiness     *DeploymentReadiness `json:"readiness,omitempty"`
+}
+
+// DeploymentReadiness is the authoritative, additive live readiness contract.
+// A nil value means an older backend did not provide readiness conditions.
+type DeploymentReadiness struct {
+	Reconciliation     DeploymentReconciliationReadiness `json:"reconciliation"`
+	Workload           DeploymentWorkloadReadiness       `json:"workload"`
+	Application        DeploymentConditionReadiness      `json:"application"`
+	Route              DeploymentConditionReadiness      `json:"route"`
+	DNS                DeploymentConditionReadiness      `json:"dns"`
+	PublicReachability DeploymentConditionReadiness      `json:"public_reachability"`
+}
+
+type DeploymentReconciliationReadiness struct {
+	State              string `json:"state"`
+	Generation         int64  `json:"generation"`
+	ObservedGeneration int64  `json:"observed_generation"`
+}
+
+type DeploymentWorkloadReadiness struct {
+	State             string `json:"state"`
+	DesiredReplicas   int32  `json:"desired_replicas"`
+	ReadyReplicas     int32  `json:"ready_replicas"`
+	AvailableReplicas int32  `json:"available_replicas"`
+	UpdatedReplicas   int32  `json:"updated_replicas"`
+}
+
+type DeploymentConditionReadiness struct {
+	Basis string `json:"basis"`
+	State string `json:"state"`
+}
+
+// DeploymentWaitMode selects the explicitly requested readiness threshold.
+type DeploymentWaitMode string
+
+const (
+	DeploymentWaitModeApplication DeploymentWaitMode = "application"
+	DeploymentWaitModeWorkload    DeploymentWaitMode = "workload"
+)
+
+// deploymentReadinessEvaluation centralizes wait semantics so polling does not
+// depend on backend status strings.
+type deploymentReadinessEvaluation struct {
+	Ready         bool
+	TerminalError error
+	Reason        string
+}
+
+func (s DeploymentStatus) readinessEvaluation(mode DeploymentWaitMode) deploymentReadinessEvaluation {
+	if s.Readiness == nil {
+		return deploymentReadinessEvaluation{Reason: "backend did not provide readiness conditions"}
+	}
+
+	r := s.Readiness
+	if r.Reconciliation.State == "failing" {
+		return deploymentReadinessFailure("deployment reconciliation is failing")
+	}
+	if r.Workload.State == "failing" {
+		return deploymentReadinessFailure("deployment workload is failing")
+	}
+	if r.Application.State == "failing" {
+		return deploymentReadinessFailure("application readiness is failing")
+	}
+
+	if mode == DeploymentWaitModeWorkload {
+		if r.Reconciliation.State == "current" && r.Workload.State == "available" {
+			return deploymentReadinessEvaluation{Ready: true}
+		}
+		return deploymentReadinessEvaluation{Reason: "waiting for current reconciliation and available workload"}
+	}
+	if r.Reconciliation.State != "current" || r.Workload.State != "available" {
+		return deploymentReadinessEvaluation{Reason: "waiting for current reconciliation and available workload"}
+	}
+
+	switch r.Application.State {
+	case "verified":
+		return deploymentReadinessEvaluation{Ready: true}
+	case "unconfigured":
+		return deploymentReadinessEvaluation{
+			TerminalError: newReadinessStatusError("READINESS_UNVERIFIED", "application readiness is unconfigured; configure a readiness probe or verify a public health endpoint"),
+			Reason:        "application readiness is unconfigured",
+		}
+	default:
+		return deploymentReadinessEvaluation{Reason: "waiting for verified application readiness"}
+	}
+}
+
+func deploymentReadinessFailure(message string) deploymentReadinessEvaluation {
+	return deploymentReadinessEvaluation{
+		TerminalError: newReadinessStatusError("READINESS_FAILED", message),
+		Reason:        message,
+	}
+}
+
+func newReadinessStatusError(code, message string) *HTTPStatusError {
+	return &HTTPStatusError{
+		Code:        code,
+		Message:     message,
+		Remediation: []string{"inspect deployment status and application logs", "correct the reported readiness condition before retrying"},
+	}
+}
+
+func (s DeploymentStatus) WorkloadStatus() string {
+	if s.ReplicaStatus != "" {
+		return s.ReplicaStatus
+	}
+	return s.Status
+}
+
+func (s DeploymentStatus) ApplicationReadinessText() string {
+	if s.Readiness == nil {
+		return "unknown (backend did not provide readiness conditions)"
+	}
+	state := s.Readiness.Application.State
+	if state == "" {
+		state = "unknown"
+	}
+	basis := s.Readiness.Application.Basis
+	if basis == "" {
+		basis = "not provided"
+	}
+	return fmt.Sprintf("%s (%s)", state, basis)
 }
 
 type Machine struct {

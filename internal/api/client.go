@@ -587,42 +587,99 @@ func GetDeploymentStatus(deploymentID string) (*DeploymentStatus, error) {
 	return &resp.Data, nil
 }
 
-// WaitForDeployment waits for a deployment to reach a terminal state
-func WaitForDeployment(deploymentID string, timeout time.Duration) (*DeploymentStatus, error) {
-	ticker := time.NewTicker(5 * time.Second)
-	defer ticker.Stop()
+// GetLiveDeploymentStatus retrieves the main API's authoritative live
+// readiness conditions. It deliberately does not fall back to legacy status:
+// older responses remain display-compatible but cannot prove readiness.
+func GetLiveDeploymentStatus(deploymentID string) (*DeploymentStatus, error) {
+	var status DeploymentStatus
+	if _, err := makeMainAPIRequestWithStatus(http.MethodGet, fmt.Sprintf("/v1/deployments/%s/status/live", url.PathEscape(deploymentID)), nil, &status); err != nil {
+		return nil, err
+	}
+	return &status, nil
+}
 
+// ValidateDeploymentWaitMode validates the compatibility threshold exposed by
+// deploy and app status --watch. The empty value means the safe default.
+func ValidateDeploymentWaitMode(mode string) (DeploymentWaitMode, error) {
+	switch DeploymentWaitMode(strings.TrimSpace(mode)) {
+	case "", DeploymentWaitModeApplication:
+		return DeploymentWaitModeApplication, nil
+	case DeploymentWaitModeWorkload:
+		return DeploymentWaitModeWorkload, nil
+	default:
+		return "", utils.NewError("wait-mode must be one of: application, workload", nil)
+	}
+}
+
+// DeploymentWaitOptions controls the readiness threshold and is intentionally
+// small so callers can opt into a successful public health probe without
+// treating DNS or route progress as application verification.
+type DeploymentWaitOptions struct {
+	Mode              DeploymentWaitMode
+	PollInterval      time.Duration
+	VerifyApplication func() bool
+}
+
+// WaitForDeployment waits for verified application readiness by default.
+func WaitForDeployment(deploymentID string, timeout time.Duration) (*DeploymentStatus, error) {
+	return WaitForDeploymentWithOptions(deploymentID, timeout, DeploymentWaitOptions{})
+}
+
+// WaitForDeploymentWithOptions polls live readiness conditions. A legacy or
+// 404 live endpoint is intentionally unverified, never a successful Running.
+func WaitForDeploymentWithOptions(deploymentID string, timeout time.Duration, options DeploymentWaitOptions) (*DeploymentStatus, error) {
+	mode := options.Mode
+	if mode == "" {
+		mode = DeploymentWaitModeApplication
+	}
+	if _, err := ValidateDeploymentWaitMode(string(mode)); err != nil {
+		return nil, err
+	}
+	pollInterval := options.PollInterval
+	if pollInterval <= 0 {
+		pollInterval = 5 * time.Second
+	}
 	deadline := time.Now().Add(timeout)
 
 	for {
 		if time.Now().After(deadline) {
-			return nil, utils.NewError("timeout waiting for deployment", nil)
+			return nil, utils.NewError("timeout waiting for verified deployment readiness", nil)
 		}
 
-		status, err := GetDeploymentStatus(deploymentID)
+		status, err := GetLiveDeploymentStatus(deploymentID)
 		if err != nil {
-			return nil, err
+			if statusErr, ok := err.(*HTTPStatusError); !ok || statusErr.StatusCode != http.StatusNotFound {
+				return nil, err
+			}
+			status = &DeploymentStatus{}
 		}
 
-		// Two distinct "running" tokens coexist intentionally:
-		//   StatusRunning    ("running") — backend lifecycle: in-progress, not yet healthy
-		//   StatusRunningK8s ("Running") — K8s pod phase: healthy, terminal-success
-		// Same casing distinction for Failed/failed.
-		switch status.Status {
-		case StatusCompleted, StatusRunningK8s:
+		evaluation := status.readinessEvaluation(mode)
+		if evaluation.Ready {
 			return status, nil
-		case StatusFailed, StatusFailedK8s:
-			return status, utils.NewError(fmt.Sprintf("deployment failed: %s", status.Message), nil)
-		case StatusPending, StatusCreating, StatusRunning, StatusNotReady, StatusProgressing, StatusUnknown:
-			utils.PrintInfo("Deployment status: %s (%d pct)", status.Status, status.Progress)
-		default:
-			// Forward-compatibility: a new status string added on the backend
-			// must not break --wait on older CLI versions. Treat unknown
-			// values as non-terminal and keep polling.
-			utils.PrintInfo("Deployment status: %s (waiting...)", status.Status)
+		}
+		if evaluation.TerminalError != nil {
+			statusErr, isReadinessStatus := evaluation.TerminalError.(*HTTPStatusError)
+			if mode == DeploymentWaitModeApplication && options.VerifyApplication != nil && isReadinessStatus && statusErr.Code == "READINESS_UNVERIFIED" && options.VerifyApplication() {
+				return status, nil
+			}
+			return status, evaluation.TerminalError
+		}
+		if mode == DeploymentWaitModeApplication && options.VerifyApplication != nil && options.VerifyApplication() {
+			return status, nil
 		}
 
-		<-ticker.C
+		if evaluation.Reason != "" {
+			utils.PrintInfo("Deployment readiness: %s", evaluation.Reason)
+		}
+		remaining := time.Until(deadline)
+		if remaining <= 0 {
+			return nil, utils.NewError("timeout waiting for verified deployment readiness", nil)
+		}
+		if pollInterval > remaining {
+			pollInterval = remaining
+		}
+		time.Sleep(pollInterval)
 	}
 }
 

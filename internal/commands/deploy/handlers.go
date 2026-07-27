@@ -3,6 +3,7 @@ package deploy
 import (
 	"context"
 	"fmt"
+	"net/http"
 	"strings"
 	"time"
 
@@ -52,7 +53,7 @@ func handleDeploy(ctx context.Context, in DeployInput) error {
 		return utils.NewError(fmt.Sprintf("deployment failed: %s", err.Error()), nil)
 	}
 	if resp.Intent != nil {
-		return reportAtomicIntent(resp.Intent, merged.Wait)
+		return reportAtomicIntent(resp.Intent, merged.Wait, merged.WaitMode)
 	}
 
 	ingressID := ""
@@ -60,10 +61,40 @@ func handleDeploy(ctx context.Context, in DeployInput) error {
 		ingressID = resp.IngressID.String()
 	}
 	publicURL := deploypkg.WaitForPublicURL(ingressID, resp.Domain)
+	if merged.Wait {
+		mode, err := api.ValidateDeploymentWaitMode(merged.WaitMode)
+		if err != nil {
+			return err
+		}
+		if mode == api.DeploymentWaitModeWorkload {
+			utils.PrintWarning("--wait-mode workload bypasses application verification; success only means the reconciled workload is available.")
+		}
+		waitOptions := api.DeploymentWaitOptions{Mode: mode}
+		if mode == api.DeploymentWaitModeApplication && merged.HealthPath != "" && publicURL.Ready && resp.Domain != "" {
+			waitOptions.VerifyApplication = func() bool {
+				// The regular non-strict smoke accepts 401/403/404 as evidence of
+				// reachability. That is useful for reporting, but only a successful
+				// health-path response may satisfy application verification.
+				smoke := deploypkg.CheckPublicURLSmoke("https://"+resp.Domain, deploypkg.SmokePathCandidates(merged.HealthPath), true)
+				return smoke.Ready
+			}
+		}
+		final, waitErr := api.WaitForDeploymentWithOptions(resp.DeploymentID.String(), 5*time.Minute, waitOptions)
+		if waitErr != nil {
+			return waitErr
+		}
+		if mode == api.DeploymentWaitModeWorkload {
+			utils.PrintSuccess("Deployment %s workload is available (%s); application readiness was not verified.", resp.AppLabel, final.WorkloadStatus())
+		} else if final.Readiness != nil && final.Readiness.Application.State == "verified" {
+			utils.PrintSuccess("Deployment %s application readiness is verified (%s)", resp.AppLabel, final.ApplicationReadinessText())
+		} else {
+			utils.PrintSuccess("Deployment %s application readiness is verified by successful public health check %s", resp.AppLabel, merged.HealthPath)
+		}
+	}
 	return deploypkg.ReportDeployResult(resp.AppLabel, resp.DeploymentID.String(), resp.Domain, publicURL, merged.HealthPath, merged.StrictSmoke)
 }
 
-func reportAtomicIntent(accepted *api.DeploymentIntentAccepted, wait bool) error {
+func reportAtomicIntent(accepted *api.DeploymentIntentAccepted, wait bool, waitMode string) error {
 	if utils.TryPrintJSON(map[string]interface{}{"mode": "atomic", "intent": accepted}) {
 		return nil
 	}
@@ -79,11 +110,22 @@ func reportAtomicIntent(accepted *api.DeploymentIntentAccepted, wait bool) error
 		utils.PrintInfo("Deployment intent was accepted and is pending reconciliation. Use --wait to observe readiness.")
 		return nil
 	}
-	final, err := api.WaitForDeployment(accepted.DeploymentID, 5*time.Minute)
+	mode, err := api.ValidateDeploymentWaitMode(waitMode)
 	if err != nil {
-		return utils.NewError(fmt.Sprintf("deployment intent accepted but readiness failed: %s", err.Error()), nil)
+		return err
 	}
-	utils.PrintSuccess("Deployment %s is healthy (%s)", accepted.AppLabel, final.Status)
+	if mode == api.DeploymentWaitModeWorkload {
+		utils.PrintWarning("--wait-mode workload bypasses application verification; success only means the reconciled workload is available.")
+	}
+	final, err := api.WaitForDeploymentWithOptions(accepted.DeploymentID, 5*time.Minute, api.DeploymentWaitOptions{Mode: mode})
+	if err != nil {
+		return err
+	}
+	if mode == api.DeploymentWaitModeWorkload {
+		utils.PrintSuccess("Deployment %s workload is available (%s); application readiness was not verified.", accepted.AppLabel, final.WorkloadStatus())
+		return nil
+	}
+	utils.PrintSuccess("Deployment %s application readiness is verified (%s)", accepted.AppLabel, final.ApplicationReadinessText())
 	return nil
 }
 
@@ -229,6 +271,9 @@ func shouldShowDeployHelp(m mergedInput, cfg *config.ProjectConfig) bool {
 }
 
 func validateInputs(m mergedInput) error {
+	if _, err := api.ValidateDeploymentWaitMode(m.WaitMode); err != nil {
+		return err
+	}
 	if m.Image != "" {
 		if err := validator.ValidateImageReference(m.Image); err != nil {
 			return utils.NewError(fmt.Sprintf("invalid image: %v", err), nil)
@@ -772,25 +817,35 @@ func handleDeploymentStatus(ctx context.Context, in StatusInput) error {
 		return utils.NewError(fmt.Sprintf("failed to get deployment details: %s", err.Error()), nil)
 	}
 
+	mode, err := api.ValidateDeploymentWaitMode(in.WaitMode)
+	if err != nil {
+		return err
+	}
 	var status *api.DeploymentStatus
 	if deployment.IsMarketplaceManaged() {
 		// Marketplace deployments are reconciled through the canonical deployment
 		// record. The legacy /deployments/status endpoint has no marketplace row.
 		status = &api.DeploymentStatus{Status: deployment.Status}
 	} else if in.Watch {
-		status, err = api.WaitForDeployment(deploymentID, 5*time.Minute)
+		if mode == api.DeploymentWaitModeWorkload {
+			utils.PrintWarning("--wait-mode workload bypasses application verification; success only means the reconciled workload is available.")
+		}
+		status, err = api.WaitForDeploymentWithOptions(deploymentID, 5*time.Minute, api.DeploymentWaitOptions{Mode: mode})
 		if err != nil {
-			return utils.NewError(fmt.Sprintf("failed to watch deployment: %s", err.Error()), nil)
+			return err
 		}
-		utils.PrintStatusLine("Final status", status.Status)
-		if status.Message != "" {
-			utils.PrintStatusLine("Message", status.Message)
-		}
-		return nil
 	} else {
 		status, err = api.GetDeploymentStatus(deploymentID)
 		if err != nil {
 			return utils.NewError(fmt.Sprintf("failed to get deployment status: %s", err.Error()), nil)
+		}
+	}
+	if !in.Watch {
+		if live, liveErr := api.GetLiveDeploymentStatus(deploymentID); liveErr == nil {
+			status.ReplicaStatus = live.ReplicaStatus
+			status.Readiness = live.Readiness
+		} else if statusErr, ok := liveErr.(*api.HTTPStatusError); !ok || statusErr.StatusCode != http.StatusNotFound {
+			return utils.NewError(fmt.Sprintf("failed to get live deployment readiness: %s", liveErr.Error()), nil)
 		}
 	}
 
@@ -827,7 +882,8 @@ func handleDeploymentStatus(ctx context.Context, in StatusInput) error {
 	if ingress != nil && ingress.DomainName != "" {
 		utils.PrintStatusLine("URL", "https://"+ingress.DomainName)
 	}
-	utils.PrintStatusLine("Workload", status.Status)
+	utils.PrintStatusLine("Workload", status.WorkloadStatus())
+	utils.PrintStatusLine("Application readiness", status.ApplicationReadinessText())
 	if status.Message != "" {
 		utils.PrintStatusLine("Message", status.Message)
 	}

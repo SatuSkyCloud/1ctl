@@ -57,8 +57,8 @@ func ResolveIngressID(deploymentID string) string {
 
 // ReportDeployResult prints the deployment result with optional DNS/smoke
 // testing. It handles three cases:
-//   - No domain: deployment was accepted, print success.
-//   - Domain but URL not ready: print success + warning + next-step hint.
+//   - No domain: deployment was accepted, print its acceptance.
+//   - Domain but URL not ready: print acceptance + warning + next-step hint.
 //   - Domain and URL ready: run HTTP smoke probe (polls up to 30s).
 func ReportDeployResult(appLabel, deploymentID, domain string, ready PublicURLReadiness, smokePath string, strictSmoke bool) error {
 	utils.PrintStatusLine("Deployment ID", deploymentID)
@@ -90,7 +90,7 @@ func ReportDeployResult(appLabel, deploymentID, domain string, ready PublicURLRe
 	}
 
 	if smoke.Ready {
-		utils.PrintSuccess("🚀 Deployment for %s is successful! Your app is live at: https://%s", appLabel, domain)
+		utils.PrintSuccess("Public smoke check for %s succeeded at: https://%s", appLabel, domain)
 		if smoke.Path != "" {
 			utils.PrintInfo("Verified: %s%s", smokeURL, smoke.Path)
 		}

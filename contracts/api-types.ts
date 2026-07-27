@@ -721,7 +721,36 @@ export interface DeploymentStatus {
   status: string;
   message?: string;
   progress: number /* int */;
+  replica_status?: string;
+  readiness?: DeploymentReadiness;
 }
+export interface DeploymentReadiness {
+  reconciliation: DeploymentReconciliationReadiness;
+  workload: DeploymentWorkloadReadiness;
+  application: DeploymentConditionReadiness;
+  route: DeploymentConditionReadiness;
+  dns: DeploymentConditionReadiness;
+  public_reachability: DeploymentConditionReadiness;
+}
+export interface DeploymentReconciliationReadiness {
+  state: string;
+  generation: number /* int64 */;
+  observed_generation: number /* int64 */;
+}
+export interface DeploymentWorkloadReadiness {
+  state: string;
+  desired_replicas: number /* int32 */;
+  ready_replicas: number /* int32 */;
+  available_replicas: number /* int32 */;
+  updated_replicas: number /* int32 */;
+}
+export interface DeploymentConditionReadiness {
+  basis: string;
+  state: string;
+}
+export type DeploymentWaitMode = string;
+export const DeploymentWaitModeApplication: DeploymentWaitMode = "application";
+export const DeploymentWaitModeWorkload: DeploymentWaitMode = "workload";
 export interface Machine {
   id: number /* int64 */;
   machine_id: string;
