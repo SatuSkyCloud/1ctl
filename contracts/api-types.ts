@@ -692,12 +692,20 @@ export const DnsConfigCustom: DnsConfigType = "custom";
 export interface APIError {
   message: string;
   code: string;
-  details: string;
+  details: unknown;
+  retryable?: boolean;
+  remediation?: string[];
+  request_id?: string;
 }
 export interface HTTPStatusError {
   StatusCode: number /* int */;
   Message: string;
   RetryAfter: number /* nanoseconds */;
+  Code: string;
+  Details: unknown;
+  Retryable?: boolean;
+  Remediation: string[];
+  RequestID: string;
 }
 export const StatusPending = "pending";
 export const StatusCreating = "creating";

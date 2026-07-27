@@ -767,18 +767,7 @@ func makeRequestURLWithHeadersOnce(method, url string, body interface{}, respons
 			return resp.StatusCode, utils.NewResourceExhaustedCLIError(resourceErr)
 		}
 
-		var apiError APIError
-		if err := json.Unmarshal(respBody, &apiError); err != nil {
-			return resp.StatusCode, &HTTPStatusError{StatusCode: resp.StatusCode, Message: fmt.Sprintf("request failed with status %d: %s", resp.StatusCode, string(respBody)), RetryAfter: parseRetryAfter(resp.Header.Get("Retry-After"))}
-		}
-		message := apiError.Message
-		if apiError.Details != "" {
-			message = fmt.Sprintf("%s: %s", message, apiError.Details)
-		}
-		if resp.StatusCode == 500 {
-			message = fmt.Sprintf("%s — check backend logs for details", message)
-		}
-		return resp.StatusCode, &HTTPStatusError{StatusCode: resp.StatusCode, Message: message, RetryAfter: parseRetryAfter(resp.Header.Get("Retry-After"))}
+		return resp.StatusCode, newHTTPStatusError(resp.StatusCode, respBody, parseRetryAfter(resp.Header.Get("Retry-After")))
 	}
 
 	if response != nil && len(respBody) > 0 {
@@ -788,6 +777,27 @@ func makeRequestURLWithHeadersOnce(method, url string, body interface{}, respons
 	}
 
 	return resp.StatusCode, nil
+}
+
+func newHTTPStatusError(statusCode int, body []byte, retryAfter time.Duration) *HTTPStatusError {
+	statusErr := &HTTPStatusError{
+		StatusCode: statusCode,
+		Message:    fmt.Sprintf("request failed with status %d", statusCode),
+		RetryAfter: retryAfter,
+	}
+
+	var apiError APIError
+	if err := json.Unmarshal(body, &apiError); err != nil || strings.TrimSpace(apiError.Message) == "" {
+		return statusErr
+	}
+
+	statusErr.Message = apiError.Message
+	statusErr.Code = apiError.Code
+	statusErr.Details = apiError.Details
+	statusErr.Retryable = apiError.Retryable
+	statusErr.Remediation = apiError.Remediation
+	statusErr.RequestID = apiError.RequestID
+	return statusErr
 }
 
 func parseRetryAfter(value string) time.Duration {

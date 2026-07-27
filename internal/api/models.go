@@ -476,20 +476,38 @@ const (
 )
 
 type APIError struct {
-	Message string `json:"message"`
-	Code    string `json:"code"`
-	Details string `json:"details"`
+	Message     string      `json:"message"`
+	Code        string      `json:"code"`
+	Details     interface{} `json:"details"`
+	Retryable   *bool       `json:"retryable,omitempty"`
+	Remediation []string    `json:"remediation,omitempty"`
+	RequestID   string      `json:"request_id,omitempty"`
 }
 
 // HTTPStatusError preserves the HTTP status and retry hint for callers that
 // need contract-specific handling of an API response.
 type HTTPStatusError struct {
-	StatusCode int
-	Message    string
-	RetryAfter time.Duration
+	StatusCode  int
+	Message     string
+	RetryAfter  time.Duration
+	Code        string
+	Details     interface{}
+	Retryable   *bool
+	Remediation []string
+	RequestID   string
 }
 
 func (e *HTTPStatusError) Error() string { return e.Message }
+
+// HTTPStatusCode, RetryAfterDuration, and the remaining accessors let the CLI
+// renderer retain structured API diagnostics without importing this package.
+func (e *HTTPStatusError) HTTPStatusCode() int               { return e.StatusCode }
+func (e *HTTPStatusError) RetryAfterDuration() time.Duration { return e.RetryAfter }
+func (e *HTTPStatusError) ErrorCode() string                 { return e.Code }
+func (e *HTTPStatusError) ErrorDetails() interface{}         { return e.Details }
+func (e *HTTPStatusError) ErrorRetryable() *bool             { return e.Retryable }
+func (e *HTTPStatusError) ErrorRemediation() []string        { return e.Remediation }
+func (e *HTTPStatusError) ErrorRequestID() string            { return e.RequestID }
 
 func (e *APIError) Error() string {
 	return fmt.Sprintf("(%s): %s", e.Code, e.Message)

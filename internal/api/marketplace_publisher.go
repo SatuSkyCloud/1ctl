@@ -136,11 +136,7 @@ func makePublisherRequest(method, requestPath string, body io.Reader, contentTyp
 		return fmt.Errorf("read publisher response: %w", err)
 	}
 	if resp.StatusCode >= http.StatusBadRequest {
-		var apiError APIError
-		if err := json.Unmarshal(data, &apiError); err == nil && apiError.Message != "" {
-			return &HTTPStatusError{StatusCode: resp.StatusCode, Message: apiError.Message, RetryAfter: parseRetryAfter(resp.Header.Get("Retry-After"))}
-		}
-		return &HTTPStatusError{StatusCode: resp.StatusCode, Message: fmt.Sprintf("request failed with status %d: %s", resp.StatusCode, string(data)), RetryAfter: parseRetryAfter(resp.Header.Get("Retry-After"))}
+		return newHTTPStatusError(resp.StatusCode, data, parseRetryAfter(resp.Header.Get("Retry-After")))
 	}
 	if response != nil && len(data) > 0 {
 		if err := json.Unmarshal(data, response); err != nil {
