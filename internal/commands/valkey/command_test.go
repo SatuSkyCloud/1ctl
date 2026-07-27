@@ -38,6 +38,18 @@ func TestCommandTree(t *testing.T) {
 	}
 }
 
+func TestCreateHelpIncludesMachinePlacement(t *testing.T) {
+	command := createCommand()
+	for _, flag := range command.Flags {
+		for _, name := range flag.Names() {
+			if name == "machine-id" {
+				return
+			}
+		}
+	}
+	t.Fatal("create command help is missing --machine-id")
+}
+
 func TestValidateUserMutation(t *testing.T) {
 	valid := userMutationInput{
 		Username:        "worker.api",

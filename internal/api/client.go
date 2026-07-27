@@ -772,6 +772,9 @@ func makeRequestURLWithHeadersOnce(method, url string, body interface{}, respons
 			return resp.StatusCode, &HTTPStatusError{StatusCode: resp.StatusCode, Message: fmt.Sprintf("request failed with status %d: %s", resp.StatusCode, string(respBody)), RetryAfter: parseRetryAfter(resp.Header.Get("Retry-After"))}
 		}
 		message := apiError.Message
+		if apiError.Details != "" {
+			message = fmt.Sprintf("%s: %s", message, apiError.Details)
+		}
 		if resp.StatusCode == 500 {
 			message = fmt.Sprintf("%s — check backend logs for details", message)
 		}

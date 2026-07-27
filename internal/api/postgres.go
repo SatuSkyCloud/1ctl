@@ -17,6 +17,7 @@ const StorageEngineValkey StorageEngine = "valkey"
 
 type ValkeyConfig struct {
 	Topology          string             `json:"topology"`
+	MachineID         string             `json:"machine_id,omitempty"`
 	AppendOnly        *bool              `json:"append_only,omitempty"`
 	AppendFsync       string             `json:"append_fsync"`
 	MaxmemoryPolicy   string             `json:"maxmemory_policy"`

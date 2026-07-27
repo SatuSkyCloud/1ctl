@@ -61,6 +61,7 @@ func handleCreate(_ context.Context, in createInput) error {
 
 	instance, err := api.CreateValkey(api.ValkeyCreateOptions{
 		Name:             in.Name,
+		MachineID:        strings.TrimSpace(in.MachineID),
 		Topology:         in.Topology,
 		Instances:        in.Instances,
 		Persistence:      in.Persistence,

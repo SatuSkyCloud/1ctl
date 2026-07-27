@@ -29,6 +29,12 @@ Pattern: `1ctl <resource> <action> <target> [flags]`. UUID auto-detection, `-o j
 
 ### New Commands
 
+* **`1ctl valkey`**: Private managed Valkey services with persistent placement.
+  - `valkey create <name>` uses validated automatic machine placement.
+  - `valkey create <name> --machine-id <id>` pins a new service to a specific eligible machine.
+  - The selected machine is durable intent and is reused by update, redeploy, and restart workflows.
+  - Workloads require the selected machine to remain rentable and open for marketplace admission.
+
 * **`1ctl app`**: Application lifecycle management (splits from `deploy`).
   - `app list` — list all deployed applications.
   - `app get <name>` — get application details (accepts UUID or app label).

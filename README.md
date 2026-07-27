@@ -183,6 +183,9 @@ cd your-project
 # Private standalone cache with persistence, AOF, and metrics
 1ctl valkey create sessions
 
+# Pin to a specific eligible machine instead of automatic placement
+1ctl valkey create sessions-local --machine-id 89905f5f769867452a7bd6c7505ab34d
+
 # Primary plus two read replicas (replicas do not provide automatic failover)
 1ctl valkey create shared-cache --topology replicated --instances 3 --storage-size 16Gi
 
@@ -190,7 +193,9 @@ cd your-project
 1ctl valkey credentials sessions
 ```
 
-Managed Valkey uses private ClusterIP endpoints. See the
+When `--machine-id` is omitted, the platform selects an eligible live machine,
+persists that placement, and reuses it during reconciliation. Managed Valkey
+uses private ClusterIP endpoints. See the
 [managed Valkey guide](examples/user-journeys/13-managed-valkey.md) for safe
 updates, ACL users, credential rotation, metrics, logs, and current limitations.
 

@@ -478,6 +478,7 @@ const (
 type APIError struct {
 	Message string `json:"message"`
 	Code    string `json:"code"`
+	Details string `json:"details"`
 }
 
 // HTTPStatusError preserves the HTTP status and retry hint for callers that

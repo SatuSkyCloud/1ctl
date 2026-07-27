@@ -34,6 +34,24 @@ Valkey data, and Prometheus metrics:
   --cpu 500m
 ```
 
+By default, the platform intersects live Kubernetes Nodes with commercially
+eligible machine records, selects a machine, and persists its ID with the
+service. To choose a specific eligible machine:
+
+```bash
+1ctl valkey create sessions-local \
+  --machine-id 89905f5f769867452a7bd6c7505ab34d \
+  --memory 1Gi \
+  --cpu 500m
+```
+
+The machine must be Ready, schedulable, monetized, verified, reconciled as
+rentable capacity, and open for marketplace admission. Reconciliation fails
+closed if the persisted machine stops satisfying those requirements; it does
+not silently move stateful data to another machine. Persistent standalone
+services use Kubernetes `Recreate` rollout strategy so a ReadWriteOnce volume
+is detached before the replacement pod starts.
+
 For a read-heavy workload, deploy one primary plus two read replicas:
 
 ```bash
@@ -46,7 +64,9 @@ For a read-heavy workload, deploy one primary plus two read replicas:
 ```
 
 Replicated topology provides a primary endpoint and a read-only endpoint, but
-does **not** provide automatic failover or primary promotion.
+does **not** provide automatic failover or primary promotion. All instances
+currently share the service's one persisted machine placement, so replicated
+topology is not machine-level high availability.
 
 ## Status and private connectivity
 
@@ -148,6 +168,8 @@ that series yet. Log tails are bounded to 2,000 lines and 1 MiB by the platform.
 ## Current limitations
 
 - No automatic failover, Sentinel, or Cluster topology.
+- No automatic cross-machine evacuation; placement remains pinned until a
+  managed migration workflow is implemented.
 - No public endpoint or external network exposure.
 - No managed backup or restore workflow.
 - No raw `CONFIG` or ACL command execution.

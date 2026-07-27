@@ -18,6 +18,7 @@ const (
 
 type ValkeyCreateOptions struct {
 	Name             string
+	MachineID        string
 	Topology         string
 	Instances        int
 	Persistence      bool
@@ -128,6 +129,7 @@ func CreateValkey(opts ValkeyCreateOptions) (*StorageConfig, error) {
 		PersistenceEnabled: &opts.Persistence,
 		Valkey: &ValkeyConfig{
 			Topology:         opts.Topology,
+			MachineID:        opts.MachineID,
 			AppendOnly:       &appendOnly,
 			AppendFsync:      opts.AppendFsync,
 			MaxmemoryPolicy:  opts.MaxmemoryPolicy,

@@ -9,6 +9,7 @@ import (
 
 type createInput struct {
 	Name             string
+	MachineID        string
 	Topology         string
 	Instances        int
 	Persistence      bool
@@ -283,6 +284,7 @@ func createCommand() *cli.Command {
 		Usage:     "Create a private managed Valkey service",
 		ArgsUsage: "<name>",
 		Flags: []cli.Flag{
+			&cli.StringFlag{Name: "machine-id", Usage: "Specific eligible machine; automatic placement when omitted", Destination: &in.MachineID},
 			&cli.StringFlag{Name: "topology", Usage: "Topology: standalone or replicated", Destination: &in.Topology, Value: "standalone"},
 			&cli.IntFlag{Name: "instances", Usage: "Total instances (default: 1 standalone, 3 replicated)", Destination: &in.Instances},
 			&cli.BoolFlag{Name: "persistence", Usage: "Persist data on retained volumes", Destination: &in.Persistence, Value: true},
