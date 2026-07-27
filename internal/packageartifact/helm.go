@@ -3,6 +3,7 @@ package packageartifact
 import (
 	"encoding/json"
 	"fmt"
+	"io/fs"
 	"os"
 	"path"
 	"path/filepath"
@@ -55,13 +56,13 @@ func CreateHelm(chartDir string) ([]byte, string, error) {
 		return nil, "", err
 	}
 	if !packageNamePattern.MatchString(metadata.Name) {
-		return nil, "", fmt.Errorf("Chart.yaml name %q must be a lowercase DNS-compatible package name", metadata.Name)
+		return nil, "", fmt.Errorf("chart Chart.yaml name %q must be a lowercase DNS-compatible package name", metadata.Name)
 	}
 	if !helmVersionPattern.MatchString(metadata.Version) {
-		return nil, "", fmt.Errorf("Chart.yaml version %q must be semantic versioning", metadata.Version)
+		return nil, "", fmt.Errorf("chart Chart.yaml version %q must be semantic versioning", metadata.Version)
 	}
 	if len(apis) == 0 {
-		return nil, "", fmt.Errorf("Helm chart templates must declare at least one literal apiVersion")
+		return nil, "", fmt.Errorf("helm chart templates must declare at least one literal apiVersion")
 	}
 
 	schema, err := helmValuesSchema(files)
@@ -83,7 +84,7 @@ func CreateHelm(chartDir string) ([]byte, string, error) {
 		return nil, "", err
 	}
 	if len(archive) > helmMaxArchiveBytes {
-		return nil, "", fmt.Errorf("Helm package archive exceeds %d byte limit", helmMaxArchiveBytes)
+		return nil, "", fmt.Errorf("helm package archive exceeds %d byte limit", helmMaxArchiveBytes)
 	}
 	return archive, metadata.Name, nil
 }
@@ -94,8 +95,15 @@ func readHelmChart(chartDir string) (helmChartMetadata, map[string][]byte, []str
 		return helmChartMetadata{}, nil, nil, false, fmt.Errorf("inspect Helm chart: %w", err)
 	}
 	if info.Mode()&os.ModeSymlink != 0 || !info.IsDir() {
-		return helmChartMetadata{}, nil, nil, false, fmt.Errorf("Helm chart path must be a non-symbolic-link directory")
+		return helmChartMetadata{}, nil, nil, false, fmt.Errorf("helm chart path must be a non-symbolic-link directory")
 	}
+	chartRoot, err := os.OpenRoot(chartDir)
+	if err != nil {
+		return helmChartMetadata{}, nil, nil, false, fmt.Errorf("open Helm chart root: %w", err)
+	}
+	defer func() {
+		_ = chartRoot.Close() //nolint:errcheck // The read result is already complete.
+	}()
 	files := make(map[string][]byte)
 	apiSet := make(map[string]struct{})
 	stateful := false
@@ -109,33 +117,33 @@ func readHelmChart(chartDir string) (helmChartMetadata, map[string][]byte, []str
 			return nil
 		}
 		if entry.Type()&os.ModeSymlink != 0 {
-			return fmt.Errorf("Helm chart contains a symbolic link")
+			return fmt.Errorf("helm chart contains a symbolic link")
 		}
 		relative, err := filepath.Rel(chartDir, filePath)
 		if err != nil || !filepath.IsLocal(relative) {
-			return fmt.Errorf("Helm chart contains an unsafe path")
+			return fmt.Errorf("helm chart contains an unsafe path")
 		}
 		relative = filepath.ToSlash(relative)
 		parts := strings.Split(relative, "/")
 		if entry.IsDir() {
 			for _, part := range parts {
 				if part == "charts" {
-					return fmt.Errorf("Helm charts may not contain dependencies")
+					return fmt.Errorf("helm charts may not contain dependencies")
 				}
 				if part == "crds" {
-					return fmt.Errorf("Helm charts may not contain CRDs")
+					return fmt.Errorf("helm charts may not contain CRDs")
 				}
 				if part == "tests" {
-					return fmt.Errorf("Helm charts may not contain hooks or tests")
+					return fmt.Errorf("helm charts may not contain hooks or tests")
 				}
 			}
 			return nil
 		}
 		if relative == "Chart.lock" {
-			return fmt.Errorf("Helm charts may not contain dependencies")
+			return fmt.Errorf("helm charts may not contain dependencies")
 		}
 		if !entry.Type().IsRegular() || !helmArtifactFile(relative) {
-			return fmt.Errorf("Helm chart contains an unsupported file %q", relative)
+			return fmt.Errorf("helm chart contains an unsupported file %q", relative)
 		}
 		fileCount++
 		fileInfo, err := entry.Info()
@@ -144,18 +152,19 @@ func readHelmChart(chartDir string) (helmChartMetadata, map[string][]byte, []str
 		}
 		byteCount += fileInfo.Size()
 		if fileCount > helmMaxChartFiles || byteCount > helmMaxChartBytes {
-			return fmt.Errorf("Helm chart exceeds packaging limits")
+			return fmt.Errorf("helm chart exceeds packaging limits")
 		}
-		// filePath comes from WalkDir under the validated, non-symlink chart root.
-		contents, err := os.ReadFile(filePath) // #nosec G304
+		// Root-scoped access prevents a concurrent symlink replacement from
+		// escaping the validated chart directory.
+		contents, err := fs.ReadFile(chartRoot.FS(), filepath.FromSlash(relative))
 		if err != nil {
 			return err
 		}
 		if helmUnsupportedTemplateFunction.Match(contents) {
-			return fmt.Errorf("Helm chart contains an unsupported or nondeterministic template function")
+			return fmt.Errorf("helm chart contains an unsupported or nondeterministic template function")
 		}
 		if strings.Contains(string(contents), "helm.sh/hook") {
-			return fmt.Errorf("Helm charts may not contain hooks or tests")
+			return fmt.Errorf("helm charts may not contain hooks or tests")
 		}
 		if err := rejectMutableHelmImages(contents); err != nil {
 			return err
@@ -164,7 +173,7 @@ func readHelmChart(chartDir string) (helmChartMetadata, map[string][]byte, []str
 			for _, match := range helmAPIVersion.FindAllSubmatch(contents, -1) {
 				apiVersion := strings.TrimSpace(string(match[1]))
 				if strings.Contains(apiVersion, "{{") || apiVersion == "" {
-					return fmt.Errorf("Helm chart apiVersion must be literal")
+					return fmt.Errorf("helm chart apiVersion must be literal")
 				}
 				apiSet[apiVersion] = struct{}{}
 			}
@@ -182,14 +191,14 @@ func readHelmChart(chartDir string) (helmChartMetadata, map[string][]byte, []str
 	}
 	chartYAML, ok := files["Chart.yaml"]
 	if !ok {
-		return helmChartMetadata{}, nil, nil, false, fmt.Errorf("Helm chart must contain Chart.yaml")
+		return helmChartMetadata{}, nil, nil, false, fmt.Errorf("helm chart must contain Chart.yaml")
 	}
 	var metadata helmChartMetadata
 	if err := yaml.Unmarshal(chartYAML, &metadata); err != nil {
 		return helmChartMetadata{}, nil, nil, false, fmt.Errorf("parse Chart.yaml: %w", err)
 	}
 	if len(metadata.Dependencies) > 0 {
-		return helmChartMetadata{}, nil, nil, false, fmt.Errorf("Helm charts may not declare dependencies")
+		return helmChartMetadata{}, nil, nil, false, fmt.Errorf("helm charts may not declare dependencies")
 	}
 	apis := make([]string, 0, len(apiSet))
 	for api := range apiSet {
@@ -211,17 +220,17 @@ func helmArtifactFile(relative string) bool {
 func helmArchitectures(annotations map[string]string) ([]string, error) {
 	value := strings.TrimSpace(annotations[helmArchitecturesAnnotation])
 	if value == "" {
-		return nil, fmt.Errorf("Chart.yaml annotations.%s must declare supported architectures as comma-separated amd64 and/or arm64", helmArchitecturesAnnotation)
+		return nil, fmt.Errorf("chart Chart.yaml annotations.%s must declare supported architectures as comma-separated amd64 and/or arm64", helmArchitecturesAnnotation)
 	}
 	seen := make(map[string]struct{})
 	architectures := make([]string, 0, 2)
 	for _, architecture := range strings.Split(value, ",") {
 		architecture = strings.TrimSpace(architecture)
 		if architecture != "amd64" && architecture != "arm64" {
-			return nil, fmt.Errorf("Chart.yaml annotations.%s has unsupported architecture %q", helmArchitecturesAnnotation, architecture)
+			return nil, fmt.Errorf("chart Chart.yaml annotations.%s has unsupported architecture %q", helmArchitecturesAnnotation, architecture)
 		}
 		if _, duplicate := seen[architecture]; duplicate {
-			return nil, fmt.Errorf("Chart.yaml annotations.%s declares %q more than once", helmArchitecturesAnnotation, architecture)
+			return nil, fmt.Errorf("chart Chart.yaml annotations.%s declares %q more than once", helmArchitecturesAnnotation, architecture)
 		}
 		seen[architecture] = struct{}{}
 		architectures = append(architectures, architecture)
@@ -237,7 +246,7 @@ func rejectMutableHelmImages(contents []byte) error {
 			continue
 		}
 		if !immutableImagePattern.MatchString(reference) {
-			return fmt.Errorf("Helm chart contains mutable image reference %q; use image@sha256:<64 hex characters>", reference)
+			return fmt.Errorf("helm chart contains mutable image reference %q; use image@sha256:<64 hex characters>", reference)
 		}
 	}
 	return nil
@@ -281,7 +290,7 @@ func helmRequiredSecrets(annotations map[string]string) ([]string, error) {
 	for _, name := range strings.Split(value, ",") {
 		name = strings.TrimSpace(name)
 		if !helmCredentialName.MatchString(name) {
-			return nil, fmt.Errorf("Chart.yaml annotation %q has invalid secret name %q", helmRequiredSecretsAnnotation, name)
+			return nil, fmt.Errorf("chart Chart.yaml annotation %q has invalid secret name %q", helmRequiredSecretsAnnotation, name)
 		}
 		seen[name] = struct{}{}
 	}

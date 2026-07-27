@@ -110,7 +110,9 @@ func generateAPITypes(root string) ([]byte, error) {
 	if err != nil {
 		return nil, fmt.Errorf("create API type generation directory: %w", err)
 	}
-	defer os.RemoveAll(tempDir)
+	defer func() {
+		_ = os.RemoveAll(tempDir) //nolint:errcheck // Best-effort cleanup of a private temporary directory.
+	}()
 
 	outputPath := filepath.Join(tempDir, "api-types.ts")
 	config := &tygo.Config{
@@ -182,15 +184,17 @@ func writeArtifact(path string, data []byte) error {
 		return fmt.Errorf("create temporary contract: %w", err)
 	}
 	tempPath := temp.Name()
-	defer os.Remove(tempPath)
+	defer func() {
+		_ = os.Remove(tempPath) //nolint:errcheck // Best-effort cleanup after atomic replacement.
+	}()
 
 	if _, err := temp.Write(data); err != nil {
-		_ = temp.Close()
-		return fmt.Errorf("write temporary contract: %w", err)
+		closeErr := temp.Close()
+		return errors.Join(fmt.Errorf("write temporary contract: %w", err), closeErr)
 	}
 	if err := temp.Chmod(0o644); err != nil {
-		_ = temp.Close()
-		return fmt.Errorf("set contract permissions: %w", err)
+		closeErr := temp.Close()
+		return errors.Join(fmt.Errorf("set contract permissions: %w", err), closeErr)
 	}
 	if err := temp.Close(); err != nil {
 		return fmt.Errorf("close temporary contract: %w", err)

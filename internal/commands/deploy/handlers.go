@@ -984,44 +984,6 @@ func previewDeletion(deploymentID string) ([]string, error) {
 	return lines, nil
 }
 
-func printDeletionResult(deploymentID string, result *api.DeletionResult) {
-	utils.PrintSuccess("Deployment %s delete completed", deploymentID)
-	if result == nil {
-		return
-	}
-	utils.PrintHeader("Deleted Resources")
-	if result.AppLabel != "" {
-		utils.PrintStatusLine("App", result.AppLabel)
-	}
-	if result.Namespace != "" {
-		utils.PrintStatusLine("Namespace", result.Namespace)
-	}
-	if len(result.DeletedDeployments) > 0 {
-		utils.PrintStatusLine("Deployments", strings.Join(result.DeletedDeployments, ", "))
-	} else {
-		utils.PrintStatusLine("Deployments", "none reported")
-	}
-	if result.IsCNPGDeployment {
-		utils.PrintStatusLine("CNPG", "database deployment cleanup applied")
-	}
-	if len(result.Volumes) == 0 {
-		utils.PrintStatusLine("PVCs", "none reported")
-		return
-	}
-	headers := []string{"PVC", "VOLUME", "STATUS", "POLICY", "MESSAGE"}
-	rows := make([][]string, 0, len(result.Volumes))
-	for _, volume := range result.Volumes {
-		rows = append(rows, []string{
-			volume.ClaimName,
-			volume.VolumeName,
-			volume.Status,
-			volume.DestroyPolicy,
-			volume.Message,
-		})
-	}
-	utils.PrintTable(headers, rows)
-}
-
 // --- Restart / Releases / Rollback / Open / Scale -----------------------
 
 func handleRestartDeployment(ctx context.Context, in DeployRefInput) error {

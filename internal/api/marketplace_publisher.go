@@ -128,7 +128,9 @@ func makePublisherRequest(method, requestPath string, body io.Reader, contentTyp
 	if err != nil {
 		return utils.NewError(fmt.Sprintf("failed to make request: %s", err.Error()), nil)
 	}
-	defer func() { _ = resp.Body.Close() }()
+	defer func() {
+		_ = resp.Body.Close() //nolint:errcheck // Response processing has already completed.
+	}()
 	data, err := io.ReadAll(resp.Body)
 	if err != nil {
 		return fmt.Errorf("read publisher response: %w", err)

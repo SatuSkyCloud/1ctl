@@ -64,7 +64,9 @@ func ArchivePackageName(archive []byte) (string, error) {
 	if err != nil {
 		return "", fmt.Errorf("open package artifact gzip: %w", err)
 	}
-	defer func() { _ = reader.Close() }()
+	defer func() {
+		_ = reader.Close() //nolint:errcheck // The in-memory gzip reader owns no external resource.
+	}()
 	var packageName string
 	hasManifest := false
 	for tarReader := tar.NewReader(reader); ; {
@@ -355,8 +357,8 @@ func deterministicArchive(packageName string, files map[string][]byte) ([]byte, 
 	sort.Strings(names)
 	var output bytes.Buffer
 	gzipWriter := gzip.NewWriter(&output)
-	gzipWriter.Header.ModTime = time.Unix(0, 0).UTC()
-	gzipWriter.Header.OS = 255
+	gzipWriter.ModTime = time.Unix(0, 0).UTC()
+	gzipWriter.OS = 255
 	tarWriter := tar.NewWriter(gzipWriter)
 	for _, name := range names {
 		content := files[name]
@@ -382,7 +384,7 @@ func safeArtifactPath(name string) bool {
 }
 
 func yamlString(value string) string {
-	encoded, _ := json.Marshal(value)
+	encoded, _ := json.Marshal(value) //nolint:errcheck // Encoding a Go string cannot fail.
 	return string(encoded)
 }
 

@@ -108,7 +108,8 @@ func natsProfileConfig(jetStream bool, storageSize, storageClass string) map[str
 			},
 		},
 		"merge": map[string]interface{}{
-			"authorization": map[string]interface{}{"token": "<< $NATS_TOKEN >>"},
+			// This is a marketplace template expression, not a credential.
+			"authorization": map[string]interface{}{"token": "<< $NATS_TOKEN >>"}, // #nosec G101
 		},
 	}
 }
@@ -261,22 +262,22 @@ func writeCredentialFiles(outputDir string, outputs map[string][]byte) error {
 		file, err := os.OpenFile(path, os.O_WRONLY|os.O_CREATE|os.O_EXCL, 0600) // #nosec G304
 		if err != nil {
 			for _, createdPath := range created {
-				_ = os.Remove(createdPath)
+				_ = os.Remove(createdPath) //nolint:errcheck // Best-effort rollback after the primary failure.
 			}
 			return utils.NewError(fmt.Sprintf("failed to write credential file: %s", err.Error()), nil)
 		}
 		if _, err := file.Write(value); err != nil {
-			_ = file.Close()
-			_ = os.Remove(path)
+			_ = file.Close()    //nolint:errcheck // Preserve the primary write error.
+			_ = os.Remove(path) //nolint:errcheck // Best-effort rollback after the primary failure.
 			for _, createdPath := range created {
-				_ = os.Remove(createdPath)
+				_ = os.Remove(createdPath) //nolint:errcheck // Best-effort rollback after the primary failure.
 			}
 			return utils.NewError(fmt.Sprintf("failed to write credential file: %s", err.Error()), nil)
 		}
 		if err := file.Close(); err != nil {
-			_ = os.Remove(path)
+			_ = os.Remove(path) //nolint:errcheck // Best-effort rollback after the primary failure.
 			for _, createdPath := range created {
-				_ = os.Remove(createdPath)
+				_ = os.Remove(createdPath) //nolint:errcheck // Best-effort rollback after the primary failure.
 			}
 			return utils.NewError(fmt.Sprintf("failed to close credential file: %s", err.Error()), nil)
 		}
