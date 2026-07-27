@@ -897,6 +897,9 @@ func handleDeploymentStatus(ctx context.Context, in StatusInput) error {
 	if domainStatus != nil {
 		utils.PrintStatusLine("Route", domainRouteText(domainStatus.Route))
 		utils.PrintStatusLine("DNS", domainDNSText(domainStatus.DNS))
+		if domainStatus.DNS.Condition != nil {
+			utils.PrintStatusLine("DNS condition", domainDNSConditionText(*domainStatus.DNS.Condition))
+		}
 		utils.PrintStatusLine("TLS", domainTLSText(domainStatus.TLS))
 	}
 	utils.PrintStatusLine("Created", api.FormatTimeAgo(deployment.CreatedAt))
@@ -1234,6 +1237,20 @@ func domainDNSText(status api.DNSStatusResponse) string {
 	}
 	if status.Message != "" {
 		parts = append(parts, status.Message)
+	}
+	return strings.Join(parts, " - ")
+}
+
+func domainDNSConditionText(condition api.DNSCondition) string {
+	parts := []string{string(condition.Status)}
+	if condition.Code != "" {
+		parts = append(parts, condition.Code)
+	}
+	if condition.CheckedAt != nil {
+		parts = append(parts, "checked "+condition.CheckedAt.Format(time.RFC3339))
+	}
+	if condition.ObservedAt != nil {
+		parts = append(parts, "observed "+condition.ObservedAt.Format(time.RFC3339))
 	}
 	return strings.Join(parts, " - ")
 }

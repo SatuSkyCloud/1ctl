@@ -10,7 +10,9 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 
+	"1ctl/internal/api"
 	cliContext "1ctl/internal/context"
 	"1ctl/internal/utils"
 
@@ -84,6 +86,65 @@ func TestDeploymentStatusRendersLiveApplicationReadinessInTableAndJSON(t *testin
 	readiness, ok := status["readiness"].(map[string]any)
 	if !ok || readiness["application"].(map[string]any)["state"] != "verified" {
 		t.Fatalf("status readiness = %#v", status["readiness"])
+	}
+}
+
+func TestDeploymentStatusRendersDNSConditionInTableAndJSON(t *testing.T) {
+	deploymentID := uuid.NewString()
+	ingressID := uuid.NewString()
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case "/v1/cli/deployments/id/" + deploymentID:
+			_, _ = io.WriteString(w, `{"error":false,"data":{"deployment_id":"`+deploymentID+`","app_label":"direct","namespace":"tenant-a","status":"ready","source":"generic"}}`)
+		case "/v1/cli/deployments/status/" + deploymentID:
+			_, _ = io.WriteString(w, `{"error":false,"data":{"status":"Running","progress":100}}`)
+		case "/v1/cli/ingresses/deploymentId/" + deploymentID:
+			_, _ = io.WriteString(w, `{"error":false,"data":{"ingress_id":"`+ingressID+`","deployment_id":"`+deploymentID+`","domain_name":"app.example.com"}}`)
+		case "/v1/cli/ingresses/" + ingressID + "/domain-status":
+			_, _ = io.WriteString(w, `{"error":false,"data":{"dns":{"status":"resolved","condition":{"status":"verified","code":"DNS_VERIFIED","checked_at":"2026-07-28T10:00:00Z","observed_at":"2026-07-28T09:59:00Z"}}}}`)
+		default:
+			http.NotFound(w, r)
+		}
+	}))
+	defer server.Close()
+	setupDeploymentStatusTest(t, server.URL)
+
+	table := captureDeploymentStatusOutput(t, "table", func() error {
+		return handleDeploymentStatus(stdcontext.Background(), StatusInput{DeploymentID: deploymentID})
+	})
+	for _, want := range []string{"DNS", "DNS condition", "verified", "DNS_VERIFIED", "checked 2026-07-28T10:00:00Z", "observed 2026-07-28T09:59:00Z"} {
+		if !strings.Contains(table, want) {
+			t.Fatalf("table output missing %q: %s", want, table)
+		}
+	}
+
+	jsonOutput := captureDeploymentStatusOutput(t, "json", func() error {
+		return handleDeploymentStatus(stdcontext.Background(), StatusInput{DeploymentID: deploymentID})
+	})
+	var output map[string]any
+	if err := json.Unmarshal([]byte(jsonOutput), &output); err != nil {
+		t.Fatalf("status JSON invalid: %v\n%s", err, jsonOutput)
+	}
+	domainStatus := output["domain_status"].(map[string]any)
+	condition := domainStatus["dns"].(map[string]any)["condition"].(map[string]any)
+	if condition["status"] != "verified" || condition["code"] != "DNS_VERIFIED" || condition["checked_at"] != "2026-07-28T10:00:00Z" {
+		t.Fatalf("DNS condition JSON = %#v", condition)
+	}
+}
+
+func TestDomainDNSConditionText(t *testing.T) {
+	checkedAt := time.Date(2026, 7, 28, 10, 0, 0, 0, time.UTC)
+	observedAt := checkedAt.Add(-time.Minute)
+	text := domainDNSConditionText(api.DNSCondition{
+		Status:     api.DNSConditionStatusVerified,
+		Code:       "DNS_VERIFIED",
+		CheckedAt:  &checkedAt,
+		ObservedAt: &observedAt,
+	})
+	for _, want := range []string{"verified", "DNS_VERIFIED", "checked 2026-07-28T10:00:00Z", "observed 2026-07-28T09:59:00Z"} {
+		if !strings.Contains(text, want) {
+			t.Fatalf("condition text missing %q: %s", want, text)
+		}
 	}
 }
 

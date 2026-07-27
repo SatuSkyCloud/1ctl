@@ -540,12 +540,25 @@ export type DNSStatus = string;
 export const DNSStatusResolved: DNSStatus = "resolved";
 export const DNSStatusPropagating: DNSStatus = "propagating";
 export const DNSStatusNotConfigured: DNSStatus = "not_configured";
+export type DNSConditionStatus = string;
+export const DNSConditionStatusPending: DNSConditionStatus = "pending";
+export const DNSConditionStatusNXDomain: DNSConditionStatus = "nxdomain";
+export const DNSConditionStatusWrongTarget: DNSConditionStatus = "wrong_target";
+export const DNSConditionStatusVerified: DNSConditionStatus = "verified";
+export const DNSConditionStatusError: DNSConditionStatus = "error";
+export interface DNSCondition {
+  status: DNSConditionStatus;
+  code?: string;
+  observed_at?: string /* RFC3339 */;
+  checked_at?: string /* RFC3339 */;
+}
 export interface DNSStatusResponse {
   status: DNSStatus;
   domain: string;
   expected_ip?: string;
   resolved_ips?: string[];
   message?: string;
+  condition?: DNSCondition;
 }
 export type TLSStatus = string;
 export const TLSStatusProvisioning: TLSStatus = "provisioning";

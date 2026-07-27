@@ -301,12 +301,35 @@ const (
 	DNSStatusNotConfigured DNSStatus = "not_configured"
 )
 
+// DNSConditionStatus is the backend's authoritative assessment of the
+// default hostname's DNS record.
+type DNSConditionStatus string
+
+const (
+	DNSConditionStatusPending     DNSConditionStatus = "pending"
+	DNSConditionStatusNXDomain    DNSConditionStatus = "nxdomain"
+	DNSConditionStatusWrongTarget DNSConditionStatus = "wrong_target"
+	DNSConditionStatusVerified    DNSConditionStatus = "verified"
+	DNSConditionStatusError       DNSConditionStatus = "error"
+)
+
+// DNSCondition adds a typed DNS assessment without changing the legacy DNS
+// status contract. A nil condition indicates a backend version that does not
+// provide the assessment.
+type DNSCondition struct {
+	Status     DNSConditionStatus `json:"status"`
+	Code       string             `json:"code,omitempty"`
+	ObservedAt *time.Time         `json:"observed_at,omitempty"`
+	CheckedAt  *time.Time         `json:"checked_at,omitempty"`
+}
+
 type DNSStatusResponse struct {
-	Status      DNSStatus `json:"status"`
-	Domain      string    `json:"domain"`
-	ExpectedIP  string    `json:"expected_ip,omitempty"`
-	ResolvedIPs []string  `json:"resolved_ips,omitempty"`
-	Message     string    `json:"message,omitempty"`
+	Status      DNSStatus     `json:"status"`
+	Domain      string        `json:"domain"`
+	ExpectedIP  string        `json:"expected_ip,omitempty"`
+	ResolvedIPs []string      `json:"resolved_ips,omitempty"`
+	Message     string        `json:"message,omitempty"`
+	Condition   *DNSCondition `json:"condition,omitempty"`
 }
 
 type TLSStatus string
