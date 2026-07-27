@@ -17,11 +17,26 @@ import (
 )
 
 func handleCreate(_ context.Context, input createInput) error {
-	project, err := config.LoadConfig(input.Config)
-	if err != nil {
-		return fmt.Errorf("load package config: %w", err)
+	var (
+		archive     []byte
+		packageName string
+		err         error
+	)
+	if input.Chart != "" {
+		if input.Config != "" || input.Image != "" {
+			return fmt.Errorf("--chart cannot be combined with --config or --image")
+		}
+		if input.Output == "" {
+			return fmt.Errorf("--output is required with --chart")
+		}
+		archive, packageName, err = packageartifact.CreateHelm(input.Chart)
+	} else {
+		project, loadErr := config.LoadConfig(input.Config)
+		if loadErr != nil {
+			return fmt.Errorf("load package config: %w", loadErr)
+		}
+		archive, packageName, err = packageartifact.Create(project, input.Image)
 	}
-	archive, packageName, err := packageartifact.Create(project, input.Image)
 	if err != nil {
 		return err
 	}
@@ -40,6 +55,9 @@ func handleCreate(_ context.Context, input createInput) error {
 	closeErr := file.Close()
 	if writeErr != nil || closeErr != nil {
 		return fmt.Errorf("write package artifact %s", output)
+	}
+	if utils.TryPrintJSON(map[string]string{"package_name": packageName, "output": output}) {
+		return nil
 	}
 	utils.PrintSuccess("Created unsigned marketplace package: %s", output)
 	return nil
@@ -127,6 +145,9 @@ func currentOrganizationID() (string, error) {
 }
 
 func printArtifact(artifact *api.MarketplacePackageArtifact) {
+	if utils.TryPrintJSON(artifact) {
+		return
+	}
 	utils.PrintStatusLine("Marketplace ID", artifact.MarketplaceID)
 	utils.PrintStatusLine("Release ID", artifact.ReleaseID)
 	utils.PrintStatusLine("Archive Digest", artifact.ArchiveDigest)

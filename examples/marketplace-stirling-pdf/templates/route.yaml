@@ -1,0 +1,61 @@
+{{- if .Values.satusky.gatewayMode }}
+apiVersion: gateway.networking.k8s.io/v1
+kind: HTTPRoute
+metadata:
+  name: {{ .Values.satusky.appName }}-route
+  namespace: {{ .Values.satusky.namespace }}
+  labels:
+    app.kubernetes.io/name: stirling-pdf
+    app.kubernetes.io/instance: {{ .Values.satusky.appName }}
+  annotations:
+    external-dns.alpha.kubernetes.io/cloudflare-proxied: "true"
+    external-dns.alpha.kubernetes.io/hostname: {{ .Values.satusky.domainName | quote }}
+    {{- if .Values.satusky.cloudflareTunnelTarget }}
+    external-dns.alpha.kubernetes.io/target: {{ .Values.satusky.cloudflareTunnelTarget | quote }}
+    {{- end }}
+spec:
+  parentRefs:
+    - name: {{ .Values.satusky.gatewayName }}
+      namespace: {{ .Values.satusky.gatewayNamespace }}
+  hostnames:
+    - {{ .Values.satusky.domainName | quote }}
+  rules:
+    - matches:
+        - path:
+            type: PathPrefix
+            value: /
+      backendRefs:
+        - name: {{ .Values.satusky.appName }}
+          port: 8080
+{{- else }}
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: {{ .Values.satusky.appName }}-ingress
+  namespace: {{ .Values.satusky.namespace }}
+  labels:
+    app.kubernetes.io/name: stirling-pdf
+    app.kubernetes.io/instance: {{ .Values.satusky.appName }}
+  annotations:
+    external-dns.alpha.kubernetes.io/cloudflare-proxied: "true"
+    external-dns.alpha.kubernetes.io/hostname: {{ .Values.satusky.domainName | quote }}
+    {{- if .Values.satusky.cloudflareTunnelTarget }}
+    external-dns.alpha.kubernetes.io/target: {{ .Values.satusky.cloudflareTunnelTarget | quote }}
+    {{- end }}
+spec:
+  ingressClassName: nginx
+  tls:
+    - hosts:
+        - {{ .Values.satusky.domainName | quote }}
+  rules:
+    - host: {{ .Values.satusky.domainName | quote }}
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: {{ .Values.satusky.appName }}
+                port:
+                  number: 8080
+{{- end }}

@@ -1,0 +1,40 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["ingressClassName"],
+  "properties": {
+    "ingressClassName": {
+      "type": "string",
+      "minLength": 1,
+      "default": "nginx"
+    },
+    "satusky": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "appName",
+        "namespace",
+        "domainName",
+        "gatewayMode",
+        "gatewayName",
+        "gatewayNamespace",
+        "cloudflareTunnelTarget",
+        "credentials"
+      ],
+      "properties": {
+        "appName": { "type": "string", "minLength": 1 },
+        "namespace": { "type": "string", "minLength": 1 },
+        "domainName": { "type": "string", "minLength": 1 },
+        "gatewayMode": { "type": "boolean" },
+        "gatewayName": { "type": "string" },
+        "gatewayNamespace": { "type": "string" },
+        "cloudflareTunnelTarget": { "type": "string" },
+        "credentials": {
+          "type": "object",
+          "additionalProperties": true
+        }
+      }
+    }
+  }
+}

@@ -10,6 +10,7 @@ import (
 
 const (
 	flagConfig = "config"
+	flagChart  = "chart"
 	flagImage  = "image"
 	flagOutput = "output"
 	flagPublic = "public"
@@ -18,6 +19,7 @@ const (
 
 type createInput struct {
 	Config string
+	Chart  string
 	Image  string
 	Output string
 }
@@ -46,9 +48,10 @@ func createCommand() *cli.Command {
 	var input createInput
 	return &cli.Command{
 		Name:  "create",
-		Usage: "Create an unsigned marketplace package from satusky.toml",
+		Usage: "Create an unsigned package from satusky.toml or an embedded Helm chart",
 		Flags: []cli.Flag{
 			&cli.StringFlag{Name: flagConfig, Usage: "Config name or path (e.g. staging, satusky.staging.toml)", Destination: &input.Config},
+			&cli.StringFlag{Name: flagChart, Usage: "Self-contained Helm chart directory (offline; requires Chart.yaml satusky.com/supported-architectures annotation)", Destination: &input.Chart},
 			&cli.StringFlag{Name: flagImage, Usage: "Immutable image override (image@sha256:...)", Destination: &input.Image},
 			&cli.StringFlag{Name: flagOutput, Usage: "Destination tar.gz path", Destination: &input.Output},
 		},

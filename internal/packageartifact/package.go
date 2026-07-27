@@ -75,11 +75,11 @@ func ArchivePackageName(archive []byte) (string, error) {
 		if nextErr != nil {
 			return "", fmt.Errorf("read package artifact: %w", nextErr)
 		}
-		if header.Typeflag != tar.TypeReg || path.Clean(header.Name) != header.Name {
+		if header.Typeflag != tar.TypeReg || !safeArtifactPath(header.Name) {
 			return "", fmt.Errorf("package artifact contains an unsafe entry")
 		}
 		root, fileName, found := strings.Cut(header.Name, "/")
-		if !found || root == "" || fileName == "" || strings.Contains(fileName, "/") || !packageNamePattern.MatchString(root) {
+		if !found || root == "" || fileName == "" || !packageNamePattern.MatchString(root) {
 			return "", fmt.Errorf("package artifact contains an unsafe path")
 		}
 		if packageName == "" {
@@ -347,7 +347,7 @@ func valuesSchema(project *config.ProjectConfig) ([]byte, error) {
 func deterministicArchive(packageName string, files map[string][]byte) ([]byte, error) {
 	names := make([]string, 0, len(files))
 	for name := range files {
-		if path.Base(name) != name || name == "" {
+		if !safeArtifactPath(name) {
 			return nil, fmt.Errorf("unsafe package file name %q", name)
 		}
 		names = append(names, name)
@@ -374,6 +374,11 @@ func deterministicArchive(packageName string, files map[string][]byte) ([]byte, 
 		return nil, fmt.Errorf("close package gzip: %w", err)
 	}
 	return output.Bytes(), nil
+}
+
+func safeArtifactPath(name string) bool {
+	return name != "" && path.Clean(name) == name && !path.IsAbs(name) &&
+		!strings.HasPrefix(name, "../") && !strings.ContainsRune(name, '\x00')
 }
 
 func yamlString(value string) string {

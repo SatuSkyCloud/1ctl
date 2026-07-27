@@ -1,0 +1,8 @@
+apiVersion: v2
+name: stirling-pdf
+description: Immutable ARM64 Stirling PDF marketplace package
+type: application
+version: 1.0.3
+appVersion: "digest-pinned"
+annotations:
+  satusky.com/supported-architectures: "arm64"

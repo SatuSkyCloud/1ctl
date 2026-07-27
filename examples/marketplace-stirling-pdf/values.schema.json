@@ -1,0 +1,24 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "type": "object",
+  "additionalProperties": false,
+  "properties": {
+    "satusky": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "appName": { "type": "string", "minLength": 1 },
+        "namespace": { "type": "string", "minLength": 1 },
+        "domainName": { "type": "string", "minLength": 1 },
+        "gatewayMode": { "type": "boolean" },
+        "gatewayName": { "type": "string" },
+        "gatewayNamespace": { "type": "string" },
+        "cloudflareTunnelTarget": { "type": "string" },
+        "credentials": {
+          "type": "object",
+          "additionalProperties": false
+        }
+      }
+    }
+  }
+}

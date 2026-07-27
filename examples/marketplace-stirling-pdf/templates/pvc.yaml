@@ -1,0 +1,15 @@
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: {{ .Values.satusky.appName }}-data
+  namespace: {{ .Values.satusky.namespace }}
+  labels:
+    app.kubernetes.io/name: stirling-pdf
+    app.kubernetes.io/instance: {{ .Values.satusky.appName }}
+spec:
+  accessModes:
+    - ReadWriteOnce
+  storageClassName: ceph-block-noreplica
+  resources:
+    requests:
+      storage: 10Gi

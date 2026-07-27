@@ -1,0 +1,13 @@
+ingressClassName: nginx
+
+# Reserved runtime values. The Satusky control plane replaces these when deploying
+# the published package; these defaults only support local `helm template` use.
+satusky:
+  appName: pocketbase
+  namespace: default
+  domainName: pocketbase.example.invalid
+  gatewayMode: false
+  gatewayName: ""
+  gatewayNamespace: ""
+  cloudflareTunnelTarget: ""
+  credentials: {}
