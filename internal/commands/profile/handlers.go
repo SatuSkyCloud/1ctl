@@ -42,7 +42,7 @@ func handleProfileList(ctx context.Context) error {
 
 	if len(profiles) == 0 {
 		utils.PrintInfo("No profiles yet.")
-		utils.PrintInfo("Create one with: 1ctl profile create --name <name> [--url <api-url>]")
+		utils.PrintInfo("Create one with: 1ctl profile create <name> [--url <api-url>]")
 		return nil
 	}
 
