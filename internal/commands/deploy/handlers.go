@@ -885,6 +885,9 @@ func handleDeploymentStatus(ctx context.Context, in StatusInput) error {
 	}
 	utils.PrintStatusLine("Workload", status.WorkloadStatus())
 	utils.PrintStatusLine("Application readiness", status.ApplicationReadinessText())
+	if routeReadiness, observed := status.RouteReadinessText(); observed {
+		utils.PrintStatusLine("Route readiness", routeReadiness)
+	}
 	if status.Message != "" {
 		utils.PrintStatusLine("Message", status.Message)
 	}

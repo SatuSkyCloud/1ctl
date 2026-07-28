@@ -631,8 +631,10 @@ type DeploymentWorkloadReadiness struct {
 }
 
 type DeploymentConditionReadiness struct {
-	Basis string `json:"basis"`
-	State string `json:"state"`
+	Basis       string `json:"basis"`
+	State       string `json:"state"`
+	Code        string `json:"code,omitempty"`
+	Remediation string `json:"remediation,omitempty"`
 }
 
 // DeploymentWaitMode selects the explicitly requested readiness threshold.
@@ -725,6 +727,34 @@ func (s DeploymentStatus) ApplicationReadinessText() string {
 		basis = "not provided"
 	}
 	return fmt.Sprintf("%s (%s)", state, basis)
+}
+
+// RouteReadinessText returns live route evidence without inferring route
+// success from a missing condition supplied by an older backend.
+func (s DeploymentStatus) RouteReadinessText() (string, bool) {
+	if s.Readiness == nil {
+		return "", false
+	}
+	route := s.Readiness.Route
+	if route.Basis == "" && route.State == "" && route.Code == "" && route.Remediation == "" {
+		return "", false
+	}
+	state := route.State
+	if state == "" {
+		state = "unknown"
+	}
+	basis := route.Basis
+	if basis == "" {
+		basis = "not observed"
+	}
+	parts := []string{fmt.Sprintf("%s (%s)", state, basis)}
+	if route.Code != "" {
+		parts = append(parts, route.Code)
+	}
+	if route.Remediation != "" {
+		parts = append(parts, "remediation: "+route.Remediation)
+	}
+	return strings.Join(parts, "; "), true
 }
 
 type Machine struct {

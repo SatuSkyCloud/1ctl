@@ -40,6 +40,26 @@ func TestGetLiveDeploymentStatusUsesMainAPIAndParsesReadiness(t *testing.T) {
 	}
 }
 
+func TestGetLiveDeploymentStatusParsesRouteEvidence(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/v1/deployments/dep-1/status/live" {
+			t.Fatalf("path = %s", r.URL.Path)
+		}
+		_, _ = fmt.Fprint(w, `{"readiness":{"route":{"basis":"gateway_httproute","state":"failing","code":"ROUTE_UNRESOLVED_REFS","remediation":"Verify the HTTPRoute backend service and cross-namespace references."}}}`)
+	}))
+	defer server.Close()
+	configureAdminAPITestContext(t, server.URL+"/v1/cli")
+
+	status, err := GetLiveDeploymentStatus("dep-1")
+	if err != nil {
+		t.Fatalf("GetLiveDeploymentStatus() error = %v", err)
+	}
+	route := status.Readiness.Route
+	if route.Basis != "gateway_httproute" || route.State != "failing" || route.Code != "ROUTE_UNRESOLVED_REFS" || route.Remediation != "Verify the HTTPRoute backend service and cross-namespace references." {
+		t.Fatalf("route readiness = %+v", route)
+	}
+}
+
 func TestDeploymentReadinessEvaluation(t *testing.T) {
 	tests := []struct {
 		name     string
@@ -87,6 +107,7 @@ func TestWaitForDeploymentUsesLiveReadinessAndCompatibilityModes(t *testing.T) {
 	}{
 		{name: "default verified", status: ptrReadinessStatus("verified", "current", "available"), wantSuccess: true},
 		{name: "workload compatibility", status: ptrReadinessStatus("unknown", "current", "available"), mode: DeploymentWaitModeWorkload, wantSuccess: true},
+		{name: "application readiness ignores route failure", status: readinessStatusWithFailingRoute(), wantSuccess: true},
 		{name: "default does not accept running unverified", status: ptrReadinessStatus("unknown", "current", "available")},
 		{name: "old endpoint does not accept legacy running", liveNotFound: true},
 		{name: "failing has stable code", status: ptrReadinessStatus("failing", "current", "available"), wantCode: "READINESS_FAILED"},
@@ -125,6 +146,17 @@ func TestWaitForDeploymentUsesLiveReadinessAndCompatibilityModes(t *testing.T) {
 			}
 		})
 	}
+}
+
+func readinessStatusWithFailingRoute() *DeploymentStatus {
+	status := ptrReadinessStatus("verified", "current", "available")
+	status.Readiness.Route = DeploymentConditionReadiness{
+		Basis:       "gateway_httproute",
+		State:       "failing",
+		Code:        "ROUTE_REJECTED",
+		Remediation: "Review the HTTPRoute parent acceptance and listener configuration.",
+	}
+	return status
 }
 
 func ptrReadinessStatus(application, reconciliation, workload string) *DeploymentStatus {
