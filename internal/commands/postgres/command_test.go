@@ -20,6 +20,21 @@ func TestFlagsHaveDestination(t *testing.T) {
 	})
 }
 
+func TestPostgresUsersOnlySupportsList(t *testing.T) {
+	users := postgresUsersCommand()
+	if len(users.Commands) != 1 || users.Commands[0].Name != "list" {
+		t.Fatalf("postgres users commands = %v, want only list", commandNames(users.Commands))
+	}
+}
+
+func commandNames(commands []*cli.Command) []string {
+	names := make([]string, 0, len(commands))
+	for _, command := range commands {
+		names = append(names, command.Name)
+	}
+	return names
+}
+
 func walkCommands(cmd *cli.Command, fn func(*cli.Command)) {
 	fn(cmd)
 	for _, sub := range cmd.Commands {

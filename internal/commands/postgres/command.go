@@ -28,12 +28,6 @@ const (
 	flagYes          = "yes"
 	flagBindAddr     = "bind-addr"
 	flagLocalPort    = "local-port"
-	flagSuperuser    = "superuser"
-	flagCreatedb     = "createdb"
-	flagCreaterole   = "createrole"
-	flagReplication  = "replication"
-	flagBypassRLS    = "bypassrls"
-	flagComment      = "comment"
 	flagCIDR         = "cidr"
 	flagDescription  = "description"
 )
@@ -72,23 +66,6 @@ type postgresProxyInput struct {
 	StorageID string
 	BindAddr  string
 	LocalPort string
-}
-
-type postgresUsersCreateInput struct {
-	StorageID   string
-	Username    string
-	Superuser   bool
-	Createdb    bool
-	Createrole  bool
-	Replication bool
-	BypassRLS   bool
-	Comment     string
-}
-
-type postgresUsersDeleteInput struct {
-	StorageID string
-	Username  string
-	Yes       bool
 }
 
 type postgresFirewallAddInput struct {
@@ -331,11 +308,9 @@ func postgresUsersCommand() *cli.Command {
 	return &cli.Command{
 		Name:    "users",
 		Aliases: []string{"user"},
-		Usage:   "Manage database users",
+		Usage:   "List database users",
 		Commands: []*cli.Command{
 			postgresUsersListCommand(),
-			postgresUsersCreateCommand(),
-			postgresUsersDeleteCommand(),
 		},
 	}
 }
@@ -353,51 +328,6 @@ func postgresUsersListCommand() *cli.Command {
 			}
 			in.StorageID = cmd.Args().First()
 			return handlePostgresUsersList(ctx, in)
-		},
-	}
-}
-
-func postgresUsersCreateCommand() *cli.Command {
-	var in postgresUsersCreateInput
-	return &cli.Command{
-		Name:      "create",
-		Usage:     "Create a database user",
-		ArgsUsage: "<cluster> <username>",
-		Flags: []cli.Flag{
-			optionalBoolFlag(flagSuperuser, "Grant SUPERUSER", &in.Superuser),
-			optionalBoolFlag(flagCreatedb, "Grant CREATEDB", &in.Createdb),
-			optionalBoolFlag(flagCreaterole, "Grant CREATEROLE", &in.Createrole),
-			optionalBoolFlag(flagReplication, "Grant REPLICATION", &in.Replication),
-			optionalBoolFlag(flagBypassRLS, "Grant BYPASSRLS", &in.BypassRLS),
-			optionalStringFlag(flagComment, "Role comment", &in.Comment, ""),
-		},
-		Action: func(ctx context.Context, cmd *cli.Command) error {
-			if cmd.Args().Len() < 2 {
-				return cli.ShowSubcommandHelp(cmd)
-			}
-			in.StorageID = cmd.Args().Get(0)
-			in.Username = cmd.Args().Get(1)
-			return handlePostgresUsersCreate(ctx, in)
-		},
-	}
-}
-
-func postgresUsersDeleteCommand() *cli.Command {
-	var in postgresUsersDeleteInput
-	return &cli.Command{
-		Name:      "delete",
-		Usage:     "Delete a database user",
-		ArgsUsage: "<cluster> <username>",
-		Flags: []cli.Flag{
-			optionalBoolFlag(flagYes, "Skip confirmation prompt", &in.Yes),
-		},
-		Action: func(ctx context.Context, cmd *cli.Command) error {
-			if cmd.Args().Len() < 2 {
-				return cli.ShowSubcommandHelp(cmd)
-			}
-			in.StorageID = cmd.Args().Get(0)
-			in.Username = cmd.Args().Get(1)
-			return handlePostgresUsersDelete(ctx, in)
 		},
 	}
 }

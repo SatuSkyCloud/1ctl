@@ -350,10 +350,8 @@ updates, ACL users, credential rotation, metrics, logs, and current limitations.
 # Forward a local port to the cluster service
 1ctl postgres proxy <storage-id> --local-port 15432
 
-# Manage database users
+# List database users
 1ctl postgres users list <storage-id>
-1ctl postgres users create <storage-id> reporting --createdb
-1ctl postgres users delete <storage-id> reporting --yes
 
 # Manage external access rules
 1ctl postgres firewall list <storage-id>

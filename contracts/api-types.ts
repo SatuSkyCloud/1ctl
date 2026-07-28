@@ -460,19 +460,34 @@ export interface DeploymentDeletionLifecycle {
   errorCode?: string;
   errorMessage?: string;
 }
+export interface DeploymentDeletionRetainedResource {
+  resource_class: string;
+  kind: string;
+  resource: string;
+  namespace?: string;
+  name: string;
+}
 export interface DeploymentDeletionOperation {
+  operation_id?: string;
   deployment_id: string;
   namespace: string;
   app_label: string;
   operation: string;
   status: string;
+  state?: string;
   terminal: boolean;
   accepted_at?: string /* RFC3339 */;
   status_url?: string;
   poll_after_ms?: number /* int */;
   purge_retained: boolean;
   cleanup_scope?: string[];
+  retained_resources?: DeploymentDeletionRetainedResource[];
+  remediation_code?: string;
+  remediation_detail?: string;
   lifecycle: DeploymentDeletionLifecycle;
+}
+export interface DeploymentDeletionFailureError {
+  Operation?: DeploymentDeletionOperation;
 }
 export interface CreateDeploymentResponse {
   deployment_id: string /* UUID */;
@@ -760,6 +775,8 @@ export interface DeploymentWorkloadReadiness {
 export interface DeploymentConditionReadiness {
   basis: string;
   state: string;
+  code?: string;
+  remediation?: string;
 }
 export type DeploymentWaitMode = string;
 export const DeploymentWaitModeApplication: DeploymentWaitMode = "application";
