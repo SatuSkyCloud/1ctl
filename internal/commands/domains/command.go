@@ -4,7 +4,10 @@ package domains
 
 import (
 	"context"
+	"fmt"
+	"strings"
 
+	"1ctl/internal/utils"
 	"github.com/urfave/cli/v3"
 )
 
@@ -191,7 +194,7 @@ type domainsPurchaseStatusInput struct {
 
 // Command returns the root domains command tree.
 func Command() *cli.Command {
-	return &cli.Command{
+	cmd := &cli.Command{
 		Name:    "domains",
 		Aliases: []string{"domain"},
 		Usage:   "Add, list, and inspect custom domains for your apps",
@@ -209,6 +212,48 @@ func Command() *cli.Command {
 			domainsPurchaseStatusCommand(),
 		},
 	}
+	enforceFiniteMaxArgs(cmd)
+	return cmd
+}
+
+func enforceFiniteMaxArgs(cmd *cli.Command) {
+	if len(cmd.Commands) > 0 {
+		for _, child := range cmd.Commands {
+			enforceFiniteMaxArgs(child)
+		}
+		return
+	}
+
+	maxArgs, finite := finiteMaxArgs(cmd.ArgsUsage)
+	if !finite {
+		return
+	}
+	previousBefore := cmd.Before
+	cmd.Before = func(ctx context.Context, invoked *cli.Command) (context.Context, error) {
+		if invoked.Args().Len() > maxArgs {
+			return ctx, utils.NewError(
+				fmt.Sprintf("%s accepts at most %d positional argument(s)", invoked.FullName(), maxArgs),
+				nil,
+			)
+		}
+		if previousBefore != nil {
+			return previousBefore(ctx, invoked)
+		}
+		return ctx, nil
+	}
+}
+
+func finiteMaxArgs(argsUsage string) (int, bool) {
+	if strings.TrimSpace(argsUsage) == "" {
+		return 0, true
+	}
+	tokens := strings.Fields(argsUsage)
+	for _, token := range tokens {
+		if strings.Contains(token, "...") {
+			return 0, false
+		}
+	}
+	return len(tokens), true
 }
 
 func domainsListCommand() *cli.Command {

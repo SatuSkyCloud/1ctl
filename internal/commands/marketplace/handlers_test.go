@@ -11,6 +11,7 @@ import (
 	"testing"
 
 	cliContext "1ctl/internal/context"
+	"1ctl/internal/utils"
 	"github.com/google/uuid"
 )
 
@@ -86,4 +87,55 @@ func TestMarketplaceDeployUsesDeployableAsAuthority(t *testing.T) {
 			t.Fatalf("create calls = %d, want 0", creates)
 		}
 	})
+}
+
+func TestMarketplaceGetPrintsResolvedAppAsJSON(t *testing.T) {
+	marketplaceID := uuid.NewString()
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/v1/marketplaces/all" {
+			http.NotFound(w, r)
+			return
+		}
+		_, _ = io.WriteString(w, `{"error":false,"data":[{"marketplace_id":"`+marketplaceID+`","marketplace_name":"demo","description":"A demo app","deployable":true}]}`)
+	}))
+	defer server.Close()
+	setupMarketplaceHandlerTest(t, server.URL)
+
+	utils.SetOutputFormat("json")
+	t.Cleanup(func() { utils.SetOutputFormat("table") })
+	output := captureMarketplaceStdout(t, func() error {
+		return handleMarketplaceGet(stdcontext.Background(), "demo")
+	})
+	if !strings.Contains(output, `"marketplace_name": "demo"`) {
+		t.Fatalf("JSON output = %q", output)
+	}
+	if strings.Contains(output, "Marketplace App:") {
+		t.Fatalf("table output leaked into JSON mode: %q", output)
+	}
+}
+
+func captureMarketplaceStdout(t *testing.T, fn func() error) string {
+	t.Helper()
+	read, write, err := os.Pipe()
+	if err != nil {
+		t.Fatal(err)
+	}
+	original := os.Stdout
+	os.Stdout = write
+	t.Cleanup(func() { os.Stdout = original })
+	if err := fn(); err != nil {
+		t.Fatal(err)
+	}
+	if err := write.Close(); err != nil {
+		t.Fatal(err)
+	}
+	os.Stdout = original
+	output, err := io.ReadAll(read)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := read.Close(); err != nil {
+		t.Fatal(err)
+	}
+	return string(output)
 }

@@ -3,6 +3,7 @@ package machine
 
 import (
 	"context"
+	"fmt"
 
 	"github.com/urfave/cli/v3"
 )
@@ -188,7 +189,7 @@ func machineGetCommand() *cli.Command {
 		ArgsUsage: "<machine-id-or-name>",
 		Action: func(ctx context.Context, cmd *cli.Command) error {
 			if cmd.Args().Len() < 1 {
-				return cli.ShowSubcommandHelp(cmd)
+				return missingRequiredArgs(cmd)
 			}
 			in.MachineID = cmd.Args().First()
 			return handleMachineGet(ctx, in)
@@ -217,7 +218,7 @@ func machineUpdateCommand() *cli.Command {
 		Flags:     machineMutationFlags(false, &in.machineCreateInput),
 		Action: func(ctx context.Context, cmd *cli.Command) error {
 			if cmd.Args().Len() < 1 {
-				return cli.ShowSubcommandHelp(cmd)
+				return missingRequiredArgs(cmd)
 			}
 			in.MachineID = cmd.Args().First()
 			return handleMachineUpdate(ctx, in)
@@ -236,7 +237,7 @@ func machineDeleteCommand() *cli.Command {
 		},
 		Action: func(ctx context.Context, cmd *cli.Command) error {
 			if cmd.Args().Len() < 1 {
-				return cli.ShowSubcommandHelp(cmd)
+				return missingRequiredArgs(cmd)
 			}
 			in.MachineID = cmd.Args().First()
 			return handleMachineDelete(ctx, in)
@@ -255,7 +256,7 @@ func machineInspectCommand() *cli.Command {
 		},
 		Action: func(ctx context.Context, cmd *cli.Command) error {
 			if cmd.Args().Len() < 1 {
-				return cli.ShowSubcommandHelp(cmd)
+				return missingRequiredArgs(cmd)
 			}
 			in.MachineID = cmd.Args().First()
 			return handleMachineInspect(ctx, in)
@@ -279,7 +280,7 @@ func machineLogsCommand() *cli.Command {
 		},
 		Action: func(ctx context.Context, cmd *cli.Command) error {
 			if cmd.Args().Len() < 1 {
-				return cli.ShowSubcommandHelp(cmd)
+				return missingRequiredArgs(cmd)
 			}
 			in.MachineID = cmd.Args().First()
 			return handleMachineLogs(ctx, in)
@@ -298,7 +299,7 @@ func machineEventsCommand() *cli.Command {
 		},
 		Action: func(ctx context.Context, cmd *cli.Command) error {
 			if cmd.Args().Len() < 1 {
-				return cli.ShowSubcommandHelp(cmd)
+				return missingRequiredArgs(cmd)
 			}
 			in.MachineID = cmd.Args().First()
 			return handleMachineEvents(ctx, in)
@@ -356,7 +357,7 @@ func machineUsageGetCommand() *cli.Command {
 		ArgsUsage: "<usage-id>",
 		Action: func(ctx context.Context, cmd *cli.Command) error {
 			if cmd.Args().Len() < 1 {
-				return cli.ShowSubcommandHelp(cmd)
+				return missingRequiredArgs(cmd)
 			}
 			in.UsageID = cmd.Args().First()
 			return handleMachineUsageGet(ctx, in)
@@ -372,7 +373,7 @@ func machineUsageCostCommand() *cli.Command {
 		ArgsUsage: "<usage-id>",
 		Action: func(ctx context.Context, cmd *cli.Command) error {
 			if cmd.Args().Len() < 1 {
-				return cli.ShowSubcommandHelp(cmd)
+				return missingRequiredArgs(cmd)
 			}
 			in.UsageID = cmd.Args().First()
 			return handleMachineUsageCost(ctx, in)
@@ -412,7 +413,7 @@ func machineLabelsListCommand() *cli.Command {
 		ArgsUsage: "<machine-id>",
 		Action: func(ctx context.Context, cmd *cli.Command) error {
 			if cmd.Args().Len() < 1 {
-				return cli.ShowSubcommandHelp(cmd)
+				return missingRequiredArgs(cmd)
 			}
 			return handleMachineLabelsList(ctx, cmd.Args().First())
 		},
@@ -427,7 +428,7 @@ func machineLabelsSetCommand() *cli.Command {
 		Action: func(ctx context.Context, cmd *cli.Command) error {
 			args := cmd.Args().Slice()
 			if len(args) < 2 {
-				return cli.ShowSubcommandHelp(cmd)
+				return missingRequiredArgs(cmd)
 			}
 			return handleMachineLabelsSet(ctx, args[0], args[1:])
 		},
@@ -443,7 +444,7 @@ func machineLabelsUnsetCommand() *cli.Command {
 		Action: func(ctx context.Context, cmd *cli.Command) error {
 			args := cmd.Args().Slice()
 			if len(args) < 2 {
-				return cli.ShowSubcommandHelp(cmd)
+				return missingRequiredArgs(cmd)
 			}
 			return handleMachineLabelsUnset(ctx, args[0], args[1])
 		},
@@ -458,6 +459,13 @@ func machineLabelsKeysCommand() *cli.Command {
 			return handleMachineLabelsKeys(ctx)
 		},
 	}
+}
+
+func missingRequiredArgs(cmd *cli.Command) error {
+	if err := cli.ShowSubcommandHelp(cmd); err != nil {
+		return err
+	}
+	return fmt.Errorf("missing required positional argument: %s", cmd.ArgsUsage)
 }
 
 // --- Machine mutation flags factory -------------------------------------

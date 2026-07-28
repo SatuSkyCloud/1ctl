@@ -45,6 +45,9 @@ func handleMarketplaceGet(ctx context.Context, nameOrID string) error {
 	if err != nil {
 		return err
 	}
+	if utils.TryPrintJSON(app) {
+		return nil
+	}
 
 	status := "Available"
 	if app.ComingSoon {

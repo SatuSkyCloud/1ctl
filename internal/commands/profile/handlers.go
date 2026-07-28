@@ -19,6 +19,27 @@ func handleProfileList(ctx context.Context) error {
 		return utils.NewError(fmt.Sprintf("failed to list profiles: %s", err.Error()), nil)
 	}
 
+	type profileOutput struct {
+		Name     string `json:"name"`
+		APIURL   string `json:"api_url"`
+		Email    string `json:"email,omitempty"`
+		OrgName  string `json:"organization,omitempty"`
+		IsActive bool   `json:"active"`
+	}
+	output := make([]profileOutput, 0, len(profiles))
+	for _, profile := range profiles {
+		output = append(output, profileOutput{
+			Name:     profile.Name,
+			APIURL:   profile.APIURL,
+			Email:    profile.Email,
+			OrgName:  profile.OrgName,
+			IsActive: profile.IsActive,
+		})
+	}
+	if utils.PrintListOrJSON(output, "No profiles yet.") {
+		return nil
+	}
+
 	if len(profiles) == 0 {
 		utils.PrintInfo("No profiles yet.")
 		utils.PrintInfo("Create one with: 1ctl profile create --name <name> [--url <api-url>]")
@@ -88,7 +109,24 @@ func handleProfileCurrent(ctx context.Context) error {
 	name := satuskyctx.GetActiveProfileName()
 
 	if name == "" {
+		if utils.TryPrintJSON(nil) {
+			return nil
+		}
 		utils.PrintInfo("No profile active. Run '1ctl profile use <name>' to select one.")
+		return nil
+	}
+
+	if utils.TryPrintJSON(struct {
+		Profile      string `json:"profile"`
+		APIURL       string `json:"api_url"`
+		Email        string `json:"email,omitempty"`
+		Organization string `json:"organization,omitempty"`
+	}{
+		Profile:      name,
+		APIURL:       config.GetConfig().ApiURL,
+		Email:        satuskyctx.GetEmail(),
+		Organization: satuskyctx.GetCurrentOrgName(),
+	}) {
 		return nil
 	}
 

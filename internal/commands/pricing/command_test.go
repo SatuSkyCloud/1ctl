@@ -34,25 +34,25 @@ func TestPricingLookupShellCompleteFlagNames(t *testing.T) {
 	out := runPricingLookupCompletion(t, "--", "lookup", "--")
 
 	assertContains(t, out, "--region:Region (e.g. my-kul-1b)")
-	assertContains(t, out, "--type:Machine type (e.g. standard, premium)")
-	assertContains(t, out, "--sla:SLA tier (e.g. standard, premium)")
-	assertNotContains(t, out, "standard:")
-	assertNotContains(t, out, "premium:")
+	assertContains(t, out, "--type:Machine type")
+	assertContains(t, out, "--sla:SLA tier")
 }
 
-func TestPricingLookupShellCompleteTypeValues(t *testing.T) {
-	out := runPricingLookupCompletion(t, "", "--type", "--type")
-
-	if out != "standard:machine type\npremium:machine type\n" {
-		t.Fatalf("completion output = %q", out)
+func TestPricingLookupAcceptsServerCatalogDimensions(t *testing.T) {
+	cmd := pricingLookupCommand()
+	seen := make(map[string]bool)
+	for _, flag := range cmd.Flags {
+		stringFlag, ok := flag.(*cli.StringFlag)
+		if !ok || (stringFlag.Name != flagType && stringFlag.Name != flagSLA) {
+			continue
+		}
+		seen[stringFlag.Name] = true
+		if stringFlag.Validator != nil {
+			t.Fatalf("lookup flag %q has a stale client-side enum validator", stringFlag.Name)
+		}
 	}
-}
-
-func TestPricingLookupShellCompleteSLAValues(t *testing.T) {
-	out := runPricingLookupCompletion(t, "", "--sla", "--sla")
-
-	if out != "standard:SLA tier\npremium:SLA tier\n" {
-		t.Fatalf("completion output = %q", out)
+	if !seen[flagType] || !seen[flagSLA] {
+		t.Fatalf("lookup dimensions missing from command: %v", seen)
 	}
 }
 
@@ -76,14 +76,6 @@ func TestPricingLookupShellCompleteRegionAPIValues(t *testing.T) {
 	out := runPricingLookupCompletion(t, "", "--region", "--region")
 
 	if out != "my-kul-1b:Kuala Lumpur 1B\nmy-bki-1a:Kota Kinabalu 1A\n" {
-		t.Fatalf("completion output = %q", out)
-	}
-}
-
-func TestPricingLookupShellCompleteEqualsForm(t *testing.T) {
-	out := runPricingLookupCompletion(t, "--sla=p", "lookup", "--sla=p")
-
-	if out != "--sla=standard:SLA tier\n--sla=premium:SLA tier\n" {
 		t.Fatalf("completion output = %q", out)
 	}
 }
@@ -125,13 +117,6 @@ func assertContains(t *testing.T, s, want string) {
 	t.Helper()
 	if !strings.Contains(s, want) {
 		t.Fatalf("expected %q to contain %q", s, want)
-	}
-}
-
-func assertNotContains(t *testing.T, s, notWant string) {
-	t.Helper()
-	if strings.Contains(s, notWant) {
-		t.Fatalf("expected %q not to contain %q", s, notWant)
 	}
 }
 

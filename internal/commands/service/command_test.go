@@ -20,6 +20,17 @@ func TestFlagsHaveDestination(t *testing.T) {
 	})
 }
 
+func TestValidateServiceDeleteArgs(t *testing.T) {
+	for _, count := range []int{0, 2} {
+		if err := validateServiceDeleteArgs(count); err == nil {
+			t.Fatalf("count %d: expected validation error", count)
+		}
+	}
+	if err := validateServiceDeleteArgs(1); err != nil {
+		t.Fatalf("count 1: %v", err)
+	}
+}
+
 func walkCommands(cmd *cli.Command, fn func(*cli.Command)) {
 	fn(cmd)
 	for _, sub := range cmd.Commands {

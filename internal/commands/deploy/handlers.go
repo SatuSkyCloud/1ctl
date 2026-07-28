@@ -3,6 +3,8 @@ package deploy
 import (
 	"context"
 	"fmt"
+	"regexp"
+	"strconv"
 	"strings"
 	"time"
 
@@ -52,7 +54,7 @@ func handleDeploy(ctx context.Context, in DeployInput) error {
 		return utils.NewError(fmt.Sprintf("deployment failed: %s", err.Error()), nil)
 	}
 	if resp.Intent != nil {
-		return reportAtomicIntent(resp.Intent, merged.Wait)
+		return reportAtomicIntent(resp.Intent, merged.Wait, merged.HealthPath, merged.StrictSmoke)
 	}
 
 	ingressID := ""
@@ -63,7 +65,7 @@ func handleDeploy(ctx context.Context, in DeployInput) error {
 	return deploypkg.ReportDeployResult(resp.AppLabel, resp.DeploymentID.String(), resp.Domain, publicURL, merged.HealthPath, merged.StrictSmoke)
 }
 
-func reportAtomicIntent(accepted *api.DeploymentIntentAccepted, wait bool) error {
+func reportAtomicIntent(accepted *api.DeploymentIntentAccepted, wait bool, healthPath string, strictSmoke bool) error {
 	if utils.TryPrintJSON(map[string]interface{}{"mode": "atomic", "intent": accepted}) {
 		return nil
 	}
@@ -79,12 +81,20 @@ func reportAtomicIntent(accepted *api.DeploymentIntentAccepted, wait bool) error
 		utils.PrintInfo("Deployment intent was accepted and is pending reconciliation. Use --wait to observe readiness.")
 		return nil
 	}
-	final, err := api.WaitForDeployment(accepted.DeploymentID, 5*time.Minute)
+	final, err := api.WaitForDeploymentGeneration(accepted.DeploymentID, accepted.Generation, 5*time.Minute)
 	if err != nil {
 		return utils.NewError(fmt.Sprintf("deployment intent accepted but readiness failed: %s", err.Error()), nil)
 	}
-	utils.PrintSuccess("Deployment %s is healthy (%s)", accepted.AppLabel, final.Status)
-	return nil
+	if healthPath == "" {
+		utils.PrintSuccess("Deployment %s is healthy (%s)", accepted.AppLabel, final.Status)
+		return nil
+	}
+	ingress, err := api.GetIngressByDeploymentID(accepted.DeploymentID)
+	if err != nil {
+		return utils.NewError(fmt.Sprintf("deployment is healthy but public route lookup failed: %s", err.Error()), nil)
+	}
+	ready := deploypkg.WaitForPublicURL(ingress.IngressID.String(), ingress.DomainName)
+	return deploypkg.ReportDeployResult(accepted.AppLabel, accepted.DeploymentID, ingress.DomainName, ready, healthPath, strictSmoke)
 }
 
 type mergedInput struct {
@@ -273,6 +283,35 @@ func validateInputs(m mergedInput) error {
 			return utils.NewError(fmt.Sprintf("invalid health path: %v", err), nil)
 		}
 	}
+	if m.Replicas < 0 {
+		return utils.NewError("replicas cannot be negative", nil)
+	}
+	if _, err := parseEnvVars(m.Env); err != nil {
+		return err
+	}
+	if err := validateRollingValue("rolling-max-surge", m.RollingMaxSurge); err != nil {
+		return err
+	}
+	if err := validateRollingValue("rolling-max-unavailable", m.RollingMaxUnavail); err != nil {
+		return err
+	}
+	switch m.VPAMode {
+	case "Off", "Initial", "Auto":
+	default:
+		return utils.NewError(fmt.Sprintf("invalid vpa-mode %q", m.VPAMode), nil)
+	}
+	switch m.BackupSchedule {
+	case "hourly", "daily", "weekly":
+	default:
+		return utils.NewError(fmt.Sprintf("invalid backup-schedule %q", m.BackupSchedule), nil)
+	}
+	if m.PDB {
+		switch m.PDBType {
+		case "auto", "fixed", "percent":
+		default:
+			return utils.NewError(fmt.Sprintf("invalid pdb-type %q", m.PDBType), nil)
+		}
+	}
 
 	if m.VolumeSize != "" || m.VolumeMount != "" {
 		if m.VolumeSize == "" {
@@ -349,9 +388,13 @@ func prepareDeploymentOptions(m mergedInput, cfg *config.ProjectConfig) (deployp
 	opts.Organization = m.Organization
 
 	if len(m.Env) > 0 {
+		keyValues, err := parseEnvVars(m.Env)
+		if err != nil {
+			return deploypkg.DeploymentOptions{}, err
+		}
 		opts.EnvEnabled = true
 		opts.Environment = &api.Environment{
-			KeyValues: parseEnvVars(m.Env),
+			KeyValues: keyValues,
 		}
 	}
 	if cfg != nil {
@@ -1141,18 +1184,34 @@ func enabledText(enabled bool) string {
 	return "not attached"
 }
 
-func parseEnvVars(envVars []string) []api.KeyValuePair {
+var environmentVariableName = regexp.MustCompile(`^[A-Za-z_][A-Za-z0-9_]*$`)
+
+func parseEnvVars(envVars []string) ([]api.KeyValuePair, error) {
 	var keyValues []api.KeyValuePair
 	for _, env := range envVars {
 		parts := strings.SplitN(env, "=", 2)
-		if len(parts) == 2 {
-			keyValues = append(keyValues, api.KeyValuePair{
-				Key:   parts[0],
-				Value: parts[1],
-			})
+		if len(parts) != 2 || !environmentVariableName.MatchString(parts[0]) {
+			return nil, utils.NewError(fmt.Sprintf("invalid environment variable %q: expected KEY=VALUE", env), nil)
 		}
+		keyValues = append(keyValues, api.KeyValuePair{Key: parts[0], Value: parts[1]})
 	}
-	return keyValues
+	return keyValues, nil
+}
+
+func validateRollingValue(name, value string) error {
+	value = strings.TrimSpace(value)
+	if value == "" {
+		return nil
+	}
+	percent := strings.HasSuffix(value, "%")
+	if percent {
+		value = strings.TrimSuffix(value, "%")
+	}
+	number, err := strconv.Atoi(value)
+	if err != nil || number < 0 || (percent && number > 100) {
+		return utils.NewError(fmt.Sprintf("%s must be a non-negative integer or percentage from 0%% to 100%%", name), nil)
+	}
+	return nil
 }
 
 func domainRouteText(status api.DomainRouteStatus) string {

@@ -112,7 +112,7 @@ func handleListSecrets(ctx context.Context, in secretListInput) error {
 			secret.AppLabel,
 			secret.SecretID.String(),
 			secret.DeploymentID.String(),
-			fmt.Sprintf("%d", len(secret.KeyValues)),
+			fmt.Sprintf("%d", secretMetadataKeyCount(secret)),
 			utils.FormatTimeAgo(secret.CreatedAt),
 		})
 	}
@@ -168,9 +168,9 @@ func handleGetSecret(ctx context.Context, in secretGetInput) error {
 
 	if in.Key != "" {
 		// Show just the specified key
-		for _, kv := range secret.KeyValues {
-			if kv.Key == in.Key {
-				if utils.TryPrintJSON(kv) {
+		for _, key := range secret.Keys {
+			if key == in.Key {
+				if utils.TryPrintJSON(map[string]interface{}{"key": key, "exists": true}) {
 					return nil
 				}
 				utils.PrintHeader("Secret %s", in.Key)
@@ -199,9 +199,16 @@ func printSecretBundle(s *api.Secret) error {
 	utils.PrintStatusLine("Deployment ID", s.DeploymentID.String())
 	utils.PrintStatusLine("Namespace", s.Namespace)
 	utils.PrintStatusLine("Created", utils.FormatTimeAgo(s.CreatedAt))
-	utils.PrintStatusLine("Keys", fmt.Sprintf("%d", len(s.KeyValues)))
-	for _, kv := range s.KeyValues {
-		utils.PrintStatusLine("  "+kv.Key, "********")
+	utils.PrintStatusLine("Keys", fmt.Sprintf("%d", secretMetadataKeyCount(*s)))
+	for _, key := range s.Keys {
+		utils.PrintStatusLine("  "+key, "********")
 	}
 	return nil
+}
+
+func secretMetadataKeyCount(secret api.Secret) int {
+	if secret.KeyCount > 0 {
+		return secret.KeyCount
+	}
+	return len(secret.Keys)
 }

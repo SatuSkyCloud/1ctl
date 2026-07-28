@@ -16,6 +16,9 @@ import (
 // --- Handlers -----------------------------------------------------------
 
 func handleLogs(ctx context.Context, in logsInput) error {
+	if err := validateLogCount("tail", in.Tail); err != nil {
+		return err
+	}
 	deploymentID, err := deploy.ResolveDeploymentID(in.DeploymentID, in.App, in.Config)
 	if err != nil {
 		return err
@@ -62,6 +65,9 @@ func handleLogs(ctx context.Context, in logsInput) error {
 }
 
 func handleLogsStream(ctx context.Context, in logsStreamInput) error {
+	if err := validateLogCount("batch-size", in.BatchSize); err != nil {
+		return err
+	}
 	namespace := in.Namespace
 	appLabel := in.App
 	batchSize := in.BatchSize
@@ -128,4 +134,11 @@ func handleLogsStream(ctx context.Context, in logsStreamInput) error {
 		}
 		fmt.Println(string(msg))
 	}
+}
+
+func validateLogCount(name string, value int) error {
+	if value < 1 || value > 2000 {
+		return utils.NewError(fmt.Sprintf("%s must be between 1 and 2000", name), nil)
+	}
+	return nil
 }

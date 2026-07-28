@@ -117,13 +117,13 @@ func handleVolumesDetach(ctx context.Context, in volumesActionInput) error {
 	if err != nil {
 		return utils.NewError(fmt.Sprintf("failed to detach volume: %s", err.Error()), nil)
 	}
-	utils.PrintSuccess("Volume %s detached; PVC retained", in.VolumeID)
+	utils.PrintSuccess("Detach requested for volume %s; PVC will be retained", in.VolumeID)
 	printVolumeLifecycle(status)
 	return nil
 }
 
 func handleVolumesDestroy(ctx context.Context, in volumesActionInput) error {
-	if !utils.Confirm(fmt.Sprintf("Destroy volume %s? This detaches the volume and deletes its PVC.", in.VolumeID), in.Yes) {
+	if !utils.Confirm(fmt.Sprintf("Request destruction of volume %s? This detaches the volume and permanently deletes its PVC.", in.VolumeID), in.Yes) {
 		fmt.Println("Aborted.")
 		return nil
 	}
@@ -132,7 +132,7 @@ func handleVolumesDestroy(ctx context.Context, in volumesActionInput) error {
 	if err != nil {
 		return utils.NewError(fmt.Sprintf("failed to destroy volume: %s", err.Error()), nil)
 	}
-	utils.PrintSuccess("Volume %s destroyed", in.VolumeID)
+	utils.PrintSuccess("Destruction requested for volume %s", in.VolumeID)
 	printVolumeLifecycle(status)
 	return nil
 }
@@ -153,6 +153,7 @@ func printVolumeLifecycle(status *api.VolumeLifecycleStatus) {
 	utils.PrintStatusLine("Claim", status.Volume.ClaimName)
 	utils.PrintStatusLine("Size", status.Volume.StorageSize)
 	utils.PrintStatusLine("Mount path", status.Volume.MountPath)
+	utils.PrintStatusLine("Desired attachment", desiredAttachmentText(status))
 	utils.PrintStatusLine("PVC", pvcStatusText(status.PVC))
 	if status.PVC.Message != "" {
 		utils.PrintStatusLine("PVC message", status.PVC.Message)
@@ -166,8 +167,21 @@ func printVolumeLifecycle(status *api.VolumeLifecycleStatus) {
 	// Staleness warning: show if PVC or mount state is stale
 	if isStale(status.PVC.LastObservedAt, status.Mount.LastObservedAt) {
 		fmt.Println()
-		utils.PrintWarning("State may be stale — run with --refresh to fetch live data")
+		utils.PrintWarning("State may be stale; run volume inspect again to fetch the latest observed state")
 	}
+}
+
+func desiredAttachmentText(status *api.VolumeLifecycleStatus) string {
+	if status.Volume.DesiredAttached {
+		if !status.Mount.Attached {
+			return "attached (observed attachment pending)"
+		}
+		return "attached"
+	}
+	if status.Mount.Attached {
+		return "detached (observed detachment pending)"
+	}
+	return "detached"
 }
 
 func pvcStatusText(status api.VolumePVCStatus) string {

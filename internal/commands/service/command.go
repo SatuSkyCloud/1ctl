@@ -3,6 +3,7 @@ package service
 
 import (
 	"context"
+	"fmt"
 
 	"github.com/urfave/cli/v3"
 )
@@ -88,11 +89,18 @@ func serviceDeleteCommand() *cli.Command {
 			},
 		},
 		Action: func(ctx context.Context, cmd *cli.Command) error {
-			if cmd.Args().Len() < 1 {
-				return cli.ShowSubcommandHelp(cmd)
+			if err := validateServiceDeleteArgs(cmd.Args().Len()); err != nil {
+				return err
 			}
 			in.ServiceID = cmd.Args().First()
 			return handleDeleteService(ctx, in)
 		},
 	}
+}
+
+func validateServiceDeleteArgs(count int) error {
+	if count != 1 {
+		return fmt.Errorf("expected exactly one positional argument: <service-id>")
+	}
+	return nil
 }

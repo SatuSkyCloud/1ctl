@@ -98,6 +98,27 @@ func TestMarketplacePublisherClientUsesPublisherEnvelopeAndPaths(t *testing.T) {
 	}
 }
 
+func TestGetPricingConfigReadsTheCLIResponseEnvelope(t *testing.T) {
+	configID := uuid.NewString()
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/v1/cli/pricing/configs/"+configID {
+			http.NotFound(w, r)
+			return
+		}
+		_, _ = io.WriteString(w, `{"error":false,"data":{"config_id":"`+configID+`","region":"MY","machine_type":"worker","sla_tier":"pro","base_hourly_rate":1.25}}`)
+	}))
+	defer server.Close()
+	setupPublisherAPITest(t, server.URL)
+
+	config, err := GetPricingConfig(configID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if config.ConfigID != configID || config.Region != "MY" || config.MachineType != "worker" || config.SLATier != "pro" || config.BaseHourlyRate != 1.25 {
+		t.Fatalf("GetPricingConfig() = %#v", config)
+	}
+}
+
 func artifactEnvelope(releaseID, visibility string) string {
 	return `{"error":false,"data":{"marketplace_id":"market","release_id":"` + releaseID + `","archive_digest":"sha256:abc","visibility":"` + visibility + `"}}`
 }

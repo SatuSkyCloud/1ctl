@@ -20,6 +20,15 @@ func TestFlagsHaveDestination(t *testing.T) {
 	})
 }
 
+func TestValidateInitArgs(t *testing.T) {
+	if err := validateInitArgs(0); err != nil {
+		t.Fatal(err)
+	}
+	if err := validateInitArgs(1); err == nil {
+		t.Fatal("expected positional argument rejection")
+	}
+}
+
 func walkCommands(cmd *cli.Command, fn func(*cli.Command)) {
 	fn(cmd)
 	for _, sub := range cmd.Commands {

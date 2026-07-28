@@ -56,6 +56,12 @@ func handleNotifCount(ctx context.Context) error {
 		return utils.NewError(fmt.Sprintf("failed to get unread count: %s", err.Error()), nil)
 	}
 
+	if utils.TryPrintJSON(struct {
+		Count int `json:"count"`
+	}{Count: count}) {
+		return nil
+	}
+
 	utils.PrintHeader("Unread Notifications")
 	utils.PrintStatusLine("Count", fmt.Sprintf("%d", count))
 	return nil

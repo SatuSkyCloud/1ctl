@@ -5,6 +5,8 @@ import (
 	"context"
 	"strings"
 
+	"1ctl/internal/utils"
+
 	"github.com/urfave/cli/v3"
 )
 
@@ -96,7 +98,7 @@ func orgSwitchCommand() *cli.Command {
 		Action: func(ctx context.Context, cmd *cli.Command) error {
 			if in.OrgID == "" && in.OrgName == "" {
 				if cmd.Args().Len() < 1 {
-					return cli.ShowSubcommandHelp(cmd)
+					return utils.NewError("organization name or ID is required", nil)
 				}
 				arg := cmd.Args().First()
 				if len(arg) == 36 && strings.Count(arg, "-") == 4 {
@@ -125,7 +127,7 @@ func orgCreateCommand() *cli.Command {
 		},
 		Action: func(ctx context.Context, cmd *cli.Command) error {
 			if cmd.Args().Len() < 1 {
-				return cli.ShowSubcommandHelp(cmd)
+				return utils.NewError("organization name is required", nil)
 			}
 			in.Name = cmd.Args().First()
 			return handleOrgCreate(ctx, in)

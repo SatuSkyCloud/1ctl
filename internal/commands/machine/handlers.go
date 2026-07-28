@@ -524,6 +524,9 @@ func handleMachineLabelsList(ctx context.Context, machineID string) error {
 	if err != nil {
 		return utils.NewError(fmt.Sprintf("failed to get labels: %s", err.Error()), nil)
 	}
+	if utils.TryPrintJSON(labels) {
+		return nil
+	}
 	if len(labels) == 0 {
 		utils.PrintInfo("No labels found on this machine")
 		return nil
@@ -573,6 +576,9 @@ func handleMachineLabelsKeys(ctx context.Context) error {
 	keys, err := api.GetAvailableLabelKeys()
 	if err != nil {
 		return utils.NewError(fmt.Sprintf("failed to get label keys: %s", err.Error()), nil)
+	}
+	if utils.TryPrintJSON(keys) {
+		return nil
 	}
 	if len(keys) == 0 {
 		utils.PrintInfo("No label keys found")

@@ -4,6 +4,8 @@ package profile
 import (
 	"context"
 
+	"1ctl/internal/utils"
+
 	"github.com/urfave/cli/v3"
 )
 
@@ -66,7 +68,7 @@ func profileCreateCommand() *cli.Command {
 		},
 		Action: func(ctx context.Context, cmd *cli.Command) error {
 			if cmd.Args().Len() < 1 {
-				return cli.ShowSubcommandHelp(cmd)
+				return utils.NewError("profile name is required", nil)
 			}
 			in.Name = cmd.Args().First()
 			return handleProfileCreate(ctx, in)
@@ -82,7 +84,7 @@ func profileUseCommand() *cli.Command {
 		ArgsUsage: "<name>",
 		Action: func(ctx context.Context, cmd *cli.Command) error {
 			if cmd.Args().Len() < 1 {
-				return cli.ShowSubcommandHelp(cmd)
+				return utils.NewError("profile name is required", nil)
 			}
 			in.Name = cmd.Args().First()
 			return handleProfileUse(ctx, in)
@@ -108,7 +110,7 @@ func profileDeleteCommand() *cli.Command {
 		ArgsUsage: "<name>",
 		Action: func(ctx context.Context, cmd *cli.Command) error {
 			if cmd.Args().Len() < 1 {
-				return cli.ShowSubcommandHelp(cmd)
+				return utils.NewError("profile name is required", nil)
 			}
 			in.Name = cmd.Args().First()
 			return handleProfileDelete(ctx, in)

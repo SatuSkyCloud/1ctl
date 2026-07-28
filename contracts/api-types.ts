@@ -495,7 +495,9 @@ export interface Secret {
   secret_id: string /* UUID */;
   deployment_id: string /* UUID */;
   namespace: string;
-  key_values: KeyValuePair[];
+  key_values?: KeyValuePair[];
+  keys?: string[];
+  key_count?: number /* int */;
   app_label: string;
   created_at: string /* RFC3339 */;
   updated_at: string /* RFC3339 */;
@@ -725,6 +727,7 @@ export interface Machine {
   machine_zone: string;
   ip_addr: string;
   talos_version: string;
+  talos_ready: boolean;
   kubernetes_version: string;
   cpu_cores: number /* int */;
   memory_gb: number /* int */;

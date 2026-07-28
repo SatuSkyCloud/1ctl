@@ -168,7 +168,7 @@
           "takesValue": true,
           "required": true,
           "multiple": false,
-          "usage": "Audit reason for the ownership transfer",
+          "usage": "Audit reason for the ownership transfer (required)",
           "envVars": []
         },
         {
@@ -178,7 +178,7 @@
           "takesValue": true,
           "required": true,
           "multiple": false,
-          "usage": "Exact live Deployment UID",
+          "usage": "Exact live Deployment UID (required)",
           "envVars": []
         },
         {
@@ -188,7 +188,7 @@
           "takesValue": true,
           "required": true,
           "multiple": false,
-          "usage": "Exact live Deployment resourceVersion",
+          "usage": "Exact live Deployment resourceVersion (required)",
           "envVars": []
         },
         {
@@ -199,7 +199,7 @@
           "required": true,
           "multiple": false,
           "default": "0",
-          "usage": "Exact live Deployment generation",
+          "usage": "Exact live Deployment generation (required)",
           "envVars": []
         },
         {
@@ -209,7 +209,7 @@
           "takesValue": true,
           "required": true,
           "multiple": false,
-          "usage": "Stable UUID for this adoption attempt",
+          "usage": "Stable UUID for this adoption attempt (required)",
           "envVars": []
         },
         {
@@ -268,7 +268,7 @@
           "takesValue": true,
           "required": true,
           "multiple": false,
-          "usage": "Audit reason for the ownership transfer",
+          "usage": "Audit reason for the ownership transfer (required)",
           "envVars": []
         },
         {
@@ -278,7 +278,7 @@
           "takesValue": true,
           "required": true,
           "multiple": false,
-          "usage": "Exact live HTTPRoute UID",
+          "usage": "Exact live HTTPRoute UID (required)",
           "envVars": []
         },
         {
@@ -288,7 +288,7 @@
           "takesValue": true,
           "required": true,
           "multiple": false,
-          "usage": "Exact live HTTPRoute resourceVersion",
+          "usage": "Exact live HTTPRoute resourceVersion (required)",
           "envVars": []
         },
         {
@@ -299,7 +299,7 @@
           "required": true,
           "multiple": false,
           "default": "0",
-          "usage": "Exact live HTTPRoute generation",
+          "usage": "Exact live HTTPRoute generation (required)",
           "envVars": []
         },
         {
@@ -309,7 +309,7 @@
           "takesValue": true,
           "required": true,
           "multiple": false,
-          "usage": "Stable UUID for this adoption attempt",
+          "usage": "Stable UUID for this adoption attempt (required)",
           "envVars": []
         },
         {
@@ -322,7 +322,7 @@
           "required": true,
           "multiple": false,
           "default": "false",
-          "usage": "Confirm the routing ownership transfer",
+          "usage": "Confirm the routing ownership transfer (required)",
           "envVars": []
         },
         {
@@ -9424,7 +9424,7 @@
           "takesValue": true,
           "required": true,
           "multiple": false,
-          "usage": "Machine type (e.g. standard, premium)",
+          "usage": "Machine type",
           "envVars": []
         },
         {
@@ -9434,7 +9434,7 @@
           "takesValue": true,
           "required": true,
           "multiple": false,
-          "usage": "SLA tier (e.g. standard, premium)",
+          "usage": "SLA tier",
           "envVars": []
         },
         {

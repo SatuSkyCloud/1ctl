@@ -3,6 +3,7 @@ package audit
 
 import (
 	"context"
+	"fmt"
 
 	"github.com/urfave/cli/v3"
 )
@@ -83,10 +84,17 @@ func auditGetCommand() *cli.Command {
 		Flags:     []cli.Flag{},
 		Action: func(ctx context.Context, cmd *cli.Command) error {
 			if cmd.Args().Len() < 1 {
-				return cli.ShowSubcommandHelp(cmd)
+				return missingRequiredArgs(cmd)
 			}
 			in.ID = cmd.Args().First()
 			return handleAuditGet(ctx, in)
 		},
 	}
+}
+
+func missingRequiredArgs(cmd *cli.Command) error {
+	if err := cli.ShowSubcommandHelp(cmd); err != nil {
+		return err
+	}
+	return fmt.Errorf("missing required positional argument: %s", cmd.ArgsUsage)
 }

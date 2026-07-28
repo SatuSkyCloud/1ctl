@@ -589,6 +589,12 @@ func GetDeploymentStatus(deploymentID string) (*DeploymentStatus, error) {
 
 // WaitForDeployment waits for a deployment to reach a terminal state
 func WaitForDeployment(deploymentID string, timeout time.Duration) (*DeploymentStatus, error) {
+	return WaitForDeploymentGeneration(deploymentID, 0, timeout)
+}
+
+// WaitForDeploymentGeneration waits until the accepted desired generation and
+// its live workload have converged.
+func WaitForDeploymentGeneration(deploymentID string, generation int64, timeout time.Duration) (*DeploymentStatus, error) {
 	ticker := time.NewTicker(5 * time.Second)
 	defer ticker.Stop()
 
@@ -599,7 +605,13 @@ func WaitForDeployment(deploymentID string, timeout time.Duration) (*DeploymentS
 			return nil, utils.NewError("timeout waiting for deployment", nil)
 		}
 
-		status, err := GetDeploymentStatus(deploymentID)
+		var status *DeploymentStatus
+		var err error
+		if generation > 0 {
+			status, err = getDeploymentStatusForGeneration(deploymentID, generation)
+		} else {
+			status, err = GetDeploymentStatus(deploymentID)
+		}
 		if err != nil {
 			return nil, err
 		}
@@ -624,6 +636,18 @@ func WaitForDeployment(deploymentID string, timeout time.Duration) (*DeploymentS
 
 		<-ticker.C
 	}
+}
+
+func getDeploymentStatusForGeneration(deploymentID string, generation int64) (*DeploymentStatus, error) {
+	var resp struct {
+		Error bool             `json:"error"`
+		Data  DeploymentStatus `json:"data"`
+	}
+	path := fmt.Sprintf("/deployments/status/%s?generation=%d", deploymentID, generation)
+	if err := makeRequest("GET", path, nil, &resp); err != nil {
+		return nil, err
+	}
+	return &resp.Data, nil
 }
 
 // makeRequest is a helper function to make HTTP requests

@@ -132,7 +132,7 @@ func notifDeleteCommand() *cli.Command {
 		},
 		Action: func(ctx context.Context, cmd *cli.Command) error {
 			if cmd.Args().Len() < 1 {
-				return cli.ShowSubcommandHelp(cmd)
+				return utils.NewError("notification ID is required", nil)
 			}
 			in.ID = cmd.Args().First()
 			return handleNotifDelete(ctx, in)

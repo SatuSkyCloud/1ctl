@@ -246,7 +246,9 @@ type Secret struct {
 	SecretID     uuid.UUID      `json:"secret_id"`
 	DeploymentID uuid.UUID      `json:"deployment_id"`
 	Namespace    string         `json:"namespace"`
-	KeyValues    []KeyValuePair `json:"key_values"`
+	KeyValues    []KeyValuePair `json:"key_values,omitempty"`
+	Keys         []string       `json:"keys,omitempty"`
+	KeyCount     int            `json:"key_count,omitempty"`
 	AppLabel     string         `json:"app_label"`
 	CreatedAt    time.Time      `json:"created_at"`
 	UpdatedAt    time.Time      `json:"updated_at"`
@@ -525,6 +527,7 @@ type Machine struct {
 	MachineZone         string     `db:"machine_zone" json:"machine_zone" validate:"required"`
 	IpAddr              string     `db:"ip_addr" json:"ip_addr" validate:"required"`
 	TalosVersion        string     `db:"talos_version" json:"talos_version" validate:"required"`
+	TalosReady          bool       `json:"talos_ready"`
 	KubernetesVersion   string     `db:"kubernetes_version" json:"kubernetes_version" validate:"required"`
 	CPUCores            int        `db:"cpu_cores" json:"cpu_cores" validate:"required"`
 	MemoryGB            int        `db:"memory_gb" json:"memory_gb" validate:"required"`

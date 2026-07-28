@@ -29,14 +29,9 @@ const (
 	flagEnd          = "end"
 )
 
-// --- Allowed flag values ------------------------------------------------
-// Used by Validator and ShellComplete for --type and --sla.
-
-var (
-	validMachineTypes = []string{"standard", "premium"}
-	validSLATiers     = []string{"standard", "premium"}
-	getAvailableZones = api.GetAvailableZones
-)
+// Pricing dimensions are catalog data. Keep lookup permissive so a client
+// does not reject a valid tier or machine type introduced by the server.
+var getAvailableZones = api.GetAvailableZones
 
 const (
 	completionCurrentEnv = "__1CTL_COMPLETE_CURRENT"
@@ -134,8 +129,8 @@ func pricingLookupCommand() *cli.Command {
 		Usage: "Look up pricing for a region, machine type, and SLA tier",
 		Flags: []cli.Flag{
 			requiredString(flagRegion, "Region (e.g. my-kul-1b)", &in.Region, nil),
-			requiredString(flagType, "Machine type (e.g. standard, premium)", &in.MachineType, machineTypeValidator),
-			requiredString(flagSLA, "SLA tier (e.g. standard, premium)", &in.SLA, slaTierValidator),
+			requiredString(flagType, "Machine type", &in.MachineType, nil),
+			requiredString(flagSLA, "SLA tier", &in.SLA, nil),
 		},
 		ShellComplete: pricingLookupShellComplete,
 		Action: func(ctx context.Context, cmd *cli.Command) error {
@@ -166,17 +161,6 @@ func pricingCalculateCommand() *cli.Command {
 	}
 }
 
-// --- Pricing-specific validators ----------------------------------------
-// Thin wrappers around utils.ValidateEnum for --type and --sla.
-
-func machineTypeValidator(s string) error {
-	return utils.ValidateEnum(s, validMachineTypes)
-}
-
-func slaTierValidator(s string) error {
-	return utils.ValidateEnum(s, validSLATiers)
-}
-
 func pricingLookupShellComplete(ctx context.Context, cmd *cli.Command) {
 	current := os.Getenv(completionCurrentEnv)
 	previous := os.Getenv(completionPrevEnv)
@@ -186,16 +170,6 @@ func pricingLookupShellComplete(ctx context.Context, cmd *cli.Command) {
 
 	if flag, ok := currentFlagAssignment(current); ok {
 		switch flag {
-		case flagType:
-			if err := printCompletionValues(cmd, validMachineTypes, "machine type", "--"+flagType+"="); err != nil {
-				return
-			}
-			return
-		case flagSLA:
-			if err := printCompletionValues(cmd, validSLATiers, "SLA tier", "--"+flagSLA+"="); err != nil {
-				return
-			}
-			return
 		case flagRegion:
 			if err := printRegionCompletionValues(cmd, "--"+flagRegion+"="); err != nil {
 				return
@@ -205,16 +179,6 @@ func pricingLookupShellComplete(ctx context.Context, cmd *cli.Command) {
 	}
 
 	switch currentFlagName(current) {
-	case flagType:
-		if err := printCompletionValues(cmd, validMachineTypes, "machine type", ""); err != nil {
-			return
-		}
-		return
-	case flagSLA:
-		if err := printCompletionValues(cmd, validSLATiers, "SLA tier", ""); err != nil {
-			return
-		}
-		return
 	case flagRegion:
 		if err := printRegionCompletionValues(cmd, ""); err != nil {
 			return
@@ -228,14 +192,6 @@ func pricingLookupShellComplete(ctx context.Context, cmd *cli.Command) {
 	}
 
 	switch currentFlagName(previous) {
-	case flagType:
-		if err := printCompletionValues(cmd, validMachineTypes, "machine type", ""); err != nil {
-			return
-		}
-	case flagSLA:
-		if err := printCompletionValues(cmd, validSLATiers, "SLA tier", ""); err != nil {
-			return
-		}
 	case flagRegion:
 		if err := printRegionCompletionValues(cmd, ""); err != nil {
 			return
