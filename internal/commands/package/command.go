@@ -4,6 +4,7 @@ package packagecmd
 
 import (
 	"context"
+	"fmt"
 
 	"github.com/urfave/cli/v3"
 )
@@ -15,6 +16,7 @@ const (
 	flagOutput = "output"
 	flagPublic = "public"
 	flagReason = "reason"
+	flagYes    = "yes"
 )
 
 type createInput struct {
@@ -30,6 +32,11 @@ type publishInput struct {
 	Reason   string
 }
 
+type deleteInput struct {
+	ReleaseID string
+	Yes       bool
+}
+
 // Command returns the root package command tree.
 func Command() *cli.Command {
 	return &cli.Command{
@@ -40,6 +47,7 @@ func Command() *cli.Command {
 			publishCommand(),
 			listCommand(),
 			statusCommand(),
+			deleteCommand(),
 		},
 	}
 }
@@ -98,6 +106,30 @@ func statusCommand() *cli.Command {
 				return cli.ShowSubcommandHelp(cmd)
 			}
 			return handleStatus(ctx, cmd.Args().First())
+		},
+	}
+}
+
+func deleteCommand() *cli.Command {
+	var input deleteInput
+	return &cli.Command{
+		Name:      "delete",
+		Usage:     "Logically delete a package release while retaining its archive bytes",
+		ArgsUsage: "<release-id>",
+		Flags: []cli.Flag{
+			&cli.BoolFlag{
+				Name:        flagYes,
+				Aliases:     []string{"y"},
+				Usage:       "Skip confirmation prompt",
+				Destination: &input.Yes,
+			},
+		},
+		Action: func(ctx context.Context, cmd *cli.Command) error {
+			if cmd.Args().Len() != 1 {
+				return fmt.Errorf("package delete requires exactly one release-id")
+			}
+			input.ReleaseID = cmd.Args().First()
+			return handleDelete(ctx, input)
 		},
 	}
 }

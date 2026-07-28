@@ -1,7 +1,6 @@
 package api
 
 import (
-	"encoding/json"
 	"fmt"
 	"io"
 	"net/http"
@@ -49,14 +48,7 @@ func downloadMainAPIResponse(path string, headers http.Header) ([]byte, error) {
 		return nil, utils.NewError(fmt.Sprintf("failed to read response body: %s", err.Error()), nil)
 	}
 	if response.StatusCode >= http.StatusBadRequest {
-		var apiErr APIError
-		if decodeErr := json.Unmarshal(body, &apiErr); decodeErr == nil && apiErr.Message != "" {
-			return nil, &HTTPStatusError{StatusCode: response.StatusCode, Message: apiErr.Message}
-		}
-		return nil, &HTTPStatusError{
-			StatusCode: response.StatusCode,
-			Message:    fmt.Sprintf("request failed with status %d", response.StatusCode),
-		}
+		return nil, newHTTPStatusError(response.StatusCode, body, parseRetryAfter(response.Header.Get("Retry-After")))
 	}
 	return body, nil
 }

@@ -1,6 +1,7 @@
 package audit
 
 import (
+	"context"
 	"reflect"
 	"testing"
 
@@ -43,4 +44,11 @@ func hasNilDestination(f cli.Flag) bool {
 
 func flagName(f cli.Flag) string {
 	return reflect.ValueOf(f).Elem().FieldByName("Name").String()
+}
+
+func TestGetRequiresPositionalArgumentWithNonZeroExit(t *testing.T) {
+	err := Command().Run(context.Background(), []string{"audit", "get"})
+	if err == nil {
+		t.Fatal("audit get returned nil error")
+	}
 }

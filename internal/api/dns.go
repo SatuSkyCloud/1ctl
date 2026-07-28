@@ -22,8 +22,8 @@ func GetIngressDNSStatus(ingressID string) (*DNSStatusResponse, error) {
 	return &resp.Data, nil
 }
 
-// WaitForIngressDNSStatus polls the backend until the ingress DNS status is
-// resolved or the timeout expires.
+// WaitForIngressDNSStatus polls the backend until DNS is verified or the
+// timeout expires.
 func WaitForIngressDNSStatus(ingressID string, timeout time.Duration) (*DNSStatusResponse, error) {
 	deadline := time.Now().Add(timeout)
 	ticker := time.NewTicker(dnsPollInterval)
@@ -35,7 +35,7 @@ func WaitForIngressDNSStatus(ingressID string, timeout time.Duration) (*DNSStatu
 		status, err := GetIngressDNSStatus(ingressID)
 		if err == nil && status != nil {
 			last = status
-			if status.Status == DNSStatusResolved {
+			if ingressDNSVerified(status) {
 				return status, nil
 			}
 		}
@@ -54,4 +54,17 @@ func WaitForIngressDNSStatus(ingressID string, timeout time.Duration) (*DNSStatu
 		}
 		<-ticker.C
 	}
+}
+
+// ingressDNSVerified preserves compatibility with older backends that only
+// return the legacy resolved status. When a typed condition is available, it
+// is authoritative and only verified permits the wait to complete.
+func ingressDNSVerified(status *DNSStatusResponse) bool {
+	if status == nil {
+		return false
+	}
+	if status.Condition != nil {
+		return status.Condition.Status == DNSConditionStatusVerified
+	}
+	return status.Status == DNSStatusResolved
 }

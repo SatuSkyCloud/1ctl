@@ -97,6 +97,12 @@ Tokens: https://cloud.satusky.com/<org-id>/token`,
 			commands.IngressCommand(),
 		},
 		Before: func(ctx context.Context, cmd *cli.Command) (context.Context, error) {
+			if format := cmd.String("output"); format != "" {
+				if err := validateOutputFormat(format); err != nil {
+					return ctx, err
+				}
+				utils.SetOutputFormat(format)
+			}
 			if profile := cmd.String("profile"); profile != "" {
 				satuskyctx.SetProfileOverride(profile)
 			}
@@ -104,9 +110,6 @@ Tokens: https://cloud.satusky.com/<org-id>/token`,
 				if err := os.Setenv("SATUSKY_API_URL", apiURL); err != nil {
 					return ctx, utils.NewError("failed to set API URL", err)
 				}
-			}
-			if format := cmd.String("output"); format != "" {
-				utils.SetOutputFormat(format)
 			}
 
 			cmdName := cmd.Args().First()
@@ -150,6 +153,13 @@ Tokens: https://cloud.satusky.com/<org-id>/token`,
 		},
 	}
 	return cmd
+}
+
+func validateOutputFormat(format string) error {
+	if format == "table" || format == "json" {
+		return nil
+	}
+	return utils.NewError(fmt.Sprintf("invalid --output %q: expected table or json", format), nil)
 }
 
 func withCategory(cmd *cli.Command, category string) *cli.Command {

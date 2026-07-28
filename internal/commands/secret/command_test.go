@@ -4,6 +4,7 @@ import (
 	"reflect"
 	"testing"
 
+	"1ctl/internal/api"
 	"github.com/urfave/cli/v3"
 )
 
@@ -18,6 +19,15 @@ func TestFlagsHaveDestination(t *testing.T) {
 			}
 		}
 	})
+}
+
+func TestSecretMetadataKeyCount(t *testing.T) {
+	if got := secretMetadataKeyCount(api.Secret{KeyCount: 2, Keys: []string{"A", "B"}}); got != 2 {
+		t.Fatalf("expected 2, got %d", got)
+	}
+	if got := secretMetadataKeyCount(api.Secret{Keys: []string{"A"}}); got != 1 {
+		t.Fatalf("expected fallback count 1, got %d", got)
+	}
 }
 
 func walkCommands(cmd *cli.Command, fn func(*cli.Command)) {

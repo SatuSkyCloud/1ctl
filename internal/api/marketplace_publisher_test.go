@@ -66,6 +66,10 @@ func TestMarketplacePublisherClientUsesPublisherEnvelopeAndPaths(t *testing.T) {
 			}
 			_, _ = io.WriteString(w, `{"error":false,"data":[{"marketplace_id":"market","release_id":"`+releaseID+`","archive_digest":"sha256:list","visibility":"private"}]}`)
 		case "/v1/marketplace-publisher/organizations/" + organizationID + "/releases/" + releaseID:
+			if r.Method == http.MethodDelete {
+				_, _ = io.WriteString(w, `{"error":false,"data":{"release_id":"`+releaseID+`","deleted_at":"2026-07-28T12:34:56Z","deleted_by":"user-123"}}`)
+				return
+			}
 			_, _ = io.WriteString(w, artifactEnvelope(releaseID, "private"))
 		case "/v1/marketplace-publisher/organizations/" + organizationID + "/releases/" + releaseID + "/request-public":
 			if !strings.Contains(readBody(t, r), `"reason":"review"`) {
@@ -93,8 +97,33 @@ func TestMarketplacePublisherClientUsesPublisherEnvelopeAndPaths(t *testing.T) {
 	if err != nil || updated.Visibility != "public_pending" {
 		t.Fatalf("RequestMarketplacePackageArtifactPublic() = %#v, %v", updated, err)
 	}
-	if len(requests) != 4 {
-		t.Fatalf("requests = %v, want four publisher calls", requests)
+	deleted, err := DeleteMarketplacePackageArtifact(organizationID, releaseID)
+	if err != nil || deleted.ReleaseID != releaseID || deleted.DeletedBy != "user-123" || deleted.DeletedAt.IsZero() {
+		t.Fatalf("DeleteMarketplacePackageArtifact() = %#v, %v", deleted, err)
+	}
+	if len(requests) != 5 || requests[4] != http.MethodDelete+" /v1/marketplace-publisher/organizations/"+organizationID+"/releases/"+releaseID {
+		t.Fatalf("requests = %v, want five publisher calls ending with the release DELETE", requests)
+	}
+}
+
+func TestGetPricingConfigReadsTheCLIResponseEnvelope(t *testing.T) {
+	configID := uuid.NewString()
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/v1/cli/pricing/configs/"+configID {
+			http.NotFound(w, r)
+			return
+		}
+		_, _ = io.WriteString(w, `{"error":false,"data":{"config_id":"`+configID+`","region":"MY","machine_type":"worker","sla_tier":"pro","base_hourly_rate":1.25}}`)
+	}))
+	defer server.Close()
+	setupPublisherAPITest(t, server.URL)
+
+	config, err := GetPricingConfig(configID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if config.ConfigID != configID || config.Region != "MY" || config.MachineType != "worker" || config.SLATier != "pro" || config.BaseHourlyRate != 1.25 {
+		t.Fatalf("GetPricingConfig() = %#v", config)
 	}
 }
 

@@ -838,7 +838,7 @@ func printDetachedDomainStatus(domain string, cause error) error {
 	utils.PrintStatusLine("DNS", "not checked")
 	utils.PrintStatusLine("TLS", "unknown")
 	utils.PrintStatusLine("HTTP", "not checked")
-	utils.PrintInfo("Attach it with: 1ctl domains add --domain %s --app <app>", domain)
+	utils.PrintInfo("Attach it with: %s", domainAttachCommand(domain))
 	return nil
 }
 
@@ -853,8 +853,12 @@ func printDetachedDomainSetup(domain string, cause error) error {
 	}
 	utils.PrintHeader("Domain Setup %s", domain)
 	utils.PrintStatusLine("Backend", "not attached")
-	utils.PrintInfo("Attach it first with: 1ctl domains add --domain %s --app <app>", domain)
+	utils.PrintInfo("Attach it first with: %s", domainAttachCommand(domain))
 	return nil
+}
+
+func domainAttachCommand(domain string) string {
+	return fmt.Sprintf("1ctl domains add %s --app <app>", domain)
 }
 
 func printDomainStatus(status *api.DomainStatusResponse) {

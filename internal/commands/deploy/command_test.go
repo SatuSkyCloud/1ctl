@@ -57,6 +57,42 @@ func TestAppDeleteAsyncFlags(t *testing.T) {
 	}
 }
 
+func TestValidateInputsRejectsInvalidDeployValues(t *testing.T) {
+	tests := []struct {
+		name   string
+		mutate func(*mergedInput)
+	}{
+		{"environment", func(m *mergedInput) { m.Env = []string{"BROKEN"} }},
+		{"surge", func(m *mergedInput) { m.RollingMaxSurge = "bogus" }},
+		{"replicas", func(m *mergedInput) { m.Replicas = -1 }},
+		{"VPA mode without VPA", func(m *mergedInput) { m.VPAMode = "Bogus" }},
+		{"backup schedule without multi-cluster", func(m *mergedInput) { m.BackupSchedule = "never" }},
+		{"PDB type", func(m *mergedInput) { m.PDB = true; m.PDBType = "bogus" }},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			input := mergedInput{DeployInput: DeployInput{
+				Image: "nginxinc/nginx-unprivileged:1.29-alpine", RollingMaxSurge: "25%",
+				RollingMaxUnavail: "25%", VPAMode: "Off", BackupSchedule: "daily", PDBType: "auto",
+			}}
+			test.mutate(&input)
+			if err := validateInputs(input); err == nil {
+				t.Fatal("expected validation error")
+			}
+		})
+	}
+}
+
+func TestParseEnvVarsPreservesEmptyValues(t *testing.T) {
+	values, err := parseEnvVars([]string{"EMPTY=", "NORMAL=value"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(values) != 2 || values[0].Key != "EMPTY" || values[0].Value != "" {
+		t.Fatalf("unexpected values: %#v", values)
+	}
+}
+
 func walkCommands(cmd *cli.Command, fn func(*cli.Command)) {
 	fn(cmd)
 	for _, sub := range cmd.Commands {

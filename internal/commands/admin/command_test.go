@@ -35,12 +35,18 @@ func assertRequiredAdoptionFlags(t *testing.T, command *cli.Command, requireYes 
 				if !typed.Required || typed.Destination == nil {
 					t.Errorf("flag %q must be required and wired to a destination", typed.Name)
 				}
+				if !strings.Contains(typed.Usage, "(required)") {
+					t.Errorf("flag %q usage must visibly identify it as required", typed.Name)
+				}
 				delete(required, typed.Name)
 			}
 		case *cli.Int64Flag:
 			if required[typed.Name] {
 				if !typed.Required || typed.Destination == nil {
 					t.Errorf("flag %q must be required and wired to a destination", typed.Name)
+				}
+				if !strings.Contains(typed.Usage, "(required)") {
+					t.Errorf("flag %q usage must visibly identify it as required", typed.Name)
 				}
 				delete(required, typed.Name)
 			}
@@ -49,12 +55,35 @@ func assertRequiredAdoptionFlags(t *testing.T, command *cli.Command, requireYes 
 				if !typed.Required || typed.Destination == nil {
 					t.Errorf("flag %q must be required and wired to a destination", typed.Name)
 				}
+				if !strings.Contains(typed.Usage, "(required)") {
+					t.Errorf("flag %q usage must visibly identify it as required", typed.Name)
+				}
 				delete(required, typed.Name)
 			}
 		}
 	}
 	if len(required) != 0 {
 		t.Fatalf("missing required flags: %v", required)
+	}
+}
+
+func TestDeploymentAdoptRequiresExactlyOnePositionalArgument(t *testing.T) {
+	validFlags := []string{
+		"--reason", "canary",
+		"--expected-uid", uuid.NewString(),
+		"--expected-resource-version", "12",
+		"--expected-generation", "3",
+		"--request-id", uuid.NewString(),
+		"--yes",
+	}
+	for _, args := range [][]string{
+		append([]string{"admin", "deployment", "adopt"}, validFlags...),
+		append([]string{"admin", "deployment", "adopt", uuid.NewString(), uuid.NewString()}, validFlags...),
+	} {
+		err := Command().Run(context.Background(), args)
+		if err == nil {
+			t.Fatalf("%v returned nil error", args)
+		}
 	}
 }
 

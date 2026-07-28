@@ -3,6 +3,7 @@ package init
 
 import (
 	"context"
+	"fmt"
 
 	"github.com/urfave/cli/v3"
 )
@@ -33,7 +34,17 @@ func Command() *cli.Command {
 			},
 		},
 		Action: func(ctx context.Context, cmd *cli.Command) error {
+			if err := validateInitArgs(cmd.Args().Len()); err != nil {
+				return err
+			}
 			return handleInit(ctx, in)
 		},
 	}
+}
+
+func validateInitArgs(count int) error {
+	if count != 0 {
+		return fmt.Errorf("init does not accept positional arguments")
+	}
+	return nil
 }

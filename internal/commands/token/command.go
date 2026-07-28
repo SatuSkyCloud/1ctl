@@ -5,6 +5,8 @@ package token
 import (
 	"context"
 
+	"1ctl/internal/utils"
+
 	"github.com/urfave/cli/v3"
 )
 
@@ -76,7 +78,7 @@ func tokenCreateCommand() *cli.Command {
 		},
 		Action: func(ctx context.Context, cmd *cli.Command) error {
 			if cmd.Args().Len() < 1 {
-				return cli.ShowSubcommandHelp(cmd)
+				return utils.NewError("token name is required", nil)
 			}
 			in.Name = cmd.Args().First()
 			return handleTokenCreate(ctx, in)
@@ -92,7 +94,7 @@ func tokenGetCommand() *cli.Command {
 		ArgsUsage: "<token-id>",
 		Action: func(ctx context.Context, cmd *cli.Command) error {
 			if cmd.Args().Len() < 1 {
-				return cli.ShowSubcommandHelp(cmd)
+				return utils.NewError("token ID is required", nil)
 			}
 			in.TokenID = cmd.Args().First()
 			return handleTokenGet(ctx, in)
@@ -108,7 +110,7 @@ func tokenEnableCommand() *cli.Command {
 		ArgsUsage: "<token-id>",
 		Action: func(ctx context.Context, cmd *cli.Command) error {
 			if cmd.Args().Len() < 1 {
-				return cli.ShowSubcommandHelp(cmd)
+				return utils.NewError("token ID is required", nil)
 			}
 			in.TokenID = cmd.Args().First()
 			return handleTokenEnable(ctx, in)
@@ -124,7 +126,7 @@ func tokenDisableCommand() *cli.Command {
 		ArgsUsage: "<token-id>",
 		Action: func(ctx context.Context, cmd *cli.Command) error {
 			if cmd.Args().Len() < 1 {
-				return cli.ShowSubcommandHelp(cmd)
+				return utils.NewError("token ID is required", nil)
 			}
 			in.TokenID = cmd.Args().First()
 			return handleTokenDisable(ctx, in)
@@ -148,7 +150,7 @@ func tokenDeleteCommand() *cli.Command {
 		},
 		Action: func(ctx context.Context, cmd *cli.Command) error {
 			if cmd.Args().Len() < 1 {
-				return cli.ShowSubcommandHelp(cmd)
+				return utils.NewError("token ID is required", nil)
 			}
 			in.TokenID = cmd.Args().First()
 			return handleTokenDelete(ctx, in)

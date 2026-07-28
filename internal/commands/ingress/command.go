@@ -3,6 +3,7 @@ package ingress
 
 import (
 	"context"
+	"fmt"
 
 	"github.com/urfave/cli/v3"
 )
@@ -94,11 +95,18 @@ func ingressDeleteCommand() *cli.Command {
 			},
 		},
 		Action: func(ctx context.Context, cmd *cli.Command) error {
-			if cmd.Args().Len() < 1 {
-				return cli.ShowSubcommandHelp(cmd)
+			if err := validateIngressDeleteArgs(cmd.Args().Len()); err != nil {
+				return err
 			}
 			in.IngressID = cmd.Args().First()
 			return handleDeleteIngress(ctx, in)
 		},
 	}
+}
+
+func validateIngressDeleteArgs(count int) error {
+	if count != 1 {
+		return fmt.Errorf("expected exactly one positional argument: <ingress-id>")
+	}
+	return nil
 }

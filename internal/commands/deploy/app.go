@@ -87,6 +87,7 @@ func appStatusCommand() *cli.Command {
 		Flags: []cli.Flag{
 			optionalString(flagDeploymentID, "Deployment ID (alternative to positional arg)", &in.DeploymentID),
 			optionalBool(flagWatch, "Watch status in real-time", &in.Watch),
+			optionalStringVal(flagWaitMode, "Readiness threshold when watching: application (default) or workload (bypasses application verification)", "application", &in.WaitMode),
 		},
 		Action: func(ctx context.Context, cmd *cli.Command) error {
 			if cmd.Args().Len() >= 1 {

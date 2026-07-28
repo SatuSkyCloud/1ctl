@@ -1,6 +1,7 @@
 package volumes
 
 import (
+	"context"
 	"reflect"
 	"testing"
 
@@ -41,4 +42,16 @@ func hasNilDestination(f cli.Flag) bool {
 
 func flagName(f cli.Flag) string {
 	return reflect.ValueOf(f).Elem().FieldByName("Name").String()
+}
+
+func TestRequiredPositionalArgumentsReturnNonZeroExit(t *testing.T) {
+	for _, args := range [][]string{
+		{"volumes", "detach"},
+		{"volumes", "delete"},
+	} {
+		err := Command().Run(context.Background(), args)
+		if err == nil {
+			t.Fatalf("%v returned nil error", args)
+		}
+	}
 }

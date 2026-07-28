@@ -280,6 +280,7 @@ export interface MarketplaceApp {
   package_release_id?: string /* UUID */;
   package_release?: MarketplacePackageRelease;
   deployable: boolean;
+  deployability_code?: string;
   coming_soon: boolean;
   deployment_count?: number /* int */;
   created_at: string /* RFC3339 */;
@@ -329,6 +330,11 @@ export interface MarketplacePackageArtifact {
   archive_digest: string;
   visibility: string;
   created_at?: string /* RFC3339 */;
+}
+export interface MarketplacePackageArtifactTombstone {
+  release_id: string;
+  deleted_at: string /* RFC3339 */;
+  deleted_by: string;
 }
 
 //////////
@@ -460,19 +466,34 @@ export interface DeploymentDeletionLifecycle {
   errorCode?: string;
   errorMessage?: string;
 }
+export interface DeploymentDeletionRetainedResource {
+  resource_class: string;
+  kind: string;
+  resource: string;
+  namespace?: string;
+  name: string;
+}
 export interface DeploymentDeletionOperation {
+  operation_id?: string;
   deployment_id: string;
   namespace: string;
   app_label: string;
   operation: string;
   status: string;
+  state?: string;
   terminal: boolean;
   accepted_at?: string /* RFC3339 */;
   status_url?: string;
   poll_after_ms?: number /* int */;
   purge_retained: boolean;
   cleanup_scope?: string[];
+  retained_resources?: DeploymentDeletionRetainedResource[];
+  remediation_code?: string;
+  remediation_detail?: string;
   lifecycle: DeploymentDeletionLifecycle;
+}
+export interface DeploymentDeletionFailureError {
+  Operation?: DeploymentDeletionOperation;
 }
 export interface CreateDeploymentResponse {
   deployment_id: string /* UUID */;
@@ -495,7 +516,9 @@ export interface Secret {
   secret_id: string /* UUID */;
   deployment_id: string /* UUID */;
   namespace: string;
-  key_values: KeyValuePair[];
+  key_values?: KeyValuePair[];
+  keys?: string[];
+  key_count?: number /* int */;
   app_label: string;
   created_at: string /* RFC3339 */;
   updated_at: string /* RFC3339 */;
@@ -540,12 +563,25 @@ export type DNSStatus = string;
 export const DNSStatusResolved: DNSStatus = "resolved";
 export const DNSStatusPropagating: DNSStatus = "propagating";
 export const DNSStatusNotConfigured: DNSStatus = "not_configured";
+export type DNSConditionStatus = string;
+export const DNSConditionStatusPending: DNSConditionStatus = "pending";
+export const DNSConditionStatusNXDomain: DNSConditionStatus = "nxdomain";
+export const DNSConditionStatusWrongTarget: DNSConditionStatus = "wrong_target";
+export const DNSConditionStatusVerified: DNSConditionStatus = "verified";
+export const DNSConditionStatusError: DNSConditionStatus = "error";
+export interface DNSCondition {
+  status: DNSConditionStatus;
+  code?: string;
+  observed_at?: string /* RFC3339 */;
+  checked_at?: string /* RFC3339 */;
+}
 export interface DNSStatusResponse {
   status: DNSStatus;
   domain: string;
   expected_ip?: string;
   resolved_ips?: string[];
   message?: string;
+  condition?: DNSCondition;
 }
 export type TLSStatus = string;
 export const TLSStatusProvisioning: TLSStatus = "provisioning";
@@ -692,12 +728,20 @@ export const DnsConfigCustom: DnsConfigType = "custom";
 export interface APIError {
   message: string;
   code: string;
-  details: string;
+  details: unknown;
+  retryable?: boolean;
+  remediation?: string[];
+  request_id?: string;
 }
 export interface HTTPStatusError {
   StatusCode: number /* int */;
   Message: string;
   RetryAfter: number /* nanoseconds */;
+  Code: string;
+  Details: unknown;
+  Retryable?: boolean;
+  Remediation: string[];
+  RequestID: string;
 }
 export const StatusPending = "pending";
 export const StatusCreating = "creating";
@@ -713,7 +757,38 @@ export interface DeploymentStatus {
   status: string;
   message?: string;
   progress: number /* int */;
+  replica_status?: string;
+  readiness?: DeploymentReadiness;
 }
+export interface DeploymentReadiness {
+  reconciliation: DeploymentReconciliationReadiness;
+  workload: DeploymentWorkloadReadiness;
+  application: DeploymentConditionReadiness;
+  route: DeploymentConditionReadiness;
+  dns: DeploymentConditionReadiness;
+  public_reachability: DeploymentConditionReadiness;
+}
+export interface DeploymentReconciliationReadiness {
+  state: string;
+  generation: number /* int64 */;
+  observed_generation: number /* int64 */;
+}
+export interface DeploymentWorkloadReadiness {
+  state: string;
+  desired_replicas: number /* int32 */;
+  ready_replicas: number /* int32 */;
+  available_replicas: number /* int32 */;
+  updated_replicas: number /* int32 */;
+}
+export interface DeploymentConditionReadiness {
+  basis: string;
+  state: string;
+  code?: string;
+  remediation?: string;
+}
+export type DeploymentWaitMode = string;
+export const DeploymentWaitModeApplication: DeploymentWaitMode = "application";
+export const DeploymentWaitModeWorkload: DeploymentWaitMode = "workload";
 export interface Machine {
   id: number /* int64 */;
   machine_id: string;
@@ -725,6 +800,7 @@ export interface Machine {
   machine_zone: string;
   ip_addr: string;
   talos_version: string;
+  talos_ready: boolean;
   kubernetes_version: string;
   cpu_cores: number /* int */;
   memory_gb: number /* int */;

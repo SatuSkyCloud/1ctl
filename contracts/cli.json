@@ -168,7 +168,7 @@
           "takesValue": true,
           "required": true,
           "multiple": false,
-          "usage": "Audit reason for the ownership transfer",
+          "usage": "Audit reason for the ownership transfer (required)",
           "envVars": []
         },
         {
@@ -178,7 +178,7 @@
           "takesValue": true,
           "required": true,
           "multiple": false,
-          "usage": "Exact live Deployment UID",
+          "usage": "Exact live Deployment UID (required)",
           "envVars": []
         },
         {
@@ -188,7 +188,7 @@
           "takesValue": true,
           "required": true,
           "multiple": false,
-          "usage": "Exact live Deployment resourceVersion",
+          "usage": "Exact live Deployment resourceVersion (required)",
           "envVars": []
         },
         {
@@ -199,7 +199,7 @@
           "required": true,
           "multiple": false,
           "default": "0",
-          "usage": "Exact live Deployment generation",
+          "usage": "Exact live Deployment generation (required)",
           "envVars": []
         },
         {
@@ -209,7 +209,7 @@
           "takesValue": true,
           "required": true,
           "multiple": false,
-          "usage": "Stable UUID for this adoption attempt",
+          "usage": "Stable UUID for this adoption attempt (required)",
           "envVars": []
         },
         {
@@ -268,7 +268,7 @@
           "takesValue": true,
           "required": true,
           "multiple": false,
-          "usage": "Audit reason for the ownership transfer",
+          "usage": "Audit reason for the ownership transfer (required)",
           "envVars": []
         },
         {
@@ -278,7 +278,7 @@
           "takesValue": true,
           "required": true,
           "multiple": false,
-          "usage": "Exact live HTTPRoute UID",
+          "usage": "Exact live HTTPRoute UID (required)",
           "envVars": []
         },
         {
@@ -288,7 +288,7 @@
           "takesValue": true,
           "required": true,
           "multiple": false,
-          "usage": "Exact live HTTPRoute resourceVersion",
+          "usage": "Exact live HTTPRoute resourceVersion (required)",
           "envVars": []
         },
         {
@@ -299,7 +299,7 @@
           "required": true,
           "multiple": false,
           "default": "0",
-          "usage": "Exact live HTTPRoute generation",
+          "usage": "Exact live HTTPRoute generation (required)",
           "envVars": []
         },
         {
@@ -309,7 +309,7 @@
           "takesValue": true,
           "required": true,
           "multiple": false,
-          "usage": "Stable UUID for this adoption attempt",
+          "usage": "Stable UUID for this adoption attempt (required)",
           "envVars": []
         },
         {
@@ -322,7 +322,7 @@
           "required": true,
           "multiple": false,
           "default": "false",
-          "usage": "Confirm the routing ownership transfer",
+          "usage": "Confirm the routing ownership transfer (required)",
           "envVars": []
         },
         {
@@ -675,6 +675,17 @@
           "multiple": false,
           "default": "false",
           "usage": "Wait for the accepted deployment to become healthy",
+          "envVars": []
+        },
+        {
+          "name": "wait-mode",
+          "aliases": [],
+          "type": "string",
+          "takesValue": true,
+          "required": false,
+          "multiple": false,
+          "default": "\"application\"",
+          "usage": "Readiness threshold: application (default) or workload (bypasses application verification)",
           "envVars": []
         },
         {
@@ -1103,6 +1114,17 @@
           "multiple": false,
           "default": "false",
           "usage": "Watch status in real-time",
+          "envVars": []
+        },
+        {
+          "name": "wait-mode",
+          "aliases": [],
+          "type": "string",
+          "takesValue": true,
+          "required": false,
+          "multiple": false,
+          "default": "\"application\"",
+          "usage": "Readiness threshold when watching: application (default) or workload (bypasses application verification)",
           "envVars": []
         },
         {
@@ -4192,7 +4214,7 @@
       "aliases": [
         "user"
       ],
-      "usage": "Manage database users",
+      "usage": "List database users",
       "hidden": false,
       "argsUsage": "",
       "aritySource": "argsUsage",
@@ -4236,164 +4258,6 @@
       "minArgs": 1,
       "maxArgs": 1,
       "flags": [
-        {
-          "name": "help",
-          "aliases": [
-            "h"
-          ],
-          "type": "boolean",
-          "takesValue": false,
-          "required": false,
-          "multiple": false,
-          "usage": "Show help",
-          "envVars": []
-        }
-      ]
-    },
-    {
-      "path": [
-        "postgres",
-        "users",
-        "create"
-      ],
-      "name": "create",
-      "aliases": [],
-      "usage": "Create a database user",
-      "hidden": false,
-      "argsUsage": "\u003ccluster\u003e \u003cusername\u003e",
-      "aritySource": "argsUsage",
-      "arguments": [
-        {
-          "name": "cluster",
-          "required": true,
-          "variadic": false
-        },
-        {
-          "name": "username",
-          "required": true,
-          "variadic": false
-        }
-      ],
-      "minArgs": 2,
-      "maxArgs": 2,
-      "flags": [
-        {
-          "name": "superuser",
-          "aliases": [],
-          "type": "boolean",
-          "takesValue": false,
-          "required": false,
-          "multiple": false,
-          "default": "false",
-          "usage": "Grant SUPERUSER",
-          "envVars": []
-        },
-        {
-          "name": "createdb",
-          "aliases": [],
-          "type": "boolean",
-          "takesValue": false,
-          "required": false,
-          "multiple": false,
-          "default": "false",
-          "usage": "Grant CREATEDB",
-          "envVars": []
-        },
-        {
-          "name": "createrole",
-          "aliases": [],
-          "type": "boolean",
-          "takesValue": false,
-          "required": false,
-          "multiple": false,
-          "default": "false",
-          "usage": "Grant CREATEROLE",
-          "envVars": []
-        },
-        {
-          "name": "replication",
-          "aliases": [],
-          "type": "boolean",
-          "takesValue": false,
-          "required": false,
-          "multiple": false,
-          "default": "false",
-          "usage": "Grant REPLICATION",
-          "envVars": []
-        },
-        {
-          "name": "bypassrls",
-          "aliases": [],
-          "type": "boolean",
-          "takesValue": false,
-          "required": false,
-          "multiple": false,
-          "default": "false",
-          "usage": "Grant BYPASSRLS",
-          "envVars": []
-        },
-        {
-          "name": "comment",
-          "aliases": [],
-          "type": "string",
-          "takesValue": true,
-          "required": false,
-          "multiple": false,
-          "usage": "Role comment",
-          "envVars": []
-        },
-        {
-          "name": "help",
-          "aliases": [
-            "h"
-          ],
-          "type": "boolean",
-          "takesValue": false,
-          "required": false,
-          "multiple": false,
-          "usage": "Show help",
-          "envVars": []
-        }
-      ]
-    },
-    {
-      "path": [
-        "postgres",
-        "users",
-        "delete"
-      ],
-      "name": "delete",
-      "aliases": [],
-      "usage": "Delete a database user",
-      "hidden": false,
-      "argsUsage": "\u003ccluster\u003e \u003cusername\u003e",
-      "aritySource": "argsUsage",
-      "arguments": [
-        {
-          "name": "cluster",
-          "required": true,
-          "variadic": false
-        },
-        {
-          "name": "username",
-          "required": true,
-          "variadic": false
-        }
-      ],
-      "minArgs": 2,
-      "maxArgs": 2,
-      "flags": [
-        {
-          "name": "yes",
-          "aliases": [],
-          "type": "boolean",
-          "takesValue": false,
-          "required": false,
-          "multiple": false,
-          "default": "false",
-          "usage": "Skip confirmation prompt",
-          "envVars": []
-        },
         {
           "name": "help",
           "aliases": [
@@ -7917,6 +7781,54 @@
     },
     {
       "path": [
+        "package",
+        "delete"
+      ],
+      "name": "delete",
+      "aliases": [],
+      "usage": "Logically delete a package release while retaining its archive bytes",
+      "hidden": false,
+      "argsUsage": "\u003crelease-id\u003e",
+      "aritySource": "argsUsage",
+      "arguments": [
+        {
+          "name": "release-id",
+          "required": true,
+          "variadic": false
+        }
+      ],
+      "minArgs": 1,
+      "maxArgs": 1,
+      "flags": [
+        {
+          "name": "yes",
+          "aliases": [
+            "y"
+          ],
+          "type": "boolean",
+          "takesValue": false,
+          "required": false,
+          "multiple": false,
+          "default": "false",
+          "usage": "Skip confirmation prompt",
+          "envVars": []
+        },
+        {
+          "name": "help",
+          "aliases": [
+            "h"
+          ],
+          "type": "boolean",
+          "takesValue": false,
+          "required": false,
+          "multiple": false,
+          "usage": "Show help",
+          "envVars": []
+        }
+      ]
+    },
+    {
+      "path": [
         "auth"
       ],
       "name": "auth",
@@ -9424,7 +9336,7 @@
           "takesValue": true,
           "required": true,
           "multiple": false,
-          "usage": "Machine type (e.g. standard, premium)",
+          "usage": "Machine type",
           "envVars": []
         },
         {
@@ -9434,7 +9346,7 @@
           "takesValue": true,
           "required": true,
           "multiple": false,
-          "usage": "SLA tier (e.g. standard, premium)",
+          "usage": "SLA tier",
           "envVars": []
         },
         {

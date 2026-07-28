@@ -22,6 +22,19 @@ func TestFlagsHaveDestination(t *testing.T) {
 	})
 }
 
+func TestValidateLogCount(t *testing.T) {
+	for _, value := range []int{-1, 0, 2001} {
+		if err := validateLogCount("tail", value); err == nil {
+			t.Fatalf("expected %d to fail", value)
+		}
+	}
+	for _, value := range []int{1, 2000} {
+		if err := validateLogCount("tail", value); err != nil {
+			t.Fatalf("expected %d to pass: %v", value, err)
+		}
+	}
+}
+
 func walkCommands(cmd *cli.Command, fn func(*cli.Command)) {
 	fn(cmd)
 	for _, sub := range cmd.Commands {

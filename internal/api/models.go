@@ -176,6 +176,16 @@ type DeploymentDeletionLifecycle struct {
 	ErrorMessage string `json:"errorMessage,omitempty"`
 }
 
+// DeploymentDeletionRetainedResource is a renter-safe resource retained by a
+// durable deployment deletion operation.
+type DeploymentDeletionRetainedResource struct {
+	ResourceClass string `json:"resource_class"`
+	Kind          string `json:"kind"`
+	Resource      string `json:"resource"`
+	Namespace     string `json:"namespace,omitempty"`
+	Name          string `json:"name"`
+}
+
 func (l DeploymentDeletionLifecycle) ErrorText() string {
 	message := l.ErrorMessage
 	if message == "" {
@@ -197,18 +207,47 @@ func (l DeploymentDeletionLifecycle) ErrorText() string {
 // DeploymentDeletionOperation is the backend-authoritative async deletion
 // contract returned by DELETE /v1/deployments/:id and its status URL.
 type DeploymentDeletionOperation struct {
-	DeploymentID  string                      `json:"deployment_id"`
-	Namespace     string                      `json:"namespace"`
-	AppLabel      string                      `json:"app_label"`
-	Operation     string                      `json:"operation"`
-	Status        string                      `json:"status"`
-	Terminal      bool                        `json:"terminal"`
-	AcceptedAt    time.Time                   `json:"accepted_at,omitempty" tstype:",required"`
-	StatusURL     string                      `json:"status_url,omitempty"`
-	PollAfterMs   int                         `json:"poll_after_ms,omitempty"`
-	PurgeRetained bool                        `json:"purge_retained"`
-	CleanupScope  []string                    `json:"cleanup_scope,omitempty"`
-	Lifecycle     DeploymentDeletionLifecycle `json:"lifecycle"`
+	OperationID       string                               `json:"operation_id,omitempty"`
+	DeploymentID      string                               `json:"deployment_id"`
+	Namespace         string                               `json:"namespace"`
+	AppLabel          string                               `json:"app_label"`
+	Operation         string                               `json:"operation"`
+	Status            string                               `json:"status"`
+	State             string                               `json:"state,omitempty"`
+	Terminal          bool                                 `json:"terminal"`
+	AcceptedAt        time.Time                            `json:"accepted_at,omitempty" tstype:",required"`
+	StatusURL         string                               `json:"status_url,omitempty"`
+	PollAfterMs       int                                  `json:"poll_after_ms,omitempty"`
+	PurgeRetained     bool                                 `json:"purge_retained"`
+	CleanupScope      []string                             `json:"cleanup_scope,omitempty"`
+	RetainedResources []DeploymentDeletionRetainedResource `json:"retained_resources,omitempty"`
+	RemediationCode   string                               `json:"remediation_code,omitempty"`
+	RemediationDetail string                               `json:"remediation_detail,omitempty"`
+	Lifecycle         DeploymentDeletionLifecycle          `json:"lifecycle"`
+}
+
+// DeploymentDeletionFailureError reports a terminal durable deletion outcome
+// that did not complete successfully. Operation carries the backend-provided
+// status and safe remediation for callers that need structured reporting.
+type DeploymentDeletionFailureError struct {
+	Operation *DeploymentDeletionOperation
+}
+
+func (e *DeploymentDeletionFailureError) Error() string {
+	if e == nil || e.Operation == nil {
+		return "deployment deletion failed"
+	}
+	status := e.Operation.State
+	if status == "" {
+		status = e.Operation.Status
+	}
+	if e.Operation.RemediationCode != "" && e.Operation.RemediationDetail != "" {
+		return fmt.Sprintf("deployment deletion %s: %s: %s", status, e.Operation.RemediationCode, e.Operation.RemediationDetail)
+	}
+	if e.Operation.RemediationDetail != "" {
+		return fmt.Sprintf("deployment deletion %s: %s", status, e.Operation.RemediationDetail)
+	}
+	return fmt.Sprintf("deployment deletion %s", status)
 }
 
 func (o DeploymentDeletionOperation) IsTerminal() bool {
@@ -216,7 +255,16 @@ func (o DeploymentDeletionOperation) IsTerminal() bool {
 }
 
 func (o DeploymentDeletionOperation) IsSuccessful() bool {
-	return o.Status == "deleted" || o.Lifecycle.State == "deleted"
+	if !o.IsTerminal() {
+		return false
+	}
+	if o.State != "" {
+		return o.State == "deleted" || o.State == "completed"
+	}
+	if o.Status != "" {
+		return o.Status == "deleted" || o.Status == "completed"
+	}
+	return o.Lifecycle.State == "deleted" || o.Lifecycle.State == "completed"
 }
 
 type CreateDeploymentResponse struct {
@@ -246,7 +294,9 @@ type Secret struct {
 	SecretID     uuid.UUID      `json:"secret_id"`
 	DeploymentID uuid.UUID      `json:"deployment_id"`
 	Namespace    string         `json:"namespace"`
-	KeyValues    []KeyValuePair `json:"key_values"`
+	KeyValues    []KeyValuePair `json:"key_values,omitempty"`
+	Keys         []string       `json:"keys,omitempty"`
+	KeyCount     int            `json:"key_count,omitempty"`
 	AppLabel     string         `json:"app_label"`
 	CreatedAt    time.Time      `json:"created_at"`
 	UpdatedAt    time.Time      `json:"updated_at"`
@@ -301,12 +351,35 @@ const (
 	DNSStatusNotConfigured DNSStatus = "not_configured"
 )
 
+// DNSConditionStatus is the backend's authoritative assessment of the
+// default hostname's DNS record.
+type DNSConditionStatus string
+
+const (
+	DNSConditionStatusPending     DNSConditionStatus = "pending"
+	DNSConditionStatusNXDomain    DNSConditionStatus = "nxdomain"
+	DNSConditionStatusWrongTarget DNSConditionStatus = "wrong_target"
+	DNSConditionStatusVerified    DNSConditionStatus = "verified"
+	DNSConditionStatusError       DNSConditionStatus = "error"
+)
+
+// DNSCondition adds a typed DNS assessment without changing the legacy DNS
+// status contract. A nil condition indicates a backend version that does not
+// provide the assessment.
+type DNSCondition struct {
+	Status     DNSConditionStatus `json:"status"`
+	Code       string             `json:"code,omitempty"`
+	ObservedAt *time.Time         `json:"observed_at,omitempty"`
+	CheckedAt  *time.Time         `json:"checked_at,omitempty"`
+}
+
 type DNSStatusResponse struct {
-	Status      DNSStatus `json:"status"`
-	Domain      string    `json:"domain"`
-	ExpectedIP  string    `json:"expected_ip,omitempty"`
-	ResolvedIPs []string  `json:"resolved_ips,omitempty"`
-	Message     string    `json:"message,omitempty"`
+	Status      DNSStatus     `json:"status"`
+	Domain      string        `json:"domain"`
+	ExpectedIP  string        `json:"expected_ip,omitempty"`
+	ResolvedIPs []string      `json:"resolved_ips,omitempty"`
+	Message     string        `json:"message,omitempty"`
+	Condition   *DNSCondition `json:"condition,omitempty"`
 }
 
 type TLSStatus string
@@ -476,20 +549,38 @@ const (
 )
 
 type APIError struct {
-	Message string `json:"message"`
-	Code    string `json:"code"`
-	Details string `json:"details"`
+	Message     string      `json:"message"`
+	Code        string      `json:"code"`
+	Details     interface{} `json:"details"`
+	Retryable   *bool       `json:"retryable,omitempty"`
+	Remediation []string    `json:"remediation,omitempty"`
+	RequestID   string      `json:"request_id,omitempty"`
 }
 
 // HTTPStatusError preserves the HTTP status and retry hint for callers that
 // need contract-specific handling of an API response.
 type HTTPStatusError struct {
-	StatusCode int
-	Message    string
-	RetryAfter time.Duration
+	StatusCode  int
+	Message     string
+	RetryAfter  time.Duration
+	Code        string
+	Details     interface{}
+	Retryable   *bool
+	Remediation []string
+	RequestID   string
 }
 
 func (e *HTTPStatusError) Error() string { return e.Message }
+
+// HTTPStatusCode, RetryAfterDuration, and the remaining accessors let the CLI
+// renderer retain structured API diagnostics without importing this package.
+func (e *HTTPStatusError) HTTPStatusCode() int               { return e.StatusCode }
+func (e *HTTPStatusError) RetryAfterDuration() time.Duration { return e.RetryAfter }
+func (e *HTTPStatusError) ErrorCode() string                 { return e.Code }
+func (e *HTTPStatusError) ErrorDetails() interface{}         { return e.Details }
+func (e *HTTPStatusError) ErrorRetryable() *bool             { return e.Retryable }
+func (e *HTTPStatusError) ErrorRemediation() []string        { return e.Remediation }
+func (e *HTTPStatusError) ErrorRequestID() string            { return e.RequestID }
 
 func (e *APIError) Error() string {
 	return fmt.Sprintf("(%s): %s", e.Code, e.Message)
@@ -509,9 +600,163 @@ const (
 )
 
 type DeploymentStatus struct {
-	Status   string `json:"status"`
-	Message  string `json:"message,omitempty"`
-	Progress int    `json:"progress"`
+	Status        string               `json:"status"`
+	Message       string               `json:"message,omitempty"`
+	Progress      int                  `json:"progress"`
+	ReplicaStatus string               `json:"replica_status,omitempty"`
+	Readiness     *DeploymentReadiness `json:"readiness,omitempty"`
+}
+
+// DeploymentReadiness is the authoritative, additive live readiness contract.
+// A nil value means an older backend did not provide readiness conditions.
+type DeploymentReadiness struct {
+	Reconciliation     DeploymentReconciliationReadiness `json:"reconciliation"`
+	Workload           DeploymentWorkloadReadiness       `json:"workload"`
+	Application        DeploymentConditionReadiness      `json:"application"`
+	Route              DeploymentConditionReadiness      `json:"route"`
+	DNS                DeploymentConditionReadiness      `json:"dns"`
+	PublicReachability DeploymentConditionReadiness      `json:"public_reachability"`
+}
+
+type DeploymentReconciliationReadiness struct {
+	State              string `json:"state"`
+	Generation         int64  `json:"generation"`
+	ObservedGeneration int64  `json:"observed_generation"`
+}
+
+type DeploymentWorkloadReadiness struct {
+	State             string `json:"state"`
+	DesiredReplicas   int32  `json:"desired_replicas"`
+	ReadyReplicas     int32  `json:"ready_replicas"`
+	AvailableReplicas int32  `json:"available_replicas"`
+	UpdatedReplicas   int32  `json:"updated_replicas"`
+}
+
+type DeploymentConditionReadiness struct {
+	Basis       string `json:"basis"`
+	State       string `json:"state"`
+	Code        string `json:"code,omitempty"`
+	Remediation string `json:"remediation,omitempty"`
+}
+
+// DeploymentWaitMode selects the explicitly requested readiness threshold.
+type DeploymentWaitMode string
+
+const (
+	DeploymentWaitModeApplication DeploymentWaitMode = "application"
+	DeploymentWaitModeWorkload    DeploymentWaitMode = "workload"
+)
+
+// deploymentReadinessEvaluation centralizes wait semantics so polling does not
+// depend on backend status strings.
+type deploymentReadinessEvaluation struct {
+	Ready         bool
+	TerminalError error
+	Reason        string
+}
+
+func (s DeploymentStatus) readinessEvaluation(mode DeploymentWaitMode) deploymentReadinessEvaluation {
+	if s.Readiness == nil {
+		return deploymentReadinessEvaluation{Reason: "backend did not provide readiness conditions"}
+	}
+
+	r := s.Readiness
+	if r.Reconciliation.State == "failing" {
+		return deploymentReadinessFailure("deployment reconciliation is failing")
+	}
+	if r.Workload.State == "failing" {
+		return deploymentReadinessFailure("deployment workload is failing")
+	}
+	if r.Application.State == "failing" {
+		return deploymentReadinessFailure("application readiness is failing")
+	}
+
+	if mode == DeploymentWaitModeWorkload {
+		if r.Reconciliation.State == "current" && r.Workload.State == "available" {
+			return deploymentReadinessEvaluation{Ready: true}
+		}
+		return deploymentReadinessEvaluation{Reason: "waiting for current reconciliation and available workload"}
+	}
+	if r.Reconciliation.State != "current" || r.Workload.State != "available" {
+		return deploymentReadinessEvaluation{Reason: "waiting for current reconciliation and available workload"}
+	}
+
+	switch r.Application.State {
+	case "verified":
+		return deploymentReadinessEvaluation{Ready: true}
+	case "unconfigured":
+		return deploymentReadinessEvaluation{
+			TerminalError: newReadinessStatusError("READINESS_UNVERIFIED", "application readiness is unconfigured; configure a readiness probe or verify a public health endpoint"),
+			Reason:        "application readiness is unconfigured",
+		}
+	default:
+		return deploymentReadinessEvaluation{Reason: "waiting for verified application readiness"}
+	}
+}
+
+func deploymentReadinessFailure(message string) deploymentReadinessEvaluation {
+	return deploymentReadinessEvaluation{
+		TerminalError: newReadinessStatusError("READINESS_FAILED", message),
+		Reason:        message,
+	}
+}
+
+func newReadinessStatusError(code, message string) *HTTPStatusError {
+	return &HTTPStatusError{
+		Code:        code,
+		Message:     message,
+		Remediation: []string{"inspect deployment status and application logs", "correct the reported readiness condition before retrying"},
+	}
+}
+
+func (s DeploymentStatus) WorkloadStatus() string {
+	if s.ReplicaStatus != "" {
+		return s.ReplicaStatus
+	}
+	return s.Status
+}
+
+func (s DeploymentStatus) ApplicationReadinessText() string {
+	if s.Readiness == nil {
+		return "unknown (backend did not provide readiness conditions)"
+	}
+	state := s.Readiness.Application.State
+	if state == "" {
+		state = "unknown"
+	}
+	basis := s.Readiness.Application.Basis
+	if basis == "" {
+		basis = "not provided"
+	}
+	return fmt.Sprintf("%s (%s)", state, basis)
+}
+
+// RouteReadinessText returns live route evidence without inferring route
+// success from a missing condition supplied by an older backend.
+func (s DeploymentStatus) RouteReadinessText() (string, bool) {
+	if s.Readiness == nil {
+		return "", false
+	}
+	route := s.Readiness.Route
+	if route.Basis == "" && route.State == "" && route.Code == "" && route.Remediation == "" {
+		return "", false
+	}
+	state := route.State
+	if state == "" {
+		state = "unknown"
+	}
+	basis := route.Basis
+	if basis == "" {
+		basis = "not observed"
+	}
+	parts := []string{fmt.Sprintf("%s (%s)", state, basis)}
+	if route.Code != "" {
+		parts = append(parts, route.Code)
+	}
+	if route.Remediation != "" {
+		parts = append(parts, "remediation: "+route.Remediation)
+	}
+	return strings.Join(parts, "; "), true
 }
 
 type Machine struct {
@@ -525,6 +770,7 @@ type Machine struct {
 	MachineZone         string     `db:"machine_zone" json:"machine_zone" validate:"required"`
 	IpAddr              string     `db:"ip_addr" json:"ip_addr" validate:"required"`
 	TalosVersion        string     `db:"talos_version" json:"talos_version" validate:"required"`
+	TalosReady          bool       `json:"talos_ready"`
 	KubernetesVersion   string     `db:"kubernetes_version" json:"kubernetes_version" validate:"required"`
 	CPUCores            int        `db:"cpu_cores" json:"cpu_cores" validate:"required"`
 	MemoryGB            int        `db:"memory_gb" json:"memory_gb" validate:"required"`

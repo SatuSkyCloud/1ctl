@@ -1,6 +1,7 @@
 package machine
 
 import (
+	"context"
 	"reflect"
 	"testing"
 
@@ -41,4 +42,31 @@ func hasNilDestination(f cli.Flag) bool {
 
 func flagNameFromReflect(f cli.Flag) string {
 	return reflect.ValueOf(f).Elem().FieldByName("Name").String()
+}
+
+func TestRequiredPositionalArgumentsReturnNonZeroExit(t *testing.T) {
+	tests := [][]string{
+		{"machine", "get"},
+		{"machine", "update"},
+		{"machine", "delete"},
+		{"machine", "inspect"},
+		{"machine", "logs"},
+		{"machine", "events"},
+		{"machine", "usage", "get"},
+		{"machine", "usage", "cost"},
+		{"machine", "labels", "list"},
+		{"machine", "labels", "set", "machine-id"},
+		{"machine", "labels", "unset", "machine-id"},
+	}
+	for _, args := range tests {
+		err := Command().Run(context.Background(), args)
+		assertNonZeroExit(t, args, err)
+	}
+}
+
+func assertNonZeroExit(t *testing.T, args []string, err error) {
+	t.Helper()
+	if err == nil {
+		t.Fatalf("%v returned nil error", args)
+	}
 }

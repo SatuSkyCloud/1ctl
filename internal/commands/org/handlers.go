@@ -48,6 +48,16 @@ func handleOrgCurrent(ctx context.Context) error {
 		return utils.NewError("no organization set. Please run '1ctl auth login' first", nil)
 	}
 
+	if utils.TryPrintJSON(struct {
+		Organization   string `json:"organization"`
+		OrganizationID string `json:"organization_id"`
+	}{
+		Organization:   orgName,
+		OrganizationID: orgID,
+	}) {
+		return nil
+	}
+
 	utils.PrintHeader("Current Organization")
 	utils.PrintStatusLine("Organization", orgName)
 	utils.PrintStatusLine("Organization ID", orgID)
@@ -141,6 +151,10 @@ func handleOrgTeamList(ctx context.Context) error {
 	members, err := api.GetOrganizationTeam(orgID)
 	if err != nil {
 		return utils.NewError(fmt.Sprintf("failed to list team members: %s", err.Error()), nil)
+	}
+
+	if utils.PrintListOrJSON(members, "No team members found") {
+		return nil
 	}
 
 	if len(members) == 0 {

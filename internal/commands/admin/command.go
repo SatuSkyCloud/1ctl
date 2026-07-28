@@ -63,7 +63,7 @@ func deploymentAdoptCommand() *cli.Command {
 			requiredString(flagExpectedResourceVersion, "Exact live Deployment resourceVersion", &in.ExpectedResourceVersion, validateNonEmpty),
 			&cli.Int64Flag{
 				Name:        flagExpectedGeneration,
-				Usage:       "Exact live Deployment generation",
+				Usage:       requiredUsage("Exact live Deployment generation"),
 				Destination: &in.ExpectedGeneration,
 				Required:    true,
 				Validator:   validateGeneration,
@@ -73,7 +73,7 @@ func deploymentAdoptCommand() *cli.Command {
 		},
 		Action: func(ctx context.Context, cmd *cli.Command) error {
 			if cmd.Args().Len() != 1 {
-				return cli.ShowSubcommandHelp(cmd)
+				return invalidPositionalArgs(cmd)
 			}
 			in.DeploymentID = strings.TrimSpace(cmd.Args().First())
 			if err := validateUUID(in.DeploymentID); err != nil {
@@ -96,20 +96,20 @@ func deploymentRoutingAdoptCommand() *cli.Command {
 			requiredString(flagExpectedResourceVersion, "Exact live HTTPRoute resourceVersion", &in.ExpectedResourceVersion, validateNonEmpty),
 			&cli.Int64Flag{
 				Name:        flagExpectedGeneration,
-				Usage:       "Exact live HTTPRoute generation",
+				Usage:       requiredUsage("Exact live HTTPRoute generation"),
 				Destination: &in.ExpectedGeneration,
 				Required:    true,
 				Validator:   validateGeneration,
 			},
 			requiredString(flagRequestID, "Stable UUID for this adoption attempt", &in.RequestID, validateUUID),
 			&cli.BoolFlag{
-				Name: flagYes, Aliases: []string{"y"}, Usage: "Confirm the routing ownership transfer",
+				Name: flagYes, Aliases: []string{"y"}, Usage: requiredUsage("Confirm the routing ownership transfer"),
 				Destination: &in.Yes, Required: true,
 			},
 		},
 		Action: func(ctx context.Context, cmd *cli.Command) error {
 			if cmd.Args().Len() != 1 {
-				return cli.ShowSubcommandHelp(cmd)
+				return invalidPositionalArgs(cmd)
 			}
 			in.DeploymentID = strings.TrimSpace(cmd.Args().First())
 			if err := validateUUID(in.DeploymentID); err != nil {
@@ -123,11 +123,22 @@ func deploymentRoutingAdoptCommand() *cli.Command {
 func requiredString(name, usage string, destination *string, validator func(string) error) *cli.StringFlag {
 	return &cli.StringFlag{
 		Name:        name,
-		Usage:       usage,
+		Usage:       requiredUsage(usage),
 		Destination: destination,
 		Required:    true,
 		Validator:   validator,
 	}
+}
+
+func requiredUsage(usage string) string {
+	return usage + " (required)"
+}
+
+func invalidPositionalArgs(cmd *cli.Command) error {
+	if err := cli.ShowSubcommandHelp(cmd); err != nil {
+		return err
+	}
+	return fmt.Errorf("expected exactly one positional argument: %s", cmd.ArgsUsage)
 }
 
 func validateUUID(value string) error {

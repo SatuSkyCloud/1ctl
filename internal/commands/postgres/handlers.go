@@ -295,52 +295,6 @@ func handlePostgresUsersList(ctx context.Context, in postgresStorageIDInput) err
 	return nil
 }
 
-func handlePostgresUsersCreate(ctx context.Context, in postgresUsersCreateInput) error {
-	storageID, err := resolvePostgresStorageID(in.StorageID)
-	if err != nil {
-		return err
-	}
-
-	resp, err := api.CreatePostgresUser(storageID, api.CreateDatabaseUserRequest{
-		Username:       in.Username,
-		RoleAttributes: postgresRoleAttributes(in),
-		Comment:        in.Comment,
-	})
-	if err != nil {
-		return utils.NewError(fmt.Sprintf("failed to create Postgres user: %s", err.Error()), nil)
-	}
-	if utils.TryPrintJSON(resp) {
-		return nil
-	}
-	utils.PrintSuccess("Database user created")
-	utils.PrintStatusLine("Username", resp.User.Username)
-	utils.PrintStatusLine("Password", resp.Password)
-	utils.PrintStatusLine("Secret", resp.User.SecretName)
-	if resp.ReconciliationStatus != "" {
-		utils.PrintStatusLine("Role status", resp.ReconciliationStatus)
-	}
-	if resp.ReadinessMessage != "" {
-		utils.PrintInfo("%s", resp.ReadinessMessage)
-	}
-	return nil
-}
-
-func handlePostgresUsersDelete(ctx context.Context, in postgresUsersDeleteInput) error {
-	storageID, err := resolvePostgresStorageID(in.StorageID)
-	if err != nil {
-		return err
-	}
-	if !utils.Confirm(fmt.Sprintf("Delete database user %s from Postgres cluster %s?", in.Username, storageID), in.Yes) {
-		fmt.Println("Aborted.")
-		return nil
-	}
-	if err := api.DeletePostgresUser(storageID, in.Username); err != nil {
-		return utils.NewError(fmt.Sprintf("failed to delete Postgres user: %s", err.Error()), nil)
-	}
-	utils.PrintSuccess("Database user deleted")
-	return nil
-}
-
 func handlePostgresFirewallList(ctx context.Context, in postgresStorageIDInput) error {
 	storageID, err := resolvePostgresStorageID(in.StorageID)
 	if err != nil {
@@ -656,26 +610,6 @@ func boolStatus(value bool) string {
 		return "yes"
 	}
 	return "no"
-}
-
-func postgresRoleAttributes(in postgresUsersCreateInput) []string {
-	attrs := []string{}
-	if in.Superuser {
-		attrs = append(attrs, "SUPERUSER")
-	}
-	if in.Createdb {
-		attrs = append(attrs, "CREATEDB")
-	}
-	if in.Createrole {
-		attrs = append(attrs, "CREATEROLE")
-	}
-	if in.Replication {
-		attrs = append(attrs, "REPLICATION")
-	}
-	if in.BypassRLS {
-		attrs = append(attrs, "BYPASSRLS")
-	}
-	return attrs
 }
 
 func runTCPProxy(localAddr, remoteAddr string) error {

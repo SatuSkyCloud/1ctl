@@ -3,6 +3,7 @@ package volumes
 
 import (
 	"context"
+	"fmt"
 	"strings"
 
 	"github.com/urfave/cli/v3"
@@ -168,7 +169,7 @@ func volumesDetachCommand() *cli.Command {
 					in.VolumeName = arg
 				}
 			} else {
-				return cli.ShowSubcommandHelp(cmd)
+				return missingRequiredArgs(cmd)
 			}
 			return handleVolumesDetach(ctx, in)
 		},
@@ -211,11 +212,18 @@ func volumesDestroyCommand() *cli.Command {
 					in.VolumeName = arg
 				}
 			} else {
-				return cli.ShowSubcommandHelp(cmd)
+				return missingRequiredArgs(cmd)
 			}
 			return handleVolumesDestroy(ctx, in)
 		},
 	}
+}
+
+func missingRequiredArgs(cmd *cli.Command) error {
+	if err := cli.ShowSubcommandHelp(cmd); err != nil {
+		return err
+	}
+	return fmt.Errorf("missing required positional argument: %s", cmd.ArgsUsage)
 }
 
 // looksLikeUUID reports whether s looks like a standard UUID (xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx).

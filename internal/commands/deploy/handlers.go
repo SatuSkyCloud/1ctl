@@ -2,7 +2,11 @@ package deploy
 
 import (
 	"context"
+	"errors"
 	"fmt"
+	"net/http"
+	"regexp"
+	"strconv"
 	"strings"
 	"time"
 
@@ -52,7 +56,7 @@ func handleDeploy(ctx context.Context, in DeployInput) error {
 		return utils.NewError(fmt.Sprintf("deployment failed: %s", err.Error()), nil)
 	}
 	if resp.Intent != nil {
-		return reportAtomicIntent(resp.Intent, merged.Wait)
+		return reportAtomicIntent(resp.Intent, merged.Wait, merged.WaitMode, merged.HealthPath, merged.StrictSmoke)
 	}
 
 	ingressID := ""
@@ -60,10 +64,40 @@ func handleDeploy(ctx context.Context, in DeployInput) error {
 		ingressID = resp.IngressID.String()
 	}
 	publicURL := deploypkg.WaitForPublicURL(ingressID, resp.Domain)
+	if merged.Wait {
+		mode, err := api.ValidateDeploymentWaitMode(merged.WaitMode)
+		if err != nil {
+			return err
+		}
+		if mode == api.DeploymentWaitModeWorkload {
+			utils.PrintWarning("--wait-mode workload bypasses application verification; success only means the reconciled workload is available.")
+		}
+		waitOptions := api.DeploymentWaitOptions{Mode: mode}
+		if mode == api.DeploymentWaitModeApplication && merged.HealthPath != "" && publicURL.Ready && resp.Domain != "" {
+			waitOptions.VerifyApplication = func() bool {
+				// The regular non-strict smoke accepts 401/403/404 as evidence of
+				// reachability. That is useful for reporting, but only a successful
+				// health-path response may satisfy application verification.
+				smoke := deploypkg.CheckPublicURLSmoke("https://"+resp.Domain, deploypkg.SmokePathCandidates(merged.HealthPath), true)
+				return smoke.Ready
+			}
+		}
+		final, waitErr := api.WaitForDeploymentWithOptions(resp.DeploymentID.String(), 5*time.Minute, waitOptions)
+		if waitErr != nil {
+			return waitErr
+		}
+		if mode == api.DeploymentWaitModeWorkload {
+			utils.PrintSuccess("Deployment %s workload is available (%s); application readiness was not verified.", resp.AppLabel, final.WorkloadStatus())
+		} else if final.Readiness != nil && final.Readiness.Application.State == "verified" {
+			utils.PrintSuccess("Deployment %s application readiness is verified (%s)", resp.AppLabel, final.ApplicationReadinessText())
+		} else {
+			utils.PrintSuccess("Deployment %s application readiness is verified by successful public health check %s", resp.AppLabel, merged.HealthPath)
+		}
+	}
 	return deploypkg.ReportDeployResult(resp.AppLabel, resp.DeploymentID.String(), resp.Domain, publicURL, merged.HealthPath, merged.StrictSmoke)
 }
 
-func reportAtomicIntent(accepted *api.DeploymentIntentAccepted, wait bool) error {
+func reportAtomicIntent(accepted *api.DeploymentIntentAccepted, wait bool, waitMode, healthPath string, strictSmoke bool) error {
 	if utils.TryPrintJSON(map[string]interface{}{"mode": "atomic", "intent": accepted}) {
 		return nil
 	}
@@ -79,11 +113,44 @@ func reportAtomicIntent(accepted *api.DeploymentIntentAccepted, wait bool) error
 		utils.PrintInfo("Deployment intent was accepted and is pending reconciliation. Use --wait to observe readiness.")
 		return nil
 	}
-	final, err := api.WaitForDeployment(accepted.DeploymentID, 5*time.Minute)
+	mode, err := api.ValidateDeploymentWaitMode(waitMode)
 	if err != nil {
-		return utils.NewError(fmt.Sprintf("deployment intent accepted but readiness failed: %s", err.Error()), nil)
+		return err
 	}
-	utils.PrintSuccess("Deployment %s is healthy (%s)", accepted.AppLabel, final.Status)
+	if mode == api.DeploymentWaitModeWorkload {
+		utils.PrintWarning("--wait-mode workload bypasses application verification; success only means the reconciled workload is available.")
+	}
+	waitOptions := api.DeploymentWaitOptions{Mode: mode, Generation: accepted.Generation}
+	var ingress *api.Ingress
+	var publicURL deploypkg.PublicURLReadiness
+	if mode == api.DeploymentWaitModeApplication && healthPath != "" {
+		ingress, err = api.GetIngressByDeploymentID(accepted.DeploymentID)
+		if err != nil {
+			return utils.NewError(fmt.Sprintf("deployment was accepted but public route lookup failed: %s", err.Error()), nil)
+		}
+		publicURL = deploypkg.WaitForPublicURL(ingress.IngressID.String(), ingress.DomainName)
+		if publicURL.Ready {
+			waitOptions.VerifyApplication = func() bool {
+				return deploypkg.CheckPublicURLSmoke(
+					"https://"+ingress.DomainName,
+					deploypkg.SmokePathCandidates(healthPath),
+					true,
+				).Ready
+			}
+		}
+	}
+	final, err := api.WaitForDeploymentWithOptions(accepted.DeploymentID, 5*time.Minute, waitOptions)
+	if err != nil {
+		return err
+	}
+	if mode == api.DeploymentWaitModeWorkload {
+		utils.PrintSuccess("Deployment %s workload is available (%s); application readiness was not verified.", accepted.AppLabel, final.WorkloadStatus())
+		return nil
+	}
+	if ingress != nil {
+		return deploypkg.ReportDeployResult(accepted.AppLabel, accepted.DeploymentID, ingress.DomainName, publicURL, healthPath, strictSmoke)
+	}
+	utils.PrintSuccess("Deployment %s application readiness is verified (%s)", accepted.AppLabel, final.ApplicationReadinessText())
 	return nil
 }
 
@@ -111,6 +178,7 @@ func mergeConfig(in DeployInput, cfg *config.ProjectConfig) mergedInput {
 	trackSet("memory", in.Memory != "" && in.Memory != "256Mi")
 	trackSet("domain", in.Domain != "")
 	trackSet("health-path", in.HealthPath != "")
+	trackSet("strategy", in.Strategy != "" && in.Strategy != "rolling")
 	trackSet("rolling-max-surge", in.RollingMaxSurge != "" && in.RollingMaxSurge != "25%")
 	trackSet("rolling-max-unavailable", in.RollingMaxUnavail != "" && in.RollingMaxUnavail != "25%")
 	trackSet("machine-tag", in.MachineTag != "")
@@ -150,9 +218,15 @@ func mergeConfig(in DeployInput, cfg *config.ProjectConfig) mergedInput {
 		applyIf(&m.Zone, cfg.App.Zone)
 		applyIf(&m.Organization, cfg.App.Organization)
 		applyIf(&m.HealthPath, cfg.Checks.HealthPath)
-		applyIf(&m.Strategy, cfg.Deploy.Strategy)
-		applyIf(&m.RollingMaxSurge, cfg.Deploy.RollingMaxSurge)
-		applyIf(&m.RollingMaxUnavail, cfg.Deploy.RollingMaxUnavailable)
+		if !m.UserSetFlags["strategy"] && cfg.Deploy.Strategy != "" {
+			m.Strategy = cfg.Deploy.Strategy
+		}
+		if !m.UserSetFlags["rolling-max-surge"] && cfg.Deploy.RollingMaxSurge != "" {
+			m.RollingMaxSurge = cfg.Deploy.RollingMaxSurge
+		}
+		if !m.UserSetFlags["rolling-max-unavailable"] && cfg.Deploy.RollingMaxUnavailable != "" {
+			m.RollingMaxUnavail = cfg.Deploy.RollingMaxUnavailable
+		}
 		applyIf(&m.VolumeSize, cfg.Volume.Size)
 		applyIf(&m.VolumeMount, cfg.Volume.Mount)
 		applyIf(&m.MachineTag, cfg.Deploy.MachineTag)
@@ -222,6 +296,9 @@ func shouldShowDeployHelp(m mergedInput, cfg *config.ProjectConfig) bool {
 }
 
 func validateInputs(m mergedInput) error {
+	if _, err := api.ValidateDeploymentWaitMode(m.WaitMode); err != nil {
+		return err
+	}
 	if m.Image != "" {
 		if err := validator.ValidateImageReference(m.Image); err != nil {
 			return utils.NewError(fmt.Sprintf("invalid image: %v", err), nil)
@@ -264,6 +341,35 @@ func validateInputs(m mergedInput) error {
 	if m.HealthPath != "" {
 		if err := validator.ValidateURLPath(m.HealthPath); err != nil {
 			return utils.NewError(fmt.Sprintf("invalid health path: %v", err), nil)
+		}
+	}
+	if m.Replicas < 0 {
+		return utils.NewError("replicas cannot be negative", nil)
+	}
+	if _, err := parseEnvVars(m.Env); err != nil {
+		return err
+	}
+	if err := validateRollingValue("rolling-max-surge", m.RollingMaxSurge); err != nil {
+		return err
+	}
+	if err := validateRollingValue("rolling-max-unavailable", m.RollingMaxUnavail); err != nil {
+		return err
+	}
+	switch m.VPAMode {
+	case "Off", "Initial", "Auto":
+	default:
+		return utils.NewError(fmt.Sprintf("invalid vpa-mode %q", m.VPAMode), nil)
+	}
+	switch m.BackupSchedule {
+	case "hourly", "daily", "weekly":
+	default:
+		return utils.NewError(fmt.Sprintf("invalid backup-schedule %q", m.BackupSchedule), nil)
+	}
+	if m.PDB {
+		switch m.PDBType {
+		case "auto", "fixed", "percent":
+		default:
+			return utils.NewError(fmt.Sprintf("invalid pdb-type %q", m.PDBType), nil)
 		}
 	}
 
@@ -342,9 +448,13 @@ func prepareDeploymentOptions(m mergedInput, cfg *config.ProjectConfig) (deployp
 	opts.Organization = m.Organization
 
 	if len(m.Env) > 0 {
+		keyValues, err := parseEnvVars(m.Env)
+		if err != nil {
+			return deploypkg.DeploymentOptions{}, err
+		}
 		opts.EnvEnabled = true
 		opts.Environment = &api.Environment{
-			KeyValues: parseEnvVars(m.Env),
+			KeyValues: keyValues,
 		}
 	}
 	if cfg != nil {
@@ -765,25 +875,35 @@ func handleDeploymentStatus(ctx context.Context, in StatusInput) error {
 		return utils.NewError(fmt.Sprintf("failed to get deployment details: %s", err.Error()), nil)
 	}
 
+	mode, err := api.ValidateDeploymentWaitMode(in.WaitMode)
+	if err != nil {
+		return err
+	}
 	var status *api.DeploymentStatus
 	if deployment.IsMarketplaceManaged() {
 		// Marketplace deployments are reconciled through the canonical deployment
 		// record. The legacy /deployments/status endpoint has no marketplace row.
 		status = &api.DeploymentStatus{Status: deployment.Status}
 	} else if in.Watch {
-		status, err = api.WaitForDeployment(deploymentID, 5*time.Minute)
+		if mode == api.DeploymentWaitModeWorkload {
+			utils.PrintWarning("--wait-mode workload bypasses application verification; success only means the reconciled workload is available.")
+		}
+		status, err = api.WaitForDeploymentWithOptions(deploymentID, 5*time.Minute, api.DeploymentWaitOptions{Mode: mode})
 		if err != nil {
-			return utils.NewError(fmt.Sprintf("failed to watch deployment: %s", err.Error()), nil)
+			return err
 		}
-		utils.PrintStatusLine("Final status", status.Status)
-		if status.Message != "" {
-			utils.PrintStatusLine("Message", status.Message)
-		}
-		return nil
 	} else {
 		status, err = api.GetDeploymentStatus(deploymentID)
 		if err != nil {
 			return utils.NewError(fmt.Sprintf("failed to get deployment status: %s", err.Error()), nil)
+		}
+	}
+	if !in.Watch {
+		if live, liveErr := api.GetLiveDeploymentStatus(deploymentID); liveErr == nil {
+			status.ReplicaStatus = live.ReplicaStatus
+			status.Readiness = live.Readiness
+		} else if statusErr, ok := liveErr.(*api.HTTPStatusError); !ok || statusErr.StatusCode != http.StatusNotFound {
+			return utils.NewError(fmt.Sprintf("failed to get live deployment readiness: %s", liveErr.Error()), nil)
 		}
 	}
 
@@ -820,7 +940,11 @@ func handleDeploymentStatus(ctx context.Context, in StatusInput) error {
 	if ingress != nil && ingress.DomainName != "" {
 		utils.PrintStatusLine("URL", "https://"+ingress.DomainName)
 	}
-	utils.PrintStatusLine("Workload", status.Status)
+	utils.PrintStatusLine("Workload", status.WorkloadStatus())
+	utils.PrintStatusLine("Application readiness", status.ApplicationReadinessText())
+	if routeReadiness, observed := status.RouteReadinessText(); observed {
+		utils.PrintStatusLine("Route readiness", routeReadiness)
+	}
 	if status.Message != "" {
 		utils.PrintStatusLine("Message", status.Message)
 	}
@@ -834,6 +958,9 @@ func handleDeploymentStatus(ctx context.Context, in StatusInput) error {
 	if domainStatus != nil {
 		utils.PrintStatusLine("Route", domainRouteText(domainStatus.Route))
 		utils.PrintStatusLine("DNS", domainDNSText(domainStatus.DNS))
+		if domainStatus.DNS.Condition != nil {
+			utils.PrintStatusLine("DNS condition", domainDNSConditionText(*domainStatus.DNS.Condition))
+		}
 		utils.PrintStatusLine("TLS", domainTLSText(domainStatus.TLS))
 	}
 	utils.PrintStatusLine("Created", api.FormatTimeAgo(deployment.CreatedAt))
@@ -894,6 +1021,10 @@ func handleDestroyDeployment(ctx context.Context, in DestroyInput) error {
 		printDeploymentDeletionOperation(final)
 	}
 	if waitErr != nil {
+		var deletionFailure *api.DeploymentDeletionFailureError
+		if errors.As(waitErr, &deletionFailure) {
+			return utils.NewError(fmt.Sprintf("deployment deletion failed: %s", deletionLifecycleError(deletionFailure.Operation)), nil)
+		}
 		return utils.NewError(fmt.Sprintf("deployment deletion did not complete: %s", waitErr.Error()), nil)
 	}
 	if !final.IsSuccessful() {
@@ -910,15 +1041,26 @@ func printDeploymentDeletionOperation(operation *api.DeploymentDeletionOperation
 		utils.PrintInfo("Deletion accepted; waiting for backend convergence.")
 	}
 	utils.PrintHeader("Deployment Deletion")
+	utils.PrintStatusLine("Operation ID", operation.OperationID)
 	utils.PrintStatusLine("Deployment ID", operation.DeploymentID)
 	utils.PrintStatusLine("Status URL", operation.StatusURL)
 	utils.PrintStatusLine("Purge retained", fmt.Sprintf("%t", operation.PurgeRetained))
-	state := operation.Lifecycle.State
+	utils.PrintStatusLine("Status", operation.Status)
+	state := operation.State
+	if state == "" {
+		state = operation.Lifecycle.State
+	}
 	if state == "" {
 		state = operation.Status
 	}
-	utils.PrintStatusLine("Current state", state)
+	utils.PrintStatusLine("State", state)
 	utils.PrintStatusLine("Terminal", fmt.Sprintf("%t", operation.IsTerminal()))
+	if operation.RemediationCode != "" {
+		utils.PrintStatusLine("Remediation code", operation.RemediationCode)
+	}
+	if operation.RemediationDetail != "" {
+		utils.PrintStatusLine("Remediation", operation.RemediationDetail)
+	}
 	if operation.Lifecycle.ErrorCode != "" {
 		utils.PrintStatusLine("Error code", operation.Lifecycle.ErrorCode)
 	}
@@ -927,9 +1069,26 @@ func printDeploymentDeletionOperation(operation *api.DeploymentDeletionOperation
 	} else if operation.Lifecycle.Message != "" {
 		utils.PrintStatusLine("Message", operation.Lifecycle.Message)
 	}
+	if len(operation.RetainedResources) > 0 {
+		utils.PrintHeader("Retained Resources")
+		rows := make([][]string, 0, len(operation.RetainedResources))
+		for _, resource := range operation.RetainedResources {
+			rows = append(rows, []string{resource.ResourceClass, resource.Kind, resource.Resource, resource.Namespace, resource.Name})
+		}
+		utils.PrintTable([]string{"CLASS", "KIND", "RESOURCE", "NAMESPACE", "NAME"}, rows)
+	}
 }
 
 func deletionLifecycleError(operation *api.DeploymentDeletionOperation) string {
+	if operation.RemediationDetail != "" {
+		if operation.RemediationCode != "" {
+			return fmt.Sprintf("%s: %s", operation.RemediationCode, operation.RemediationDetail)
+		}
+		return operation.RemediationDetail
+	}
+	if operation.RemediationCode != "" {
+		return operation.RemediationCode
+	}
 	if message := operation.Lifecycle.ErrorText(); message != "" {
 		return message
 	}
@@ -1134,18 +1293,34 @@ func enabledText(enabled bool) string {
 	return "not attached"
 }
 
-func parseEnvVars(envVars []string) []api.KeyValuePair {
+var environmentVariableName = regexp.MustCompile(`^[A-Za-z_][A-Za-z0-9_]*$`)
+
+func parseEnvVars(envVars []string) ([]api.KeyValuePair, error) {
 	var keyValues []api.KeyValuePair
 	for _, env := range envVars {
 		parts := strings.SplitN(env, "=", 2)
-		if len(parts) == 2 {
-			keyValues = append(keyValues, api.KeyValuePair{
-				Key:   parts[0],
-				Value: parts[1],
-			})
+		if len(parts) != 2 || !environmentVariableName.MatchString(parts[0]) {
+			return nil, utils.NewError(fmt.Sprintf("invalid environment variable %q: expected KEY=VALUE", env), nil)
 		}
+		keyValues = append(keyValues, api.KeyValuePair{Key: parts[0], Value: parts[1]})
 	}
-	return keyValues
+	return keyValues, nil
+}
+
+func validateRollingValue(name, value string) error {
+	value = strings.TrimSpace(value)
+	if value == "" {
+		return nil
+	}
+	percent := strings.HasSuffix(value, "%")
+	if percent {
+		value = strings.TrimSuffix(value, "%")
+	}
+	number, err := strconv.Atoi(value)
+	if err != nil || number < 0 || (percent && number > 100) {
+		return utils.NewError(fmt.Sprintf("%s must be a non-negative integer or percentage from 0%% to 100%%", name), nil)
+	}
+	return nil
 }
 
 func domainRouteText(status api.DomainRouteStatus) string {
@@ -1171,6 +1346,20 @@ func domainDNSText(status api.DNSStatusResponse) string {
 	}
 	if status.Message != "" {
 		parts = append(parts, status.Message)
+	}
+	return strings.Join(parts, " - ")
+}
+
+func domainDNSConditionText(condition api.DNSCondition) string {
+	parts := []string{string(condition.Status)}
+	if condition.Code != "" {
+		parts = append(parts, condition.Code)
+	}
+	if condition.CheckedAt != nil {
+		parts = append(parts, "checked "+condition.CheckedAt.Format(time.RFC3339))
+	}
+	if condition.ObservedAt != nil {
+		parts = append(parts, "observed "+condition.ObservedAt.Format(time.RFC3339))
 	}
 	return strings.Join(parts, " - ")
 }

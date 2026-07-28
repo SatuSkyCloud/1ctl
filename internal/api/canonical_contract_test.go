@@ -83,6 +83,31 @@ func TestMarketplaceCanonicalRequests(t *testing.T) {
 	}
 }
 
+func TestMarketplaceAppDeployabilityCodeParsingRemainsBackwardCompatible(t *testing.T) {
+	trustedID := uuid.NewString()
+	legacyID := uuid.NewString()
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/v1/marketplaces/all" {
+			http.NotFound(w, r)
+			return
+		}
+		_, _ = io.WriteString(w, `{"error":false,"data":[{"marketplace_id":"`+trustedID+`","marketplace_name":"wordpress","deployable":false,"deployability_code":"PACKAGE_TRUST_INVALID"},{"marketplace_id":"`+legacyID+`","marketplace_name":"legacy","deployable":true}]}`)
+	}))
+	defer server.Close()
+	configureAdminAPITestContext(t, server.URL+"/v1/cli")
+
+	apps, err := GetMarketplaceApps(0, 0, "")
+	if err != nil {
+		t.Fatalf("GetMarketplaceApps() error = %v", err)
+	}
+	if got := apps[0].DeployabilityCode; got != "PACKAGE_TRUST_INVALID" {
+		t.Fatalf("trusted app deployability code = %q", got)
+	}
+	if got := apps[1].DeployabilityCode; got != "" {
+		t.Fatalf("legacy app deployability code = %q, want empty for payloads without the field", got)
+	}
+}
+
 func TestAccountAndDeletionCanonicalRequests(t *testing.T) {
 	userID := uuid.NewString()
 	deploymentID := uuid.NewString()
