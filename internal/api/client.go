@@ -54,10 +54,10 @@ func DeleteDeployment(deploymentID string, purge ...bool) (*DeploymentDeletionOp
 
 // GetDeploymentDeletionStatus retrieves one async deletion operation state.
 func GetDeploymentDeletionStatus(operation *DeploymentDeletionOperation) (*DeploymentDeletionOperation, error) {
-	path := operation.StatusURL
-	if path == "" {
-		path = fmt.Sprintf("/deployments/id/%s", url.PathEscape(operation.DeploymentID))
+	if operation == nil || operation.StatusURL == "" {
+		return nil, utils.NewError("deployment deletion status URL is required", nil)
 	}
+	path := operation.StatusURL
 	requestURL := resolveMainAPIURL(path)
 	var resp struct {
 		Error bool                        `json:"error"`
@@ -138,6 +138,9 @@ func WaitForDeploymentDeletion(operation *DeploymentDeletionOperation, timeout t
 	current := operation
 	for {
 		if current.IsTerminal() {
+			if !current.IsSuccessful() {
+				return current, &DeploymentDeletionFailureError{Operation: current}
+			}
 			return current, nil
 		}
 		if err := waitForDeletionPoll(deadline, current.PollAfterMs, 0); err != nil {

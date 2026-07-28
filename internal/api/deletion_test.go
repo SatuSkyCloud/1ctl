@@ -87,7 +87,12 @@ func TestWaitForDeploymentDeletionTerminalStates(t *testing.T) {
 
 			op := &DeploymentDeletionOperation{DeploymentID: "dep-1", Status: "deleting", StatusURL: server.URL + "/v1/deletion-status/dep-1", PollAfterMs: 1}
 			final, err := WaitForDeploymentDeletion(op, time.Second)
-			if err != nil {
+			if tt.wantFailed {
+				failure, ok := err.(*DeploymentDeletionFailureError)
+				if !ok || failure.Operation != final {
+					t.Fatalf("WaitForDeploymentDeletion() error = %T %v, want typed terminal failure", err, err)
+				}
+			} else if err != nil {
 				t.Fatalf("WaitForDeploymentDeletion() error = %v", err)
 			}
 			if final.Lifecycle.State != tt.wantState || final.IsSuccessful() != !tt.wantFailed {
@@ -183,18 +188,24 @@ func TestWaitForDeploymentDeletionPreservesAcceptedOperationAcrossDetailPolls(t 
 }
 
 func TestGetDeploymentDeletionStatusFallsBackToCanonicalDetailURL(t *testing.T) {
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if r.URL.Path != "/v1/deployments/id/dep-1" {
-			t.Fatalf("fallback path = %s, want /v1/deployments/id/dep-1", r.URL.Path)
-		}
-		w.WriteHeader(http.StatusNotFound)
-	}))
-	defer server.Close()
-	configureAdminAPITestContext(t, server.URL+"/v1/cli")
-
 	_, err := GetDeploymentDeletionStatus(&DeploymentDeletionOperation{DeploymentID: "dep-1"})
-	if err == nil {
-		t.Fatal("GetDeploymentDeletionStatus() error = nil, want 404")
+	if err == nil || !strings.Contains(err.Error(), "status URL is required") {
+		t.Fatalf("GetDeploymentDeletionStatus() error = %v, want missing status URL", err)
+	}
+}
+
+func TestWaitForDeploymentDeletionBlockedOperationReturnsTypedFailureWithRemediation(t *testing.T) {
+	operation := &DeploymentDeletionOperation{
+		OperationID: "op-1", DeploymentID: "dep-1", Status: "blocked", State: "blocked", Terminal: true,
+		RemediationCode: "manual_migration_required", RemediationDetail: "Migrate the deployment before retrying.",
+	}
+	final, err := WaitForDeploymentDeletion(operation, time.Second)
+	failure, ok := err.(*DeploymentDeletionFailureError)
+	if !ok || final != operation || failure.Operation != operation {
+		t.Fatalf("result = %+v, error = %T %v, want typed failure carrying operation", final, err, err)
+	}
+	if !strings.Contains(failure.Error(), "manual_migration_required") || !strings.Contains(failure.Error(), "Migrate the deployment") {
+		t.Fatalf("failure = %q, want remediation", failure.Error())
 	}
 }
 

@@ -226,6 +226,30 @@ type DeploymentDeletionOperation struct {
 	Lifecycle         DeploymentDeletionLifecycle          `json:"lifecycle"`
 }
 
+// DeploymentDeletionFailureError reports a terminal durable deletion outcome
+// that did not complete successfully. Operation carries the backend-provided
+// status and safe remediation for callers that need structured reporting.
+type DeploymentDeletionFailureError struct {
+	Operation *DeploymentDeletionOperation
+}
+
+func (e *DeploymentDeletionFailureError) Error() string {
+	if e == nil || e.Operation == nil {
+		return "deployment deletion failed"
+	}
+	status := e.Operation.State
+	if status == "" {
+		status = e.Operation.Status
+	}
+	if e.Operation.RemediationCode != "" && e.Operation.RemediationDetail != "" {
+		return fmt.Sprintf("deployment deletion %s: %s: %s", status, e.Operation.RemediationCode, e.Operation.RemediationDetail)
+	}
+	if e.Operation.RemediationDetail != "" {
+		return fmt.Sprintf("deployment deletion %s: %s", status, e.Operation.RemediationDetail)
+	}
+	return fmt.Sprintf("deployment deletion %s", status)
+}
+
 func (o DeploymentDeletionOperation) IsTerminal() bool {
 	return o.Terminal || o.Lifecycle.Terminal
 }

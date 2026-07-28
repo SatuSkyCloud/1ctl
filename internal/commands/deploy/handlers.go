@@ -2,6 +2,7 @@ package deploy
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"net/http"
 	"strings"
@@ -960,6 +961,10 @@ func handleDestroyDeployment(ctx context.Context, in DestroyInput) error {
 		printDeploymentDeletionOperation(final)
 	}
 	if waitErr != nil {
+		var deletionFailure *api.DeploymentDeletionFailureError
+		if errors.As(waitErr, &deletionFailure) {
+			return utils.NewError(fmt.Sprintf("deployment deletion failed: %s", deletionLifecycleError(deletionFailure.Operation)), nil)
+		}
 		return utils.NewError(fmt.Sprintf("deployment deletion did not complete: %s", waitErr.Error()), nil)
 	}
 	if !final.IsSuccessful() {
