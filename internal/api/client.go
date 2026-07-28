@@ -75,6 +75,9 @@ func GetDeploymentDeletionStatus(operation *DeploymentDeletionOperation) (*Deplo
 
 func mergeDeploymentDeletionOperation(previous, next *DeploymentDeletionOperation) *DeploymentDeletionOperation {
 	merged := *previous
+	if merged.OperationID == "" {
+		merged.OperationID = next.OperationID
+	}
 	if merged.DeploymentID == "" {
 		merged.DeploymentID = next.DeploymentID
 	}
@@ -89,6 +92,9 @@ func mergeDeploymentDeletionOperation(previous, next *DeploymentDeletionOperatio
 	}
 	if next.Status != "" {
 		merged.Status = next.Status
+	}
+	if next.State != "" {
+		merged.State = next.State
 	}
 	if next.Terminal {
 		merged.Terminal = true
@@ -105,6 +111,15 @@ func mergeDeploymentDeletionOperation(previous, next *DeploymentDeletionOperatio
 	if len(merged.CleanupScope) == 0 {
 		merged.CleanupScope = next.CleanupScope
 	}
+	if next.RetainedResources != nil {
+		merged.RetainedResources = next.RetainedResources
+	}
+	if next.RemediationCode != "" {
+		merged.RemediationCode = next.RemediationCode
+	}
+	if next.RemediationDetail != "" {
+		merged.RemediationDetail = next.RemediationDetail
+	}
 	if next.Lifecycle.State != "" {
 		// A lifecycle projection returned by the detail endpoint is
 		// authoritative. Replace it wholesale so false booleans and cleared
@@ -115,8 +130,9 @@ func mergeDeploymentDeletionOperation(previous, next *DeploymentDeletionOperatio
 }
 
 // WaitForDeploymentDeletion polls until the operation reaches a terminal
-// lifecycle state or the bounded timeout expires. A 404 after acceptance is
-// the backend's successful deletion race and is normalized to deleted.
+// lifecycle state or the bounded timeout expires. The backend status URL is
+// authoritative: an HTTP error, including 404, leaves the accepted operation
+// pending and is returned to the caller.
 func WaitForDeploymentDeletion(operation *DeploymentDeletionOperation, timeout time.Duration) (*DeploymentDeletionOperation, error) {
 	deadline := time.Now().Add(timeout)
 	current := operation
@@ -132,11 +148,6 @@ func WaitForDeploymentDeletion(operation *DeploymentDeletionOperation, timeout t
 		if err != nil {
 			if statusErr, ok := err.(*HTTPStatusError); ok {
 				switch statusErr.StatusCode {
-				case http.StatusNotFound:
-					current.Status = "deleted"
-					current.Terminal = true
-					current.Lifecycle = DeploymentDeletionLifecycle{State: "deleted", Terminal: true}
-					return current, nil
 				case http.StatusServiceUnavailable:
 					if waitErr := waitForDeletionPoll(deadline, current.PollAfterMs, statusErr.RetryAfter); waitErr != nil {
 						return current, waitErr

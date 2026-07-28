@@ -97,7 +97,7 @@ func TestWaitForDeploymentDeletionTerminalStates(t *testing.T) {
 	}
 }
 
-func TestWaitForDeploymentDeletion404AfterAcceptanceIsSuccess(t *testing.T) {
+func TestWaitForDeploymentDeletion404AfterAcceptanceFailsClosed(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusNotFound)
 		_, _ = io.WriteString(w, `{"message":"not found"}`)
@@ -108,8 +108,37 @@ func TestWaitForDeploymentDeletion404AfterAcceptanceIsSuccess(t *testing.T) {
 	op, err := WaitForDeploymentDeletion(&DeploymentDeletionOperation{
 		DeploymentID: "dep-1", Status: "deleting", StatusURL: server.URL + "/v1/deletion-status/dep-1", PollAfterMs: 1,
 	}, time.Second)
-	if err != nil || !op.IsSuccessful() || op.Lifecycle.State != "deleted" {
-		t.Fatalf("result = %+v, error = %v", op, err)
+	statusErr, ok := err.(*HTTPStatusError)
+	if !ok || statusErr.StatusCode != http.StatusNotFound {
+		t.Fatalf("error = %T %v, want HTTP 404", err, err)
+	}
+	if op == nil || op.IsTerminal() || op.IsSuccessful() || op.Status != "deleting" {
+		t.Fatalf("operation = %+v, want unchanged pending operation", op)
+	}
+}
+
+func TestWaitForDeploymentDeletionAcceptsTerminalDurableTombstone(t *testing.T) {
+	var server *httptest.Server
+	server = httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/v1/deletions/dep-1" {
+			t.Fatalf("poll path = %s", r.URL.Path)
+		}
+		_, _ = io.WriteString(w, `{"error":false,"data":{"operation_id":"op-1","deployment_id":"dep-1","status":"completed","state":"completed","terminal":true,"status_url":"`+server.URL+`/v1/deletions/dep-1","retained_resources":[{"resource_class":"kubernetes","kind":"PersistentVolumeClaim","resource":"persistentvolumeclaims","namespace":"tenant-a","name":"data"}],"remediation_code":"retained_volume","remediation_detail":"A persistent volume remains retained."}}`)
+	}))
+	defer server.Close()
+	configureAdminAPITestContext(t, server.URL+"/v1/cli")
+
+	final, err := WaitForDeploymentDeletion(&DeploymentDeletionOperation{
+		OperationID: "op-1", DeploymentID: "dep-1", Status: "requested", State: "requested", StatusURL: server.URL + "/v1/deletions/dep-1", PollAfterMs: 1,
+	}, time.Second)
+	if err != nil {
+		t.Fatalf("WaitForDeploymentDeletion() error = %v", err)
+	}
+	if !final.IsTerminal() || !final.IsSuccessful() || final.State != "completed" || final.Status != "completed" {
+		t.Fatalf("final = %+v, want terminal completed operation", final)
+	}
+	if final.OperationID != "op-1" || final.RemediationCode != "retained_volume" || final.RemediationDetail == "" || len(final.RetainedResources) != 1 {
+		t.Fatalf("durable fields = %+v", final)
 	}
 }
 
@@ -124,11 +153,7 @@ func TestWaitForDeploymentDeletionPreservesAcceptedOperationAcrossDetailPolls(t 
 			if r.URL.Path != statusURLPath {
 				t.Fatalf("poll path = %s, want %s", r.URL.Path, statusURLPath)
 			}
-			if len(paths) == 1 {
-				_, _ = io.WriteString(w, `{"error":false,"data":{"deployment_id":"dep-1","namespace":"ns","app_label":"app","status":"deleting"}}`)
-				return
-			}
-			w.WriteHeader(http.StatusNotFound)
+			_, _ = io.WriteString(w, `{"error":false,"data":{"deployment_id":"dep-1","namespace":"ns","app_label":"app","status":"completed","state":"completed","terminal":true}}`)
 			return
 		}
 		if r.Method != http.MethodDelete || r.URL.Path != "/v1/deployments/dep-1" {
@@ -147,12 +172,12 @@ func TestWaitForDeploymentDeletionPreservesAcceptedOperationAcrossDetailPolls(t 
 	if err != nil {
 		t.Fatalf("WaitForDeploymentDeletion() error = %v", err)
 	}
-	if len(paths) != 2 || paths[0] != statusURLPath || paths[1] != statusURLPath {
-		t.Fatalf("poll paths = %v, want two polls to %s", paths, statusURLPath)
+	if len(paths) != 1 || paths[0] != statusURLPath {
+		t.Fatalf("poll paths = %v, want one poll to %s", paths, statusURLPath)
 	}
 	if final.StatusURL != server.URL+statusURLPath || !final.PurgeRetained || final.Operation != "delete" ||
 		final.AcceptedAt.IsZero() || final.AcceptedAt.Format(time.RFC3339) != acceptedAt ||
-		len(final.CleanupScope) != 2 {
+		len(final.CleanupScope) != 2 || !final.IsSuccessful() {
 		t.Fatalf("final operation lost accepted metadata: %+v", final)
 	}
 }
@@ -215,6 +240,16 @@ func TestMergeDeploymentDeletionOperationReplacesLifecycleProjection(t *testing.
 	}
 	if merged.Lifecycle.ErrorText() != "" {
 		t.Fatalf("lifecycle error = %q, want stale error fields cleared", merged.Lifecycle.ErrorText())
+	}
+}
+
+func TestDeploymentDeletionOperationTopLevelDurableStateOverridesLegacyLifecycle(t *testing.T) {
+	op := DeploymentDeletionOperation{
+		Status: "failed", State: "failed", Terminal: true,
+		Lifecycle: DeploymentDeletionLifecycle{State: "deleted", Terminal: true},
+	}
+	if op.IsSuccessful() {
+		t.Fatalf("operation = %+v, want durable failed state to override legacy lifecycle", op)
 	}
 }
 
@@ -289,9 +324,9 @@ func TestDeploymentPurgePolicyUsesBackendMetadata(t *testing.T) {
 }
 
 func TestDeploymentDeletionOperationJSONIsTyped(t *testing.T) {
-	op := DeploymentDeletionOperation{DeploymentID: "dep-1", Status: "deleted", Terminal: true, Lifecycle: DeploymentDeletionLifecycle{State: "deleted", Terminal: true}}
+	op := DeploymentDeletionOperation{OperationID: "op-1", DeploymentID: "dep-1", Status: "completed", State: "completed", Terminal: true, RetainedResources: []DeploymentDeletionRetainedResource{{ResourceClass: "kubernetes", Kind: "PersistentVolumeClaim", Resource: "persistentvolumeclaims", Name: "data"}}, RemediationCode: "retained_volume", RemediationDetail: "retained for recovery", Lifecycle: DeploymentDeletionLifecycle{State: "deleted", Terminal: true}}
 	data, err := json.Marshal(op)
-	if err != nil || !strings.Contains(string(data), `"lifecycle"`) || !strings.Contains(string(data), `"deployment_id"`) {
+	if err != nil || !strings.Contains(string(data), `"lifecycle"`) || !strings.Contains(string(data), `"operation_id"`) || !strings.Contains(string(data), `"retained_resources"`) || !strings.Contains(string(data), `"remediation_code"`) {
 		t.Fatalf("json = %s, error = %v", data, err)
 	}
 }

@@ -976,15 +976,26 @@ func printDeploymentDeletionOperation(operation *api.DeploymentDeletionOperation
 		utils.PrintInfo("Deletion accepted; waiting for backend convergence.")
 	}
 	utils.PrintHeader("Deployment Deletion")
+	utils.PrintStatusLine("Operation ID", operation.OperationID)
 	utils.PrintStatusLine("Deployment ID", operation.DeploymentID)
 	utils.PrintStatusLine("Status URL", operation.StatusURL)
 	utils.PrintStatusLine("Purge retained", fmt.Sprintf("%t", operation.PurgeRetained))
-	state := operation.Lifecycle.State
+	utils.PrintStatusLine("Status", operation.Status)
+	state := operation.State
+	if state == "" {
+		state = operation.Lifecycle.State
+	}
 	if state == "" {
 		state = operation.Status
 	}
-	utils.PrintStatusLine("Current state", state)
+	utils.PrintStatusLine("State", state)
 	utils.PrintStatusLine("Terminal", fmt.Sprintf("%t", operation.IsTerminal()))
+	if operation.RemediationCode != "" {
+		utils.PrintStatusLine("Remediation code", operation.RemediationCode)
+	}
+	if operation.RemediationDetail != "" {
+		utils.PrintStatusLine("Remediation", operation.RemediationDetail)
+	}
 	if operation.Lifecycle.ErrorCode != "" {
 		utils.PrintStatusLine("Error code", operation.Lifecycle.ErrorCode)
 	}
@@ -993,9 +1004,26 @@ func printDeploymentDeletionOperation(operation *api.DeploymentDeletionOperation
 	} else if operation.Lifecycle.Message != "" {
 		utils.PrintStatusLine("Message", operation.Lifecycle.Message)
 	}
+	if len(operation.RetainedResources) > 0 {
+		utils.PrintHeader("Retained Resources")
+		rows := make([][]string, 0, len(operation.RetainedResources))
+		for _, resource := range operation.RetainedResources {
+			rows = append(rows, []string{resource.ResourceClass, resource.Kind, resource.Resource, resource.Namespace, resource.Name})
+		}
+		utils.PrintTable([]string{"CLASS", "KIND", "RESOURCE", "NAMESPACE", "NAME"}, rows)
+	}
 }
 
 func deletionLifecycleError(operation *api.DeploymentDeletionOperation) string {
+	if operation.RemediationDetail != "" {
+		if operation.RemediationCode != "" {
+			return fmt.Sprintf("%s: %s", operation.RemediationCode, operation.RemediationDetail)
+		}
+		return operation.RemediationDetail
+	}
+	if operation.RemediationCode != "" {
+		return operation.RemediationCode
+	}
 	if message := operation.Lifecycle.ErrorText(); message != "" {
 		return message
 	}

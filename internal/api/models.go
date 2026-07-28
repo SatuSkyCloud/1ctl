@@ -176,6 +176,16 @@ type DeploymentDeletionLifecycle struct {
 	ErrorMessage string `json:"errorMessage,omitempty"`
 }
 
+// DeploymentDeletionRetainedResource is a renter-safe resource retained by a
+// durable deployment deletion operation.
+type DeploymentDeletionRetainedResource struct {
+	ResourceClass string `json:"resource_class"`
+	Kind          string `json:"kind"`
+	Resource      string `json:"resource"`
+	Namespace     string `json:"namespace,omitempty"`
+	Name          string `json:"name"`
+}
+
 func (l DeploymentDeletionLifecycle) ErrorText() string {
 	message := l.ErrorMessage
 	if message == "" {
@@ -197,18 +207,23 @@ func (l DeploymentDeletionLifecycle) ErrorText() string {
 // DeploymentDeletionOperation is the backend-authoritative async deletion
 // contract returned by DELETE /v1/deployments/:id and its status URL.
 type DeploymentDeletionOperation struct {
-	DeploymentID  string                      `json:"deployment_id"`
-	Namespace     string                      `json:"namespace"`
-	AppLabel      string                      `json:"app_label"`
-	Operation     string                      `json:"operation"`
-	Status        string                      `json:"status"`
-	Terminal      bool                        `json:"terminal"`
-	AcceptedAt    time.Time                   `json:"accepted_at,omitempty" tstype:",required"`
-	StatusURL     string                      `json:"status_url,omitempty"`
-	PollAfterMs   int                         `json:"poll_after_ms,omitempty"`
-	PurgeRetained bool                        `json:"purge_retained"`
-	CleanupScope  []string                    `json:"cleanup_scope,omitempty"`
-	Lifecycle     DeploymentDeletionLifecycle `json:"lifecycle"`
+	OperationID       string                               `json:"operation_id,omitempty"`
+	DeploymentID      string                               `json:"deployment_id"`
+	Namespace         string                               `json:"namespace"`
+	AppLabel          string                               `json:"app_label"`
+	Operation         string                               `json:"operation"`
+	Status            string                               `json:"status"`
+	State             string                               `json:"state,omitempty"`
+	Terminal          bool                                 `json:"terminal"`
+	AcceptedAt        time.Time                            `json:"accepted_at,omitempty" tstype:",required"`
+	StatusURL         string                               `json:"status_url,omitempty"`
+	PollAfterMs       int                                  `json:"poll_after_ms,omitempty"`
+	PurgeRetained     bool                                 `json:"purge_retained"`
+	CleanupScope      []string                             `json:"cleanup_scope,omitempty"`
+	RetainedResources []DeploymentDeletionRetainedResource `json:"retained_resources,omitempty"`
+	RemediationCode   string                               `json:"remediation_code,omitempty"`
+	RemediationDetail string                               `json:"remediation_detail,omitempty"`
+	Lifecycle         DeploymentDeletionLifecycle          `json:"lifecycle"`
 }
 
 func (o DeploymentDeletionOperation) IsTerminal() bool {
@@ -216,7 +231,16 @@ func (o DeploymentDeletionOperation) IsTerminal() bool {
 }
 
 func (o DeploymentDeletionOperation) IsSuccessful() bool {
-	return o.Status == "deleted" || o.Lifecycle.State == "deleted"
+	if !o.IsTerminal() {
+		return false
+	}
+	if o.State != "" {
+		return o.State == "deleted" || o.State == "completed"
+	}
+	if o.Status != "" {
+		return o.Status == "deleted" || o.Status == "completed"
+	}
+	return o.Lifecycle.State == "deleted" || o.Lifecycle.State == "completed"
 }
 
 type CreateDeploymentResponse struct {
