@@ -721,18 +721,6 @@ func statusObservedGeneration(status *DeploymentStatus) int64 {
 	return status.Readiness.Reconciliation.ObservedGeneration
 }
 
-func getDeploymentStatusForGeneration(deploymentID string, generation int64) (*DeploymentStatus, error) {
-	var resp struct {
-		Error bool             `json:"error"`
-		Data  DeploymentStatus `json:"data"`
-	}
-	path := fmt.Sprintf("/deployments/status/%s?generation=%d", deploymentID, generation)
-	if err := makeRequest("GET", path, nil, &resp); err != nil {
-		return nil, err
-	}
-	return &resp.Data, nil
-}
-
 // makeRequest is a helper function to make HTTP requests
 func makeRequest(method, path string, body interface{}, response interface{}) error {
 	config := config.GetConfig()
