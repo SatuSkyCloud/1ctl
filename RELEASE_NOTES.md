@@ -919,7 +919,7 @@ These commits live in the `development` branch already and will arrive in `main`
 - **Marketplace**: Browse and deploy pre-configured applications
   - `marketplace list` - Browse available apps
   - `marketplace get` - Get app details
-  - `marketplace deploy` - Deploy marketplace apps (WordPress, Immich, N8N, etc.)
+  - `marketplace deploy` - Deploy available marketplace apps
 
 - **User Profile Management**: Personal account management
   - `user me` - View current user profile

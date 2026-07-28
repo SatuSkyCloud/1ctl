@@ -678,6 +678,17 @@
           "envVars": []
         },
         {
+          "name": "wait-mode",
+          "aliases": [],
+          "type": "string",
+          "takesValue": true,
+          "required": false,
+          "multiple": false,
+          "default": "\"application\"",
+          "usage": "Readiness threshold: application (default) or workload (bypasses application verification)",
+          "envVars": []
+        },
+        {
           "name": "strategy",
           "aliases": [],
           "type": "string",
@@ -1103,6 +1114,17 @@
           "multiple": false,
           "default": "false",
           "usage": "Watch status in real-time",
+          "envVars": []
+        },
+        {
+          "name": "wait-mode",
+          "aliases": [],
+          "type": "string",
+          "takesValue": true,
+          "required": false,
+          "multiple": false,
+          "default": "\"application\"",
+          "usage": "Readiness threshold when watching: application (default) or workload (bypasses application verification)",
           "envVars": []
         },
         {
@@ -4192,7 +4214,7 @@
       "aliases": [
         "user"
       ],
-      "usage": "Manage database users",
+      "usage": "List database users",
       "hidden": false,
       "argsUsage": "",
       "aritySource": "argsUsage",
@@ -4236,164 +4258,6 @@
       "minArgs": 1,
       "maxArgs": 1,
       "flags": [
-        {
-          "name": "help",
-          "aliases": [
-            "h"
-          ],
-          "type": "boolean",
-          "takesValue": false,
-          "required": false,
-          "multiple": false,
-          "usage": "Show help",
-          "envVars": []
-        }
-      ]
-    },
-    {
-      "path": [
-        "postgres",
-        "users",
-        "create"
-      ],
-      "name": "create",
-      "aliases": [],
-      "usage": "Create a database user",
-      "hidden": false,
-      "argsUsage": "\u003ccluster\u003e \u003cusername\u003e",
-      "aritySource": "argsUsage",
-      "arguments": [
-        {
-          "name": "cluster",
-          "required": true,
-          "variadic": false
-        },
-        {
-          "name": "username",
-          "required": true,
-          "variadic": false
-        }
-      ],
-      "minArgs": 2,
-      "maxArgs": 2,
-      "flags": [
-        {
-          "name": "superuser",
-          "aliases": [],
-          "type": "boolean",
-          "takesValue": false,
-          "required": false,
-          "multiple": false,
-          "default": "false",
-          "usage": "Grant SUPERUSER",
-          "envVars": []
-        },
-        {
-          "name": "createdb",
-          "aliases": [],
-          "type": "boolean",
-          "takesValue": false,
-          "required": false,
-          "multiple": false,
-          "default": "false",
-          "usage": "Grant CREATEDB",
-          "envVars": []
-        },
-        {
-          "name": "createrole",
-          "aliases": [],
-          "type": "boolean",
-          "takesValue": false,
-          "required": false,
-          "multiple": false,
-          "default": "false",
-          "usage": "Grant CREATEROLE",
-          "envVars": []
-        },
-        {
-          "name": "replication",
-          "aliases": [],
-          "type": "boolean",
-          "takesValue": false,
-          "required": false,
-          "multiple": false,
-          "default": "false",
-          "usage": "Grant REPLICATION",
-          "envVars": []
-        },
-        {
-          "name": "bypassrls",
-          "aliases": [],
-          "type": "boolean",
-          "takesValue": false,
-          "required": false,
-          "multiple": false,
-          "default": "false",
-          "usage": "Grant BYPASSRLS",
-          "envVars": []
-        },
-        {
-          "name": "comment",
-          "aliases": [],
-          "type": "string",
-          "takesValue": true,
-          "required": false,
-          "multiple": false,
-          "usage": "Role comment",
-          "envVars": []
-        },
-        {
-          "name": "help",
-          "aliases": [
-            "h"
-          ],
-          "type": "boolean",
-          "takesValue": false,
-          "required": false,
-          "multiple": false,
-          "usage": "Show help",
-          "envVars": []
-        }
-      ]
-    },
-    {
-      "path": [
-        "postgres",
-        "users",
-        "delete"
-      ],
-      "name": "delete",
-      "aliases": [],
-      "usage": "Delete a database user",
-      "hidden": false,
-      "argsUsage": "\u003ccluster\u003e \u003cusername\u003e",
-      "aritySource": "argsUsage",
-      "arguments": [
-        {
-          "name": "cluster",
-          "required": true,
-          "variadic": false
-        },
-        {
-          "name": "username",
-          "required": true,
-          "variadic": false
-        }
-      ],
-      "minArgs": 2,
-      "maxArgs": 2,
-      "flags": [
-        {
-          "name": "yes",
-          "aliases": [],
-          "type": "boolean",
-          "takesValue": false,
-          "required": false,
-          "multiple": false,
-          "default": "false",
-          "usage": "Skip confirmation prompt",
-          "envVars": []
-        },
         {
           "name": "help",
           "aliases": [
@@ -7901,6 +7765,54 @@
       "minArgs": 1,
       "maxArgs": 1,
       "flags": [
+        {
+          "name": "help",
+          "aliases": [
+            "h"
+          ],
+          "type": "boolean",
+          "takesValue": false,
+          "required": false,
+          "multiple": false,
+          "usage": "Show help",
+          "envVars": []
+        }
+      ]
+    },
+    {
+      "path": [
+        "package",
+        "delete"
+      ],
+      "name": "delete",
+      "aliases": [],
+      "usage": "Logically delete a package release while retaining its archive bytes",
+      "hidden": false,
+      "argsUsage": "\u003crelease-id\u003e",
+      "aritySource": "argsUsage",
+      "arguments": [
+        {
+          "name": "release-id",
+          "required": true,
+          "variadic": false
+        }
+      ],
+      "minArgs": 1,
+      "maxArgs": 1,
+      "flags": [
+        {
+          "name": "yes",
+          "aliases": [
+            "y"
+          ],
+          "type": "boolean",
+          "takesValue": false,
+          "required": false,
+          "multiple": false,
+          "default": "false",
+          "usage": "Skip confirmation prompt",
+          "envVars": []
+        },
         {
           "name": "help",
           "aliases": [

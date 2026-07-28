@@ -22,16 +22,16 @@ func handleMarketplaceList(ctx context.Context, in marketplaceListInput) error {
 
 	utils.PrintHeader("Marketplace Apps")
 	for _, app := range apps {
-		status := "Available"
-		if app.ComingSoon {
-			status = "Coming Soon"
-		}
+		status := marketplaceAvailability(app)
 		utils.PrintStatusLine("Name", app.MarketplaceName)
 		utils.PrintStatusLine("Category", app.Category)
 		if app.Description != "" {
 			utils.PrintStatusLine("Description", app.Description)
 		}
 		utils.PrintStatusLine("Status", status)
+		if !app.Deployable && app.DeployabilityCode != "" {
+			utils.PrintStatusLine("Availability code", app.DeployabilityCode)
+		}
 		if app.DeploymentCount > 0 {
 			utils.PrintStatusLine("Deployments", fmt.Sprintf("%d", app.DeploymentCount))
 		}
@@ -49,10 +49,7 @@ func handleMarketplaceGet(ctx context.Context, nameOrID string) error {
 		return nil
 	}
 
-	status := "Available"
-	if app.ComingSoon {
-		status = "Coming Soon"
-	}
+	status := marketplaceAvailability(*app)
 
 	utils.PrintHeader("Marketplace App: %s", app.MarketplaceName)
 	utils.PrintStatusLine("Name", app.MarketplaceName)
@@ -64,6 +61,9 @@ func handleMarketplaceGet(ctx context.Context, nameOrID string) error {
 		utils.PrintStatusLine("Image URL", app.ImageURL)
 	}
 	utils.PrintStatusLine("Status", status)
+	if !app.Deployable && app.DeployabilityCode != "" {
+		utils.PrintStatusLine("Availability code", app.DeployabilityCode)
+	}
 	if app.DeploymentCount > 0 {
 		utils.PrintStatusLine("Deployments", fmt.Sprintf("%d", app.DeploymentCount))
 	}
@@ -92,7 +92,15 @@ func handleMarketplaceDeploy(ctx context.Context, in marketplaceDeployInput) err
 		return err
 	}
 	if !app.Deployable {
-		return utils.NewError(fmt.Sprintf("%q is not deployable", app.MarketplaceName), nil)
+		code := app.DeployabilityCode
+		if code == "" {
+			code = "FEATURE_NOT_AVAILABLE"
+		}
+		return utils.NewLocalDiagnosticError(
+			fmt.Sprintf("deployment is unavailable for %q", app.MarketplaceName),
+			code,
+			marketplaceDeploymentRemediation(code),
+		)
 	}
 
 	deployName := in.DeployName
@@ -116,4 +124,21 @@ func handleMarketplaceDeploy(ctx context.Context, in marketplaceDeployInput) err
 	// Marketplace create returns 202 Accepted: the request was queued, not made ready.
 	return deploypkg.ReportDeployResult(resp.AppLabel, resp.DeploymentID.String(), resp.Domain,
 		deploypkg.PublicURLReadiness{Ready: false, Reason: "deployment accepted; readiness was not verified"}, "", true)
+}
+
+func marketplaceAvailability(app api.MarketplaceApp) string {
+	if !app.Deployable {
+		return "Unavailable"
+	}
+	if app.ComingSoon {
+		return "Coming Soon"
+	}
+	return "Available"
+}
+
+func marketplaceDeploymentRemediation(code string) []string {
+	if code == "PACKAGE_TRUST_INVALID" {
+		return []string{"Ask an authorized operator to re-sign the package before deploying."}
+	}
+	return []string{"This marketplace app is not currently available for deployment."}
 }

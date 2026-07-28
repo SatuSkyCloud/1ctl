@@ -54,10 +54,10 @@ func DeleteDeployment(deploymentID string, purge ...bool) (*DeploymentDeletionOp
 
 // GetDeploymentDeletionStatus retrieves one async deletion operation state.
 func GetDeploymentDeletionStatus(operation *DeploymentDeletionOperation) (*DeploymentDeletionOperation, error) {
-	path := operation.StatusURL
-	if path == "" {
-		path = fmt.Sprintf("/deployments/id/%s", url.PathEscape(operation.DeploymentID))
+	if operation == nil || operation.StatusURL == "" {
+		return nil, utils.NewError("deployment deletion status URL is required", nil)
 	}
+	path := operation.StatusURL
 	requestURL := resolveMainAPIURL(path)
 	var resp struct {
 		Error bool                        `json:"error"`
@@ -75,6 +75,9 @@ func GetDeploymentDeletionStatus(operation *DeploymentDeletionOperation) (*Deplo
 
 func mergeDeploymentDeletionOperation(previous, next *DeploymentDeletionOperation) *DeploymentDeletionOperation {
 	merged := *previous
+	if merged.OperationID == "" {
+		merged.OperationID = next.OperationID
+	}
 	if merged.DeploymentID == "" {
 		merged.DeploymentID = next.DeploymentID
 	}
@@ -89,6 +92,9 @@ func mergeDeploymentDeletionOperation(previous, next *DeploymentDeletionOperatio
 	}
 	if next.Status != "" {
 		merged.Status = next.Status
+	}
+	if next.State != "" {
+		merged.State = next.State
 	}
 	if next.Terminal {
 		merged.Terminal = true
@@ -105,6 +111,15 @@ func mergeDeploymentDeletionOperation(previous, next *DeploymentDeletionOperatio
 	if len(merged.CleanupScope) == 0 {
 		merged.CleanupScope = next.CleanupScope
 	}
+	if next.RetainedResources != nil {
+		merged.RetainedResources = next.RetainedResources
+	}
+	if next.RemediationCode != "" {
+		merged.RemediationCode = next.RemediationCode
+	}
+	if next.RemediationDetail != "" {
+		merged.RemediationDetail = next.RemediationDetail
+	}
 	if next.Lifecycle.State != "" {
 		// A lifecycle projection returned by the detail endpoint is
 		// authoritative. Replace it wholesale so false booleans and cleared
@@ -115,13 +130,17 @@ func mergeDeploymentDeletionOperation(previous, next *DeploymentDeletionOperatio
 }
 
 // WaitForDeploymentDeletion polls until the operation reaches a terminal
-// lifecycle state or the bounded timeout expires. A 404 after acceptance is
-// the backend's successful deletion race and is normalized to deleted.
+// lifecycle state or the bounded timeout expires. The backend status URL is
+// authoritative: an HTTP error, including 404, leaves the accepted operation
+// pending and is returned to the caller.
 func WaitForDeploymentDeletion(operation *DeploymentDeletionOperation, timeout time.Duration) (*DeploymentDeletionOperation, error) {
 	deadline := time.Now().Add(timeout)
 	current := operation
 	for {
 		if current.IsTerminal() {
+			if !current.IsSuccessful() {
+				return current, &DeploymentDeletionFailureError{Operation: current}
+			}
 			return current, nil
 		}
 		if err := waitForDeletionPoll(deadline, current.PollAfterMs, 0); err != nil {
@@ -132,11 +151,6 @@ func WaitForDeploymentDeletion(operation *DeploymentDeletionOperation, timeout t
 		if err != nil {
 			if statusErr, ok := err.(*HTTPStatusError); ok {
 				switch statusErr.StatusCode {
-				case http.StatusNotFound:
-					current.Status = "deleted"
-					current.Terminal = true
-					current.Lifecycle = DeploymentDeletionLifecycle{State: "deleted", Terminal: true}
-					return current, nil
 				case http.StatusServiceUnavailable:
 					if waitErr := waitForDeletionPoll(deadline, current.PollAfterMs, statusErr.RetryAfter); waitErr != nil {
 						return current, waitErr
@@ -587,55 +601,124 @@ func GetDeploymentStatus(deploymentID string) (*DeploymentStatus, error) {
 	return &resp.Data, nil
 }
 
-// WaitForDeployment waits for a deployment to reach a terminal state
-func WaitForDeployment(deploymentID string, timeout time.Duration) (*DeploymentStatus, error) {
-	return WaitForDeploymentGeneration(deploymentID, 0, timeout)
+// GetLiveDeploymentStatus retrieves the main API's authoritative live
+// readiness conditions. It deliberately does not fall back to legacy status:
+// older responses remain display-compatible but cannot prove readiness.
+func GetLiveDeploymentStatus(deploymentID string) (*DeploymentStatus, error) {
+	var status DeploymentStatus
+	if _, err := makeMainAPIRequestWithStatus(http.MethodGet, fmt.Sprintf("/v1/deployments/%s/status/live", url.PathEscape(deploymentID)), nil, &status); err != nil {
+		return nil, err
+	}
+	return &status, nil
 }
 
-// WaitForDeploymentGeneration waits until the accepted desired generation and
-// its live workload have converged.
-func WaitForDeploymentGeneration(deploymentID string, generation int64, timeout time.Duration) (*DeploymentStatus, error) {
-	ticker := time.NewTicker(5 * time.Second)
-	defer ticker.Stop()
+// ValidateDeploymentWaitMode validates the compatibility threshold exposed by
+// deploy and app status --watch. The empty value means the safe default.
+func ValidateDeploymentWaitMode(mode string) (DeploymentWaitMode, error) {
+	switch DeploymentWaitMode(strings.TrimSpace(mode)) {
+	case "", DeploymentWaitModeApplication:
+		return DeploymentWaitModeApplication, nil
+	case DeploymentWaitModeWorkload:
+		return DeploymentWaitModeWorkload, nil
+	default:
+		return "", utils.NewError("wait-mode must be one of: application, workload", nil)
+	}
+}
 
+// DeploymentWaitOptions controls the readiness threshold and is intentionally
+// small so callers can opt into a successful public health probe without
+// treating DNS or route progress as application verification.
+type DeploymentWaitOptions struct {
+	Mode              DeploymentWaitMode
+	Generation        int64
+	PollInterval      time.Duration
+	VerifyApplication func() bool
+}
+
+// WaitForDeployment waits for verified application readiness by default.
+func WaitForDeployment(deploymentID string, timeout time.Duration) (*DeploymentStatus, error) {
+	return WaitForDeploymentWithOptions(deploymentID, timeout, DeploymentWaitOptions{})
+}
+
+// WaitForDeploymentGeneration waits for verified application readiness at or
+// beyond the accepted desired generation.
+func WaitForDeploymentGeneration(deploymentID string, generation int64, timeout time.Duration) (*DeploymentStatus, error) {
+	return WaitForDeploymentWithOptions(deploymentID, timeout, DeploymentWaitOptions{Generation: generation})
+}
+
+// WaitForDeploymentWithOptions polls live readiness conditions. A legacy or
+// 404 live endpoint is intentionally unverified, never a successful Running.
+func WaitForDeploymentWithOptions(deploymentID string, timeout time.Duration, options DeploymentWaitOptions) (*DeploymentStatus, error) {
+	mode := options.Mode
+	if mode == "" {
+		mode = DeploymentWaitModeApplication
+	}
+	if _, err := ValidateDeploymentWaitMode(string(mode)); err != nil {
+		return nil, err
+	}
+	pollInterval := options.PollInterval
+	if pollInterval <= 0 {
+		pollInterval = 5 * time.Second
+	}
 	deadline := time.Now().Add(timeout)
 
 	for {
 		if time.Now().After(deadline) {
-			return nil, utils.NewError("timeout waiting for deployment", nil)
+			return nil, utils.NewError("timeout waiting for verified deployment readiness", nil)
 		}
 
-		var status *DeploymentStatus
-		var err error
-		if generation > 0 {
-			status, err = getDeploymentStatusForGeneration(deploymentID, generation)
-		} else {
-			status, err = GetDeploymentStatus(deploymentID)
-		}
+		status, err := GetLiveDeploymentStatus(deploymentID)
 		if err != nil {
-			return nil, err
+			if statusErr, ok := err.(*HTTPStatusError); !ok || statusErr.StatusCode != http.StatusNotFound {
+				return nil, err
+			}
+			status = &DeploymentStatus{}
 		}
 
-		// Two distinct "running" tokens coexist intentionally:
-		//   StatusRunning    ("running") — backend lifecycle: in-progress, not yet healthy
-		//   StatusRunningK8s ("Running") — K8s pod phase: healthy, terminal-success
-		// Same casing distinction for Failed/failed.
-		switch status.Status {
-		case StatusCompleted, StatusRunningK8s:
+		if options.Generation > 0 && (status.Readiness == nil || status.Readiness.Reconciliation.ObservedGeneration < options.Generation) {
+			utils.PrintInfo(
+				"Deployment generation: observed %d, waiting for %d",
+				statusObservedGeneration(status),
+				options.Generation,
+			)
+			time.Sleep(pollInterval)
+			continue
+		}
+
+		evaluation := status.readinessEvaluation(mode)
+		if evaluation.Ready {
 			return status, nil
-		case StatusFailed, StatusFailedK8s:
-			return status, utils.NewError(fmt.Sprintf("deployment failed: %s", status.Message), nil)
-		case StatusPending, StatusCreating, StatusRunning, StatusNotReady, StatusProgressing, StatusUnknown:
-			utils.PrintInfo("Deployment status: %s (%d pct)", status.Status, status.Progress)
-		default:
-			// Forward-compatibility: a new status string added on the backend
-			// must not break --wait on older CLI versions. Treat unknown
-			// values as non-terminal and keep polling.
-			utils.PrintInfo("Deployment status: %s (waiting...)", status.Status)
+		}
+		if evaluation.TerminalError != nil {
+			statusErr, isReadinessStatus := evaluation.TerminalError.(*HTTPStatusError)
+			if mode == DeploymentWaitModeApplication && options.VerifyApplication != nil && isReadinessStatus && statusErr.Code == "READINESS_UNVERIFIED" && options.VerifyApplication() {
+				return status, nil
+			}
+			return status, evaluation.TerminalError
+		}
+		if mode == DeploymentWaitModeApplication && options.VerifyApplication != nil && options.VerifyApplication() {
+			return status, nil
 		}
 
-		<-ticker.C
+		if evaluation.Reason != "" {
+			utils.PrintInfo("Deployment readiness: %s", evaluation.Reason)
+		}
+		remaining := time.Until(deadline)
+		if remaining <= 0 {
+			return nil, utils.NewError("timeout waiting for verified deployment readiness", nil)
+		}
+		if pollInterval > remaining {
+			pollInterval = remaining
+		}
+		time.Sleep(pollInterval)
 	}
+}
+
+func statusObservedGeneration(status *DeploymentStatus) int64 {
+	if status == nil || status.Readiness == nil {
+		return 0
+	}
+	return status.Readiness.Reconciliation.ObservedGeneration
 }
 
 func getDeploymentStatusForGeneration(deploymentID string, generation int64) (*DeploymentStatus, error) {
@@ -791,18 +874,7 @@ func makeRequestURLWithHeadersOnce(method, url string, body interface{}, respons
 			return resp.StatusCode, utils.NewResourceExhaustedCLIError(resourceErr)
 		}
 
-		var apiError APIError
-		if err := json.Unmarshal(respBody, &apiError); err != nil {
-			return resp.StatusCode, &HTTPStatusError{StatusCode: resp.StatusCode, Message: fmt.Sprintf("request failed with status %d: %s", resp.StatusCode, string(respBody)), RetryAfter: parseRetryAfter(resp.Header.Get("Retry-After"))}
-		}
-		message := apiError.Message
-		if apiError.Details != "" {
-			message = fmt.Sprintf("%s: %s", message, apiError.Details)
-		}
-		if resp.StatusCode == 500 {
-			message = fmt.Sprintf("%s — check backend logs for details", message)
-		}
-		return resp.StatusCode, &HTTPStatusError{StatusCode: resp.StatusCode, Message: message, RetryAfter: parseRetryAfter(resp.Header.Get("Retry-After"))}
+		return resp.StatusCode, newHTTPStatusError(resp.StatusCode, respBody, parseRetryAfter(resp.Header.Get("Retry-After")))
 	}
 
 	if response != nil && len(respBody) > 0 {
@@ -812,6 +884,27 @@ func makeRequestURLWithHeadersOnce(method, url string, body interface{}, respons
 	}
 
 	return resp.StatusCode, nil
+}
+
+func newHTTPStatusError(statusCode int, body []byte, retryAfter time.Duration) *HTTPStatusError {
+	statusErr := &HTTPStatusError{
+		StatusCode: statusCode,
+		Message:    fmt.Sprintf("request failed with status %d", statusCode),
+		RetryAfter: retryAfter,
+	}
+
+	var apiError APIError
+	if err := json.Unmarshal(body, &apiError); err != nil || strings.TrimSpace(apiError.Message) == "" {
+		return statusErr
+	}
+
+	statusErr.Message = apiError.Message
+	statusErr.Code = apiError.Code
+	statusErr.Details = apiError.Details
+	statusErr.Retryable = apiError.Retryable
+	statusErr.Remediation = apiError.Remediation
+	statusErr.RequestID = apiError.RequestID
+	return statusErr
 }
 
 func parseRetryAfter(value string) time.Duration {

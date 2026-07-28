@@ -2,7 +2,9 @@ package deploy
 
 import (
 	"context"
+	"errors"
 	"fmt"
+	"net/http"
 	"regexp"
 	"strconv"
 	"strings"
@@ -54,7 +56,7 @@ func handleDeploy(ctx context.Context, in DeployInput) error {
 		return utils.NewError(fmt.Sprintf("deployment failed: %s", err.Error()), nil)
 	}
 	if resp.Intent != nil {
-		return reportAtomicIntent(resp.Intent, merged.Wait, merged.HealthPath, merged.StrictSmoke)
+		return reportAtomicIntent(resp.Intent, merged.Wait, merged.WaitMode, merged.HealthPath, merged.StrictSmoke)
 	}
 
 	ingressID := ""
@@ -62,10 +64,40 @@ func handleDeploy(ctx context.Context, in DeployInput) error {
 		ingressID = resp.IngressID.String()
 	}
 	publicURL := deploypkg.WaitForPublicURL(ingressID, resp.Domain)
+	if merged.Wait {
+		mode, err := api.ValidateDeploymentWaitMode(merged.WaitMode)
+		if err != nil {
+			return err
+		}
+		if mode == api.DeploymentWaitModeWorkload {
+			utils.PrintWarning("--wait-mode workload bypasses application verification; success only means the reconciled workload is available.")
+		}
+		waitOptions := api.DeploymentWaitOptions{Mode: mode}
+		if mode == api.DeploymentWaitModeApplication && merged.HealthPath != "" && publicURL.Ready && resp.Domain != "" {
+			waitOptions.VerifyApplication = func() bool {
+				// The regular non-strict smoke accepts 401/403/404 as evidence of
+				// reachability. That is useful for reporting, but only a successful
+				// health-path response may satisfy application verification.
+				smoke := deploypkg.CheckPublicURLSmoke("https://"+resp.Domain, deploypkg.SmokePathCandidates(merged.HealthPath), true)
+				return smoke.Ready
+			}
+		}
+		final, waitErr := api.WaitForDeploymentWithOptions(resp.DeploymentID.String(), 5*time.Minute, waitOptions)
+		if waitErr != nil {
+			return waitErr
+		}
+		if mode == api.DeploymentWaitModeWorkload {
+			utils.PrintSuccess("Deployment %s workload is available (%s); application readiness was not verified.", resp.AppLabel, final.WorkloadStatus())
+		} else if final.Readiness != nil && final.Readiness.Application.State == "verified" {
+			utils.PrintSuccess("Deployment %s application readiness is verified (%s)", resp.AppLabel, final.ApplicationReadinessText())
+		} else {
+			utils.PrintSuccess("Deployment %s application readiness is verified by successful public health check %s", resp.AppLabel, merged.HealthPath)
+		}
+	}
 	return deploypkg.ReportDeployResult(resp.AppLabel, resp.DeploymentID.String(), resp.Domain, publicURL, merged.HealthPath, merged.StrictSmoke)
 }
 
-func reportAtomicIntent(accepted *api.DeploymentIntentAccepted, wait bool, healthPath string, strictSmoke bool) error {
+func reportAtomicIntent(accepted *api.DeploymentIntentAccepted, wait bool, waitMode, healthPath string, strictSmoke bool) error {
 	if utils.TryPrintJSON(map[string]interface{}{"mode": "atomic", "intent": accepted}) {
 		return nil
 	}
@@ -81,20 +113,45 @@ func reportAtomicIntent(accepted *api.DeploymentIntentAccepted, wait bool, healt
 		utils.PrintInfo("Deployment intent was accepted and is pending reconciliation. Use --wait to observe readiness.")
 		return nil
 	}
-	final, err := api.WaitForDeploymentGeneration(accepted.DeploymentID, accepted.Generation, 5*time.Minute)
+	mode, err := api.ValidateDeploymentWaitMode(waitMode)
 	if err != nil {
-		return utils.NewError(fmt.Sprintf("deployment intent accepted but readiness failed: %s", err.Error()), nil)
+		return err
 	}
-	if healthPath == "" {
-		utils.PrintSuccess("Deployment %s is healthy (%s)", accepted.AppLabel, final.Status)
+	if mode == api.DeploymentWaitModeWorkload {
+		utils.PrintWarning("--wait-mode workload bypasses application verification; success only means the reconciled workload is available.")
+	}
+	waitOptions := api.DeploymentWaitOptions{Mode: mode, Generation: accepted.Generation}
+	var ingress *api.Ingress
+	var publicURL deploypkg.PublicURLReadiness
+	if mode == api.DeploymentWaitModeApplication && healthPath != "" {
+		ingress, err = api.GetIngressByDeploymentID(accepted.DeploymentID)
+		if err != nil {
+			return utils.NewError(fmt.Sprintf("deployment was accepted but public route lookup failed: %s", err.Error()), nil)
+		}
+		publicURL = deploypkg.WaitForPublicURL(ingress.IngressID.String(), ingress.DomainName)
+		if publicURL.Ready {
+			waitOptions.VerifyApplication = func() bool {
+				return deploypkg.CheckPublicURLSmoke(
+					"https://"+ingress.DomainName,
+					deploypkg.SmokePathCandidates(healthPath),
+					true,
+				).Ready
+			}
+		}
+	}
+	final, err := api.WaitForDeploymentWithOptions(accepted.DeploymentID, 5*time.Minute, waitOptions)
+	if err != nil {
+		return err
+	}
+	if mode == api.DeploymentWaitModeWorkload {
+		utils.PrintSuccess("Deployment %s workload is available (%s); application readiness was not verified.", accepted.AppLabel, final.WorkloadStatus())
 		return nil
 	}
-	ingress, err := api.GetIngressByDeploymentID(accepted.DeploymentID)
-	if err != nil {
-		return utils.NewError(fmt.Sprintf("deployment is healthy but public route lookup failed: %s", err.Error()), nil)
+	if ingress != nil {
+		return deploypkg.ReportDeployResult(accepted.AppLabel, accepted.DeploymentID, ingress.DomainName, publicURL, healthPath, strictSmoke)
 	}
-	ready := deploypkg.WaitForPublicURL(ingress.IngressID.String(), ingress.DomainName)
-	return deploypkg.ReportDeployResult(accepted.AppLabel, accepted.DeploymentID, ingress.DomainName, ready, healthPath, strictSmoke)
+	utils.PrintSuccess("Deployment %s application readiness is verified (%s)", accepted.AppLabel, final.ApplicationReadinessText())
+	return nil
 }
 
 type mergedInput struct {
@@ -239,6 +296,9 @@ func shouldShowDeployHelp(m mergedInput, cfg *config.ProjectConfig) bool {
 }
 
 func validateInputs(m mergedInput) error {
+	if _, err := api.ValidateDeploymentWaitMode(m.WaitMode); err != nil {
+		return err
+	}
 	if m.Image != "" {
 		if err := validator.ValidateImageReference(m.Image); err != nil {
 			return utils.NewError(fmt.Sprintf("invalid image: %v", err), nil)
@@ -815,25 +875,35 @@ func handleDeploymentStatus(ctx context.Context, in StatusInput) error {
 		return utils.NewError(fmt.Sprintf("failed to get deployment details: %s", err.Error()), nil)
 	}
 
+	mode, err := api.ValidateDeploymentWaitMode(in.WaitMode)
+	if err != nil {
+		return err
+	}
 	var status *api.DeploymentStatus
 	if deployment.IsMarketplaceManaged() {
 		// Marketplace deployments are reconciled through the canonical deployment
 		// record. The legacy /deployments/status endpoint has no marketplace row.
 		status = &api.DeploymentStatus{Status: deployment.Status}
 	} else if in.Watch {
-		status, err = api.WaitForDeployment(deploymentID, 5*time.Minute)
+		if mode == api.DeploymentWaitModeWorkload {
+			utils.PrintWarning("--wait-mode workload bypasses application verification; success only means the reconciled workload is available.")
+		}
+		status, err = api.WaitForDeploymentWithOptions(deploymentID, 5*time.Minute, api.DeploymentWaitOptions{Mode: mode})
 		if err != nil {
-			return utils.NewError(fmt.Sprintf("failed to watch deployment: %s", err.Error()), nil)
+			return err
 		}
-		utils.PrintStatusLine("Final status", status.Status)
-		if status.Message != "" {
-			utils.PrintStatusLine("Message", status.Message)
-		}
-		return nil
 	} else {
 		status, err = api.GetDeploymentStatus(deploymentID)
 		if err != nil {
 			return utils.NewError(fmt.Sprintf("failed to get deployment status: %s", err.Error()), nil)
+		}
+	}
+	if !in.Watch {
+		if live, liveErr := api.GetLiveDeploymentStatus(deploymentID); liveErr == nil {
+			status.ReplicaStatus = live.ReplicaStatus
+			status.Readiness = live.Readiness
+		} else if statusErr, ok := liveErr.(*api.HTTPStatusError); !ok || statusErr.StatusCode != http.StatusNotFound {
+			return utils.NewError(fmt.Sprintf("failed to get live deployment readiness: %s", liveErr.Error()), nil)
 		}
 	}
 
@@ -870,7 +940,11 @@ func handleDeploymentStatus(ctx context.Context, in StatusInput) error {
 	if ingress != nil && ingress.DomainName != "" {
 		utils.PrintStatusLine("URL", "https://"+ingress.DomainName)
 	}
-	utils.PrintStatusLine("Workload", status.Status)
+	utils.PrintStatusLine("Workload", status.WorkloadStatus())
+	utils.PrintStatusLine("Application readiness", status.ApplicationReadinessText())
+	if routeReadiness, observed := status.RouteReadinessText(); observed {
+		utils.PrintStatusLine("Route readiness", routeReadiness)
+	}
 	if status.Message != "" {
 		utils.PrintStatusLine("Message", status.Message)
 	}
@@ -884,6 +958,9 @@ func handleDeploymentStatus(ctx context.Context, in StatusInput) error {
 	if domainStatus != nil {
 		utils.PrintStatusLine("Route", domainRouteText(domainStatus.Route))
 		utils.PrintStatusLine("DNS", domainDNSText(domainStatus.DNS))
+		if domainStatus.DNS.Condition != nil {
+			utils.PrintStatusLine("DNS condition", domainDNSConditionText(*domainStatus.DNS.Condition))
+		}
 		utils.PrintStatusLine("TLS", domainTLSText(domainStatus.TLS))
 	}
 	utils.PrintStatusLine("Created", api.FormatTimeAgo(deployment.CreatedAt))
@@ -944,6 +1021,10 @@ func handleDestroyDeployment(ctx context.Context, in DestroyInput) error {
 		printDeploymentDeletionOperation(final)
 	}
 	if waitErr != nil {
+		var deletionFailure *api.DeploymentDeletionFailureError
+		if errors.As(waitErr, &deletionFailure) {
+			return utils.NewError(fmt.Sprintf("deployment deletion failed: %s", deletionLifecycleError(deletionFailure.Operation)), nil)
+		}
 		return utils.NewError(fmt.Sprintf("deployment deletion did not complete: %s", waitErr.Error()), nil)
 	}
 	if !final.IsSuccessful() {
@@ -960,15 +1041,26 @@ func printDeploymentDeletionOperation(operation *api.DeploymentDeletionOperation
 		utils.PrintInfo("Deletion accepted; waiting for backend convergence.")
 	}
 	utils.PrintHeader("Deployment Deletion")
+	utils.PrintStatusLine("Operation ID", operation.OperationID)
 	utils.PrintStatusLine("Deployment ID", operation.DeploymentID)
 	utils.PrintStatusLine("Status URL", operation.StatusURL)
 	utils.PrintStatusLine("Purge retained", fmt.Sprintf("%t", operation.PurgeRetained))
-	state := operation.Lifecycle.State
+	utils.PrintStatusLine("Status", operation.Status)
+	state := operation.State
+	if state == "" {
+		state = operation.Lifecycle.State
+	}
 	if state == "" {
 		state = operation.Status
 	}
-	utils.PrintStatusLine("Current state", state)
+	utils.PrintStatusLine("State", state)
 	utils.PrintStatusLine("Terminal", fmt.Sprintf("%t", operation.IsTerminal()))
+	if operation.RemediationCode != "" {
+		utils.PrintStatusLine("Remediation code", operation.RemediationCode)
+	}
+	if operation.RemediationDetail != "" {
+		utils.PrintStatusLine("Remediation", operation.RemediationDetail)
+	}
 	if operation.Lifecycle.ErrorCode != "" {
 		utils.PrintStatusLine("Error code", operation.Lifecycle.ErrorCode)
 	}
@@ -977,9 +1069,26 @@ func printDeploymentDeletionOperation(operation *api.DeploymentDeletionOperation
 	} else if operation.Lifecycle.Message != "" {
 		utils.PrintStatusLine("Message", operation.Lifecycle.Message)
 	}
+	if len(operation.RetainedResources) > 0 {
+		utils.PrintHeader("Retained Resources")
+		rows := make([][]string, 0, len(operation.RetainedResources))
+		for _, resource := range operation.RetainedResources {
+			rows = append(rows, []string{resource.ResourceClass, resource.Kind, resource.Resource, resource.Namespace, resource.Name})
+		}
+		utils.PrintTable([]string{"CLASS", "KIND", "RESOURCE", "NAMESPACE", "NAME"}, rows)
+	}
 }
 
 func deletionLifecycleError(operation *api.DeploymentDeletionOperation) string {
+	if operation.RemediationDetail != "" {
+		if operation.RemediationCode != "" {
+			return fmt.Sprintf("%s: %s", operation.RemediationCode, operation.RemediationDetail)
+		}
+		return operation.RemediationDetail
+	}
+	if operation.RemediationCode != "" {
+		return operation.RemediationCode
+	}
 	if message := operation.Lifecycle.ErrorText(); message != "" {
 		return message
 	}
@@ -1237,6 +1346,20 @@ func domainDNSText(status api.DNSStatusResponse) string {
 	}
 	if status.Message != "" {
 		parts = append(parts, status.Message)
+	}
+	return strings.Join(parts, " - ")
+}
+
+func domainDNSConditionText(condition api.DNSCondition) string {
+	parts := []string{string(condition.Status)}
+	if condition.Code != "" {
+		parts = append(parts, condition.Code)
+	}
+	if condition.CheckedAt != nil {
+		parts = append(parts, "checked "+condition.CheckedAt.Format(time.RFC3339))
+	}
+	if condition.ObservedAt != nil {
+		parts = append(parts, "observed "+condition.ObservedAt.Format(time.RFC3339))
 	}
 	return strings.Join(parts, " - ")
 }
