@@ -26,6 +26,14 @@ type MarketplacePackageArtifact struct {
 	CreatedAt           time.Time `json:"created_at,omitempty" tstype:",required"`
 }
 
+// MarketplacePackageArtifactTombstone confirms a logical release deletion.
+// The package archive remains retained by the backend and is never returned.
+type MarketplacePackageArtifactTombstone struct {
+	ReleaseID string    `json:"release_id"`
+	DeletedAt time.Time `json:"deleted_at" tstype:",required"`
+	DeletedBy string    `json:"deleted_by"`
+}
+
 func UploadMarketplacePackageArtifact(organizationID, packageName string, archive []byte) (*MarketplacePackageArtifact, error) {
 	if len(archive) == 0 {
 		return nil, fmt.Errorf("package archive is empty")
@@ -87,6 +95,18 @@ func RequestMarketplacePackageArtifactPublic(organizationID, releaseID, reason s
 	}
 	path := fmt.Sprintf("/organizations/%s/releases/%s/request-public", url.PathEscape(organizationID), url.PathEscape(releaseID))
 	if err := makePublisherJSONRequest(http.MethodPost, path, map[string]string{"reason": reason}, &response); err != nil {
+		return nil, err
+	}
+	return &response.Data, nil
+}
+
+func DeleteMarketplacePackageArtifact(organizationID, releaseID string) (*MarketplacePackageArtifactTombstone, error) {
+	var response struct {
+		Error bool                                `json:"error"`
+		Data  MarketplacePackageArtifactTombstone `json:"data"`
+	}
+	path := fmt.Sprintf("/organizations/%s/releases/%s", url.PathEscape(organizationID), url.PathEscape(releaseID))
+	if err := makePublisherJSONRequest(http.MethodDelete, path, nil, &response); err != nil {
 		return nil, err
 	}
 	return &response.Data, nil

@@ -6,6 +6,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"time"
 
 	"1ctl/internal/api"
 	"1ctl/internal/config"
@@ -134,6 +135,32 @@ func handleStatus(_ context.Context, releaseID string) error {
 		return nil
 	}
 	printArtifact(artifact)
+	return nil
+}
+
+func handleDelete(_ context.Context, input deleteInput) error {
+	releaseID := strings.TrimSpace(input.ReleaseID)
+	if _, err := uuid.Parse(releaseID); err != nil {
+		return fmt.Errorf("release ID is invalid; provide a valid UUID")
+	}
+	organizationID, err := currentOrganizationID()
+	if err != nil {
+		return err
+	}
+	if !utils.Confirm(fmt.Sprintf("Logically delete package release %s? The archive bytes will be retained and not purged.", releaseID), input.Yes) {
+		return fmt.Errorf("package release deletion cancelled")
+	}
+	tombstone, err := api.DeleteMarketplacePackageArtifact(organizationID, releaseID)
+	if err != nil {
+		return fmt.Errorf("delete package release: %w", err)
+	}
+	if utils.TryPrintJSON(tombstone) {
+		return nil
+	}
+	utils.PrintTable(
+		[]string{"RELEASE ID", "DELETED AT"},
+		[][]string{{tombstone.ReleaseID, tombstone.DeletedAt.Format(time.RFC3339)}},
+	)
 	return nil
 }
 

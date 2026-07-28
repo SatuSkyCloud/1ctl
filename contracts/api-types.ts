@@ -330,6 +330,11 @@ export interface MarketplacePackageArtifact {
   visibility: string;
   created_at?: string /* RFC3339 */;
 }
+export interface MarketplacePackageArtifactTombstone {
+  release_id: string;
+  deleted_at: string /* RFC3339 */;
+  deleted_by: string;
+}
 
 //////////
 // source: models.go

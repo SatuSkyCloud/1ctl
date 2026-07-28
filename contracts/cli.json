@@ -7781,6 +7781,54 @@
     },
     {
       "path": [
+        "package",
+        "delete"
+      ],
+      "name": "delete",
+      "aliases": [],
+      "usage": "Logically delete a package release while retaining its archive bytes",
+      "hidden": false,
+      "argsUsage": "\u003crelease-id\u003e",
+      "aritySource": "argsUsage",
+      "arguments": [
+        {
+          "name": "release-id",
+          "required": true,
+          "variadic": false
+        }
+      ],
+      "minArgs": 1,
+      "maxArgs": 1,
+      "flags": [
+        {
+          "name": "yes",
+          "aliases": [
+            "y"
+          ],
+          "type": "boolean",
+          "takesValue": false,
+          "required": false,
+          "multiple": false,
+          "default": "false",
+          "usage": "Skip confirmation prompt",
+          "envVars": []
+        },
+        {
+          "name": "help",
+          "aliases": [
+            "h"
+          ],
+          "type": "boolean",
+          "takesValue": false,
+          "required": false,
+          "multiple": false,
+          "usage": "Show help",
+          "envVars": []
+        }
+      ]
+    },
+    {
+      "path": [
         "auth"
       ],
       "name": "auth",
