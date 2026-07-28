@@ -29,6 +29,34 @@ func NewError(message string, err error) error {
 	}
 }
 
+// LocalDiagnosticError is a typed CLI error with a stable error code and
+// remediation guidance. It intentionally has no HTTP status because it is
+// raised before a request is sent.
+type LocalDiagnosticError struct {
+	Message     string
+	Code        string
+	Remediation []string
+}
+
+func (e *LocalDiagnosticError) Error() string { return e.Message }
+
+func (e *LocalDiagnosticError) HTTPStatusCode() int               { return 0 }
+func (e *LocalDiagnosticError) RetryAfterDuration() time.Duration { return 0 }
+func (e *LocalDiagnosticError) ErrorCode() string                 { return e.Code }
+func (e *LocalDiagnosticError) ErrorDetails() interface{}         { return nil }
+func (e *LocalDiagnosticError) ErrorRetryable() *bool             { return nil }
+func (e *LocalDiagnosticError) ErrorRemediation() []string        { return e.Remediation }
+func (e *LocalDiagnosticError) ErrorRequestID() string            { return "" }
+
+// NewLocalDiagnosticError creates a typed local error for structured CLI output.
+func NewLocalDiagnosticError(message, code string, remediation []string) error {
+	return &LocalDiagnosticError{
+		Message:     message,
+		Code:        code,
+		Remediation: remediation,
+	}
+}
+
 // HandleError prints the error and returns it
 func HandleError(err error) error {
 	if err == nil {
@@ -86,12 +114,14 @@ func errorOutputFromAPIDiagnostic(err apiDiagnosticError) errorOutput {
 	output := errorOutput{
 		Error:       true,
 		Message:     err.Error(),
-		StatusCode:  &statusCode,
 		Code:        err.ErrorCode(),
 		Details:     err.ErrorDetails(),
 		Retryable:   err.ErrorRetryable(),
 		Remediation: err.ErrorRemediation(),
 		RequestID:   err.ErrorRequestID(),
+	}
+	if statusCode > 0 {
+		output.StatusCode = &statusCode
 	}
 	if retryAfter := err.RetryAfterDuration(); retryAfter > 0 {
 		retryAfterMS := retryAfter.Milliseconds()
@@ -110,7 +140,9 @@ func printJSONError(output errorOutput) {
 
 func printAPIDiagnosticError(err apiDiagnosticError) {
 	PrintError("%s", err.Error())
-	PrintError("HTTP status: %d", err.HTTPStatusCode())
+	if statusCode := err.HTTPStatusCode(); statusCode > 0 {
+		PrintError("HTTP status: %d", statusCode)
+	}
 	if code := err.ErrorCode(); code != "" {
 		PrintError("Code: %s", code)
 	}

@@ -408,7 +408,7 @@ updates, ACL users, credential rotation, metrics, logs, and current limitations.
 1ctl marketplace get <marketplace-id>
 
 # Deploy a marketplace app
-1ctl marketplace deploy <marketplace-id> --name my-wordpress \
+1ctl marketplace deploy <marketplace-id> --name my-marketplace-app \
   --hostname my-machine --cpu 2 --memory 4Gi \
   --storage-size 20Gi
 ```

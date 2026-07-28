@@ -280,6 +280,7 @@ export interface MarketplaceApp {
   package_release_id?: string /* UUID */;
   package_release?: MarketplacePackageRelease;
   deployable: boolean;
+  deployability_code?: string;
   coming_soon: boolean;
   deployment_count?: number /* int */;
   created_at: string /* RFC3339 */;

@@ -15,20 +15,21 @@ import (
 
 // MarketplaceApp represents a marketplace application
 type MarketplaceApp struct {
-	MarketplaceID    uuid.UUID                  `json:"marketplace_id"`
-	MarketplaceName  string                     `json:"marketplace_name"`
-	Description      string                     `json:"description"`
-	ImageURL         string                     `json:"image_url"`
-	Category         string                     `json:"category"`
-	Metadata         map[string]interface{}     `json:"metadata,omitempty"`
-	SupportedArchs   []string                   `json:"supported_archs,omitempty"`
-	PackageReleaseID *uuid.UUID                 `json:"package_release_id,omitempty"`
-	PackageRelease   *MarketplacePackageRelease `json:"package_release,omitempty"`
-	Deployable       bool                       `json:"deployable"`
-	ComingSoon       bool                       `json:"coming_soon"`
-	DeploymentCount  int                        `json:"deployment_count,omitempty"`
-	CreatedAt        time.Time                  `json:"created_at"`
-	UpdatedAt        time.Time                  `json:"updated_at"`
+	MarketplaceID     uuid.UUID                  `json:"marketplace_id"`
+	MarketplaceName   string                     `json:"marketplace_name"`
+	Description       string                     `json:"description"`
+	ImageURL          string                     `json:"image_url"`
+	Category          string                     `json:"category"`
+	Metadata          map[string]interface{}     `json:"metadata,omitempty"`
+	SupportedArchs    []string                   `json:"supported_archs,omitempty"`
+	PackageReleaseID  *uuid.UUID                 `json:"package_release_id,omitempty"`
+	PackageRelease    *MarketplacePackageRelease `json:"package_release,omitempty"`
+	Deployable        bool                       `json:"deployable"`
+	DeployabilityCode string                     `json:"deployability_code,omitempty"`
+	ComingSoon        bool                       `json:"coming_soon"`
+	DeploymentCount   int                        `json:"deployment_count,omitempty"`
+	CreatedAt         time.Time                  `json:"created_at"`
+	UpdatedAt         time.Time                  `json:"updated_at"`
 }
 
 // MarketplacePackageRelease is the immutable package release pinned to a catalog app.

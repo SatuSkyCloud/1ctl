@@ -101,6 +101,36 @@ func TestHandleErrorJSONForGenericFailureIsNonemptyObject(t *testing.T) {
 	}
 }
 
+func TestHandleErrorRendersLocalDiagnosticWithoutHTTPStatus(t *testing.T) {
+	err := NewLocalDiagnosticError(
+		"deployment is unavailable for \"wordpress\"",
+		"PACKAGE_TRUST_INVALID",
+		[]string{"Ask an authorized operator to re-sign the package before deploying."},
+	)
+
+	tableOutput := captureErrorOutput(t, "table", err)
+	for _, want := range []string{"deployment is unavailable", "Code: PACKAGE_TRUST_INVALID", "Remediation: Ask an authorized operator"} {
+		if !strings.Contains(tableOutput, want) {
+			t.Fatalf("table error output missing %q: %q", want, tableOutput)
+		}
+	}
+	if strings.Contains(tableOutput, "HTTP status") {
+		t.Fatalf("local diagnostic included HTTP status: %q", tableOutput)
+	}
+
+	jsonOutput := captureErrorOutput(t, "json", err)
+	var got map[string]interface{}
+	if decodeErr := json.Unmarshal([]byte(jsonOutput), &got); decodeErr != nil {
+		t.Fatalf("JSON error output is invalid: %q: %v", jsonOutput, decodeErr)
+	}
+	if got["code"] != "PACKAGE_TRUST_INVALID" || got["message"] != "deployment is unavailable for \"wordpress\"" {
+		t.Fatalf("JSON error output = %#v", got)
+	}
+	if _, ok := got["status_code"]; ok {
+		t.Fatalf("local diagnostic status_code = %#v, want omitted", got["status_code"])
+	}
+}
+
 func TestHandleErrorJSONPreservesEmptyBackendDiagnostics(t *testing.T) {
 	retryable := false
 	err := &diagnosticTestError{
