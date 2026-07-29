@@ -3,7 +3,9 @@
 package deploy
 
 import (
+	"errors"
 	"fmt"
+	"net/http"
 
 	"1ctl/internal/api"
 	"1ctl/internal/config"
@@ -26,6 +28,10 @@ func ResolveDeploymentID(depID, appFlag, configArg string) (string, error) {
 		}
 		dep, err := api.GetDeploymentByAppLabel(ns, appFlag)
 		if err != nil {
+			var statusErr *api.HTTPStatusError
+			if !errors.As(err, &statusErr) || statusErr.StatusCode != http.StatusNotFound {
+				return "", fmt.Errorf("resolve app %q in organization %s: %w", appFlag, ns, err)
+			}
 			return "", fmt.Errorf("app %q not found in organization %s\nRun '1ctl app list' to see deployed apps", appFlag, ns)
 		}
 		return dep.DeploymentID.String(), nil
@@ -53,6 +59,10 @@ func ResolveDeploymentID(depID, appFlag, configArg string) (string, error) {
 
 	dep, err := api.GetDeploymentByAppLabel(ns, cfg.App.Name)
 	if err != nil {
+		var statusErr *api.HTTPStatusError
+		if !errors.As(err, &statusErr) || statusErr.StatusCode != http.StatusNotFound {
+			return "", fmt.Errorf("resolve app %q in organization %s: %w", cfg.App.Name, ns, err)
+		}
 		return "", fmt.Errorf("app %q not found in organization %s\nRun '1ctl deploy' first or pass --deployment-id\nRun '1ctl app list' to see deployed apps", cfg.App.Name, ns)
 	}
 

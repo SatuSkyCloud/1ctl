@@ -11,3 +11,13 @@ dockerfile = "Dockerfile"
 
 [checks]
 health_path = "/health"
+
+[checks.readiness]
+initial_delay_seconds = 1
+timeout_seconds = 2
+period_seconds = 5
+failure_threshold = 6
+
+[checks.readiness.http_get]
+path = "/health"
+port = 8080

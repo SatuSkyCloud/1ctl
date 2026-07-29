@@ -439,6 +439,8 @@ export interface Deployment {
   env_enabled: boolean;
   secret_enabled: boolean;
   volume_enabled: boolean;
+  desired_generation: number /* int64 */;
+  observed_generation: number /* int64 */;
   status: string;
   environment: string;
   deployment_source?: string;

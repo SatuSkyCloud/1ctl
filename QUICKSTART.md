@@ -35,7 +35,7 @@ When running a local SatuSky backend (e.g. at `http://localhost:8080`), use the 
 
 ```bash
 # Build the CLI from source
-go build -o 1ctl ./cmd/...
+go build -o 1ctl ./cmd/1ctl
 
 # Create a profile pointing at the local backend (or it already exists)
 ./1ctl profile create --url http://localhost:8080/v1/cli local
@@ -279,7 +279,7 @@ The following steps were run against a local API server (`http://localhost:8080`
 
 ```bash
 # 1. Build CLI from source
-go build -o 1ctl ./cmd/...
+go build -o 1ctl ./cmd/1ctl
 
 # 2. Start the local API server in another terminal
 #    (refer to the server's own README for the exact command)

@@ -6,9 +6,9 @@ This patch release hardens the copy-paste managed messaging workflow.
 
 * `1ctl nats create` now prints only private-service next steps, including exact
   status and credential commands, without misleading public-domain guidance.
-* `1ctl secret create` now returns a non-zero error with the exact
-  `1ctl app restart` recovery command when attachment succeeds but restart
-  fails.
+* `1ctl secret create` accepts owner-only `--from-file` input without exposing
+  values in process arguments. The backend projects accepted secret changes
+  and performs the required rollout; the CLI does not issue a second restart.
 * Adds the complete `examples/managed-nats` application used by the managed
   NATS guide.
 * Release tags are now created only for the exact `main` commit that passed CI.

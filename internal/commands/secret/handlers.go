@@ -1,8 +1,11 @@
 package secret
 
 import (
+	"bufio"
 	"context"
 	"fmt"
+	"os"
+	"runtime"
 	"strings"
 
 	"1ctl/internal/api"
@@ -30,6 +33,13 @@ func handleCreateSecret(ctx context.Context, in secretCreateInput) error {
 	// This matches Fly.io's `fly secrets set KEY=VALUE` convention where
 	// secrets are passed as positional arguments, not flags.
 	allKV := append(in.KV, in.Args...)
+	if in.FromFile != "" {
+		fileKV, err := readSecretPairs(in.FromFile)
+		if err != nil {
+			return err
+		}
+		allKV = append(allKV, fileKV...)
+	}
 
 	if len(allKV) == 0 {
 		return utils.NewError("at least one KEY=VALUE pair is required", nil)
@@ -73,21 +83,67 @@ func handleCreateSecret(ctx context.Context, in secretCreateInput) error {
 		displayName = appLabel
 	}
 	utils.PrintSuccess("Secret %s created successfully\n", displayName)
-
-	utils.PrintInfo("Restarting deployment to activate secrets...")
-	if err := api.RestartDeployment(deploymentIDStr, uuid.NewString()); err != nil {
-		return utils.NewError(
-			fmt.Sprintf(
-				"secret %s was saved, but deployment restart failed: %s\nRun: 1ctl app restart %s",
-				displayName,
-				err.Error(),
-				displayName,
-			),
-			nil,
-		)
-	}
-	utils.PrintSuccess("Deployment restarting — secrets will be available shortly")
+	utils.PrintInfo("The deployment will restart after the secret is projected safely.")
 	return nil
+}
+
+func readSecretPairs(path string) ([]string, error) {
+	info, err := os.Lstat(path)
+	if err != nil {
+		return nil, utils.NewError(fmt.Sprintf("failed to inspect secret file: %s", err.Error()), nil)
+	}
+	if info.Mode()&os.ModeSymlink != 0 {
+		return nil, utils.NewError("secret file must not be a symbolic link", nil)
+	}
+	if !info.Mode().IsRegular() {
+		return nil, utils.NewError("secret file must be a regular file", nil)
+	}
+	if runtime.GOOS != "windows" && info.Mode().Perm()&0o077 != 0 {
+		return nil, utils.NewError("secret file must be owner-only (mode 0600)", nil)
+	}
+
+	file, err := os.Open(path) // #nosec G304 -- explicit user-provided secret path
+	if err != nil {
+		return nil, utils.NewError(fmt.Sprintf("failed to open secret file: %s", err.Error()), nil)
+	}
+	defer file.Close() //nolint:errcheck // read-only close error is not actionable
+	openedInfo, err := file.Stat()
+	if err != nil {
+		return nil, utils.NewError(fmt.Sprintf("failed to inspect opened secret file: %s", err.Error()), nil)
+	}
+	if !os.SameFile(info, openedInfo) {
+		return nil, utils.NewError("secret file changed while it was being opened", nil)
+	}
+
+	var pairs []string
+	scanner := bufio.NewScanner(file)
+	lineNumber := 0
+	for scanner.Scan() {
+		lineNumber++
+		line := strings.TrimSuffix(scanner.Text(), "\r")
+		trimmed := strings.TrimSpace(line)
+		if trimmed == "" || strings.HasPrefix(trimmed, "#") {
+			continue
+		}
+		parts := strings.SplitN(line, "=", 2)
+		if len(parts) != 2 {
+			return nil, utils.NewError(
+				fmt.Sprintf("invalid secret file line %d: expected KEY=VALUE", lineNumber),
+				nil,
+			)
+		}
+		if strings.TrimSpace(parts[0]) == "" {
+			return nil, utils.NewError(
+				fmt.Sprintf("invalid secret file line %d: key must not be empty", lineNumber),
+				nil,
+			)
+		}
+		pairs = append(pairs, line)
+	}
+	if err := scanner.Err(); err != nil {
+		return nil, utils.NewError(fmt.Sprintf("failed to read secret file: %s", err.Error()), nil)
+	}
+	return pairs, nil
 }
 
 func handleListSecrets(ctx context.Context, in secretListInput) error {

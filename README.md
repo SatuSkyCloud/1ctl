@@ -29,7 +29,7 @@ A standard build connects to `api.satusky.com` by default:
 ```bash
 git clone https://github.com/satuskycloud/1ctl.git
 cd 1ctl
-go build -o 1ctl ./cmd/...
+go build -o 1ctl ./cmd/1ctl
 ```
 
 To point the binary at a local API server, override the default URLs at compile time via ldflags:
@@ -38,7 +38,7 @@ To point the binary at a local API server, override the default URLs at compile 
 go build \
   -ldflags "-X '1ctl/internal/config.defaultAPIURL=http://localhost:8080/v1/cli' \
             -X '1ctl/internal/config.defaultDockerUploadURL=http://localhost:3000'" \
-  -o 1ctl ./cmd/...
+  -o 1ctl ./cmd/1ctl
 ```
 
 Alternatively, override at runtime with environment variables (no rebuild needed):

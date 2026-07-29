@@ -242,7 +242,7 @@ func GetDeploymentByAppLabel(namespace, appLabel string) (*Deployment, error) {
 		Error bool       `json:"error"`
 		Data  Deployment `json:"data"`
 	}
-	if err := makeRequest("GET", fmt.Sprintf("/deployments/namespace/%s/app/%s", namespace, appLabel), nil, &resp); err != nil {
+	if err := makeRequestWithRetry(http.MethodGet, fmt.Sprintf("/deployments/namespace/%s/app/%s", namespace, appLabel), nil, &resp); err != nil {
 		return nil, err
 	}
 	return &resp.Data, nil
@@ -591,11 +591,19 @@ func DeleteVolumePVC(volumeID string) (*VolumeLifecycleStatus, error) {
 // GetDeploymentStatus gets the current status of a deployment.
 // Uses the typed-inline-struct pattern (see GetDeployment for rationale).
 func GetDeploymentStatus(deploymentID string) (*DeploymentStatus, error) {
+	return getDeploymentStatus(deploymentID, 0)
+}
+
+func getDeploymentStatus(deploymentID string, generation int64) (*DeploymentStatus, error) {
 	var resp struct {
 		Error bool             `json:"error"`
 		Data  DeploymentStatus `json:"data"`
 	}
-	if err := makeRequest("GET", fmt.Sprintf("/deployments/status/%s", deploymentID), nil, &resp); err != nil {
+	path := fmt.Sprintf("/deployments/status/%s", deploymentID)
+	if generation > 0 {
+		path += "?generation=" + strconv.FormatInt(generation, 10)
+	}
+	if err := makeRequest("GET", path, nil, &resp); err != nil {
 		return nil, err
 	}
 	return &resp.Data, nil
@@ -661,6 +669,9 @@ func WaitForDeploymentWithOptions(deploymentID string, timeout time.Duration, op
 		pollInterval = 5 * time.Second
 	}
 	deadline := time.Now().Add(timeout)
+	const terminalFailureThreshold = 3
+	terminalFailureCode := ""
+	terminalFailureCount := 0
 
 	for {
 		if time.Now().After(deadline) {
@@ -675,28 +686,50 @@ func WaitForDeploymentWithOptions(deploymentID string, timeout time.Duration, op
 			status = &DeploymentStatus{}
 		}
 
-		if options.Generation > 0 && (status.Readiness == nil || status.Readiness.Reconciliation.ObservedGeneration < options.Generation) {
-			utils.PrintInfo(
-				"Deployment generation: observed %d, waiting for %d",
-				statusObservedGeneration(status),
-				options.Generation,
-			)
-			time.Sleep(pollInterval)
-			continue
+		if options.Generation > 0 {
+			generationStatus, generationErr := getDeploymentStatus(deploymentID, options.Generation)
+			if generationErr != nil {
+				return nil, generationErr
+			}
+			if strings.EqualFold(generationStatus.Status, "failed") {
+				return status, newReadinessStatusError("READINESS_FAILED", "deployment generation reconciliation is failing")
+			}
+			if !strings.EqualFold(generationStatus.Status, "running") {
+				utils.PrintInfo("Deployment generation: waiting for %d", options.Generation)
+				time.Sleep(pollInterval)
+				continue
+			}
 		}
 
 		evaluation := status.readinessEvaluation(mode)
 		if evaluation.Ready {
+			status.Progress = 100
 			return status, nil
 		}
 		if evaluation.TerminalError != nil {
 			statusErr, isReadinessStatus := evaluation.TerminalError.(*HTTPStatusError)
 			if mode == DeploymentWaitModeApplication && options.VerifyApplication != nil && isReadinessStatus && statusErr.Code == "READINESS_UNVERIFIED" && options.VerifyApplication() {
+				status.Progress = 100
 				return status, nil
 			}
-			return status, evaluation.TerminalError
+			if !isReadinessStatus || statusErr.Code == "READINESS_UNVERIFIED" {
+				return status, evaluation.TerminalError
+			}
+			if statusErr.Code == terminalFailureCode {
+				terminalFailureCount++
+			} else {
+				terminalFailureCode = statusErr.Code
+				terminalFailureCount = 1
+			}
+			if terminalFailureCount >= terminalFailureThreshold {
+				return status, evaluation.TerminalError
+			}
+		} else {
+			terminalFailureCode = ""
+			terminalFailureCount = 0
 		}
 		if mode == DeploymentWaitModeApplication && options.VerifyApplication != nil && options.VerifyApplication() {
+			status.Progress = 100
 			return status, nil
 		}
 
@@ -714,18 +747,17 @@ func WaitForDeploymentWithOptions(deploymentID string, timeout time.Duration, op
 	}
 }
 
-func statusObservedGeneration(status *DeploymentStatus) int64 {
-	if status == nil || status.Readiness == nil {
-		return 0
-	}
-	return status.Readiness.Reconciliation.ObservedGeneration
-}
-
 // makeRequest is a helper function to make HTTP requests
 func makeRequest(method, path string, body interface{}, response interface{}) error {
 	config := config.GetConfig()
 	url := fmt.Sprintf("%s%s", config.ApiURL, path)
 	return makeRequestURL(method, url, body, response)
+}
+
+func makeRequestWithRetry(method, path string, body interface{}, response interface{}) error {
+	config := config.GetConfig()
+	url := fmt.Sprintf("%s%s", config.ApiURL, path)
+	return makeRequestURLWithHeadersRetry(method, url, body, response, nil)
 }
 
 func makeRequestWithStatus(method, path string, body interface{}, response interface{}) (int, error) {

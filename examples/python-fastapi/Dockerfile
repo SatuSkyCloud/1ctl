@@ -7,7 +7,7 @@ RUN pip install --no-cache-dir -r requirements.txt \
     && groupadd --system app \
     && useradd --system --gid app --home-dir /app --no-create-home app
 
-COPY app ./app
+COPY --chown=app:app app ./app
 
 EXPOSE 8000
 USER app

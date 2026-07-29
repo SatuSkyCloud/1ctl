@@ -888,7 +888,10 @@ func handleDeploymentStatus(ctx context.Context, in StatusInput) error {
 		if mode == api.DeploymentWaitModeWorkload {
 			utils.PrintWarning("--wait-mode workload bypasses application verification; success only means the reconciled workload is available.")
 		}
-		status, err = api.WaitForDeploymentWithOptions(deploymentID, 5*time.Minute, api.DeploymentWaitOptions{Mode: mode})
+		status, err = api.WaitForDeploymentWithOptions(deploymentID, 5*time.Minute, api.DeploymentWaitOptions{
+			Mode:       mode,
+			Generation: deployment.DesiredGeneration,
+		})
 		if err != nil {
 			return err
 		}
