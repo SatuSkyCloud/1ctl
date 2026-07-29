@@ -8,7 +8,6 @@ import (
 	"os"
 	"path/filepath"
 	"reflect"
-	"strings"
 	"testing"
 
 	"1ctl/internal/api"
@@ -39,7 +38,7 @@ func TestSecretMetadataKeyCount(t *testing.T) {
 	}
 }
 
-func TestHandleCreateSecretRestartsDeployment(t *testing.T) {
+func TestHandleCreateSecretLeavesOrderedRolloutToBackend(t *testing.T) {
 	deploymentID := uuid.NewString()
 	var upsertCalls, restartCalls int
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -65,48 +64,8 @@ func TestHandleCreateSecretRestartsDeployment(t *testing.T) {
 	if err != nil {
 		t.Fatalf("handleCreateSecret() error = %v", err)
 	}
-	if upsertCalls != 1 || restartCalls != 1 {
-		t.Fatalf("calls: upsert=%d restart=%d, want 1 each", upsertCalls, restartCalls)
-	}
-}
-
-func TestHandleCreateSecretReturnsErrorWhenRestartFails(t *testing.T) {
-	deploymentID := uuid.NewString()
-	var upsertCalls, restartCalls int
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		switch r.URL.Path {
-		case "/v1/cli/secrets/upsert":
-			upsertCalls++
-			_, _ = io.WriteString(w, `{"error":false,"data":{"app_label":"demo"}}`)
-		case "/v1/deployments/" + deploymentID + "/restart":
-			restartCalls++
-			http.Error(w, `{"message":"restart unavailable"}`, http.StatusBadRequest)
-		default:
-			http.NotFound(w, r)
-		}
-	}))
-	defer server.Close()
-	setupSecretCommandTest(t, server.URL)
-
-	err := handleCreateSecret(context.Background(), secretCreateInput{
-		DeploymentID: deploymentID,
-		Name:         "demo",
-		KV:           []string{"TOKEN=value"},
-	})
-	if err == nil {
-		t.Fatal("handleCreateSecret() error = nil, want restart failure")
-	}
-	for _, want := range []string{
-		"secret demo was saved, but deployment restart failed",
-		"restart unavailable",
-		"Run: 1ctl app restart demo",
-	} {
-		if !strings.Contains(err.Error(), want) {
-			t.Errorf("error %q does not contain %q", err, want)
-		}
-	}
-	if upsertCalls != 1 || restartCalls != 1 {
-		t.Fatalf("calls: upsert=%d restart=%d, want 1 each", upsertCalls, restartCalls)
+	if upsertCalls != 1 || restartCalls != 0 {
+		t.Fatalf("calls: upsert=%d restart=%d, want upsert=1 restart=0", upsertCalls, restartCalls)
 	}
 }
 
