@@ -1,0 +1,19 @@
+[app]
+  name        = "guide-env-nginx"
+  port        = 8080
+  cpu_request = "10m"
+  cpu_limit   = "250m"
+  memory      = "64Mi"
+  replicas    = 1
+
+[build]
+  image = "nginxinc/nginx-unprivileged:1.27.5-alpine"
+
+[checks]
+  health_path = "/"
+
+[secrets]
+  required = ["GUIDE_ENV_TOKEN"]
+
+[env]
+  APP_ENV = "guide"

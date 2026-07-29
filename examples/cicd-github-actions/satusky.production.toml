@@ -1,12 +1,9 @@
-# Copy-paste backend deployment used by the Deploy a Backend API guide.
-
 [app]
-name = "backend-api-guide"
+name = "cicd-backend-api"
 port = 8080
-cpu_request = "100m"
+cpu_request = "250m"
 cpu_limit = "500m"
 memory = "256Mi"
-replicas = 1
 
 [build]
 dockerfile = "Dockerfile"
@@ -15,12 +12,20 @@ dockerfile = "Dockerfile"
 health_path = "/health"
 
 [checks.readiness]
-initial_delay_seconds = 1
 timeout_seconds = 2
 period_seconds = 5
 failure_threshold = 3
 
 [checks.readiness.http_get]
+path = "/health"
+port = 8080
+
+[checks.liveness]
+timeout_seconds = 2
+period_seconds = 10
+failure_threshold = 3
+
+[checks.liveness.http_get]
 path = "/health"
 port = 8080
 
