@@ -13,6 +13,8 @@ import (
 	"regexp"
 	"strings"
 	"time"
+
+	"github.com/google/uuid"
 )
 
 type deploymentProgress struct {
@@ -179,8 +181,6 @@ func Deploy(opts DeploymentOptions, requestID string) (*api.CreateDeploymentResp
 // no setting is silently omitted during a partial cutover.
 func atomicIntentFallbackReason(opts DeploymentOptions) string {
 	switch {
-	case opts.Domain != "":
-		return "custom domain routing"
 	case len(opts.Hostnames) > 0:
 		return "explicit machine placement"
 	case opts.MulticlusterEnabled:
@@ -201,20 +201,91 @@ func reportLegacyFallback(reason string) {
 }
 
 func deployAtomicIntent(opts DeploymentOptions, image, projectName, userID, requestID string) (*api.CreateDeploymentResponse, error) {
+	return deployAtomicIntentWithClient(opts, image, projectName, userID, requestID, context.GetCurrentOrgID(), atomicDeployClient{
+		createIntent: api.CreateDeploymentIntent,
+		getIngress:   api.GetIngressByDeploymentID,
+		attachDomain: api.AttachDomain,
+		sleep:        time.Sleep,
+	})
+}
+
+type atomicDeployClient struct {
+	createIntent func(api.DeploymentIntent, string) (*api.DeploymentIntentAccepted, error)
+	getIngress   func(string) (*api.Ingress, error)
+	attachDomain func(string, api.AttachDomainRequest) (*api.IngressAlias, error)
+	sleep        func(time.Duration)
+}
+
+func deployAtomicIntentWithClient(opts DeploymentOptions, image, projectName, userID, requestID, currentOrgID string, client atomicDeployClient) (*api.CreateDeploymentResponse, error) {
 	intent, err := buildAtomicDeploymentIntent(opts, image, projectName, userID)
 	if err != nil {
 		return nil, err
 	}
+	var orgID uuid.UUID
+	if opts.Domain != "" {
+		orgID, err = api.ParseUUID(strings.TrimSpace(currentOrgID))
+		if err != nil {
+			return nil, fmt.Errorf("cannot attach custom domain %q without a valid active organization ID: %w", opts.Domain, err)
+		}
+	}
 	utils.PrintInfo("Deployment path: atomic intent")
-	accepted, err := api.CreateDeploymentIntent(intent, requestID)
+	accepted, err := client.createIntent(intent, requestID)
 	if err != nil {
 		return nil, err
 	}
-	return &api.CreateDeploymentResponse{
+	response := &api.CreateDeploymentResponse{
 		DeploymentID: api.ToUUID(accepted.DeploymentID),
 		AppLabel:     accepted.AppLabel,
 		Intent:       accepted,
-	}, nil
+	}
+	if opts.Domain == "" {
+		return response, nil
+	}
+
+	ingress, err := waitForAtomicIngress(accepted.DeploymentID, client.getIngress, client.sleep)
+	if err != nil {
+		return nil, fmt.Errorf("deployment intent was accepted, but custom domain %q could not be attached: %w", opts.Domain, err)
+	}
+	alias, err := client.attachDomain(ingress.IngressID.String(), api.AttachDomainRequest{
+		OrgID:      orgID,
+		DomainName: opts.Domain,
+	})
+	if err != nil {
+		return nil, fmt.Errorf("deployment intent was accepted, but attaching custom domain %q failed: %w", opts.Domain, err)
+	}
+	response.IngressID = ingress.IngressID
+	response.Domain = alias.DomainName
+	return response, nil
+}
+
+func waitForAtomicIngress(deploymentID string, lookup func(string) (*api.Ingress, error), sleep func(time.Duration)) (*api.Ingress, error) {
+	const (
+		attempts = 60
+		interval = time.Second
+	)
+	var lastErr error
+	for attempt := 0; attempt < attempts; attempt++ {
+		ingress, err := lookup(deploymentID)
+		if err == nil && ingress != nil && ingress.IngressID != uuid.Nil {
+			return ingress, nil
+		}
+		if err != nil {
+			var statusErr *api.HTTPStatusError
+			notFound := (errors.As(err, &statusErr) && statusErr.StatusCode == 404) ||
+				strings.Contains(strings.ToLower(err.Error()), "not found")
+			if !notFound {
+				return nil, err
+			}
+			lastErr = err
+		}
+		if attempt+1 < attempts {
+			sleep(interval)
+		}
+	}
+	if lastErr != nil {
+		return nil, fmt.Errorf("timed out waiting for the default ingress: %w", lastErr)
+	}
+	return nil, errors.New("timed out waiting for the default ingress")
 }
 
 func buildAtomicDeploymentIntent(opts DeploymentOptions, image, projectName, userID string) (api.DeploymentIntent, error) {
