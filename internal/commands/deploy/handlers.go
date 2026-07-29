@@ -53,7 +53,7 @@ func handleDeploy(ctx context.Context, in DeployInput) error {
 		if _, ok := err.(*utils.ResourceExhaustedCLIError); ok {
 			return err
 		}
-		return utils.NewError(fmt.Sprintf("deployment failed: %s", err.Error()), nil)
+		return fmt.Errorf("deployment failed: %w", err)
 	}
 	if resp.Intent != nil {
 		return reportAtomicIntent(resp.Intent, merged.Wait, merged.WaitMode, merged.HealthPath, merged.StrictSmoke)

@@ -1,7 +1,9 @@
 package deploy
 
 import (
+	"errors"
 	"testing"
+	"time"
 
 	"1ctl/internal/api"
 	"1ctl/internal/context"
@@ -165,7 +167,7 @@ func TestAtomicIntentFallbackIsExplicit(t *testing.T) {
 		opts DeploymentOptions
 		want string
 	}{
-		{opts: DeploymentOptions{Domain: "api.example.com"}, want: "custom domain routing"},
+		{opts: DeploymentOptions{Domain: "api.example.com"}, want: ""},
 		{opts: DeploymentOptions{Hostnames: []string{"machine-a"}}, want: "explicit machine placement"},
 		{opts: DeploymentOptions{MulticlusterEnabled: true}, want: "multi-cluster deployment"},
 		{opts: DeploymentOptions{Dependencies: []api.Dependency{{Name: "redis"}}}, want: "dependent workload creation"},
@@ -175,6 +177,98 @@ func TestAtomicIntentFallbackIsExplicit(t *testing.T) {
 		if got := atomicIntentFallbackReason(tt.opts); got != tt.want {
 			t.Errorf("atomicIntentFallbackReason(%+v) = %q, want %q", tt.opts, got, tt.want)
 		}
+	}
+}
+
+func TestDeployAtomicIntentAttachesCustomDomainAfterAcceptance(t *testing.T) {
+	orgID := uuid.New()
+	deploymentID := uuid.New()
+	ingressID := uuid.New()
+	var events []string
+	lookupAttempts := 0
+	client := atomicDeployClient{
+		createIntent: func(intent api.DeploymentIntent, requestID string) (*api.DeploymentIntentAccepted, error) {
+			events = append(events, "intent")
+			if intent.PublicRoute == nil || intent.PublicRoute.Kind != "default_dns" {
+				t.Fatalf("public route = %+v, want default_dns", intent.PublicRoute)
+			}
+			return &api.DeploymentIntentAccepted{
+				DeploymentID: deploymentID.String(),
+				AppLabel:     "api",
+			}, nil
+		},
+		getIngress: func(gotDeploymentID string) (*api.Ingress, error) {
+			events = append(events, "lookup")
+			lookupAttempts++
+			if gotDeploymentID != deploymentID.String() {
+				t.Fatalf("deployment ID = %q, want %q", gotDeploymentID, deploymentID)
+			}
+			if lookupAttempts == 1 {
+				return nil, &api.HTTPStatusError{StatusCode: 404, Message: "ingress not found"}
+			}
+			return &api.Ingress{IngressID: ingressID, DeploymentID: deploymentID}, nil
+		},
+		attachDomain: func(gotIngressID string, req api.AttachDomainRequest) (*api.IngressAlias, error) {
+			events = append(events, "attach")
+			if gotIngressID != ingressID.String() {
+				t.Fatalf("ingress ID = %q, want %q", gotIngressID, ingressID)
+			}
+			if req.OrgID != orgID || req.DomainName != "api.example.com" || req.WithWWWRedirect {
+				t.Fatalf("attach request = %+v", req)
+			}
+			return &api.IngressAlias{IngressID: ingressID, DomainName: req.DomainName}, nil
+		},
+		sleep: func(time.Duration) {},
+	}
+
+	response, err := deployAtomicIntentWithClient(DeploymentOptions{
+		Domain: "api.example.com",
+		Port:   8080,
+	}, "registry.example/api:v1", "api", uuid.NewString(), "request-1", orgID.String(), client)
+	if err != nil {
+		t.Fatalf("deployAtomicIntentWithClient: %v", err)
+	}
+	if response.Intent == nil || response.DeploymentID != deploymentID || response.IngressID != ingressID || response.Domain != "api.example.com" {
+		t.Fatalf("response = %+v", response)
+	}
+	wantEvents := []string{"intent", "lookup", "lookup", "attach"}
+	if len(events) != len(wantEvents) {
+		t.Fatalf("events = %v, want %v", events, wantEvents)
+	}
+	for i := range wantEvents {
+		if events[i] != wantEvents[i] {
+			t.Fatalf("events = %v, want %v", events, wantEvents)
+		}
+	}
+}
+
+func TestDeployAtomicIntentPreservesAttachError(t *testing.T) {
+	attachErr := &api.HTTPStatusError{StatusCode: 409, Message: "domain belongs to another ingress"}
+	deploymentID := uuid.New()
+	ingressID := uuid.New()
+	client := atomicDeployClient{
+		createIntent: func(api.DeploymentIntent, string) (*api.DeploymentIntentAccepted, error) {
+			return &api.DeploymentIntentAccepted{DeploymentID: deploymentID.String(), AppLabel: "api"}, nil
+		},
+		getIngress: func(string) (*api.Ingress, error) {
+			return &api.Ingress{IngressID: ingressID, DeploymentID: deploymentID}, nil
+		},
+		attachDomain: func(string, api.AttachDomainRequest) (*api.IngressAlias, error) {
+			return nil, attachErr
+		},
+		sleep: func(time.Duration) {},
+	}
+
+	_, err := deployAtomicIntentWithClient(DeploymentOptions{
+		Domain: "api.example.com",
+		Port:   8080,
+	}, "registry.example/api:v1", "api", uuid.NewString(), "request-1", uuid.NewString(), client)
+	if err == nil {
+		t.Fatal("deployAtomicIntentWithClient succeeded, want attach error")
+	}
+	var gotStatusErr *api.HTTPStatusError
+	if !errors.As(err, &gotStatusErr) || gotStatusErr != attachErr {
+		t.Fatalf("error = %v, want preserved attach error", err)
 	}
 }
 
