@@ -76,11 +76,17 @@ func handleCreateSecret(ctx context.Context, in secretCreateInput) error {
 
 	utils.PrintInfo("Restarting deployment to activate secrets...")
 	if err := api.RestartDeployment(deploymentIDStr, uuid.NewString()); err != nil {
-		utils.PrintWarning("Secret created, but restart failed: %s", err.Error())
-		utils.PrintInfo("Run: 1ctl deploy restart --app %s", displayName)
-	} else {
-		utils.PrintSuccess("Deployment restarting — secrets will be available shortly")
+		return utils.NewError(
+			fmt.Sprintf(
+				"secret %s was saved, but deployment restart failed: %s\nRun: 1ctl app restart %s",
+				displayName,
+				err.Error(),
+				displayName,
+			),
+			nil,
+		)
 	}
+	utils.PrintSuccess("Deployment restarting — secrets will be available shortly")
 	return nil
 }
 

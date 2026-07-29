@@ -1,10 +1,19 @@
 package secret
 
 import (
+	"context"
+	"io"
+	"net/http"
+	"net/http/httptest"
+	"os"
+	"path/filepath"
 	"reflect"
+	"strings"
 	"testing"
 
 	"1ctl/internal/api"
+	satuskyctx "1ctl/internal/context"
+	"github.com/google/uuid"
 	"github.com/urfave/cli/v3"
 )
 
@@ -28,6 +37,101 @@ func TestSecretMetadataKeyCount(t *testing.T) {
 	if got := secretMetadataKeyCount(api.Secret{Keys: []string{"A"}}); got != 1 {
 		t.Fatalf("expected fallback count 1, got %d", got)
 	}
+}
+
+func TestHandleCreateSecretRestartsDeployment(t *testing.T) {
+	deploymentID := uuid.NewString()
+	var upsertCalls, restartCalls int
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case "/v1/cli/secrets/upsert":
+			upsertCalls++
+			_, _ = io.WriteString(w, `{"error":false,"data":{"app_label":"demo"}}`)
+		case "/v1/deployments/" + deploymentID + "/restart":
+			restartCalls++
+			w.WriteHeader(http.StatusNoContent)
+		default:
+			http.NotFound(w, r)
+		}
+	}))
+	defer server.Close()
+	setupSecretCommandTest(t, server.URL)
+
+	err := handleCreateSecret(context.Background(), secretCreateInput{
+		DeploymentID: deploymentID,
+		Name:         "demo",
+		KV:           []string{"TOKEN=value"},
+	})
+	if err != nil {
+		t.Fatalf("handleCreateSecret() error = %v", err)
+	}
+	if upsertCalls != 1 || restartCalls != 1 {
+		t.Fatalf("calls: upsert=%d restart=%d, want 1 each", upsertCalls, restartCalls)
+	}
+}
+
+func TestHandleCreateSecretReturnsErrorWhenRestartFails(t *testing.T) {
+	deploymentID := uuid.NewString()
+	var upsertCalls, restartCalls int
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case "/v1/cli/secrets/upsert":
+			upsertCalls++
+			_, _ = io.WriteString(w, `{"error":false,"data":{"app_label":"demo"}}`)
+		case "/v1/deployments/" + deploymentID + "/restart":
+			restartCalls++
+			http.Error(w, `{"message":"restart unavailable"}`, http.StatusBadRequest)
+		default:
+			http.NotFound(w, r)
+		}
+	}))
+	defer server.Close()
+	setupSecretCommandTest(t, server.URL)
+
+	err := handleCreateSecret(context.Background(), secretCreateInput{
+		DeploymentID: deploymentID,
+		Name:         "demo",
+		KV:           []string{"TOKEN=value"},
+	})
+	if err == nil {
+		t.Fatal("handleCreateSecret() error = nil, want restart failure")
+	}
+	for _, want := range []string{
+		"secret demo was saved, but deployment restart failed",
+		"restart unavailable",
+		"Run: 1ctl app restart demo",
+	} {
+		if !strings.Contains(err.Error(), want) {
+			t.Errorf("error %q does not contain %q", err, want)
+		}
+	}
+	if upsertCalls != 1 || restartCalls != 1 {
+		t.Fatalf("calls: upsert=%d restart=%d, want 1 each", upsertCalls, restartCalls)
+	}
+}
+
+func setupSecretCommandTest(t *testing.T, serverURL string) {
+	t.Helper()
+	configDir := filepath.Join(t.TempDir(), ".satusky")
+	if err := os.MkdirAll(filepath.Join(configDir, "profiles"), 0750); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(configDir, "profiles", "test.json"), []byte(`{}`), 0600); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(configDir, "context.json"), []byte(`{"active_profile":"test"}`), 0600); err != nil {
+		t.Fatal(err)
+	}
+	originalStore := satuskyctx.Default()
+	satuskyctx.SetDefault(satuskyctx.NewTestStore(configDir))
+	t.Cleanup(func() { satuskyctx.SetDefault(originalStore) })
+	if err := satuskyctx.SetToken("test-token"); err != nil {
+		t.Fatal(err)
+	}
+	if err := satuskyctx.SetCurrentNamespace("test"); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("SATUSKY_API_URL", serverURL+"/v1/cli")
 }
 
 func walkCommands(cmd *cli.Command, fn func(*cli.Command)) {
