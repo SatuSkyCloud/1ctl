@@ -1,5 +1,5 @@
 repository=https://github.com/SatuSkyCloud/satusky-core_backend
-commit=df0e850904a3163fca5400acb58f944df64eb134
+commit=0b969959b83f3d2f5c4ba6472f51f7a0a22c7eca
 source=architecture/client_endpoint_manifest.json
 
 Refresh this manifest and commit pin deliberately when the backend endpoint contract changes.
