@@ -2,6 +2,7 @@ package deploy
 
 import (
 	"errors"
+	"reflect"
 	"testing"
 	"time"
 
@@ -143,7 +144,9 @@ func TestBuildAtomicDeploymentIntentMapsRuntimeOptions(t *testing.T) {
 		HPAConfig: &api.HPAConfig{Enabled: true, MinReplicas: 2, MaxReplicas: 5},
 		VPAConfig: &api.VPAConfig{Enabled: true, UpdateMode: "Initial"},
 		PDBConfig: &PDBConfig{Enabled: true, Type: PDBTypeFixed},
-		WaitFor:   []api.WaitFor{{Host: "postgres", Port: 5432}}, Strategy: "recreate",
+		Strategy:  "recreate",
+		Hostnames: []string{"owned-machine-a"}, MulticlusterEnabled: true, MulticlusterMode: "active-passive",
+		BackupSchedule: "daily", BackupRetention: "168h", BackupPriorityCluster: 2,
 	}, "registry.example/api:v1", "api", uuid.NewString())
 	if err != nil {
 		t.Fatalf("buildAtomicDeploymentIntent: %v", err)
@@ -157,8 +160,11 @@ func TestBuildAtomicDeploymentIntentMapsRuntimeOptions(t *testing.T) {
 	if len(intended.Environment) != 1 || len(intended.Volumes) != 1 || intended.Config.ReadinessProbe == nil || len(intended.Config.RequiredSecrets) != 1 {
 		t.Fatalf("intent did not preserve declarations: %+v", intended)
 	}
-	if intended.Deployment.HPAConfig == nil || intended.Deployment.VPAConfig == nil || intended.Deployment.PDBConfig == nil || intended.Deployment.StrategyConfig == nil || len(intended.Deployment.WaitFor) != 1 {
+	if intended.Deployment.HPAConfig == nil || intended.Deployment.VPAConfig == nil || intended.Deployment.PDBConfig == nil || intended.Deployment.StrategyConfig == nil {
 		t.Fatalf("runtime options not mapped: %+v", intended.Deployment)
+	}
+	if !reflect.DeepEqual(intended.Deployment.Hostnames, []string{"owned-machine-a"}) || intended.Deployment.MulticlusterConfig == nil || intended.Deployment.MulticlusterConfig.BackupSchedule != "0 0 * * *" || !intended.Deployment.MulticlusterConfig.FailoverEnabled {
+		t.Fatalf("placement/multicluster options not mapped: %+v", intended.Deployment)
 	}
 }
 
@@ -168,9 +174,10 @@ func TestAtomicIntentFallbackIsExplicit(t *testing.T) {
 		want string
 	}{
 		{opts: DeploymentOptions{Domain: "api.example.com"}, want: ""},
-		{opts: DeploymentOptions{Hostnames: []string{"machine-a"}}, want: "explicit machine placement"},
-		{opts: DeploymentOptions{MulticlusterEnabled: true}, want: "multi-cluster deployment"},
+		{opts: DeploymentOptions{Hostnames: []string{"machine-a"}}, want: ""},
+		{opts: DeploymentOptions{MulticlusterEnabled: true}, want: ""},
 		{opts: DeploymentOptions{Dependencies: []api.Dependency{{Name: "redis"}}}, want: "dependent workload creation"},
+		{opts: DeploymentOptions{WaitFor: []api.WaitFor{{Host: "postgres", Port: 5432}}}, want: "dependency readiness declarations (--wait-for)"},
 		{opts: DeploymentOptions{}, want: ""},
 	}
 	for _, tt := range tests {

@@ -1251,6 +1251,9 @@ func handleScaleDeployment(ctx context.Context, in ScaleInput) error {
 	if replicas < 1 {
 		return utils.NewError("--replicas must be >= 1", nil)
 	}
+	if replicas > 4 {
+		return utils.NewError("--replicas must be <= 4", nil)
+	}
 
 	current, err := api.GetDeployment(deploymentID)
 	if err != nil {
@@ -1266,17 +1269,32 @@ func handleScaleDeployment(ctx context.Context, in ScaleInput) error {
 		utils.PrintInfo("Deployment %s already at %d replicas — no change.", deploymentID, replicas)
 		return nil
 	}
-	_, err = prepareScaleDeploymentIntent(*current, replicas)
+	accepted, err := submitScaleDeployment(deploymentID, replicas, current.DesiredGeneration, uuid.NewString(), api.ScaleDeployment)
 	if err != nil {
 		return utils.NewError(fmt.Sprintf("failed to scale deployment: %s", err.Error()), nil)
 	}
-	return utils.NewError("failed to scale deployment: backend did not produce a safe scale intent", nil)
+	utils.PrintSuccess("Scaled deployment %s to %d replicas (generation %d accepted)", deploymentID, replicas, accepted.DesiredGeneration)
+	return nil
 }
 
-func prepareScaleDeploymentIntent(api.Deployment, int32) (api.DeploymentIntent, error) {
-	return api.DeploymentIntent{}, errors.New(
-		"safe scaling requires backend support for a replica-only mutation; refusing to submit a partial deployment intent that could erase environment, probe, secret, or volume configuration",
-	)
+func submitScaleDeployment(
+	deploymentID string,
+	replicas int32,
+	currentGeneration int64,
+	requestID string,
+	scale func(string, int32, string) (*api.DeploymentScaleAccepted, error),
+) (*api.DeploymentScaleAccepted, error) {
+	accepted, err := scale(deploymentID, replicas, requestID)
+	if err != nil {
+		return nil, err
+	}
+	if accepted == nil || accepted.Data.DeploymentID != deploymentID || accepted.Data.Replicas != replicas {
+		return nil, errors.New("backend returned a mismatched scale acceptance")
+	}
+	if accepted.DesiredGeneration <= currentGeneration {
+		return nil, errors.New("backend did not accept a new deployment generation")
+	}
+	return accepted, nil
 }
 
 // --- Display helpers ----------------------------------------------------

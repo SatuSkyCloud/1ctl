@@ -37,7 +37,6 @@ func (dp *deploymentProgress) complete() {
 // Deploy handles the sequential deployment process
 func Deploy(opts DeploymentOptions, requestID string) (*api.CreateDeploymentResponse, error) {
 	progress := &deploymentProgress{total: 5}
-	cmgr := cleanup.NewCleanupManager()
 
 	userID := context.GetUserID()
 	if userID == "" {
@@ -94,99 +93,21 @@ func Deploy(opts DeploymentOptions, requestID string) (*api.CreateDeploymentResp
 		progress.complete()
 	}
 
-	if fallbackReason := atomicIntentFallbackReason(opts); fallbackReason == "" {
-		return deployAtomicIntent(opts, image, projectName, userID, requestID)
-	} else if opts.AtomicOnlyConfig {
-		return nil, utils.NewError(fmt.Sprintf("canonical deployment declarations require the atomic intent path, but this deploy requires legacy fallback: %s", fallbackReason), nil)
-	} else {
-		reportLegacyFallback(fallbackReason)
+	if fallbackReason := atomicIntentFallbackReason(opts); fallbackReason != "" {
+		return nil, utils.NewError(fmt.Sprintf("deployment cannot be submitted safely: %s is not supported by the atomic deployment API", fallbackReason), nil)
 	}
-
-	// Step 2: Create deployment
-	progress.step = 2
-	progress.message = "Creating/updating deployment"
-	progress.resource = projectName
-	progress.done = false
-	progress.print()
-
-	deploymentID, err := mainDeploy(opts, image, projectName, userID, opts.Organization, opts.Hostnames, requestID)
-	if err != nil {
-		return nil, err
-	}
-	cmgr.AddResource(cleanup.ResourceDeployment, deploymentID, projectName)
-	progress.complete()
-
-	// Step 3: Configure services
-	progress.step = 3
-	progress.message = "Configuring services"
-	progress.resource = projectName
-	progress.done = false
-	progress.print()
-
-	serviceID, err := upsertService(deploymentID, opts, projectName, opts.Organization)
-	if err != nil {
-		deployCleanup(cmgr)
-		return nil, utils.NewError(fmt.Sprintf("failed to create service: %s", err.Error()), nil)
-	}
-	cmgr.AddResource(cleanup.ResourceService, serviceID, projectName)
-	progress.complete()
-
-	// Step 4: Handle environment and volumes
-	progress.step = 4
-	progress.message = "Setting up environment and storage"
-	progress.resource = projectName
-	progress.done = false
-	progress.print()
-
-	envID, volumeName, err := handleEnvironmentAndVolumes(opts, deploymentID, projectName, opts.Organization)
-	if err != nil {
-		deployCleanup(cmgr)
-		return nil, utils.NewError(fmt.Sprintf("failed to setup environment and volumes: %s", err.Error()), nil)
-	}
-	if envID != "" {
-		cmgr.AddResource(cleanup.ResourceEnv, envID, projectName)
-	}
-	if volumeName != "" {
-		cmgr.AddResource(cleanup.ResourceVolume, volumeName, projectName)
-	}
-	progress.complete()
-
-	// Step 5: Handle ingress and dependencies
-	progress.step = 5
-	progress.message = "Configuring ingress and dependencies"
-	progress.resource = projectName
-	progress.done = false
-	progress.print()
-
-	domainName, ingressID, err := handleIngressAndDependencies(opts, deploymentID, serviceID, userID, opts.Organization, projectName, opts.Hostnames, requestID)
-	if err != nil {
-		deployCleanup(cmgr)
-		return nil, utils.NewError(fmt.Sprintf("failed to configure ingress and dependencies: %s", err.Error()), nil)
-	}
-	if ingressID != "" {
-		cmgr.AddResource(cleanup.ResourceIngress, ingressID, projectName)
-	}
-	progress.complete()
-
-	return &api.CreateDeploymentResponse{
-		DeploymentID: api.ToUUID(deploymentID),
-		IngressID:    api.ToUUID(ingressID),
-		AppLabel:     projectName,
-		Domain:       domainName,
-	}, nil
+	return deployAtomicIntent(opts, image, projectName, userID, requestID)
 }
 
 // atomicIntentFallbackReason returns the first setting the durable intent
-// endpoint cannot faithfully express. The legacy workflow remains explicit so
-// no setting is silently omitted during a partial cutover.
+// endpoint cannot faithfully express. Unsupported settings fail closed so no
+// setting is silently omitted and the retired legacy endpoint is never called.
 func atomicIntentFallbackReason(opts DeploymentOptions) string {
 	switch {
-	case len(opts.Hostnames) > 0:
-		return "explicit machine placement"
-	case opts.MulticlusterEnabled:
-		return "multi-cluster deployment"
 	case len(opts.Dependencies) > 0:
 		return "dependent workload creation"
+	case len(opts.WaitFor) > 0:
+		return "dependency readiness declarations (--wait-for)"
 	default:
 		return ""
 	}
@@ -317,6 +238,7 @@ func buildAtomicDeploymentIntent(opts DeploymentOptions, image, projectName, use
 		UserID:         api.ToUUID(userID),
 		Type:           "production",
 		Environment:    "production",
+		Hostnames:      append([]string(nil), opts.Hostnames...),
 		CpuRequest:     cpuRequest,
 		CPULimit:       cpuLimit,
 		MemoryRequest:  opts.Memory,
@@ -334,6 +256,24 @@ func buildAtomicDeploymentIntent(opts DeploymentOptions, image, projectName, use
 		WaitFor:        opts.WaitFor,
 		StrategyConfig: buildStrategyConfig(opts),
 		TargetArch:     opts.TargetArch,
+	}
+	if opts.MulticlusterEnabled {
+		schedule := map[string]string{
+			"hourly": "0 * * * *",
+			"daily":  "0 0 * * *",
+			"weekly": "0 18 * * 6",
+		}[opts.BackupSchedule]
+		activePassive := opts.MulticlusterMode == "active-passive"
+		priority := opts.BackupPriorityCluster
+		if priority <= 0 {
+			priority = 1
+		}
+		deployment.MulticlusterConfig = &api.MulticlusterConfig{
+			Enabled: true, Mode: opts.MulticlusterMode,
+			BackupEnabled: activePassive || opts.BackupEnabled, BackupSchedule: schedule,
+			BackupRetention: opts.BackupRetention, BackupPriorityCluster: priority,
+			FailoverEnabled: activePassive, RestoreOnFailover: activePassive,
+		}
 	}
 	if opts.PDBConfig != nil && opts.PDBConfig.Enabled {
 		deployment.PDBConfig = &api.PDBConfig{Enabled: true, Type: string(opts.PDBConfig.Type), MinAvailable: opts.PDBConfig.MinAvailable, Percent: opts.PDBConfig.Percent}

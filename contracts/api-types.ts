@@ -190,6 +190,19 @@ export interface DeploymentIntent {
   service?: DeploymentIntentService;
   public_route?: DeploymentIntentPublicRoute;
 }
+export interface DeploymentScaleRequest {
+  replicas: number /* int32 */;
+}
+export interface DeploymentScaleResult {
+  deployment_id: string;
+  replicas: number /* int32 */;
+}
+export interface DeploymentScaleAccepted {
+  error: boolean;
+  message: string;
+  data: DeploymentScaleResult;
+  desired_generation: number /* int64 */;
+}
 export interface DeploymentDesiredStateConfig {
   startup_probe?: DeploymentProbe;
   readiness_probe?: DeploymentProbe;

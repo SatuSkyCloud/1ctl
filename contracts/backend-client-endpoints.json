@@ -5,6 +5,7 @@
     {"method": "GET", "path": "/marketplaces/all"},
     {"method": "GET", "path": "/marketplaces/id/{marketplaceId}"},
     {"method": "POST", "path": "/marketplaces/deploy/quote/{namespace}/{marketplaceId}"},
-    {"method": "POST", "path": "/marketplaces/deploy/create/{namespace}/{marketplaceId}"}
+    {"method": "POST", "path": "/marketplaces/deploy/create/{namespace}/{marketplaceId}"},
+    {"method": "POST", "path": "/cli/deployments/{deploymentId}/scale"}
   ]
 }

@@ -1,49 +1,56 @@
 package deploy
 
 import (
-	"reflect"
-	"strings"
+	"errors"
 	"testing"
 
 	"1ctl/internal/api"
 )
 
-func TestPrepareScaleDeploymentIntentFailsClosedWithoutLosingStoredState(t *testing.T) {
-	period := int32(10)
-	stored := api.DeploymentIntent{
-		Deployment: api.Deployment{
-			Namespace: "tenant-a", AppLabel: "api", Image: "registry.example/api:v7",
-			Port: 9090, Replicas: 2, CpuRequest: "300m", CPULimit: "2",
-			MemoryRequest: "512Mi", MemoryLimit: "1Gi",
-		},
-		Environment: []api.KeyValuePair{{Key: "LOG_LEVEL", Value: "debug"}},
-		Config: api.DeploymentDesiredStateConfig{
-			ReadinessProbe: &api.DeploymentProbe{
-				HTTPGet:       &api.DeploymentHTTPGetProbe{Path: "/ready", Port: 9090},
-				PeriodSeconds: &period,
-			},
-			RequiredSecrets: []api.DeploymentRequiredSecret{{Key: "DATABASE_URL"}},
-		},
-		Volumes: []api.DeploymentIntentVolume{{
-			VolumeName: "data", ClaimName: "api-data-pvc", StorageClass: "ceph-block",
-			StorageSize: "20Gi", MountPath: "/data",
-		}},
-		Service:     &api.DeploymentIntentService{Name: "api", Port: 9090},
-		PublicRoute: &api.DeploymentIntentPublicRoute{Kind: "default_dns"},
+func TestSubmitScaleDeploymentUsesReplicaOnlyMutation(t *testing.T) {
+	const requestID = "scale-request"
+	var gotDeploymentID, gotRequestID string
+	var gotReplicas int32
+	accepted, err := submitScaleDeployment("deployment-1", 3, 7, requestID,
+		func(deploymentID string, replicas int32, requestID string) (*api.DeploymentScaleAccepted, error) {
+			gotDeploymentID, gotReplicas, gotRequestID = deploymentID, replicas, requestID
+			return &api.DeploymentScaleAccepted{Data: api.DeploymentScaleResult{DeploymentID: deploymentID, Replicas: replicas}, DesiredGeneration: 8}, nil
+		})
+	if err != nil {
+		t.Fatalf("submitScaleDeployment: %v", err)
 	}
-	want := stored
+	if gotDeploymentID != "deployment-1" || gotReplicas != 3 || gotRequestID != requestID {
+		t.Fatalf("scale mutation = deployment %q replicas %d request %q", gotDeploymentID, gotReplicas, gotRequestID)
+	}
+	if accepted.DesiredGeneration != 8 {
+		t.Fatalf("desired generation = %d, want 8", accepted.DesiredGeneration)
+	}
+}
 
-	intent, err := prepareScaleDeploymentIntent(stored.Deployment, 5)
-	if err == nil {
-		t.Fatal("prepareScaleDeploymentIntent error = nil, want fail-closed error")
+func TestSubmitScaleDeploymentRejectsInvalidAcceptance(t *testing.T) {
+	tests := []struct {
+		name     string
+		accepted *api.DeploymentScaleAccepted
+	}{
+		{"nil", nil},
+		{"deployment mismatch", &api.DeploymentScaleAccepted{Data: api.DeploymentScaleResult{DeploymentID: "other", Replicas: 3}, DesiredGeneration: 8}},
+		{"replicas mismatch", &api.DeploymentScaleAccepted{Data: api.DeploymentScaleResult{DeploymentID: "deployment-1", Replicas: 2}, DesiredGeneration: 8}},
+		{"stale generation", &api.DeploymentScaleAccepted{Data: api.DeploymentScaleResult{DeploymentID: "deployment-1", Replicas: 3}, DesiredGeneration: 7}},
 	}
-	if !strings.Contains(err.Error(), "replica-only mutation") || !strings.Contains(err.Error(), "refusing to submit a partial deployment intent") {
-		t.Fatalf("prepareScaleDeploymentIntent error = %q", err)
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			_, err := submitScaleDeployment("deployment-1", 3, 7, "request-id",
+				func(string, int32, string) (*api.DeploymentScaleAccepted, error) { return tt.accepted, nil })
+			if err == nil {
+				t.Fatal("submitScaleDeployment error = nil")
+			}
+		})
 	}
-	if !reflect.DeepEqual(intent, api.DeploymentIntent{}) {
-		t.Fatalf("partial scale intent was produced: %+v", intent)
-	}
-	if !reflect.DeepEqual(stored, want) {
-		t.Fatalf("stored environment/config/volumes changed\n got: %+v\nwant: %+v", stored, want)
+
+	wantErr := errors.New("rejected")
+	_, err := submitScaleDeployment("deployment-1", 3, 7, "request-id",
+		func(string, int32, string) (*api.DeploymentScaleAccepted, error) { return nil, wantErr })
+	if !errors.Is(err, wantErr) {
+		t.Fatalf("submitScaleDeployment error = %v, want source error", err)
 	}
 }
