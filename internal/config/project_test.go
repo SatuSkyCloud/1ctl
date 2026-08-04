@@ -521,6 +521,15 @@ memroy = "256Mi"
 	}
 }
 
+func TestFindConfigRequiresExplicitPathToExist(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "missing.toml")
+
+	_, err := FindConfig(path)
+	if err == nil || !os.IsNotExist(err) {
+		t.Fatalf("FindConfig(%q) error = %v, want not-exist error", path, err)
+	}
+}
+
 func TestLoadConfigAcceptsDynamicEnvKeys(t *testing.T) {
 	_, path := writeToml(t, `
 [app]
@@ -742,6 +751,14 @@ func TestCheckedInExamplesLoad(t *testing.T) {
 	if err != nil {
 		t.Fatalf("glob examples: %v", err)
 	}
+	nestedPaths, err := filepath.Glob(filepath.Join("..", "..", "examples", "*", "*", "satusky*.toml"))
+	if err != nil {
+		t.Fatalf("glob nested examples: %v", err)
+	}
+	if len(nestedPaths) == 0 {
+		t.Fatal("no checked-in nested example configs found")
+	}
+	paths = append(paths, nestedPaths...)
 	if len(paths) == 0 {
 		t.Fatal("no checked-in example configs found")
 	}
