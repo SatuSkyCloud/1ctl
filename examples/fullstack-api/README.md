@@ -80,7 +80,9 @@ cd examples/fullstack-api
 # 3. Inject secrets
 1ctl secret create --config satusky.toml --wait \
   --kv DB_PASSWORD=your-db-password \
-  --kv API_KEY="$API_KEY"
+  --kv API_KEY="$API_KEY" \
+  --kv SMTP_PASSWORD=your-smtp-password \
+  --kv JWT_SECRET=your-random-256-bit-secret
 
 # 4. Upload a file (exercises the volume mount)
 curl -F "file=@README.md" https://<your-domain>/api/upload

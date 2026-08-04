@@ -48,6 +48,9 @@ the backend repository with `task dev.api` and `task dev.jobs`.
 The other marketplace and application directories are standalone examples.
 Their local README files describe any additional requirements.
 
+The `test` directory is a minimal configuration-parser fixture. It has no
+Dockerfile or image and is intentionally not deployable.
+
 ## Running an example
 
 Do not guess a generic deploy command. Open the matching guide and run its
