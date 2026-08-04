@@ -3,6 +3,7 @@ package deploy
 import (
 	"errors"
 	"reflect"
+	"strings"
 	"testing"
 	"time"
 
@@ -184,6 +185,36 @@ func TestAtomicIntentFallbackIsExplicit(t *testing.T) {
 		if got := atomicIntentFallbackReason(tt.opts); got != tt.want {
 			t.Errorf("atomicIntentFallbackReason(%+v) = %q, want %q", tt.opts, got, tt.want)
 		}
+	}
+}
+
+func TestDeployRejectsUnsupportedOptionsBeforeProjectDetectionOrBuild(t *testing.T) {
+	t.Chdir(t.TempDir())
+
+	tests := []struct {
+		name string
+		opts DeploymentOptions
+		want string
+	}{
+		{
+			name: "wait-for",
+			opts: DeploymentOptions{WaitFor: []api.WaitFor{{Host: "postgres", Port: 5432}}},
+			want: "dependency readiness declarations (--wait-for)",
+		},
+		{
+			name: "dependent workload",
+			opts: DeploymentOptions{Dependencies: []api.Dependency{{Name: "redis"}}},
+			want: "dependent workload creation",
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			tt.opts.DockerfilePath = "Dockerfile.does-not-exist"
+			_, err := Deploy(tt.opts, "request-id")
+			if err == nil || !strings.Contains(err.Error(), tt.want) {
+				t.Fatalf("Deploy() error = %v, want %q before project detection/build", err, tt.want)
+			}
+		})
 	}
 }
 

@@ -140,8 +140,8 @@ cd your-project
 # Deploy with recreate strategy (stops all pods before starting new ones)
 1ctl deploy --cpu-request 250m --cpu-limit 1 --memory 1Gi --strategy recreate
 
-# Wait for TCP dependencies to be ready before the app starts
-1ctl deploy --cpu-request 250m --cpu-limit 1 --memory 1Gi --wait-for postgres:5432 --wait-for redis:6379
+# Reserved: --wait-for currently fails before build because the atomic backend
+# cannot persist or reconcile dependency-readiness declarations safely.
 
 # Block until pods are Running (5min default timeout)
 1ctl deploy --cpu-request 250m --cpu-limit 1 --memory 1Gi --wait

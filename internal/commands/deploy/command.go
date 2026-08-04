@@ -319,7 +319,7 @@ func deployFlags(in *DeployInput) []cli.Flag {
 		optionalStringVal(flagMulticlusterMode, "Multi-cluster mode: 'active-active' or 'active-passive'", "active-passive", &in.MulticlusterMode),
 		// ── Reliability ──
 		optionalString(flagHealthPath, "HTTP path for post-deploy smoke test (default: tries /health then /)", &in.HealthPath),
-		optionalStringSlice(flagWaitFor, "TCP dependency to wait for (format: host:port). Repeatable.", &in.WaitFor),
+		optionalStringSlice(flagWaitFor, "Reserved TCP dependency declaration (host:port); currently rejected until atomic backend support is available", &in.WaitFor),
 		optionalBool(flagWait, "Wait for the accepted deployment to become healthy", &in.Wait),
 		optionalStringVal(flagWaitMode, "Readiness threshold: application (default) or workload (bypasses application verification)", "application", &in.WaitMode),
 		optionalStringVal(flagStrategy, "Rollout strategy: rolling, recreate", "rolling", &in.Strategy),

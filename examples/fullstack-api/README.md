@@ -2,8 +2,9 @@
 
 A production-grade Go REST API that exercises every feature of the SatuSky
 platform: persistent volumes, environment variables, secrets, horizontal
-autoscaling, pod disruption budgets, rolling update strategy, TCP wait-for
-dependencies, health checks, and multi-environment configs.
+autoscaling, pod disruption budgets, rolling update strategy, health checks,
+and multi-environment configs. The reserved TCP `wait_for` declaration is
+documented but intentionally not enabled because deployment currently rejects it.
 
 ## Architecture
 
@@ -53,7 +54,7 @@ degraded in-memory task list.
 | `[app]` | `name`, `port`, `cpu_request`, `cpu_limit`, `memory`, `replicas`, `domain`, `zone`, `organization` | App identity + compute resources |
 | `[build]` | `dockerfile`, `fast_build` | How the container image is built |
 | `[checks]` | `health_path` | Post-deploy smoke check path |
-| `[deploy]` | `strategy`, `rolling_max_surge`, `rolling_max_unavailable`, `machine_tag`, `wait_for` | Deployment strategy + scheduling |
+| `[deploy]` | `strategy`, `rolling_max_surge`, `rolling_max_unavailable`, `machine_tag`; reserved `wait_for` | Deployment strategy + scheduling; `wait_for` is currently rejected |
 | `[volume]` | `size`, `mount` | Persistent 1 Gi block storage at `/data/uploads` |
 | `[hpa]` | `enabled`, `min_replicas`, `max_replicas`, `cpu_target`, `memory_target` | Auto-scale 2–10 pods |
 | `[vpa]` | `enabled`, `mode`, `min_cpu`, `max_cpu`, `min_memory`, `max_memory` | Vertical autoscaling (disabled by default) |
@@ -67,7 +68,7 @@ degraded in-memory task list.
 export SATUSKY_API_URL=http://localhost:8080/v1/cli
 1ctl auth login --token <your-token>
 
-# 2. Deploy (cloud build + volume + env vars + wait)
+# 2. Deploy (cloud build + volume + env vars + deployment readiness wait)
 cd examples/fullstack-api
 1ctl deploy --config satusky.toml --wait \
   --env APP_ENV=production \
@@ -197,7 +198,7 @@ curl -X POST http://localhost:8080/api/tasks -d '{"title":"test"}'
 | `deploy.rolling_max_surge` | `--rolling-max-surge` | `rolling_max_surge` | `"25%"` |
 | `deploy.rolling_max_unavailable` | `--rolling-max-unavailable` | `rolling_max_unavailable` | `"25%"` |
 | `deploy.machine_tag` | — | `machine_tag` | — |
-| `deploy.wait_for` | — | `wait_for` | — |
+| `deploy.wait_for` | `--wait-for` | reserved | currently rejected before project detection/build |
 | `volume.size` | `--volume-size` | `volume.size` | — |
 | `volume.mount` | `--volume-mount` | `volume.mount_path` | — |
 | `hpa.*` | `--hpa`, `--hpa-min-replicas`, etc. | `hpa_config.*` | disabled |
@@ -208,7 +209,8 @@ curl -X POST http://localhost:8080/api/tasks -d '{"title":"test"}'
 > **v3 migration note**: `dockerfile`, `health_path`, `strategy`, `rolling_max_surge`,
 > `rolling_max_unavailable`, `machine_tag`, and `wait_for` were moved from `[app]`
 > to `[build]`, `[checks]`, and `[deploy]` sections. Old `[app]` placement still
-> works for backward compatibility — values are auto-migrated to the new sections.
+> parses for backward compatibility — values are auto-migrated to the new sections.
+> A non-empty `wait_for` declaration is reserved and currently rejected at deploy time.
 
 ---
 

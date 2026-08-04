@@ -97,7 +97,8 @@
   # Only schedule on machines with this tag.
   # machine_tag = "compute"
 
-  # TCP dependencies that must be reachable before the app starts.
+  # Reserved TCP dependency declarations. A non-empty value is currently
+  # rejected before project detection/build until atomic backend support exists.
   # wait_for = ["db:5432", "redis:6379"]
 
 

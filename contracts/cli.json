@@ -663,7 +663,7 @@
           "takesValue": true,
           "required": false,
           "multiple": true,
-          "usage": "TCP dependency to wait for (format: host:port). Repeatable.",
+          "usage": "Reserved TCP dependency declaration (host:port); currently rejected until atomic backend support is available",
           "envVars": []
         },
         {

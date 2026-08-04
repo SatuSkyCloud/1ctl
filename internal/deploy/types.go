@@ -65,9 +65,9 @@ type DeploymentOptions struct {
 	// FastBuild requests the backend's accelerated build backend. It is ignored
 	// when PrebuiltImage is set and is intentionally separate for future billing.
 	FastBuild bool
-	// WaitFor declares TCP dependencies that must be reachable before the app starts.
-	// The platform injects init containers so the main container never crashes while
-	// dependencies are unavailable. Format: [{Host: "postgres", Port: 5432}]
+	// WaitFor reserves the future TCP dependency-readiness declaration shape.
+	// Deploy currently rejects it because the atomic backend cannot persist or
+	// reconcile the declaration safely. Format: [{Host: "postgres", Port: 5432}]
 	WaitFor []api.WaitFor
 	// Deployment strategy options
 	Strategy              string // "rolling" (default), "recreate"

@@ -37,6 +37,10 @@ func (dp *deploymentProgress) complete() {
 func Deploy(opts DeploymentOptions, requestID string) (*api.CreateDeploymentResponse, error) {
 	progress := &deploymentProgress{total: 5}
 
+	if fallbackReason := atomicIntentFallbackReason(opts); fallbackReason != "" {
+		return nil, utils.NewError(fmt.Sprintf("deployment cannot be submitted safely: %s is not supported by the atomic deployment API", fallbackReason), nil)
+	}
+
 	userID := context.GetUserID()
 	if userID == "" {
 		return nil, utils.NewError("Failed to get user ID", nil)
@@ -92,9 +96,6 @@ func Deploy(opts DeploymentOptions, requestID string) (*api.CreateDeploymentResp
 		progress.complete()
 	}
 
-	if fallbackReason := atomicIntentFallbackReason(opts); fallbackReason != "" {
-		return nil, utils.NewError(fmt.Sprintf("deployment cannot be submitted safely: %s is not supported by the atomic deployment API", fallbackReason), nil)
-	}
 	return deployAtomicIntent(opts, image, projectName, userID, requestID)
 }
 
