@@ -841,6 +841,10 @@ func makeRequestURLWithHeadersRetry(method, url string, body interface{}, respon
 }
 
 func makeRequestURLWithHeadersOnce(method, url string, body interface{}, response interface{}, headers http.Header) (int, error) {
+	return makeRequestURLWithHeadersOnceUsingClient(httpClient, method, url, body, response, headers, false)
+}
+
+func makeRequestURLWithHeadersOnceUsingClient(client *http.Client, method, url string, body interface{}, response interface{}, headers http.Header, disableReplay bool) (int, error) {
 	// Enforce HTTPS for non-localhost API URLs to prevent token leakage over plaintext
 	if !utils.IsLocalhostURL(url) && !strings.HasPrefix(url, "https://") {
 		return 0, utils.NewError(fmt.Sprintf("refusing to send auth token over insecure connection (%s). Use HTTPS or http://localhost for local development", url), nil)
@@ -859,6 +863,11 @@ func makeRequestURLWithHeadersOnce(method, url string, body interface{}, respons
 	if err != nil {
 		return 0, utils.NewError(fmt.Sprintf("failed to create request: %s", err.Error()), nil)
 	}
+	if disableReplay {
+		// Marketplace create has no idempotency key. Prevent net/http from
+		// replaying its body after a connection failure or redirect.
+		req.GetBody = nil
+	}
 
 	token := context.GetToken()
 	if token == "" {
@@ -876,7 +885,7 @@ func makeRequestURLWithHeadersOnce(method, url string, body interface{}, respons
 		}
 	}
 
-	resp, err := httpClient.Do(req)
+	resp, err := client.Do(req)
 	if err != nil {
 		return 0, utils.NewError(fmt.Sprintf("failed to make request: %s", err.Error()), nil)
 	}
@@ -887,7 +896,7 @@ func makeRequestURLWithHeadersOnce(method, url string, body interface{}, respons
 		return resp.StatusCode, utils.NewError(fmt.Sprintf("failed to read response body: %s", err.Error()), nil)
 	}
 
-	if resp.StatusCode >= 400 {
+	if resp.StatusCode < http.StatusOK || resp.StatusCode >= http.StatusMultipleChoices {
 		// Check for resource exhausted error (422 Unprocessable Entity)
 		resourceErr, parseErr := utils.ParseResourceExhaustedFromBytes(respBody, resp.StatusCode)
 		if parseErr == nil && resourceErr != nil {
