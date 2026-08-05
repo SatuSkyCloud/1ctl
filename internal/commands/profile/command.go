@@ -57,12 +57,12 @@ func profileCreateCommand() *cli.Command {
 	var in profileCreateInput
 	return &cli.Command{
 		Name:      "create",
-		Usage:     "Create a new profile",
+		Usage:     "Create a profile (standard environment names infer their API URL)",
 		ArgsUsage: "<name>",
 		Flags: []cli.Flag{
 			&cli.StringFlag{
 				Name:        flagURL,
-				Usage:       "API URL for this profile (e.g. http://localhost:8080/v1/cli)",
+				Usage:       "API URL for a custom profile (required unless the name is local, dev/develop/development, or prod/production)",
 				Destination: &in.URL,
 			},
 		},

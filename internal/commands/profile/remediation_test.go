@@ -47,6 +47,57 @@ func TestProfileCommandsRejectMissingName(t *testing.T) {
 	}
 }
 
+func TestResolveProfileAPIURL(t *testing.T) {
+	tests := []struct {
+		name        string
+		explicitURL string
+		want        string
+		wantErr     string
+	}{
+		{name: "local", want: localAPIURL},
+		{name: "dev", want: developmentAPIURL},
+		{name: "develop", want: developmentAPIURL},
+		{name: "development", want: developmentAPIURL},
+		{name: "DEVELOPMENT", want: developmentAPIURL},
+		{name: "prod", want: "https://api.satusky.com/v1/cli"},
+		{name: "production", want: "https://api.satusky.com/v1/cli"},
+		{name: "client-a", explicitURL: "https://api.example.test/v1/cli", want: "https://api.example.test/v1/cli"},
+		{name: "client-a", wantErr: "API URL is required"},
+	}
+
+	for _, test := range tests {
+		t.Run(test.name+test.explicitURL, func(t *testing.T) {
+			got, err := resolveProfileAPIURL(test.name, test.explicitURL)
+			if test.wantErr != "" {
+				if err == nil || !strings.Contains(err.Error(), test.wantErr) {
+					t.Fatalf("error = %v, want error containing %q", err, test.wantErr)
+				}
+				return
+			}
+			if err != nil {
+				t.Fatal(err)
+			}
+			if got != test.want {
+				t.Fatalf("API URL = %q, want %q", got, test.want)
+			}
+		})
+	}
+}
+
+func TestHandleProfileCreateDevelopmentStoresDevelopmentURL(t *testing.T) {
+	setupProfileRemediationContext(t)
+
+	captureProfileStdout(t, func() error {
+		return handleProfileCreate(context.Background(), profileCreateInput{Name: "develop"})
+	})
+	if err := satuskyctx.UseProfile("develop"); err != nil {
+		t.Fatal(err)
+	}
+	if got := satuskyctx.GetAPIURL(); got != developmentAPIURL {
+		t.Fatalf("stored API URL = %q, want %q", got, developmentAPIURL)
+	}
+}
+
 func TestHandleProfileListJSONEmpty(t *testing.T) {
 	setupProfileRemediationContext(t)
 	utils.SetOutputFormat("json")

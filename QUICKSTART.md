@@ -27,6 +27,20 @@ A profile stores your API endpoint and credentials. You only need to do this onc
 1ctl profile current
 ```
 
+Standard environment names infer the correct endpoint. To use the development
+API:
+
+```bash
+1ctl profile create development
+1ctl profile use development
+1ctl auth login --token <your-development-api-token>
+```
+
+The aliases `dev` and `develop` also select
+`https://dev-core-api.satusky.com/v1/cli`. Custom profile names require
+`--url`; this prevents an omitted URL from silently sending credentials to the
+production API.
+
 ---
 
 ## Local development (against a local backend)
