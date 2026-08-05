@@ -29,7 +29,7 @@ A standard build connects to `api.satusky.com` by default:
 ```bash
 git clone https://github.com/satuskycloud/1ctl.git
 cd 1ctl
-go build -o 1ctl ./cmd/...
+go build -o 1ctl ./cmd/1ctl
 ```
 
 To point the binary at a local API server, override the default URLs at compile time via ldflags:
@@ -38,7 +38,7 @@ To point the binary at a local API server, override the default URLs at compile 
 go build \
   -ldflags "-X '1ctl/internal/config.defaultAPIURL=http://localhost:8080/v1/cli' \
             -X '1ctl/internal/config.defaultDockerUploadURL=http://localhost:3000'" \
-  -o 1ctl ./cmd/...
+  -o 1ctl ./cmd/1ctl
 ```
 
 Alternatively, override at runtime with environment variables (no rebuild needed):
@@ -140,8 +140,8 @@ cd your-project
 # Deploy with recreate strategy (stops all pods before starting new ones)
 1ctl deploy --cpu-request 250m --cpu-limit 1 --memory 1Gi --strategy recreate
 
-# Wait for TCP dependencies to be ready before the app starts
-1ctl deploy --cpu-request 250m --cpu-limit 1 --memory 1Gi --wait-for postgres:5432 --wait-for redis:6379
+# Reserved: --wait-for currently fails before build because the atomic backend
+# cannot persist or reconcile dependency-readiness declarations safely.
 
 # Block until pods are Running (5min default timeout)
 1ctl deploy --cpu-request 250m --cpu-limit 1 --memory 1Gi --wait

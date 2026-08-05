@@ -1,0 +1,9 @@
+[app]
+name = "guide-nodejs-api"
+port = 3000
+
+[build]
+dockerfile = "Dockerfile"
+
+[checks]
+health_path = "/health"

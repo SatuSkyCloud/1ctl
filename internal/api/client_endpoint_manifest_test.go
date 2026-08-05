@@ -22,6 +22,7 @@ type backendClientEndpoint struct {
 }
 
 var activeClientEndpoints = []backendClientEndpoint{
+	{Method: "POST", Path: "/v1/cli/deployments/{deploymentId}/scale"},
 	{Method: "GET", Path: "/v1/marketplaces/all"},
 	{Method: "GET", Path: "/v1/marketplaces/id/{marketplaceId}"},
 	{Method: "POST", Path: "/v1/marketplaces/deploy/create/{namespace}/{marketplaceId}"},

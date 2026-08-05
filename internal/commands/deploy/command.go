@@ -122,6 +122,7 @@ type DeployInput struct {
 	Config             string
 	Wait               bool
 	WaitMode           string
+	SetFlags           map[string]bool
 }
 
 // GetDeploymentInput holds flags for the "get" subcommand.
@@ -260,8 +261,27 @@ To manage a deployed application, use "1ctl app".`,
 			if cmd.NArg() > 0 {
 				return cli.ShowSubcommandHelp(cmd)
 			}
+			captureDeploySetFlags(cmd, &in)
 			return handleDeploy(ctx, in)
 		},
+	}
+}
+
+func captureDeploySetFlags(cmd *cli.Command, in *DeployInput) {
+	in.SetFlags = make(map[string]bool)
+	for _, name := range []string{
+		flagCPU, flagCPURequest, flagCPULimit, flagMemory, flagDomain,
+		flagHealthPath, flagDockerfile, flagImage, flagFast, flagPort,
+		flagVolumeSize, flagVolumeMount, flagZone, flagMachineTag,
+		flagMulticluster, flagMulticlusterMode, flagBackupEnabled,
+		flagBackupSchedule, flagBackupRetention, flagBackupPriority,
+		flagReplicas, flagStrategy, flagRollingMaxSurge, flagRollingMaxUnavail,
+		flagHPA, flagHPAMinReplicas, flagHPAMaxReplicas, flagHPACPUCoreTarget,
+		flagHPAMemoryTarget, flagVPA, flagVPAMode, flagVPAMinCPU, flagVPAMaxCPU,
+		flagVPAMinMemory, flagVPAMaxMemory, flagPDB, flagPDBType,
+		flagPDBMinAvailable, flagPDBPercent,
+	} {
+		in.SetFlags[name] = cmd.IsSet(name)
 	}
 }
 
@@ -299,7 +319,7 @@ func deployFlags(in *DeployInput) []cli.Flag {
 		optionalStringVal(flagMulticlusterMode, "Multi-cluster mode: 'active-active' or 'active-passive'", "active-passive", &in.MulticlusterMode),
 		// ── Reliability ──
 		optionalString(flagHealthPath, "HTTP path for post-deploy smoke test (default: tries /health then /)", &in.HealthPath),
-		optionalStringSlice(flagWaitFor, "TCP dependency to wait for (format: host:port). Repeatable.", &in.WaitFor),
+		optionalStringSlice(flagWaitFor, "Reserved TCP dependency declaration (host:port); currently rejected until atomic backend support is available", &in.WaitFor),
 		optionalBool(flagWait, "Wait for the accepted deployment to become healthy", &in.Wait),
 		optionalStringVal(flagWaitMode, "Readiness threshold: application (default) or workload (bypasses application verification)", "application", &in.WaitMode),
 		optionalStringVal(flagStrategy, "Rollout strategy: rolling, recreate", "rolling", &in.Strategy),

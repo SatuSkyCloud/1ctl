@@ -2,6 +2,7 @@ package deploy
 
 import (
 	"fmt"
+	"strings"
 	"time"
 
 	"1ctl/internal/api"
@@ -15,10 +16,20 @@ type PublicURLReadiness struct {
 }
 
 // WaitForPublicURL checks DNS propagation and domain readiness for a deployment
-// identified by its ingress ID and domain name. When ingressID is empty the check
-// is skipped and the result is reported as ready (smoke will catch any issues).
+// identified by its ingress ID and domain name. Localhost domains return
+// immediately because they are local-profile placeholders, not public DNS.
+// For other domains, an empty ingress ID skips the check.
 func WaitForPublicURL(ingressID, domain string) PublicURLReadiness {
-	if ingressID == "" || domain == "" {
+	if domain == "" {
+		return PublicURLReadiness{Ready: true}
+	}
+	if isLocalhostDomain(domain) {
+		return PublicURLReadiness{
+			Ready:  false,
+			Reason: "localhost domains are local-profile placeholders and are not publicly reachable",
+		}
+	}
+	if ingressID == "" {
 		return PublicURLReadiness{Ready: true}
 	}
 
@@ -42,6 +53,11 @@ func WaitForPublicURL(ingressID, domain string) PublicURLReadiness {
 		r.Reason = domainStatusReason(status)
 	}
 	return r
+}
+
+func isLocalhostDomain(domain string) bool {
+	normalized := strings.TrimSuffix(strings.ToLower(strings.TrimSpace(domain)), ".")
+	return normalized == "localhost" || strings.HasSuffix(normalized, ".localhost")
 }
 
 // ResolveIngressID looks up an ingress by deployment ID and returns its ID as a

@@ -1,0 +1,100 @@
+name: Deploy production
+
+on:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: production-deploy
+  cancel-in-progress: false
+
+env:
+  APP_NAME: cicd-backend-api
+  CONFIG_FILE: satusky.production.toml
+  HEALTH_PATH: /health
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    environment: production
+    env:
+      HOME: ${{ github.workspace }}/../1ctl-home
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
+
+      - uses: actions/setup-go@924ae3a1cded613372ab5595356fb5720e22ba16 # v6.5.0
+        with:
+          go-version: "1.24.0"
+          cache: false
+
+      - name: Test the application revision
+        shell: bash
+        run: go test ./...
+
+      - name: Build the pinned 1ctl revision
+        shell: bash
+        run: |
+          set -euo pipefail
+          CLI_COMMIT=07bcb841d0fb5322ba7c1d614152288a570ac676
+          CLI_SOURCE="${RUNNER_TEMP}/1ctl-source"
+          git init --quiet "${CLI_SOURCE}"
+          git -C "${CLI_SOURCE}" remote add origin https://github.com/SatuSkyCloud/1ctl.git
+          git -C "${CLI_SOURCE}" fetch --quiet --depth=1 origin "${CLI_COMMIT}"
+          git -C "${CLI_SOURCE}" checkout --quiet --detach FETCH_HEAD
+          test "$(git -C "${CLI_SOURCE}" rev-parse HEAD)" = "${CLI_COMMIT}"
+          (
+            cd "${CLI_SOURCE}"
+            go build -trimpath \
+              -ldflags="-X 1ctl/internal/version.Version=commit-${CLI_COMMIT} -X 1ctl/internal/version.CommitHash=${CLI_COMMIT}" \
+              -o "${RUNNER_TEMP}/1ctl" \
+              ./cmd/1ctl
+          )
+          sudo install -m 0755 "${RUNNER_TEMP}/1ctl" /usr/local/bin/1ctl
+          1ctl --version
+
+      - name: Authenticate the isolated profile
+        env:
+          SATUSKY_API_KEY: ${{ secrets.SATUSKY_API_KEY }}
+          SATUSKY_API_URL: ${{ vars.SATUSKY_API_URL }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p "${HOME}"
+          1ctl profile create ci --url "${SATUSKY_API_URL:-https://api.satusky.com/v1/cli}"
+          1ctl profile use ci
+          1ctl auth login
+          1ctl auth status
+
+      - name: Deploy and wait for reconciliation
+        id: deploy
+        shell: bash
+        run: |
+          set -euo pipefail
+          1ctl deploy --config "${CONFIG_FILE}" --wait
+          echo "ready=true" >> "${GITHUB_OUTPUT}"
+
+      - name: Verify the workload, route, and DNS target
+        shell: bash
+        run: |
+          set -euo pipefail
+          STATUS_JSON="$(1ctl -o json app status "${APP_NAME}")"
+          jq -e '
+            .deployment.status == "ready" and
+            .status.status == "Running" and
+            .domain_status.route.attached == true and
+            .domain_status.route.resource_kind == "HTTPRoute" and
+            .domain_status.dns.condition.status == "verified"
+          ' <<<"${STATUS_JSON}" > /dev/null
+          ROUTE_HOST="$(jq -er '.domain_status.route.hostnames[0]' <<<"${STATUS_JSON}")"
+          curl --fail --retry 5 --retry-all-errors --retry-delay 2 "https://${ROUTE_HOST}${HEALTH_PATH}"
+
+      - name: Roll back a release that passed reconciliation but failed verification
+        if: ${{ failure() && steps.deploy.outputs.ready == 'true' }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          1ctl app rollback "${APP_NAME}" --yes
+          1ctl app status "${APP_NAME}" --watch

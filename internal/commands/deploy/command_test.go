@@ -1,9 +1,11 @@
 package deploy
 
 import (
+	"context"
 	"reflect"
 	"testing"
 
+	"1ctl/internal/config"
 	"github.com/urfave/cli/v3"
 )
 
@@ -30,6 +32,67 @@ func TestDeployCommand_Subcommands(t *testing.T) {
 	// Deploy should no longer have lifecycle subcommands — those moved to '1ctl app'
 	if len(cmd.Commands) != 0 {
 		t.Errorf("expected no subcommands on deploy, got %d: %v", len(cmd.Commands), cmd.Commands)
+	}
+}
+
+func TestDeployExplicitFalseAndDefaultFlagsOverrideConfig(t *testing.T) {
+	var in DeployInput
+	cmd := &cli.Command{
+		Name:  "deploy",
+		Flags: deployFlags(&in),
+		Action: func(ctx context.Context, cmd *cli.Command) error {
+			captureDeploySetFlags(cmd, &in)
+			return nil
+		},
+	}
+	err := cmd.Run(context.Background(), []string{
+		"deploy", "--image", "registry.example/api:v1",
+		"--hpa=false", "--hpa-min-replicas", "1", "--hpa-max-replicas", "10",
+		"--hpa-cpu-target", "80", "--hpa-memory-target", "0",
+		"--vpa=false", "--vpa-mode", "Off",
+		"--pdb=false", "--pdb-type", "auto",
+		"--fast=false", "--multi-cluster=false",
+	})
+	if err != nil {
+		t.Fatalf("parse deploy flags: %v", err)
+	}
+
+	for _, name := range []string{
+		flagHPA, flagHPAMinReplicas, flagHPAMaxReplicas, flagHPACPUCoreTarget,
+		flagHPAMemoryTarget, flagVPA, flagVPAMode, flagPDB, flagPDBType,
+		flagFast, flagMulticluster,
+	} {
+		if !in.SetFlags[name] {
+			t.Errorf("SetFlags[%q] = false after explicit CLI flag", name)
+		}
+	}
+
+	cfg := &config.ProjectConfig{
+		Build:        config.BuildConfig{FastBuild: true},
+		HPA:          config.HPAConfig{Enabled: true, MinReplicas: 3, MaxReplicas: 20, CPUTarget: 60, MemoryTarget: 70},
+		VPA:          config.VPAConfig{Enabled: true, Mode: "Auto"},
+		PDB:          config.PDBConfig{Enabled: true, Type: "fixed", MinAvailable: 2},
+		Multicluster: config.MulticlusterConfig{Enabled: true, Mode: "active-active"},
+	}
+	merged := mergeConfig(in, cfg)
+	if merged.HPA || merged.VPA || merged.PDB || merged.Fast || merged.Multicluster {
+		t.Fatalf("explicit false flags were overwritten: hpa=%v vpa=%v pdb=%v fast=%v multicluster=%v",
+			merged.HPA, merged.VPA, merged.PDB, merged.Fast, merged.Multicluster)
+	}
+	if merged.HPAMinReplicas != 1 || merged.HPAMaxReplicas != 10 || merged.HPACPUCoreTarget != 80 || merged.HPAMemoryTarget != 0 {
+		t.Fatalf("explicit HPA defaults were overwritten: min=%d max=%d cpu=%d memory=%d",
+			merged.HPAMinReplicas, merged.HPAMaxReplicas, merged.HPACPUCoreTarget, merged.HPAMemoryTarget)
+	}
+	if merged.VPAMode != "Off" || merged.PDBType != "auto" {
+		t.Fatalf("explicit VPA/PDB defaults were overwritten: mode=%q type=%q", merged.VPAMode, merged.PDBType)
+	}
+
+	opts, err := prepareDeploymentOptions(merged, cfg)
+	if err != nil {
+		t.Fatalf("prepareDeploymentOptions: %v", err)
+	}
+	if opts.HPAConfig != nil || opts.VPAConfig != nil || opts.PDBConfig != nil || opts.FastBuild || opts.MulticlusterEnabled {
+		t.Fatalf("explicit false flags were re-enabled while preparing options: %+v", opts)
 	}
 }
 

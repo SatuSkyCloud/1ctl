@@ -1,0 +1,27 @@
+[app]
+name = "guide-api-db-notes"
+port = 8080
+cpu_request = "50m"
+cpu_limit = "200m"
+memory = "256Mi"
+replicas = 1
+
+[build]
+dockerfile = "Dockerfile"
+
+[checks]
+health_path = "/health"
+
+[checks.readiness]
+initial_delay_seconds = 2
+timeout_seconds = 2
+period_seconds = 5
+
+[checks.readiness.http_get]
+path = "/health"
+port = 8080
+
+[deploy]
+strategy = "rolling"
+rolling_max_surge = "1"
+rolling_max_unavailable = "0"

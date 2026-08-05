@@ -1,17 +1,30 @@
-# Backend API — simple Go REST API example
-# Demonstrates: basic deploy, CPU/memory, health check
+# Copy-paste backend deployment used by the Deploy a Backend API guide.
 
 [app]
-  name    = "backend-api"
-  port    = 8080
-  cpu     = "0.5"       # legacy alias, prefer cpu_request/cpu_limit
-  memory  = "256Mi"
+name = "backend-api-guide"
+port = 8080
+cpu_request = "100m"
+cpu_limit = "500m"
+memory = "256Mi"
+replicas = 1
 
 [build]
-  dockerfile = "Dockerfile"
+dockerfile = "Dockerfile"
 
 [checks]
-  health_path = "/health"
+health_path = "/health"
+
+[checks.readiness]
+initial_delay_seconds = 1
+timeout_seconds = 2
+period_seconds = 5
+failure_threshold = 3
+
+[checks.readiness.http_get]
+path = "/health"
+port = 8080
 
 [deploy]
-  strategy = "rolling"
+strategy = "rolling"
+rolling_max_surge = "25%"
+rolling_max_unavailable = "0"
