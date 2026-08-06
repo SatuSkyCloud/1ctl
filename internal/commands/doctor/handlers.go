@@ -215,7 +215,9 @@ func deploymentHealthIssues(entry doctorDeploymentReport) []string {
 		issues = append(issues, fmt.Sprintf("%s dns: %s", label, domainDNSText(dns)))
 	}
 
-	// Only trust a probe that actually ran.
+	// Doctor always requests the probe, so Checked is true on its own path.
+	// The guard is defensive: a DomainStatus obtained without probing must not
+	// be read as "unreachable" when it simply was not measured.
 	if entry.DomainStatus.Reachability.Checked && !entry.DomainStatus.Reachability.Reachable {
 		issues = append(issues, fmt.Sprintf("%s http: %s", label, domainHTTPText(entry.DomainStatus.Reachability)))
 	}

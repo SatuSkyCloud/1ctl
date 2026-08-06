@@ -20,17 +20,34 @@ func IsJSONOutput() bool {
 
 // TryPrintJSON marshals data to indented JSON and prints it if JSON output is enabled.
 // Returns true so callers can do: if utils.TryPrintJSON(data) { return nil }
+//
+// A nil slice is emitted as `[]` rather than `null`. Scripts pipe this output
+// into `jq '.[]'`, which fails with "Cannot iterate over null" on an empty
+// result instead of iterating zero times. Normalizing here rather than in
+// PrintListOrJSON makes the guarantee unconditional: several commands print
+// arrays through this function directly, and an exception would have to be
+// documented and remembered at every one of them.
 func TryPrintJSON(data interface{}) bool {
 	if !IsJSONOutput() {
 		return false
 	}
-	b, err := json.MarshalIndent(data, "", "  ")
+	b, err := json.MarshalIndent(emptySliceForNil(data), "", "  ")
 	if err != nil {
 		fmt.Printf("{\"error\": %q}\n", err.Error())
 	} else {
 		fmt.Println(string(b))
 	}
 	return true
+}
+
+// emptySliceForNil replaces a nil slice with an empty one of the same type and
+// leaves every other value untouched.
+func emptySliceForNil(data interface{}) interface{} {
+	v := reflect.ValueOf(data)
+	if v.IsValid() && v.Kind() == reflect.Slice && v.IsNil() {
+		return reflect.MakeSlice(v.Type(), 0, 0).Interface()
+	}
+	return data
 }
 
 // PrintListOrJSON handles both JSON and table output for list commands.
@@ -47,13 +64,7 @@ func TryPrintJSON(data interface{}) bool {
 //	}
 //	utils.PrintTable(headers, rows)
 func PrintListOrJSON(items interface{}, emptyMsg string) bool {
-	// A nil slice marshals to `null`, not `[]`, which breaks the array
-	// contract above: scripts that pipe into `jq '.[]'` fail on an empty
-	// result instead of iterating zero times. Normalize before encoding so a
-	// list command always emits a list.
-	if v := reflect.ValueOf(items); v.IsValid() && v.Kind() == reflect.Slice && v.IsNil() {
-		items = reflect.MakeSlice(v.Type(), 0, 0).Interface()
-	}
+	// TryPrintJSON already emits `[]` for a nil slice.
 	if TryPrintJSON(items) {
 		return true
 	}

@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"io"
 	"os"
+	"strings"
 	"testing"
 )
 
@@ -62,6 +63,56 @@ func TestPrintListOrJSONEmitsArrayForNilSlice(t *testing.T) {
 	}
 	if len(decoded) != 0 {
 		t.Fatalf("expected empty array, got %d items", len(decoded))
+	}
+}
+
+// Several commands print arrays through TryPrintJSON directly rather than
+// through PrintListOrJSON, so the guarantee has to hold there too.
+func TestTryPrintJSONEmitsArrayForNilSlice(t *testing.T) {
+	var out string
+	withJSONOutput(t, func() {
+		out = captureStdout(t, func() {
+			var items []listJSONThing // nil, not empty
+			TryPrintJSON(items)
+		})
+	})
+
+	var decoded []listJSONThing
+	if err := json.Unmarshal([]byte(out), &decoded); err != nil {
+		t.Fatalf("output %q is not valid JSON: %v", out, err)
+	}
+	if decoded == nil {
+		t.Fatalf("nil slice must encode as [], got %q", out)
+	}
+	if len(decoded) != 0 {
+		t.Fatalf("expected empty array, got %d items", len(decoded))
+	}
+}
+
+// Normalization must only touch nil slices; objects and other values pass
+// through untouched.
+func TestTryPrintJSONLeavesNonSliceValuesUnchanged(t *testing.T) {
+	var out string
+	withJSONOutput(t, func() {
+		out = captureStdout(t, func() {
+			TryPrintJSON(map[string]interface{}{"name": "one"})
+		})
+	})
+	var object map[string]interface{}
+	if err := json.Unmarshal([]byte(out), &object); err != nil {
+		t.Fatalf("output %q is not valid JSON: %v", out, err)
+	}
+	if object["name"] != "one" {
+		t.Fatalf("object was altered: %q", out)
+	}
+
+	withJSONOutput(t, func() {
+		out = captureStdout(t, func() {
+			TryPrintJSON(nil)
+		})
+	})
+	if strings.TrimSpace(out) != "null" {
+		t.Fatalf("a nil interface is not a nil slice and must stay null, got %q", out)
 	}
 }
 
