@@ -111,6 +111,22 @@ func TestDeploymentHealthIssuesIgnoresUncheckedReachability(t *testing.T) {
 	}
 }
 
+// Having no public domain is not itself an issue — a private app legitimately
+// has no route — but the deployment must still be checked for everything else,
+// so the status test has to run before the no-domain early return.
+func TestDeploymentHealthIssuesChecksStatusWithoutADomain(t *testing.T) {
+	failed := doctorDeploymentReport{AppLabel: "private-app", Status: "failed"}
+	issues := deploymentHealthIssues(failed)
+	if len(issues) != 1 || !containsSubstring(issues, "deployment status") {
+		t.Fatalf("a failed deployment with no domain must still be reported, got %v", issues)
+	}
+
+	healthy := doctorDeploymentReport{AppLabel: "private-app", Status: "ready"}
+	if issues := deploymentHealthIssues(healthy); len(issues) != 0 {
+		t.Fatalf("a healthy deployment with no domain must raise nothing, got %v", issues)
+	}
+}
+
 // A clean run is exactly when a caller most wants to script Doctor, and it was
 // the one run where `jq '.issues[]'` failed: omitempty dropped the key, so the
 // path resolved to null. Both arrays must survive a round trip as arrays.
