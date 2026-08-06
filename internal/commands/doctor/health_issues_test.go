@@ -1,6 +1,7 @@
 package doctor
 
 import (
+	"encoding/json"
 	"strings"
 	"testing"
 
@@ -107,6 +108,39 @@ func TestDeploymentHealthIssuesIgnoresUncheckedReachability(t *testing.T) {
 
 	if issues := deploymentHealthIssues(entry); len(issues) != 0 {
 		t.Fatalf("unchecked reachability must not be an issue, got %v", issues)
+	}
+}
+
+// A clean run is exactly when a caller most wants to script Doctor, and it was
+// the one run where `jq '.issues[]'` failed: omitempty dropped the key, so the
+// path resolved to null. Both arrays must survive a round trip as arrays.
+func TestDoctorReportAlwaysEncodesArrays(t *testing.T) {
+	encoded, err := json.Marshal(doctorReport{
+		UserEmail:    "user@example.com",
+		Organization: "org",
+		Namespace:    "ns",
+		Deployments:  []doctorDeploymentReport{},
+		Issues:       []string{},
+	})
+	if err != nil {
+		t.Fatalf("marshal report: %v", err)
+	}
+
+	var decoded struct {
+		Deployments *[]doctorDeploymentReport `json:"deployments"`
+		Issues      *[]string                 `json:"issues"`
+	}
+	if err := json.Unmarshal(encoded, &decoded); err != nil {
+		t.Fatalf("unmarshal report: %v", err)
+	}
+	if decoded.Issues == nil {
+		t.Fatalf("issues must be present and an array, got %s", encoded)
+	}
+	if decoded.Deployments == nil {
+		t.Fatalf("deployments must be present and an array, got %s", encoded)
+	}
+	if !strings.Contains(string(encoded), `"issues":[]`) {
+		t.Fatalf("empty issues must encode as [], got %s", encoded)
 	}
 }
 

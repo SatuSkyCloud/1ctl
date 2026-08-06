@@ -22,7 +22,11 @@ type doctorReport struct {
 	Zones        int                      `json:"zones"`
 	Clusters     int                      `json:"clusters"`
 	Deployments  []doctorDeploymentReport `json:"deployments"`
-	Issues       []string                 `json:"issues,omitempty"`
+	// Always emitted, and always an array. With omitempty a healthy run
+	// dropped the key entirely, so `jq '.issues[]'` failed with "Cannot
+	// iterate over null" on exactly the runs a caller most wants to script.
+	// An empty issues list is meaningful output for a diagnostic.
+	Issues []string `json:"issues"`
 }
 
 type doctorDeploymentReport struct {
@@ -55,6 +59,11 @@ func handleDoctor(ctx context.Context, in doctorInput) error {
 		UserEmail:    user.Email,
 		Organization: user.Organization,
 		Namespace:    namespace,
+		// Non-nil so an empty result encodes as [] rather than null. These are
+		// nested fields, which the top-level TryPrintJSON normalization does
+		// not reach.
+		Deployments: []doctorDeploymentReport{},
+		Issues:      []string{},
 	}
 
 	if zones, err := api.GetAvailableZones(); err != nil {
@@ -154,7 +163,10 @@ func handleDoctor(ctx context.Context, in doctorInput) error {
 					}
 				}
 			} else {
-				utils.PrintStatusLine("  Domain", "not attached")
+				// Deliberately not "not attached": that phrase is reserved for
+				// a route that failed to attach, which is an issue. A
+				// deployment with no domain at all is a valid private app.
+				utils.PrintStatusLine("  Domain", "none")
 			}
 		}
 	}
