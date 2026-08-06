@@ -47,11 +47,18 @@ func TryPrintJSON(data interface{}) bool {
 //	}
 //	utils.PrintTable(headers, rows)
 func PrintListOrJSON(items interface{}, emptyMsg string) bool {
+	// A nil slice marshals to `null`, not `[]`, which breaks the array
+	// contract above: scripts that pipe into `jq '.[]'` fail on an empty
+	// result instead of iterating zero times. Normalize before encoding so a
+	// list command always emits a list.
+	if v := reflect.ValueOf(items); v.IsValid() && v.Kind() == reflect.Slice && v.IsNil() {
+		items = reflect.MakeSlice(v.Type(), 0, 0).Interface()
+	}
 	if TryPrintJSON(items) {
 		return true
 	}
 	v := reflect.ValueOf(items)
-	if v.Kind() == reflect.Slice && v.Len() == 0 && emptyMsg != "" {
+	if v.IsValid() && v.Kind() == reflect.Slice && v.Len() == 0 && emptyMsg != "" {
 		fmt.Println(emptyMsg)
 		return true
 	}

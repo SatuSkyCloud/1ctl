@@ -110,6 +110,7 @@ func handleDoctor(ctx context.Context, in doctorInput) error {
 			}
 		}
 
+		report.Issues = append(report.Issues, deploymentHealthIssues(entry)...)
 		report.Deployments = append(report.Deployments, entry)
 	}
 
@@ -168,6 +169,58 @@ func handleDoctor(ctx context.Context, in doctorInput) error {
 
 	utils.PrintSuccess("No issues found")
 	return nil
+}
+
+// deploymentHealthIssues inspects the signals Doctor already renders and
+// reports the ones that describe a broken deployment.
+//
+// Without this, Issues only ever collected transport errors from the calls
+// above, so an app could print "Route: not attached", "DNS: propagating" and
+// "HTTP: unreachable" and still be summarized as "No issues found" with a
+// zero exit code. A diagnostic that contradicts its own output is worse than
+// no diagnostic.
+func deploymentHealthIssues(entry doctorDeploymentReport) []string {
+	var issues []string
+	label := entry.AppLabel
+
+	// Terminal reconciliation states. Transient states (pending, reconciling)
+	// are not flagged: Doctor is often run while a rollout is still settling.
+	switch strings.ToLower(strings.TrimSpace(entry.Status)) {
+	case "failed":
+		issues = append(issues, fmt.Sprintf("%s deployment status: failed", label))
+	case "deletion_failed":
+		issues = append(issues, fmt.Sprintf("%s deployment status: deletion_failed", label))
+	}
+
+	if entry.Domain == "" || entry.DomainStatus == nil {
+		return issues
+	}
+
+	// An unattached route means the hostname reaches nothing, whatever the
+	// pods are doing.
+	if !entry.DomainStatus.Route.Attached {
+		issues = append(issues, fmt.Sprintf("%s route: %s", label, domainRouteText(entry.DomainStatus.Route)))
+	}
+
+	// Mirrors the readiness rule used elsewhere in the CLI: a typed condition
+	// is authoritative when present, otherwise the legacy resolved status is.
+	// not_configured is skipped — a deployment may legitimately have no DNS
+	// target reserved yet.
+	dns := entry.DomainStatus.DNS
+	if dns.Condition != nil {
+		if dns.Condition.Status != api.DNSConditionStatusVerified {
+			issues = append(issues, fmt.Sprintf("%s dns: %s", label, domainDNSText(dns)))
+		}
+	} else if dns.Status == api.DNSStatusPropagating {
+		issues = append(issues, fmt.Sprintf("%s dns: %s", label, domainDNSText(dns)))
+	}
+
+	// Only trust a probe that actually ran.
+	if entry.DomainStatus.Reachability.Checked && !entry.DomainStatus.Reachability.Reachable {
+		issues = append(issues, fmt.Sprintf("%s http: %s", label, domainHTTPText(entry.DomainStatus.Reachability)))
+	}
+
+	return issues
 }
 
 // --- Target resolution --------------------------------------------------
