@@ -802,23 +802,70 @@ func handleListDeployments(ctx context.Context) error {
 		return nil
 	}
 
+	var domains map[string]string
+	if utils.IsWideOutput() {
+		domains = deploymentDomains()
+	}
+
+	headers, rows := deploymentListTable(deployments, domains, utils.IsWideOutput())
+	utils.PrintTable(headers, rows)
+	return nil
+}
+
+// deploymentDomains maps deployment ID to its ingress domain for the current
+// namespace. One namespace-wide call rather than one lookup per deployment.
+//
+// A failure here is not fatal: the URL is an extra column on a listing that is
+// otherwise complete, so the column renders as "-" and the listing still
+// prints.
+func deploymentDomains() map[string]string {
+	ingresses, err := api.ListIngresses()
+	if err != nil {
+		utils.PrintWarning("Could not resolve application URLs: %s", err.Error())
+		return nil
+	}
+	domains := make(map[string]string, len(ingresses))
+	for _, ing := range ingresses {
+		if ing.DomainName == "" {
+			continue
+		}
+		domains[ing.DeploymentID.String()] = "https://" + ing.DomainName
+	}
+	return domains
+}
+
+// deploymentListTable renders the `app list` table. In wide mode it gains a URL
+// column resolved from domains, which HOSTNAMES does not carry — that column is
+// the machines a deployment is pinned to, and is empty for every deployment
+// that was not machine-targeted.
+func deploymentListTable(deployments []api.Deployment, domains map[string]string, wide bool) ([]string, [][]string) {
 	headers := []string{"NAME", "DEPLOYMENT ID", "HOSTNAMES", "STATUS", "CREATED"}
+	if wide {
+		headers = []string{"NAME", "DEPLOYMENT ID", "URL", "HOSTNAMES", "STATUS", "CREATED"}
+	}
+
 	rows := make([][]string, 0, len(deployments))
 	for _, d := range deployments {
 		name := d.AppLabel
 		if name == "" {
 			name = "-"
 		}
-		rows = append(rows, []string{
-			name,
-			d.DeploymentID.String(),
+		row := []string{name, d.DeploymentID.String()}
+		if wide {
+			domain := domains[d.DeploymentID.String()]
+			if domain == "" {
+				domain = "-"
+			}
+			row = append(row, domain)
+		}
+		row = append(row,
 			strings.Join(d.Hostnames, ", "),
 			d.Status,
 			api.FormatTimeAgo(d.CreatedAt),
-		})
+		)
+		rows = append(rows, row)
 	}
-	utils.PrintTable(headers, rows)
-	return nil
+	return headers, rows
 }
 
 func handleGetDeployment(ctx context.Context, in GetDeploymentInput) error {
@@ -985,17 +1032,30 @@ func handleDestroyDeployment(ctx context.Context, in DestroyInput) error {
 		return err
 	}
 
-	if in.PurgeRetained {
+	// Delete means delete. Volumes go with the app unless --retain-volumes says
+	// otherwise, because an app deleted from the CLI leaving 10Gi of bound
+	// storage behind is invisible: nothing lists it and, once the deployment
+	// record is gone, no command can reach it.
+	purgeRetained := in.PurgeRetainedResources()
+
+	if purgeRetained {
 		deployment, getErr := api.GetDeployment(deploymentID)
 		if getErr != nil {
 			return utils.NewError(fmt.Sprintf("failed to verify deployment source: %s", getErr.Error()), nil)
 		}
 		if !deployment.IsMarketplaceManaged() {
-			return utils.NewError("--purge-retained is only supported for marketplace-managed deployments; generic deployments must retain their resources", nil)
+			// The backend only supports purging for marketplace-managed
+			// deployments. An explicit request must still fail loudly; the
+			// default must not turn every generic delete into an error.
+			if in.PurgeExplicit {
+				return utils.NewError("--purge-retained is only supported for marketplace-managed deployments; generic deployments must retain their resources", nil)
+			}
+			utils.PrintWarning("Retained resources are kept: purging is only supported for marketplace-managed deployments.")
+			purgeRetained = false
 		}
 	}
 
-	preview, pErr := previewDeletion(deploymentID)
+	preview, pErr := previewDeletion(deploymentID, purgeRetained)
 	if pErr == nil {
 		fmt.Println(strings.Join(preview, "\n"))
 		fmt.Println()
@@ -1003,13 +1063,17 @@ func handleDestroyDeployment(ctx context.Context, in DestroyInput) error {
 		utils.PrintWarning("Could not preview resources: %s", pErr.Error())
 	}
 
-	if !utils.Confirm("This will permanently destroy the deployment and all its associated resources.", in.Yes) {
+	confirmation := "This will permanently destroy the deployment and all its associated resources."
+	if purgeRetained {
+		confirmation += " Persistent volumes and the data in them are deleted too and cannot be recovered (pass --retain-volumes to keep them)."
+	}
+	if !utils.Confirm(confirmation, in.Yes) {
 		fmt.Println("Aborted.")
 		return nil
 	}
 
 	utils.PrintInfo("Requesting deletion of deployment %s...", deploymentID)
-	operation, err := api.DeleteDeployment(deploymentID, in.PurgeRetained)
+	operation, err := api.DeleteDeployment(deploymentID, purgeRetained)
 	if err != nil {
 		return utils.NewError(fmt.Sprintf("failed to delete deployment: %s", err.Error()), nil)
 	}
@@ -1104,8 +1168,13 @@ func deletionLifecycleError(operation *api.DeploymentDeletionOperation) string {
 	return operation.Status
 }
 
-func previewDeletion(deploymentID string) ([]string, error) {
+// previewDeletion lists what the delete will take. purgeRetained decides which
+// side of the list the volumes fall on, and they are always named: the volumes
+// were absent from this preview entirely, so a caller was never told that
+// deleting an app left its storage behind, still billed and unreachable.
+func previewDeletion(deploymentID string, purgeRetained bool) ([]string, error) {
 	var lines []string
+	var retainedLines []string
 	dep, err := api.GetDeployment(deploymentID)
 	if err != nil {
 		return nil, err
@@ -1126,11 +1195,13 @@ func previewDeletion(deploymentID string) ([]string, error) {
 	volumes, err := api.GetDeploymentVolumeLifecycleStatuses(deploymentID)
 	if err == nil {
 		for _, v := range volumes {
-			policy := v.DestroyPolicy
-			if policy == "" {
-				policy = "default"
+			if purgeRetained {
+				lines = append(lines, fmt.Sprintf(
+					"  • Volume   — %s (%s) AND ITS DATA", v.Volume.ClaimName, v.Volume.StorageSize))
+				continue
 			}
-			lines = append(lines, fmt.Sprintf("  • Volume   — %s (%s, destroy: %s)", v.Volume.ClaimName, v.Volume.StorageSize, policy))
+			retainedLines = append(retainedLines, fmt.Sprintf(
+				"  • Volume   — %s (%s)", v.Volume.ClaimName, v.Volume.StorageSize))
 		}
 	}
 
@@ -1143,8 +1214,17 @@ func previewDeletion(deploymentID string) ([]string, error) {
 		}
 	}
 
-	if len(lines) == 2 {
+	if len(lines) == 3 {
 		lines = append(lines, "  (no additional resources found)")
+	}
+
+	// Anything surviving the delete is named too. Storage that outlives its app
+	// is still billed, and after the deployment record is gone no command can
+	// reach it -- so silence here is the expensive kind.
+	if len(retainedLines) > 0 {
+		lines = append(lines, "")
+		lines = append(lines, "Resources that will be KEPT (--retain-volumes):")
+		lines = append(lines, retainedLines...)
 	}
 	return lines, nil
 }

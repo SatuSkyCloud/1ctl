@@ -260,6 +260,25 @@ export interface DeploymentIntentAccepted {
 }
 
 //////////
+// source: events.go
+
+export interface DeploymentEvent {
+  id: string;
+  at: string /* RFC3339 */;
+  category: string;
+  type: string;
+  level: string;
+  message: string;
+  detail?: { [key: string]: string};
+  generation?: number /* int64 */;
+}
+export interface DeploymentEventsResponse {
+  deployment_id: string;
+  app_label: string;
+  events: DeploymentEvent[];
+}
+
+//////////
 // source: logs.go
 
 export interface DeploymentLog {

@@ -18,3 +18,15 @@
   max_replicas  = 3
   cpu_target    = 20
   memory_target = 0
+
+# The readiness probe runs inside the cluster, so `1ctl deploy --wait` can
+# verify the app answers without waiting on public DNS. health_path alone is
+# only checked over the public URL, which is not ready until DNS propagates.
+[checks.readiness]
+  initial_delay_seconds = 2
+  timeout_seconds       = 2
+  period_seconds        = 5
+
+[checks.readiness.http_get]
+  path = "/"
+  port = 8080

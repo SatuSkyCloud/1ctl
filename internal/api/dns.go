@@ -30,6 +30,7 @@ func WaitForIngressDNSStatus(ingressID string, timeout time.Duration) (*DNSStatu
 	defer ticker.Stop()
 
 	var last *DNSStatusResponse
+	announced := false
 
 	for {
 		status, err := GetIngressDNSStatus(ingressID)
@@ -47,10 +48,16 @@ func WaitForIngressDNSStatus(ingressID string, timeout time.Duration) (*DNSStatu
 			return last, utils.NewError(fmt.Sprintf("timeout waiting for DNS propagation for ingress %s", ingressID), err)
 		}
 
-		if last != nil && last.Domain != "" {
-			utils.PrintInfo("Waiting for DNS propagation for %s...", last.Domain)
-		} else {
-			utils.PrintInfo("Waiting for DNS propagation for ingress %s...", ingressID)
+		// Announced once, not per poll. The record is published by a background
+		// sync, so this wait routinely spans many ticks and repeating the same
+		// line for each one buries the result it is waiting for.
+		if !announced {
+			if last != nil && last.Domain != "" {
+				utils.PrintInfo("Waiting for DNS to publish for %s (this can take a minute)...", last.Domain)
+			} else {
+				utils.PrintInfo("Waiting for DNS to publish (this can take a minute)...")
+			}
+			announced = true
 		}
 		<-ticker.C
 	}

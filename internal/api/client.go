@@ -657,6 +657,8 @@ func WaitForDeploymentGeneration(deploymentID string, generation int64, timeout 
 // WaitForDeploymentWithOptions polls live readiness conditions. A legacy or
 // 404 live endpoint is intentionally unverified, never a successful Running.
 func WaitForDeploymentWithOptions(deploymentID string, timeout time.Duration, options DeploymentWaitOptions) (*DeploymentStatus, error) {
+	generationAnnounced := false
+	transientAnnounced := false
 	mode := options.Mode
 	if mode == "" {
 		mode = DeploymentWaitModeApplication
@@ -680,6 +682,18 @@ func WaitForDeploymentWithOptions(deploymentID string, timeout time.Duration, op
 
 		status, err := GetLiveDeploymentStatus(deploymentID)
 		if err != nil {
+			// The deployment is already accepted and reconciling server-side, so a
+			// transport blip — an API restart, a dropped connection — is not a
+			// deployment failure. Aborting here reports a working rollout as
+			// failed and leaves the user with no way to resume the wait.
+			if isTransientWaitError(err) {
+				if !transientAnnounced {
+					utils.PrintWarning("Lost contact with the API; retrying until the deployment is ready.")
+					transientAnnounced = true
+				}
+				time.Sleep(pollInterval)
+				continue
+			}
 			if statusErr, ok := err.(*HTTPStatusError); !ok || statusErr.StatusCode != http.StatusNotFound {
 				return nil, err
 			}
@@ -689,13 +703,22 @@ func WaitForDeploymentWithOptions(deploymentID string, timeout time.Duration, op
 		if options.Generation > 0 {
 			generationStatus, generationErr := getDeploymentStatus(deploymentID, options.Generation)
 			if generationErr != nil {
+				if isTransientWaitError(generationErr) {
+					time.Sleep(pollInterval)
+					continue
+				}
 				return nil, generationErr
 			}
 			if strings.EqualFold(generationStatus.Status, "failed") {
 				return status, newReadinessStatusError("READINESS_FAILED", "deployment generation reconciliation is failing")
 			}
 			if !strings.EqualFold(generationStatus.Status, "running") {
-				utils.PrintInfo("Deployment generation: waiting for %d", options.Generation)
+				// Announced once. This loop polls for minutes, and repeating an
+				// identical line per tick hides the outcome the user is waiting for.
+				if !generationAnnounced {
+					utils.PrintInfo("Waiting for generation %d to reconcile...", options.Generation)
+					generationAnnounced = true
+				}
 				time.Sleep(pollInterval)
 				continue
 			}
@@ -1614,4 +1637,27 @@ func UpdateNotificationPreferences(orgID string, req NotificationPreferencesRequ
 		return nil, utils.NewError(fmt.Sprintf("failed to unmarshal notification preferences: %s", err.Error()), nil)
 	}
 	return &prefs, nil
+}
+
+// isTransientWaitError reports whether a readiness poll failed for a reason
+// that says nothing about the deployment: a connection refused or reset while
+// the API restarts, a timeout, an EOF mid-response. A typed HTTP status is
+// never transient — the server answered, and its answer is the outcome.
+func isTransientWaitError(err error) bool {
+	if err == nil {
+		return false
+	}
+	if _, ok := err.(*HTTPStatusError); ok {
+		return false
+	}
+	message := strings.ToLower(err.Error())
+	for _, marker := range []string{
+		"connection refused", "connection reset", "no such host", "eof",
+		"i/o timeout", "timeout awaiting", "broken pipe", "server closed",
+	} {
+		if strings.Contains(message, marker) {
+			return true
+		}
+	}
+	return false
 }

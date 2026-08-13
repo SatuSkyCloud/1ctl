@@ -8,7 +8,7 @@ import (
 
 var outputFormat = "table"
 
-// SetOutputFormat sets the global output format ("table" or "json").
+// SetOutputFormat sets the global output format ("table", "wide" or "json").
 func SetOutputFormat(format string) {
 	outputFormat = format
 }
@@ -16,6 +16,15 @@ func SetOutputFormat(format string) {
 // IsJSONOutput returns true when --output json was requested.
 func IsJSONOutput() bool {
 	return outputFormat == "json"
+}
+
+// IsWideOutput returns true when --output wide was requested.
+//
+// Wide is a table variant, not a third rendering mode: a command that has no
+// extra columns to show renders its normal table, the same way kubectl does for
+// a resource with no wide columns. Only commands that opt in read this.
+func IsWideOutput() bool {
+	return outputFormat == "wide"
 }
 
 // TryPrintJSON marshals data to indented JSON and prints it if JSON output is enabled.
