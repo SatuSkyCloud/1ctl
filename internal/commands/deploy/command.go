@@ -143,13 +143,25 @@ type StatusInput struct {
 
 // DestroyInput holds flags for the "delete" subcommand.
 type DestroyInput struct {
-	DeploymentID  string
-	App           string
-	Config        string
-	Yes           bool
+	DeploymentID string
+	App          string
+	Config       string
+	Yes          bool
+	// PurgeRetained is now the DEFAULT rather than an opt-in: deleting an app
+	// deletes everything it owns, volumes included. Retaining is opt-in via
+	// RetainVolumes. The flag survives so existing scripts keep working, and
+	// so PurgeExplicit can tell an intentional request from the default.
 	PurgeRetained bool
+	PurgeExplicit bool
 	NoWait        bool
-	RetainVolumes bool // one-release inverse compatibility flag
+	RetainVolumes bool // opt OUT of volume deletion
+}
+
+// PurgeRetainedResources reports whether this deletion should take the
+// deployment's retained resources with it. Delete means delete; a caller who
+// wants the volumes kept has to say so.
+func (in DestroyInput) PurgeRetainedResources() bool {
+	return !in.RetainVolumes
 }
 
 // DeployRefInput holds common deployment-reference flags.

@@ -11,6 +11,7 @@ import (
 	"strings"
 	"testing"
 
+	"1ctl/internal/api"
 	cliContext "1ctl/internal/context"
 	"1ctl/internal/utils"
 	"github.com/google/uuid"
@@ -192,5 +193,40 @@ func TestMarketplaceGetPrintsResolvedAppAsJSON(t *testing.T) {
 	}
 	if strings.Contains(output, "Marketplace App:") {
 		t.Fatalf("table output leaked into JSON mode: %q", output)
+	}
+}
+
+func TestMarketplaceAvailabilityNeverContradictsDeployability(t *testing.T) {
+	for _, tc := range []struct {
+		name string
+		app  api.MarketplaceApp
+		want string
+	}{
+		{
+			name: "deployable app with a stale coming_soon flag is available",
+			app:  api.MarketplaceApp{Deployable: true, ComingSoon: true},
+			want: "Available",
+		},
+		{
+			name: "deployable app is available",
+			app:  api.MarketplaceApp{Deployable: true},
+			want: "Available",
+		},
+		{
+			name: "planned app that cannot deploy is coming soon",
+			app:  api.MarketplaceApp{ComingSoon: true, DeployabilityCode: "PACKAGE_RELEASE_MISSING"},
+			want: "Coming Soon",
+		},
+		{
+			name: "unplanned app that cannot deploy is unavailable",
+			app:  api.MarketplaceApp{DeployabilityCode: "PACKAGE_TRUST_INVALID"},
+			want: "Unavailable",
+		},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			if got := marketplaceAvailability(tc.app); got != tc.want {
+				t.Fatalf("marketplaceAvailability() = %q, want %q", got, tc.want)
+			}
+		})
 	}
 }

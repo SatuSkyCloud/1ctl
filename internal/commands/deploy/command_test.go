@@ -178,3 +178,36 @@ func hasNilDestination(f cli.Flag) bool {
 func getFlagName(f cli.Flag) string {
 	return reflect.ValueOf(f).Elem().FieldByName("Name").String()
 }
+
+// Deleting an app deletes its volumes. This was the reverse: `1ctl app delete`
+// removed the workload, the routes and the services, and left every PVC bound.
+// Nothing in the confirmation named them, and once the deployment record was
+// gone no CLI command could reach them -- the storage stayed billed and
+// invisible, reclaimable only with kubectl.
+func TestDestroyPurgesRetainedResourcesByDefault(t *testing.T) {
+	for _, tt := range []struct {
+		name string
+		in   DestroyInput
+		want bool
+	}{
+		{"bare delete purges", DestroyInput{}, true},
+		{"explicit purge purges", DestroyInput{PurgeRetained: true, PurgeExplicit: true}, true},
+		{"retain-volumes opts out", DestroyInput{RetainVolumes: true}, false},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := tt.in.PurgeRetainedResources(); got != tt.want {
+				t.Fatalf("PurgeRetainedResources() = %v, want %v", got, tt.want)
+			}
+		})
+	}
+}
+
+// --retain-volumes is the only way to keep them, so it must keep working
+// regardless of whether --purge-retained is also present (that pair is
+// rejected earlier as a contradiction).
+func TestRetainVolumesAlwaysWinsOverTheDefault(t *testing.T) {
+	in := DestroyInput{RetainVolumes: true, PurgeRetained: false}
+	if in.PurgeRetainedResources() {
+		t.Fatal("--retain-volumes must suppress the purge default")
+	}
+}

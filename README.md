@@ -404,14 +404,34 @@ updates, ACL users, credential rotation, metrics, logs, and current limitations.
 1ctl marketplace list
 1ctl marketplace list --limit 10 --sort popularity
 
-# Get app details
-1ctl marketplace get <marketplace-id>
+# Get app details (accepts the app name or its marketplace ID)
+1ctl marketplace get paperless
 
-# Deploy a marketplace app
-1ctl marketplace deploy <marketplace-id> --name my-marketplace-app \
+# Deploy a marketplace app (app name first, optional deployment name second)
+1ctl marketplace deploy paperless my-paperless \
   --hostname my-machine --cpu 2 --memory 4Gi \
   --storage-size 20Gi
 ```
+
+`1ctl marketplace list` reports one of three statuses:
+
+| Status | Meaning |
+| --- | --- |
+| `Available` | A trusted package release is pinned. `marketplace deploy` will work. |
+| `Coming Soon` | No release is pinned yet, but the app is planned. |
+| `Unavailable` | No release is pinned and an `Availability code` explains why. |
+
+An app only becomes `Available` once a signed, certified package release is
+registered and pinned to its catalog row. If an app you need shows `Coming Soon`
+or `Unavailable`, that pin is what is missing.
+
+### Marketplace package authoring (maintainers)
+
+Authoring, signing, certifying, and registering marketplace packages is operator
+workflow that runs from the **`satusky-core_backend`** repository — it needs
+database credentials and the operator signing key, so it is not something a CLI
+user runs. See `configs/marketplace/README.md` in that repository for the full
+runbook, including package layout, digest-pinning, and troubleshooting.
 
 ### User Profile
 

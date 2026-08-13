@@ -126,14 +126,22 @@ func handleMarketplaceDeploy(ctx context.Context, in marketplaceDeployInput) err
 		deploypkg.PublicURLReadiness{Ready: false, Reason: "deployment accepted; readiness was not verified"}, "", true)
 }
 
+// marketplaceAvailability answers "can I deploy this right now?".
+//
+// Deployable is the operational answer the platform computes from the pinned
+// package release, and it is the same fact handleMarketplaceDeploy gates on.
+// ComingSoon is curated roadmap metadata that gates nothing. So ComingSoon may
+// only describe an app that is not deployable — telling a user "Coming Soon"
+// about an app that deploys on request is the display contradicting the
+// command.
 func marketplaceAvailability(app api.MarketplaceApp) string {
-	if !app.Deployable {
-		return "Unavailable"
+	if app.Deployable {
+		return "Available"
 	}
 	if app.ComingSoon {
 		return "Coming Soon"
 	}
-	return "Available"
+	return "Unavailable"
 }
 
 func marketplaceDeploymentRemediation(code string) []string {
