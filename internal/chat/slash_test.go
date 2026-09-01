@@ -19,6 +19,14 @@ func TestParseSlash(t *testing.T) {
 		{name: "disconnect", line: "/disconnect", wantCmd: CmdDisconnect, wantArg: "", isSlash: true},
 		{name: "disconnect with arg", line: "/disconnect deepseek", wantCmd: CmdDisconnect, wantArg: "deepseek", isSlash: true},
 		{name: "providers", line: "/providers", wantCmd: CmdProviders, wantArg: "", isSlash: true},
+		{name: "tools on", line: "/tools on", wantCmd: CmdTools, wantArg: "on", isSlash: true},
+		{name: "tools off", line: "/tools off", wantCmd: CmdTools, wantArg: "off", isSlash: true},
+		{name: "tools bare", line: "/tools", wantCmd: CmdTools, wantArg: "", isSlash: true},
+		{name: "ask", line: "/ask", wantCmd: CmdAsk, wantArg: "", isSlash: true},
+		{name: "ask ignores extra args", line: "/ask now please", wantCmd: CmdAsk, wantArg: "now please", isSlash: true},
+		{name: "go", line: "/go", wantCmd: CmdGo, wantArg: "", isSlash: true},
+		{name: "skill show", line: "/skill", wantCmd: CmdSkill, wantArg: "", isSlash: true},
+		{name: "skill load", line: "/skill custom.md", wantCmd: CmdSkill, wantArg: "custom.md", isSlash: true},
 		{name: "model show", line: "/model", wantCmd: CmdModel, wantArg: "", isSlash: true},
 		{name: "model set", line: "/model gpt-4o", wantCmd: CmdModel, wantArg: "gpt-4o", isSlash: true},
 		{name: "export no path", line: "/export", wantCmd: CmdExport, wantArg: "", isSlash: true},
@@ -52,7 +60,7 @@ func TestParseSlash(t *testing.T) {
 }
 
 func TestHelpTextListsCommands(t *testing.T) {
-	for _, cmd := range []string{"/connect", "/switch", "/disconnect", "/providers", "/model", "/export", "/clear", "/help", "/exit"} {
+	for _, cmd := range []string{"/connect", "/switch", "/disconnect", "/providers", "/model", "/tools", "/ask", "/go", "/skill", "/export", "/clear", "/help", "/exit"} {
 		if !strings.Contains(helpText, cmd) {
 			t.Errorf("helpText does not mention %s", cmd)
 		}

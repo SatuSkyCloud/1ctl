@@ -54,7 +54,7 @@ func TestStreamCompletionRetriesTransientErrors(t *testing.T) {
 	defer srv.Close()
 	client := NewClientWithBaseURL("sk-test-123", srv.URL)
 
-	res, err := StreamCompletion(context.Background(), client, "gpt-4o-mini", nil, io.Discard)
+	res, err := StreamCompletion(context.Background(), client, "gpt-4o-mini", nil, nil, io.Discard)
 	if err != nil {
 		t.Fatalf("StreamCompletion: %v", err)
 	}
@@ -73,7 +73,7 @@ func TestStreamCompletionRetriesServerError(t *testing.T) {
 	defer srv.Close()
 	client := NewClientWithBaseURL("sk-test-123", srv.URL)
 
-	if _, err := StreamCompletion(context.Background(), client, "gpt-4o-mini", nil, io.Discard); err != nil {
+	if _, err := StreamCompletion(context.Background(), client, "gpt-4o-mini", nil, nil, io.Discard); err != nil {
 		t.Fatalf("StreamCompletion after 5xx retry: %v", err)
 	}
 	if *count != 2 {
@@ -87,7 +87,7 @@ func TestStreamCompletionNoRetryOnAuthError(t *testing.T) {
 	defer srv.Close()
 	client := NewClientWithBaseURL("sk-test-123", srv.URL)
 
-	_, err := StreamCompletion(context.Background(), client, "gpt-4o-mini", nil, io.Discard)
+	_, err := StreamCompletion(context.Background(), client, "gpt-4o-mini", nil, nil, io.Discard)
 	if err == nil {
 		t.Fatal("expected error, got nil")
 	}

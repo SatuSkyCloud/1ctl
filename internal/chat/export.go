@@ -28,22 +28,28 @@ func renderTranscript(session *Session, provider Provider, model string, now tim
 	return b.String()
 }
 
+// resolveWithinCwd resolves arg relative to cwd, rejecting absolute paths
+// and paths that escape cwd (.., ../.., …). label names the operation in
+// error messages. Mirrors the traversal guard style used elsewhere in the
+// repo.
+func resolveWithinCwd(cwd, arg, label string) (string, error) {
+	if filepath.IsAbs(arg) {
+		return "", fmt.Errorf("%s path must be relative to the current directory (got absolute path %q)", label, arg)
+	}
+	clean := filepath.Clean(arg)
+	if clean == ".." || strings.HasPrefix(clean, ".."+string(filepath.Separator)) {
+		return "", fmt.Errorf("%s path %q escapes the current directory", label, arg)
+	}
+	return filepath.Join(cwd, clean), nil
+}
+
 // resolveExportPath resolves a /export target path relative to cwd. An
-// empty arg yields a timestamped default filename in cwd. Absolute paths
-// and paths that escape cwd (.., ../.., …) are rejected, mirroring the
-// traversal guard style used elsewhere in the repo.
+// empty arg yields a timestamped default filename in cwd.
 func resolveExportPath(cwd, arg string) (string, error) {
 	if strings.TrimSpace(arg) == "" {
 		return filepath.Join(cwd, defaultTranscriptName(time.Now())), nil
 	}
-	if filepath.IsAbs(arg) {
-		return "", fmt.Errorf("export path must be relative to the current directory (got absolute path %q)", arg)
-	}
-	clean := filepath.Clean(arg)
-	if clean == ".." || strings.HasPrefix(clean, ".."+string(filepath.Separator)) {
-		return "", fmt.Errorf("export path %q escapes the current directory", arg)
-	}
-	return filepath.Join(cwd, clean), nil
+	return resolveWithinCwd(cwd, arg, "export")
 }
 
 // exportTranscript writes the session transcript to the resolved path

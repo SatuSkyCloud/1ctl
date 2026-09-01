@@ -17,6 +17,8 @@ import (
 	"1ctl/internal/skill"
 	"1ctl/internal/utils"
 
+	chattools "1ctl/internal/chat/tools"
+
 	"github.com/chzyer/readline"
 	"github.com/fatih/color"
 	openai "github.com/sashabaranov/go-openai"
@@ -36,6 +38,9 @@ type ReplOptions struct {
 	// OneShot runs a single user turn and returns — no prompt loop. Used by
 	// `1ctl chat "prompt"`.
 	OneShot string
+	// NoTools disables workspace tools (read/write/list/shell) for this
+	// session. Tools default to on; /tools on|off toggles at runtime.
+	NoTools bool
 	// Stdin/Stdout are the interactive streams; injectable for tests.
 	Stdin  io.Reader
 	Stdout io.Writer
@@ -51,6 +56,16 @@ type replState struct {
 	key     string
 	fromEnv bool
 	model   string
+
+	// toolsEnabled requests tool calls (Definitions) on every turn;
+	// toggled by /tools and the NoTools opt-out.
+	toolsEnabled bool
+	// askFirst appends a hard question-first instruction to the system
+	// prompt for this session; toggled by /ask and /go.
+	askFirst bool
+	// exec runs workspace tool calls; built once per Run with Cwd captured
+	// at REPL start and Confirm wired to opts.Stdin (declining in OneShot).
+	exec *chattools.Executor
 }
 
 // Run is the entry point for the chat engine: config resolution, guided
@@ -101,6 +116,9 @@ func Run(ctx context.Context, opts ReplOptions) error {
 		}
 	}
 
+	state.exec = buildExecutor(opts)
+	state.toolsEnabled = !opts.NoTools
+
 	if opts.OneShot != "" {
 		return runOneShot(ctx, state, opts.OneShot, opts.Stdout)
 	}
@@ -150,7 +168,11 @@ func newReplState(st *Store, providerOverride Provider, modelOverride string) (*
 func runLoop(ctx context.Context, st *Store, state *replState, opts ReplOptions) error {
 	reader := newLineReader(opts.Stdin, st, opts.Stdout)
 	defer reader.Close() //nolint:errcheck // flushes readline history; nothing actionable on failure
-	session := NewSession(skill.Load())
+	skillContent, err := skill.Load()
+	if err != nil {
+		return fmt.Errorf("load chat skill: %w", err)
+	}
+	session := NewSession(skillContent)
 
 	for {
 		if ctx.Err() != nil {
@@ -349,32 +371,148 @@ func readTurn(r lineReader, out io.Writer, prompt string) (string, error) {
 
 // runOneShot executes a single user turn without a prompt and returns.
 func runOneShot(ctx context.Context, state *replState, prompt string, out io.Writer) error {
-	session := NewSession(skill.Load())
+	skillContent, err := skill.Load()
+	if err != nil {
+		return fmt.Errorf("load chat skill: %w", err)
+	}
+	session := NewSession(skillContent)
 	return runTurn(ctx, state, session, prompt, out, false)
 }
 
-// runTurn appends the user message, streams the completion to out, and
-// records the assistant reply (including any partial text on error).
+// maxToolRounds caps the tool-call loop per turn: at most 8 requests (and
+// their tool executions) before the agent stops and reports.
+const maxToolRounds = 8
+
+// askInstruction is appended to the system prompt while /ask is active:
+// an explicit hard instruction that overrides the model's inclination to
+// act immediately.
+const askInstruction = "\n\n## User instruction\nYou MUST ask up to 3 clarifying questions before taking any action. Do not use tools until the user has answered.\n"
+
+// buildSystem returns the system prompt for this turn: the session skill,
+// plus the question-first instruction when /ask is active.
+func buildSystem(session *Session, askFirst bool) string {
+	sys := session.System
+	if askFirst {
+		sys += askInstruction
+	}
+	return sys
+}
+
+// runTurn appends the user message and runs the agent loop: stream a
+// completion (with workspace tools when enabled), execute any tool calls
+// the model requests, feed the results back, and re-request until the
+// model answers without tool calls. Only the final answer is streamed to
+// out and recorded in the session; intermediate tool messages stay local
+// to the turn (session.Add records the user message + final answer only).
 func runTurn(ctx context.Context, state *replState, session *Session, userMsg string, out io.Writer, printPrefix bool) error {
 	session.Add(openai.ChatMessageRoleUser, userMsg)
 	if printPrefix {
 		writef(out, "%s", color.New(color.FgGreen).Sprint("assistant ▸ "))
 	}
 	messages := make([]openai.ChatCompletionMessage, 0, len(session.Raw())+1)
-	messages = append(messages, session.SystemMessage())
+	messages = append(messages, openai.ChatCompletionMessage{Role: openai.ChatMessageRoleSystem, Content: buildSystem(session, state.askFirst)})
 	messages = append(messages, session.Raw()...)
 
-	res, err := StreamCompletion(ctx, state.client, state.model, messages, out)
-	writef(out, "\n")
-	if res.Text != "" {
-		session.Add(openai.ChatMessageRoleAssistant, res.Text)
-		session.Trim()
+	var reqTools []openai.Tool
+	if state.toolsEnabled {
+		reqTools = chattools.Definitions()
 	}
+
+	for round := 0; ; round++ {
+		res, err := StreamCompletion(ctx, state.client, state.model, messages, reqTools, out)
+		if err != nil {
+			writef(out, "\n")
+			// Keep any partial text so the conversation stays coherent.
+			if res.Text != "" {
+				session.Add(openai.ChatMessageRoleAssistant, res.Text)
+				session.Trim()
+			}
+			return err
+		}
+
+		if len(res.ToolCalls) == 0 {
+			writef(out, "\n")
+			if res.Text != "" {
+				session.Add(openai.ChatMessageRoleAssistant, res.Text)
+				session.Trim()
+			}
+			printUsage(out, state.info.Name, res)
+			return nil
+		}
+
+		// The model asked for tools: keep its message (with the calls) for
+		// the next request, execute each call, and append the results.
+		writef(out, "\n")
+		messages = append(messages, openai.ChatCompletionMessage{
+			Role:      openai.ChatMessageRoleAssistant,
+			Content:   res.Text,
+			ToolCalls: res.ToolCalls,
+		})
+		for _, tc := range res.ToolCalls {
+			writef(out, "%s\n", toolProgressLine(tc))
+			result := "error: workspace tools are not available in this session"
+			if state.exec != nil {
+				result = state.exec.Execute(tc.Function.Name, []byte(tc.Function.Arguments))
+			}
+			messages = append(messages, openai.ChatCompletionMessage{
+				Role:       openai.ChatMessageRoleTool,
+				Content:    result,
+				ToolCallID: tc.ID,
+			})
+		}
+		if round+1 >= maxToolRounds {
+			writef(out, "%s\n", utils.WarnColor("reached the tool-call limit for this turn (%d rounds) — continuing in a new turn", maxToolRounds))
+			return nil
+		}
+	}
+}
+
+// toolProgressLine renders the one-line progress marker for a tool call:
+// "▸ tool: <name> <one-line arg summary>" in cyan.
+func toolProgressLine(tc openai.ToolCall) string {
+	return color.New(color.FgCyan).Sprint("▸ tool: " + tc.Function.Name + " " + summarizeArgs(tc.Function.Arguments))
+}
+
+// summarizeArgs flattens a tool-call argument JSON for the progress line:
+// newlines and runs of spaces collapse, and long arguments are truncated.
+func summarizeArgs(args string) string {
+	s := strings.Join(strings.Fields(args), " ")
+	if len(s) > 80 {
+		s = s[:80] + "…"
+	}
+	return strings.TrimSpace(s)
+}
+
+// buildExecutor constructs the turn executor for this REPL run. Cwd is the
+// directory chat started in (captured once, at Run); Confirm reads y/N
+// replies from opts.Stdin. In OneShot mode Confirm always declines so
+// scripting never blocks on a prompt.
+func buildExecutor(opts ReplOptions) *chattools.Executor {
+	cwd, err := os.Getwd()
 	if err != nil {
-		return err
+		cwd = "."
 	}
-	printUsage(out, state.info.Name, res)
-	return nil
+	confirm := func(action string) bool {
+		return confirmAction(opts.Stdin, opts.Stdout, action)
+	}
+	if opts.OneShot != "" {
+		confirm = func(string) bool { return false }
+	}
+	return chattools.NewExecutor(cwd, confirm)
+}
+
+// confirmAction prompts for y/N confirmation, reading the reply from in
+// (the same reader the REPL loop uses; a pending confirmation consumes the
+// next typed line, which is acceptable). Any read failure declines.
+func confirmAction(in io.Reader, out io.Writer, prompt string) bool {
+	writef(out, "%s [y/N]: ", prompt)
+	reader := bufio.NewReader(in)
+	response, err := reader.ReadString('\n')
+	if err != nil {
+		return false
+	}
+	response = strings.TrimSpace(strings.ToLower(response))
+	return response == "y" || response == "yes"
 }
 
 // printUsage renders the token/cost footer after a completion:
@@ -484,6 +622,56 @@ func dispatchSlash(ctx context.Context, st *Store, state *replState, session *Se
 		writef(opts.Stdout, "%s\n", utils.SuccessColor("model set to %s for %s", arg, state.info.Name))
 		return false, nil
 
+	case CmdTools:
+		switch strings.ToLower(arg) {
+		case "on":
+			state.toolsEnabled = true
+		case "off":
+			state.toolsEnabled = false
+		default:
+			state.toolsEnabled = !state.toolsEnabled // bare /tools: toggle
+		}
+		label := "off"
+		if state.toolsEnabled {
+			label = "on"
+		}
+		writef(opts.Stdout, "%s\n", utils.InfoColor("tools: %s — the agent can read/write files, list directories and run shell commands", label))
+		return false, nil
+
+	case CmdAsk:
+		state.askFirst = true
+		writef(opts.Stdout, "%s\n", utils.InfoColor("question-first mode on — I'll ask clarifying questions before acting"))
+		return false, nil
+
+	case CmdGo:
+		state.askFirst = false
+		writef(opts.Stdout, "%s\n", utils.InfoColor("question-first mode off — acting on unambiguous requests directly"))
+		return false, nil
+
+	case CmdSkill:
+		if arg == "" {
+			lines := strings.Count(session.System, "\n") + 1
+			writef(opts.Stdout, "%s\n", utils.InfoColor("skill: %s (%d lines)", skill.Name(), lines))
+			return false, nil
+		}
+		cwd, err := os.Getwd()
+		if err != nil {
+			return false, err
+		}
+		path, err := resolveWithinCwd(cwd, arg, "skill")
+		if err != nil {
+			writef(opts.Stdout, "%s\n", utils.ErrorColor("%v", err))
+			return false, nil
+		}
+		content, err := skill.LoadPath(path)
+		if err != nil {
+			writef(opts.Stdout, "%s\n", utils.ErrorColor("cannot load skill: %v", err))
+			return false, nil
+		}
+		session.System = content
+		writef(opts.Stdout, "%s\n", utils.SuccessColor("skill loaded from %s (%d lines) — for this session only", arg, strings.Count(content, "\n")+1))
+		return false, nil
+
 	case CmdExport:
 		cwd, err := os.Getwd()
 		if err != nil {
@@ -525,11 +713,15 @@ func dispatchSlash(ctx context.Context, st *Store, state *replState, session *Se
 
 // reloadState re-resolves the active provider/model/key from the store and
 // swaps it into the live state (used after /connect, /switch, /disconnect).
+// Session-level agent settings (tools, ask-first, executor) are preserved.
 func reloadState(st *Store, state *replState) error {
 	next, err := newReplState(st, "", "")
 	if err != nil {
 		return err
 	}
+	next.exec = state.exec
+	next.toolsEnabled = state.toolsEnabled
+	next.askFirst = state.askFirst
 	*state = *next
 	return nil
 }

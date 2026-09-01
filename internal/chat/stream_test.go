@@ -62,7 +62,7 @@ func TestStreamCompletionAssemblesInOrder(t *testing.T) {
 
 	var out strings.Builder
 	res, err := StreamCompletion(context.Background(), client, "gpt-4o-mini",
-		[]openai.ChatCompletionMessage{{Role: openai.ChatMessageRoleUser, Content: "hi"}}, &out)
+		[]openai.ChatCompletionMessage{{Role: openai.ChatMessageRoleUser, Content: "hi"}}, nil, &out)
 	if err != nil {
 		t.Fatalf("StreamCompletion: %v", err)
 	}
@@ -90,6 +90,129 @@ func TestStreamCompletionAssemblesInOrder(t *testing.T) {
 	if captured.AuthHeader != "Bearer sk-test-123" {
 		t.Errorf("Authorization = %q", captured.AuthHeader)
 	}
+	if len(req.Tools) != 0 {
+		t.Errorf("request Tools = %+v, want none when not provided", req.Tools)
+	}
+}
+
+// jsonStr renders s as a JSON string literal (quoted + escaped), for
+// embedding raw values into hand-built SSE payloads.
+func jsonStr(s string) string {
+	b, _ := json.Marshal(s)
+	return string(b)
+}
+
+// toolDeltaChunk is a stream chunk carrying one tool-call fragment for the
+// call at index idx. Empty fields are omitted, matching how providers
+// stream deltas (id/type/name on the first fragment, arguments later).
+func toolDeltaChunk(idx int, id, typ, name, args string) string {
+	fields := ""
+	if id != "" {
+		fields += `,"id":` + jsonStr(id)
+	}
+	if typ != "" {
+		fields += `,"type":` + jsonStr(typ)
+	}
+	fn := ""
+	if name != "" {
+		fn += `"name":` + jsonStr(name)
+	}
+	if args != "" {
+		if fn != "" {
+			fn += ","
+		}
+		fn += `"arguments":` + jsonStr(args)
+	}
+	tc := `{"index":` + strconv.Itoa(idx) + fields
+	if fn != "" {
+		tc += `,"function":{` + fn + `}`
+	}
+	tc += `}`
+	return `{"id":"x","object":"chat.completion.chunk","created":1,"model":"gpt-4o-mini","choices":[{"index":0,"delta":{"tool_calls":[` + tc + `]},"finish_reason":null}]}`
+}
+
+// toolFinishChunk is the final delta of a tool-call stream.
+func toolFinishChunk(reason string) string {
+	return `{"id":"x","object":"chat.completion.chunk","created":1,"model":"gpt-4o-mini","choices":[{"index":0,"delta":{},"finish_reason":` + jsonStr(reason) + `}]}`
+}
+
+func TestStreamCompletionAssemblesToolCalls(t *testing.T) {
+	// Arguments arrive split across fragments (as real providers stream
+	// them); id/type/name only on the first fragment.
+	events := []string{
+		toolDeltaChunk(0, "call_abc123", "function", "read_file", ""),
+		toolDeltaChunk(0, "", "", "", `{"path":`),
+		toolDeltaChunk(0, "", "", "", `"main.go"}`),
+		toolFinishChunk("tool_calls"),
+		"[DONE]",
+	}
+	srv, _ := fakeSSEServer(t, events)
+	client := NewClientWithBaseURL("sk-test-123", srv.URL)
+
+	var out strings.Builder
+	res, err := StreamCompletion(context.Background(), client, "gpt-4o-mini", nil, toolsForTest(), &out)
+	if err != nil {
+		t.Fatalf("StreamCompletion: %v", err)
+	}
+	if len(res.ToolCalls) != 1 {
+		t.Fatalf("ToolCalls = %+v, want 1 assembled call", res.ToolCalls)
+	}
+	call := res.ToolCalls[0]
+	if call.ID != "call_abc123" {
+		t.Errorf("call.ID = %q", call.ID)
+	}
+	if string(call.Type) != "function" {
+		t.Errorf("call.Type = %q", call.Type)
+	}
+	if call.Function.Name != "read_file" {
+		t.Errorf("call.Function.Name = %q", call.Function.Name)
+	}
+	if call.Function.Arguments != `{"path":"main.go"}` {
+		t.Errorf("call.Function.Arguments = %q", call.Function.Arguments)
+	}
+	if res.FinishReason != "tool_calls" {
+		t.Errorf("FinishReason = %q, want tool_calls", res.FinishReason)
+	}
+	// Tool-call deltas must never leak to the streamed output.
+	if out.String() != "" {
+		t.Errorf("stray output written: %q", out.String())
+	}
+	// The assembled call must not carry a stream index.
+	if call.Index != nil {
+		t.Errorf("assembled call keeps stream index %d", *call.Index)
+	}
+}
+
+func TestStreamCompletionMultipleToolCallsInOrder(t *testing.T) {
+	events := []string{
+		toolDeltaChunk(0, "call_0", "function", "list_dir", `{"path":"."}`),
+		toolDeltaChunk(1, "call_1", "function", "read_file", `{"path":"a.go"}`),
+		toolFinishChunk("tool_calls"),
+		"[DONE]",
+	}
+	srv, _ := fakeSSEServer(t, events)
+	client := NewClientWithBaseURL("sk-test-123", srv.URL)
+
+	res, err := StreamCompletion(context.Background(), client, "gpt-4o-mini", nil, toolsForTest(), io.Discard)
+	if err != nil {
+		t.Fatalf("StreamCompletion: %v", err)
+	}
+	if len(res.ToolCalls) != 2 {
+		t.Fatalf("ToolCalls = %+v, want 2", res.ToolCalls)
+	}
+	if res.ToolCalls[0].Function.Name != "list_dir" || res.ToolCalls[1].Function.Name != "read_file" {
+		t.Errorf("tool calls out of order: %+v", res.ToolCalls)
+	}
+}
+
+// toolsForTest is a minimal non-empty tool set for request-building tests.
+func toolsForTest() []openai.Tool {
+	return []openai.Tool{{
+		Type: openai.ToolTypeFunction,
+		Function: &openai.FunctionDefinition{
+			Name: "read_file", Parameters: map[string]any{"type": "object"},
+		},
+	}}
 }
 
 func TestStreamCompletionUsageParsed(t *testing.T) {
@@ -98,7 +221,7 @@ func TestStreamCompletionUsageParsed(t *testing.T) {
 	srv, _ := fakeSSEServer(t, events)
 	client := NewClientWithBaseURL("sk-test-123", srv.URL)
 
-	res, err := StreamCompletion(context.Background(), client, "gpt-4o-mini", nil, io.Discard)
+	res, err := StreamCompletion(context.Background(), client, "gpt-4o-mini", nil, nil, io.Discard)
 	if err != nil {
 		t.Fatalf("StreamCompletion: %v", err)
 	}
@@ -128,7 +251,7 @@ func TestStreamCompletionMidStreamError(t *testing.T) {
 	client := NewClientWithBaseURL("sk-test-123", srv.URL)
 
 	var out strings.Builder
-	res, err := StreamCompletion(context.Background(), client, "gpt-4o-mini", nil, &out)
+	res, err := StreamCompletion(context.Background(), client, "gpt-4o-mini", nil, nil, &out)
 	if err == nil {
 		t.Fatal("expected mid-stream error, got nil")
 	}
@@ -146,7 +269,7 @@ func TestStreamCompletionHTTPErrorBeforeStream(t *testing.T) {
 	// CreateChatCompletionStream time and must be classified.
 	srv, _ := fakeChatServer(t, http.StatusUnauthorized, apiErrorBody("bad key"))
 	client := NewClientWithBaseURL("sk-test-123", srv.URL)
-	_, err := StreamCompletion(context.Background(), client, "gpt-4o-mini", nil, io.Discard)
+	_, err := StreamCompletion(context.Background(), client, "gpt-4o-mini", nil, nil, io.Discard)
 	if err == nil {
 		t.Fatal("expected error, got nil")
 	}
