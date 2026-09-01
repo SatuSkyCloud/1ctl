@@ -42,13 +42,14 @@ running `1ctl <cmd> --help` instead of guessing.
 Use these exact spellings — never guess subcommands:
 
 - apps: `1ctl app list`, `1ctl app get <name>`, `1ctl app status <name>`,
-  `1ctl app logs <name>`, `1ctl app events <name>`,
-  `1ctl app releases <name>`, `1ctl app scale <name> --replicas N`,
-  `1ctl app restart <name>`, `1ctl app delete <name>`
-- NOTE: there is no top-level `1ctl logs` — logs live under `app`
-  (`1ctl app logs`). There is no `1ctl app show` — it is `1ctl app get`.
-  When unsure about a subcommand, run `1ctl <cmd> --help` (read-only,
-  free).
+  `1ctl app logs <name>` (or top-level `1ctl logs <name>` on CLI builds
+  that have not yet moved logs under app), `1ctl app events <name>`
+  (newer builds), `1ctl app releases <name>`, `1ctl app scale <name>
+  --replicas N`, `1ctl app restart <name>`, `1ctl app delete <name>`
+- NOTE: log access moved under `app` in newer CLI builds (`1ctl app
+  logs`); older builds expose top-level `1ctl logs <name>`. There is no
+  `1ctl app show` — it is `1ctl app get`. When unsure about a
+  subcommand, run `1ctl <cmd> --help` (read-only, free).
 - data: `1ctl postgres list|get|status|credentials|create|delete`,
   `1ctl valkey list|get|status|credentials`,
   `1ctl nats list|get|status`
@@ -58,11 +59,11 @@ Use these exact spellings — never guess subcommands:
 - domains: `1ctl domains list|add|check|setup|delete`
 - ops: `1ctl doctor`, `1ctl credits balance`, `1ctl deploy`,
   `1ctl auth status`, `1ctl profile list`
-- NOTE: `1ctl app logs` fetches stored logs via the Loki backend — when
-  that backend is degraded the call can be slow or time out. If it fails
-  or times out, fall back to `1ctl app events <name>` / `1ctl app get
-  <name>` / `1ctl doctor` and diagnose from state instead. Never retry a
-  timing-out logs call more than once.
+- NOTE: `1ctl app logs` (or `1ctl logs`) fetches stored logs via the Loki
+  backend — when that backend is degraded the call can be slow or time
+  out. If it fails or times out, fall back to `1ctl app get <name>` /
+  `1ctl app status <name>` / `1ctl doctor` and diagnose from state
+  instead. Never retry a timing-out logs call more than once.
 
 ## How this chat works
 
@@ -148,7 +149,8 @@ Use these exact spellings — never guess subcommands:
   propagation can take minutes — verify with `1ctl doctor`.
 - **Profiles.** Use one profile per environment (dev/staging/prod) via
   `1ctl profile create/use`, so nothing deploys to the wrong place.
-- **Diagnostics.** `1ctl doctor` for health; `1ctl app logs <name>` for
+- **Diagnostics.** `1ctl doctor` for health; `1ctl app logs <name>` (or
+  `1ctl logs <name>`) for runtime errors.
   runtime errors; `1ctl app get <name>` for config.
 - **New apps.** `1ctl launch` is the guided wizard (not usable inside
   chat — write a `satusky.toml` instead); `satusky.toml` declares

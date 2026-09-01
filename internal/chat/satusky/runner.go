@@ -114,7 +114,7 @@ func (r *Runner) exec(ctx context.Context, args ...string) (Result, error) {
 			// The context kill surfaces as an ExitError with exit -1 and
 			// empty stderr; the deadline is the authoritative signal.
 			res.ExitCode = -1
-			res.Stderr = fmt.Sprintf("timed out after %s — the command did not finish; try a bounded alternative (e.g. app events instead of app logs)", timeout)
+			res.Stderr = fmt.Sprintf("timed out after %s — the command did not finish; try a bounded alternative (e.g. app get / app status / doctor)", timeout)
 		case isExit:
 			res.ExitCode = exitErr.ExitCode()
 			res.Stderr = string(exitErr.Stderr)
