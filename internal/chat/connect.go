@@ -30,7 +30,10 @@ func Connect(ctx context.Context, client *openai.Client, p ProviderInfo) error {
 		},
 		MaxTokens: 5,
 	}
-	if _, err := client.CreateChatCompletion(ctx, req); err != nil {
+	if err := withRetry(ctx, func() error {
+		_, err := client.CreateChatCompletion(ctx, req)
+		return err
+	}); err != nil {
 		return classifyError(err)
 	}
 	return nil

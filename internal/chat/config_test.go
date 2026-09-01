@@ -180,6 +180,13 @@ func TestStoreDisconnectMissingProvider(t *testing.T) {
 	}
 }
 
+func TestHistoryPath(t *testing.T) {
+	st := NewStore("/tmp/satusky-test-dir")
+	if got := st.HistoryPath(); got != "/tmp/satusky-test-dir/history" {
+		t.Errorf("HistoryPath() = %q, want %q", got, "/tmp/satusky-test-dir/history")
+	}
+}
+
 func TestMaskKey(t *testing.T) {
 	tests := []struct {
 		name string

@@ -8,6 +8,7 @@ import (
 	"io"
 	"os"
 	"os/signal"
+	"path/filepath"
 	"strconv"
 	"strings"
 	"time"
@@ -16,6 +17,7 @@ import (
 	"1ctl/internal/skill"
 	"1ctl/internal/utils"
 
+	"github.com/chzyer/readline"
 	"github.com/fatih/color"
 	openai "github.com/sashabaranov/go-openai"
 	"golang.org/x/term"
@@ -142,17 +144,19 @@ func newReplState(st *Store, providerOverride Provider, modelOverride string) (*
 }
 
 // runLoop is the interactive REPL: prompt, read, dispatch slash commands or
-// stream a completion.
+// stream a completion. Line input goes through a lineReader: a readline
+// editor on real terminals (history, arrows, Ctrl-C/D handling), the plain
+// bufio path everywhere else (tests, pipes, scripting).
 func runLoop(ctx context.Context, st *Store, state *replState, opts ReplOptions) error {
-	reader := bufio.NewReader(opts.Stdin)
+	reader := newLineReader(opts.Stdin, st, opts.Stdout)
+	defer reader.Close() //nolint:errcheck // flushes readline history; nothing actionable on failure
 	session := NewSession(skill.Load())
 
 	for {
 		if ctx.Err() != nil {
 			return nil
 		}
-		writef(opts.Stdout, "%s", buildPrompt(state))
-		line, err := reader.ReadString('\n')
+		line, err := readTurn(reader, opts.Stdout, buildPrompt(state))
 		if err != nil {
 			if errors.Is(err, io.EOF) {
 				writef(opts.Stdout, "\n")
@@ -185,6 +189,11 @@ func runLoop(ctx context.Context, st *Store, state *replState, opts ReplOptions)
 			continue
 		}
 
+		if reader.Interactive() {
+			// Clear the prompt line so the assistant's reply starts on a
+			// fresh line; the next read redraws the prompt.
+			writef(opts.Stdout, "\r\x1b[K")
+		}
 		if err := runTurn(ctx, state, session, line, opts.Stdout, true); err != nil {
 			if ctx.Err() != nil {
 				return nil // Ctrl-C mid-stream: clean stop, partial answer kept
@@ -192,6 +201,150 @@ func runLoop(ctx context.Context, st *Store, state *replState, opts ReplOptions)
 			writef(opts.Stdout, "%s %v\n", utils.ErrorColor("❌"), err)
 		}
 	}
+}
+
+// errLineCancelled is returned by lineReader.ReadLine when the user aborts
+// the current input (Ctrl-C with text on the line). The caller discards the
+// partial input and redraws the prompt.
+var errLineCancelled = errors.New("input cancelled")
+
+// lineReader abstracts REPL line input: a readline-backed editor on real
+// terminals, a plain bufio reader everywhere else.
+type lineReader interface {
+	// SetPrompt updates the prompt shown before the next ReadLine. It is a
+	// no-op for the bufio fallback (the caller prints the prompt itself).
+	SetPrompt(string)
+	// ReadLine reads one input line. Ctrl-C on an empty line and Ctrl-D
+	// return io.EOF (exit the REPL); Ctrl-C with text returns
+	// errLineCancelled (cancel the current input).
+	ReadLine() (string, error)
+	// Interactive reports whether the reader is a TTY line editor, which
+	// drives prompt redraw behaviour (e.g. clearing the prompt line before
+	// streaming output).
+	Interactive() bool
+	// Close releases the reader (flushes history for the interactive one).
+	Close() error
+}
+
+// interactiveReader wraps chzyer/readline: arrows, inline editing and a
+// per-session history file under the chat config directory.
+type interactiveReader struct {
+	rl *readline.Instance
+}
+
+// historyLimit bounds the persisted readline history.
+const historyLimit = 500
+
+// newInteractiveReader sets up the readline editor: history file at
+// <configDir>/chat/history (directory created, file 0600), 500-entry limit,
+// and prompts drawn to out.
+func newInteractiveReader(stdin *os.File, st *Store, out io.Writer) (*interactiveReader, error) {
+	historyPath := st.HistoryPath()
+	if err := os.MkdirAll(filepath.Dir(historyPath), 0750); err != nil {
+		return nil, fmt.Errorf("create chat history directory: %w", err)
+	}
+	// Pre-create the history file with restrictive perms so prompts never
+	// sit in a world-readable file (readline itself uses 0666).
+	if f, err := os.OpenFile(historyPath, os.O_CREATE|os.O_RDWR, 0600); err == nil {
+		_ = f.Close() //nolint:errcheck // best-effort permission hardening
+	}
+	rl, err := readline.NewEx(&readline.Config{
+		Prompt:       "",
+		HistoryFile:  historyPath,
+		HistoryLimit: historyLimit,
+		Stdin:        stdin,
+		Stdout:       out,
+	})
+	if err != nil {
+		return nil, err
+	}
+	return &interactiveReader{rl: rl}, nil
+}
+
+func (r *interactiveReader) SetPrompt(p string) { r.rl.SetPrompt(p) }
+func (r *interactiveReader) Interactive() bool  { return true }
+func (r *interactiveReader) Close() error       { return r.rl.Close() }
+
+func (r *interactiveReader) ReadLine() (string, error) {
+	line, err := r.rl.Readline()
+	if err != nil {
+		if errors.Is(err, readline.ErrInterrupt) {
+			if strings.TrimSpace(line) == "" {
+				return "", io.EOF // Ctrl-C on an empty line: leave the REPL
+			}
+			return "", errLineCancelled // Ctrl-C with text: cancel the input
+		}
+		return "", err // io.EOF (Ctrl-D) or a real error
+	}
+	return line, nil
+}
+
+// bufioReader is the plain line reader used when stdin is not a terminal
+// (tests, pipes, --non-interactive scripting).
+type bufioReader struct {
+	r *bufio.Reader
+}
+
+func newBufioReader(in io.Reader) *bufioReader { return &bufioReader{r: bufio.NewReader(in)} }
+func (b *bufioReader) SetPrompt(string)        {}
+func (b *bufioReader) Interactive() bool       { return false }
+func (b *bufioReader) Close() error            { return nil }
+
+func (b *bufioReader) ReadLine() (string, error) {
+	line, err := b.r.ReadString('\n')
+	if err != nil {
+		if errors.Is(err, io.EOF) {
+			if line == "" {
+				return "", io.EOF
+			}
+			// Flush a trailing partial line; the next read exits.
+			return strings.TrimRight(line, "\r\n"), nil
+		}
+		return "", err
+	}
+	return strings.TrimRight(line, "\r\n"), nil
+}
+
+// newLineReader builds the REPL line reader. A readline editor is used only
+// when opts.Stdin is a real terminal; anything else (injected readers,
+// pipes) falls back to bufio. readline setup failures also fall back so the
+// chat never dies on editor quirks.
+func newLineReader(stdin io.Reader, st *Store, out io.Writer) lineReader {
+	if f, ok := stdin.(*os.File); ok && term.IsTerminal(int(f.Fd())) {
+		if r, err := newInteractiveReader(f, st, out); err == nil {
+			return r
+		}
+	}
+	return newBufioReader(stdin)
+}
+
+// readTurn reads a full user turn: the main prompt plus any continuation
+// lines needed to complete a multiline input (trailing backslash, unbalanced
+// braces or double quotes — see completeMultiline). The continuation prompt
+// is the subtle "... " hint. io.EOF exits the REPL; errLineCancelled aborts
+// the current input and redraws the prompt.
+func readTurn(r lineReader, out io.Writer, prompt string) (string, error) {
+	p := prompt
+	lines := make([]string, 0, 1)
+	for {
+		if !r.Interactive() {
+			writef(out, "%s", p)
+		}
+		r.SetPrompt(p)
+		line, err := r.ReadLine()
+		if err != nil {
+			if errors.Is(err, errLineCancelled) {
+				return "", nil // user aborted the input; redraw the prompt
+			}
+			return "", err // io.EOF or a real error
+		}
+		lines = append(lines, line)
+		if completeMultiline(lines) || len(lines) >= maxContinuationLines {
+			break
+		}
+		p = continuationPrompt
+	}
+	return joinMultiline(lines), nil
 }
 
 // runOneShot executes a single user turn without a prompt and returns.
@@ -220,10 +373,23 @@ func runTurn(ctx context.Context, state *replState, session *Session, userMsg st
 	if err != nil {
 		return err
 	}
-	if res.Tokens > 0 {
-		writef(out, "%s %s tokens\n", color.New(color.Faint).Sprint("⏎"), formatThousands(res.Tokens))
-	}
+	printUsage(out, state.info.Name, res)
 	return nil
+}
+
+// printUsage renders the token/cost footer after a completion:
+// "⏎ 1,204 tokens" plus a cost estimate ("· $0.0003") when a rate is
+// known for the provider. Nothing is printed when the provider reports no
+// usage.
+func printUsage(out io.Writer, provider Provider, res StreamResult) {
+	if res.TotalTokens <= 0 {
+		return
+	}
+	line := color.New(color.Faint).Sprint("⏎") + " " + formatThousands(res.TotalTokens) + " tokens"
+	if rate, ok := RateFor(provider); ok {
+		line += fmt.Sprintf(" · $%.4f", rate.Cost(res.PromptTokens, res.TotalTokens))
+	}
+	writef(out, "%s\n", line)
 }
 
 // dispatchSlash handles one slash command. Returns exit=true to leave the
@@ -316,6 +482,23 @@ func dispatchSlash(ctx context.Context, st *Store, state *replState, session *Se
 		state.model = arg
 		state.pc = pc
 		writef(opts.Stdout, "%s\n", utils.SuccessColor("model set to %s for %s", arg, state.info.Name))
+		return false, nil
+
+	case CmdExport:
+		cwd, err := os.Getwd()
+		if err != nil {
+			return false, err
+		}
+		path, err := exportTranscript(session, state.info.Name, state.model, cwd, arg)
+		if err != nil {
+			writef(opts.Stdout, "%s\n", utils.ErrorColor("%v", err))
+			return false, nil
+		}
+		if path == "" {
+			writef(opts.Stdout, "%s\n", utils.InfoColor("nothing to export yet — say something first"))
+			return false, nil
+		}
+		writef(opts.Stdout, "%s\n", utils.SuccessColor("transcript saved to %s", path))
 		return false, nil
 
 	case CmdClear:

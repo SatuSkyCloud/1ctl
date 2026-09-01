@@ -13,18 +13,20 @@ const (
 	CmdDisconnect
 	CmdProviders
 	CmdModel
+	CmdExport
 	CmdClear
 	CmdHelp
 	CmdExit
 )
 
-// helpText lists every Phase 1 slash command (see plan §2.6).
+// helpText lists every Phase 1+2 slash command (see plan §2.6).
 const helpText = `Commands:
   /connect [provider]     Connect or reconnect a provider (openai, claude, deepseek)
   /switch <provider>      Switch the active provider (auto-tests if never verified)
   /disconnect [provider]  Remove a provider's API key (default: active provider)
   /providers              Show providers, models and connection status
   /model [name]           Show the active model, or set a new one
+  /export [path]          Save the conversation transcript as markdown
   /clear                  Reset the conversation (keeps the connection)
   /help                   Show this help
   /exit  (/quit)          Leave the chat
@@ -55,6 +57,8 @@ func ParseSlash(line string) (cmd SlashCommand, arg string, isSlash bool) {
 		return CmdProviders, arg, true
 	case "model":
 		return CmdModel, arg, true
+	case "export":
+		return CmdExport, arg, true
 	case "clear":
 		return CmdClear, arg, true
 	case "help":

@@ -98,6 +98,8 @@ func TestConnectBaseURLWiring(t *testing.T) {
 }
 
 func TestConnectErrorClassification(t *testing.T) {
+	// The 429 case would otherwise sleep through the real retry backoff.
+	shortBackoff(t)
 	tests := []struct {
 		name    string
 		status  int

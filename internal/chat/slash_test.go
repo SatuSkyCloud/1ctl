@@ -21,6 +21,8 @@ func TestParseSlash(t *testing.T) {
 		{name: "providers", line: "/providers", wantCmd: CmdProviders, wantArg: "", isSlash: true},
 		{name: "model show", line: "/model", wantCmd: CmdModel, wantArg: "", isSlash: true},
 		{name: "model set", line: "/model gpt-4o", wantCmd: CmdModel, wantArg: "gpt-4o", isSlash: true},
+		{name: "export no path", line: "/export", wantCmd: CmdExport, wantArg: "", isSlash: true},
+		{name: "export with path", line: "/export notes.md", wantCmd: CmdExport, wantArg: "notes.md", isSlash: true},
 		{name: "clear", line: "/clear", wantCmd: CmdClear, wantArg: "", isSlash: true},
 		{name: "help", line: "/help", wantCmd: CmdHelp, wantArg: "", isSlash: true},
 		{name: "exit", line: "/exit", wantCmd: CmdExit, wantArg: "", isSlash: true},
@@ -50,7 +52,7 @@ func TestParseSlash(t *testing.T) {
 }
 
 func TestHelpTextListsCommands(t *testing.T) {
-	for _, cmd := range []string{"/connect", "/switch", "/disconnect", "/providers", "/model", "/clear", "/help", "/exit"} {
+	for _, cmd := range []string{"/connect", "/switch", "/disconnect", "/providers", "/model", "/export", "/clear", "/help", "/exit"} {
 		if !strings.Contains(helpText, cmd) {
 			t.Errorf("helpText does not mention %s", cmd)
 		}

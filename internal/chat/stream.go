@@ -10,11 +10,13 @@ import (
 )
 
 // StreamResult carries the outcome of a completion: the assembled text,
-// the total token usage when the provider reports it, and the model.
+// the token usage when the provider reports it (via stream include_usage
+// or the non-streaming response), and the model.
 type StreamResult struct {
-	Text   string
-	Tokens int
-	Model  string
+	Text         string
+	PromptTokens int
+	TotalTokens  int
+	Model        string
 }
 
 // StreamCompletion streams a chat completion. Each content delta is written
@@ -30,7 +32,17 @@ func StreamCompletion(ctx context.Context, client *openai.Client, model string, 
 			IncludeUsage: true,
 		},
 	}
-	stream, err := client.CreateChatCompletionStream(ctx, req)
+	// Transient provider errors (429/5xx) are retried with backoff; the
+	// stream is only created once the request succeeds.
+	var stream *openai.ChatCompletionStream
+	err := withRetry(ctx, func() error {
+		s, e := client.CreateChatCompletionStream(ctx, req)
+		if e != nil {
+			return e
+		}
+		stream = s
+		return nil
+	})
 	if err != nil {
 		return StreamResult{}, classifyError(err)
 	}
@@ -58,7 +70,8 @@ func StreamCompletion(ctx context.Context, client *openai.Client, model string, 
 			}
 		}
 		if chunk.Usage != nil {
-			result.Tokens = chunk.Usage.TotalTokens
+			result.PromptTokens = chunk.Usage.PromptTokens
+			result.TotalTokens = chunk.Usage.TotalTokens
 		}
 		if chunk.Model != "" {
 			result.Model = chunk.Model
@@ -76,8 +89,15 @@ func RunCompletion(ctx context.Context, client *openai.Client, model string, mes
 		Model:    model,
 		Messages: messages,
 	}
-	resp, err := client.CreateChatCompletion(ctx, req)
-	if err != nil {
+	var resp openai.ChatCompletionResponse
+	if err := withRetry(ctx, func() error {
+		r, e := client.CreateChatCompletion(ctx, req)
+		if e != nil {
+			return e
+		}
+		resp = r
+		return nil
+	}); err != nil {
 		return StreamResult{}, classifyError(err)
 	}
 	result := StreamResult{Model: model}
@@ -85,7 +105,8 @@ func RunCompletion(ctx context.Context, client *openai.Client, model string, mes
 		result.Text = resp.Choices[0].Message.Content
 	}
 	if resp.Usage.TotalTokens != 0 {
-		result.Tokens = resp.Usage.TotalTokens
+		result.PromptTokens = resp.Usage.PromptTokens
+		result.TotalTokens = resp.Usage.TotalTokens
 	}
 	if resp.Model != "" {
 		result.Model = resp.Model

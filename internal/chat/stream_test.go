@@ -6,6 +6,7 @@ import (
 	"io"
 	"net/http"
 	"net/http/httptest"
+	"strconv"
 	"strings"
 	"testing"
 
@@ -46,6 +47,12 @@ func newRawSSEServer(t *testing.T, body string) *httptest.Server {
 
 func streamChunk(content string) string {
 	return `{"id":"x","object":"chat.completion.chunk","created":1,"model":"gpt-4o-mini","choices":[{"index":0,"delta":{"content":"` + content + `"},"finish_reason":null}]}`
+}
+
+// usageChunk is a stream chunk carrying only usage (the final chunk in a
+// stream with include_usage=true).
+func usageChunk(promptTokens, completionTokens int) string {
+	return `{"id":"x","object":"chat.completion.chunk","created":1,"model":"gpt-4o-mini","choices":[],"usage":{"prompt_tokens":` + strconv.Itoa(promptTokens) + `,"completion_tokens":` + strconv.Itoa(completionTokens) + `,"total_tokens":` + strconv.Itoa(promptTokens+completionTokens) + `}}`
 }
 
 func TestStreamCompletionAssemblesInOrder(t *testing.T) {
@@ -95,8 +102,11 @@ func TestStreamCompletionUsageParsed(t *testing.T) {
 	if err != nil {
 		t.Fatalf("StreamCompletion: %v", err)
 	}
-	if res.Tokens != 15 {
-		t.Errorf("result.Tokens = %d, want 15", res.Tokens)
+	if res.TotalTokens != 15 {
+		t.Errorf("result.TotalTokens = %d, want 15", res.TotalTokens)
+	}
+	if res.PromptTokens != 10 {
+		t.Errorf("result.PromptTokens = %d, want 10", res.PromptTokens)
 	}
 	if res.Text != "hi " {
 		t.Errorf("result.Text = %q, want %q", res.Text, "hi ")
@@ -159,8 +169,8 @@ func TestRunCompletion(t *testing.T) {
 	if res.Text != "pong" || out.String() != "pong" {
 		t.Errorf("text = %q, out = %q, want pong", res.Text, out.String())
 	}
-	if res.Tokens != 4 {
-		t.Errorf("result.Tokens = %d, want 4", res.Tokens)
+	if res.TotalTokens != 4 {
+		t.Errorf("result.TotalTokens = %d, want 4", res.TotalTokens)
 	}
 	if res.Model != "gpt-4o-mini" {
 		t.Errorf("result.Model = %q", res.Model)

@@ -2,6 +2,8 @@ package chat
 
 import (
 	"context"
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 
@@ -117,5 +119,153 @@ func TestRunLoopEOFExits(t *testing.T) {
 	}
 	if !strings.Contains(out.String(), "chat(openai·gpt-4o-mini)") {
 		t.Errorf("prompt not rendered before EOF: %q", out.String())
+	}
+}
+
+func TestRunTurnPrintsTokenAndCostFooter(t *testing.T) {
+	color.NoColor = true
+	events := []string{streamChunk("Hello "), streamChunk("world"), usageChunk(1000, 204), "[DONE]"}
+	srv, _ := fakeSSEServer(t, events)
+	state := replTestState(t, srv.URL)
+	session := NewSession("sys")
+
+	var out strings.Builder
+	if err := runTurn(context.Background(), state, session, "hi", &out, true); err != nil {
+		t.Fatalf("runTurn: %v", err)
+	}
+	got := out.String()
+	if !strings.Contains(got, "1,204 tokens") {
+		t.Errorf("token count missing from footer: %q", got)
+	}
+	// openai rate: 1000 prompt @0.15 + 204 completion @0.60 per 1M → $0.0003.
+	if !strings.Contains(got, "· $0.0003") {
+		t.Errorf("cost estimate missing from footer: %q", got)
+	}
+}
+
+func TestRunTurnOmitsFooterWithoutUsage(t *testing.T) {
+	color.NoColor = true
+	events := []string{streamChunk("Hello "), streamChunk("world"), "[DONE]"}
+	srv, _ := fakeSSEServer(t, events)
+	state := replTestState(t, srv.URL)
+	session := NewSession("sys")
+
+	var out strings.Builder
+	if err := runTurn(context.Background(), state, session, "hi", &out, true); err != nil {
+		t.Fatalf("runTurn: %v", err)
+	}
+	if strings.Contains(out.String(), "tokens") {
+		t.Errorf("footer printed without usage data: %q", out.String())
+	}
+}
+
+func TestRunLoopMultilineBackslashContinuation(t *testing.T) {
+	color.NoColor = true
+	srv, _ := fakeSSEServer(t, []string{streamChunk("ok"), "[DONE]"})
+	st := NewStore(t.TempDir())
+	state := replTestState(t, srv.URL)
+	var out strings.Builder
+	// First line ends with a backslash: the loop must keep reading and
+	// join the lines before sending the turn.
+	opts := ReplOptions{Stdin: strings.NewReader("write a poem \\\nthen stop\n/exit\n"), Stdout: &out}
+
+	if err := runLoop(context.Background(), st, state, opts); err != nil {
+		t.Fatalf("runLoop: %v", err)
+	}
+	// The continuation hint must be shown, and the streamed reply must
+	// appear after the joined user message.
+	if !strings.Contains(out.String(), "... ") {
+		t.Errorf("continuation hint not rendered: %q", out.String())
+	}
+	if !strings.Contains(out.String(), "assistant ▸ ok") {
+		t.Errorf("reply missing after multiline input: %q", out.String())
+	}
+}
+
+func TestRunLoopMultilineUnbalancedBrace(t *testing.T) {
+	color.NoColor = true
+	srv, _ := fakeSSEServer(t, []string{streamChunk("ok"), "[DONE]"})
+	st := NewStore(t.TempDir())
+	state := replTestState(t, srv.URL)
+	var out strings.Builder
+	opts := ReplOptions{Stdin: strings.NewReader("func foo() {\n  return 1\n}\n/exit\n"), Stdout: &out}
+
+	if err := runLoop(context.Background(), st, state, opts); err != nil {
+		t.Fatalf("runLoop: %v", err)
+	}
+	if !strings.Contains(out.String(), "assistant ▸ ok") {
+		t.Errorf("reply missing after multiline brace input: %q", out.String())
+	}
+}
+
+func TestExportThroughDispatchWritesFile(t *testing.T) {
+	color.NoColor = true
+	st := NewStore(t.TempDir())
+	state := replTestState(t, "http://127.0.0.1:1")
+	session := NewSession("sys")
+	session.Add(openai.ChatMessageRoleUser, "hello")
+	session.Add(openai.ChatMessageRoleAssistant, "hi!")
+
+	cwd := t.TempDir()
+	oldWD, err := os.Getwd()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Chdir(cwd); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = os.Chdir(oldWD) })
+
+	var out strings.Builder
+	opts := ReplOptions{Stdin: strings.NewReader(""), Stdout: &out}
+	exit, err := dispatchSlash(context.Background(), st, state, session, CmdExport, "out.md", opts)
+	if err != nil {
+		t.Fatalf("dispatchSlash(/export): %v", err)
+	}
+	if exit {
+		t.Fatal("/export must not exit the REPL")
+	}
+	if !strings.Contains(out.String(), "transcript saved to") {
+		t.Errorf("success message missing: %q", out.String())
+	}
+	data, err := os.ReadFile(filepath.Join(cwd, "out.md"))
+	if err != nil {
+		t.Fatalf("read exported file: %v", err)
+	}
+	if !strings.Contains(string(data), "## assistant") || !strings.Contains(string(data), "hello") {
+		t.Errorf("exported content wrong:\n%s", data)
+	}
+}
+
+func TestExportEmptyConversationThroughDispatch(t *testing.T) {
+	color.NoColor = true
+	st := NewStore(t.TempDir())
+	state := replTestState(t, "http://127.0.0.1:1")
+	session := NewSession("sys")
+
+	cwd := t.TempDir()
+	oldWD, err := os.Getwd()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Chdir(cwd); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = os.Chdir(oldWD) })
+
+	var out strings.Builder
+	opts := ReplOptions{Stdin: strings.NewReader(""), Stdout: &out}
+	if _, err := dispatchSlash(context.Background(), st, state, session, CmdExport, "", opts); err != nil {
+		t.Fatalf("dispatchSlash(/export): %v", err)
+	}
+	if !strings.Contains(out.String(), "nothing to export") {
+		t.Errorf("empty-conversation message missing: %q", out.String())
+	}
+	entries, err := os.ReadDir(cwd)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(entries) != 0 {
+		t.Errorf("file created for empty conversation: %v", entries)
 	}
 }

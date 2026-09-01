@@ -49,6 +49,11 @@ func NewStore(dir string) *Store {
 // Dir returns the store's root directory.
 func (s *Store) Dir() string { return s.dir }
 
+// HistoryPath returns the REPL history file path inside the store's
+// directory (~/.satusky/chat/history). The parent directory is created by
+// the interactive reader before readline opens the file.
+func (s *Store) HistoryPath() string { return filepath.Join(s.dir, "history") }
+
 // path returns the absolute path of the chat.json file.
 func (s *Store) path() string { return filepath.Join(s.dir, chatFile) }
 
