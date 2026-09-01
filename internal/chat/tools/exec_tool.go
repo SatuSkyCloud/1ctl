@@ -104,7 +104,7 @@ func (e *Executor) writeFile(path, content string) string {
 	tmpName := tmp.Name()
 	defer os.Remove(tmpName) //nolint:errcheck // best-effort cleanup of the temp file
 	if _, err := tmp.WriteString(content); err != nil {
-		_ = tmp.Close() // the write failed; nothing to recover
+		_ = tmp.Close() //nolint:errcheck // the write failed; nothing to recover
 		return "error: write " + path + ": " + err.Error()
 	}
 	if err := tmp.Close(); err != nil {
