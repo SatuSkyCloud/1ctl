@@ -84,7 +84,7 @@ func HandleConnect(ctx context.Context, st *Store, opts ConnectOptions) error {
 		return fmt.Errorf("API key cannot be empty")
 	}
 
-	sp := NewSpinner(opts.Stdout, "Testing connection…")
+	sp := NewSpinner(opts.Stdout, "Testing connection…").Elapsed()
 	sp.Start()
 	testCtx, cancel := context.WithTimeout(ctx, connectTimeout)
 	defer cancel()

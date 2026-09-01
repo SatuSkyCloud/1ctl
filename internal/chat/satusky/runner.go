@@ -27,9 +27,28 @@ type Result struct {
 	ExitCode int
 }
 
-// defaultTimeout bounds every 1ctl subprocess unless the runner is
-// configured otherwise (tests shrink it).
+// defaultTimeout is the fallback cap for 1ctl invocations when the runner
+// has no explicit Timeout and CommandTimeout has no better answer. In
+// practice CommandTimeout always picks a per-command budget.
 const defaultTimeout = 120 * time.Second
+
+// CommandTimeout returns the timeout for a 1ctl invocation: help is
+// near-instant (10s), read-only queries fail fast (30s) so a degraded
+// backend (e.g. the Loki logs proxy) can never pin the chat, and
+// mutating/apply commands that wait for reconciliation get generous
+// budgets (deploy: 10m, other mutations: 5m).
+func CommandTimeout(args []string) time.Duration {
+	if hasHelp(args) {
+		return 10 * time.Second
+	}
+	if Mutating(args) {
+		if len(args) > 0 && args[0] == "deploy" {
+			return 10 * time.Minute
+		}
+		return 5 * time.Minute
+	}
+	return 30 * time.Second
+}
 
 // maxStreamChars caps each captured stream (stdout, stderr) from a 1ctl
 // invocation so a single tool result never floods the model context.
@@ -79,7 +98,7 @@ func (r *Runner) exec(ctx context.Context, args ...string) (Result, error) {
 	}
 	timeout := r.Timeout
 	if timeout <= 0 {
-		timeout = defaultTimeout
+		timeout = CommandTimeout(args)
 	}
 	ctx, cancel := context.WithTimeout(ctx, timeout)
 	defer cancel()
@@ -89,10 +108,17 @@ func (r *Runner) exec(ctx context.Context, args ...string) (Result, error) {
 	res := Result{}
 	if err != nil {
 		var exitErr *exec.ExitError
-		if errors.As(err, &exitErr) {
+		isExit := errors.As(err, &exitErr)
+		switch {
+		case ctx.Err() == context.DeadlineExceeded:
+			// The context kill surfaces as an ExitError with exit -1 and
+			// empty stderr; the deadline is the authoritative signal.
+			res.ExitCode = -1
+			res.Stderr = fmt.Sprintf("timed out after %s — the command did not finish; try a bounded alternative (e.g. app events instead of app logs)", timeout)
+		case isExit:
 			res.ExitCode = exitErr.ExitCode()
 			res.Stderr = string(exitErr.Stderr)
-		} else {
+		default:
 			return Result{}, err
 		}
 	}

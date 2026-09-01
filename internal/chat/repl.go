@@ -473,7 +473,7 @@ func runTurn(ctx context.Context, state *replState, session *Session, userMsg st
 	}
 
 	for round := 0; ; round++ {
-		sp := NewSpinner(out, prefix+"thinking…")
+		sp := NewSpinner(out, prefix+"thinking…").Elapsed()
 		sp.Start()
 		res, err := StreamCompletion(ctx, state.client, state.model, messages, reqTools, &firstWriteSpinner{sp: sp, w: out})
 		// Stopped by the first streamed delta (firstWriteSpinner) or here
@@ -509,7 +509,7 @@ func runTurn(ctx context.Context, state *replState, session *Session, userMsg st
 		})
 		for _, tc := range res.ToolCalls {
 			writef(out, "%s\n", toolProgressLine(tc))
-			runSp := NewSpinner(out, "running…")
+			runSp := NewSpinner(out, "running…").Elapsed()
 			runSp.Start()
 			result := "error: workspace tools are not available in this session"
 			if state.exec != nil {
@@ -644,8 +644,13 @@ func refreshSnapshot(ctx context.Context, state *replState) (*satusky.Snapshot, 
 	if state.runner == nil {
 		return nil, errors.New("SatuSky runner unavailable in this session")
 	}
-	sp := NewSpinner(state.out, "refreshing SatuSky state…")
+	sp := NewSpinner(state.out, "refreshing SatuSky state…").Elapsed()
 	sp.Start()
+	// Bound the whole batch: a degraded backend (e.g. the Loki proxy)
+	// must never pin the chat for minutes. Per-step CommandTimeout caps
+	// individual calls; this caps the total.
+	ctx, cancel := context.WithTimeout(ctx, 60*time.Second)
+	defer cancel()
 	snap, err := state.runner.Snapshot(ctx)
 	if err != nil {
 		sp.StopWith(utils.ErrorColor("✗ failed: %v", err))

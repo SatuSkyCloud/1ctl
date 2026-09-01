@@ -1,6 +1,7 @@
 package chat
 
 import (
+	"fmt"
 	"io"
 	"sync"
 	"time"
@@ -30,6 +31,12 @@ type Spinner struct {
 	mu      sync.Mutex
 	started bool
 	idx     int
+
+	// showElapsed appends a " · 12s" counter to the animation so a
+	// long-running operation never looks frozen. Only in timer mode.
+	showElapsed bool
+	startTime   time.Time
+	now         func() time.Time // injectable clock (tests)
 }
 
 // NewSpinner builds a spinner for out. It animates only when out is a
@@ -50,7 +57,17 @@ func NewSpinnerEnabled(out io.Writer, text string, enabled bool) *Spinner {
 		interval: 80 * time.Millisecond,
 		stop:     make(chan struct{}),
 		done:     make(chan struct{}),
+		now:      time.Now,
 	}
+}
+
+// Elapsed enables the elapsed-seconds counter on the animation and
+// returns the spinner for chaining.
+func (s *Spinner) Elapsed() *Spinner {
+	if s != nil {
+		s.showElapsed = true
+	}
+	return s
 }
 
 // Start launches the animation goroutine (or arms manual mode). It is
@@ -65,6 +82,9 @@ func (s *Spinner) Start() {
 		return
 	}
 	s.started = true
+	if s.now != nil {
+		s.startTime = s.now()
+	}
 	s.mu.Unlock()
 	if !s.manual {
 		go s.run()
@@ -85,7 +105,7 @@ func (s *Spinner) run() {
 				s.mu.Unlock()
 				return
 			}
-			s.drawLocked(s.frames[s.idx%len(s.frames)] + " " + s.text)
+			s.drawLocked(s.renderLocked())
 			s.idx++
 			s.mu.Unlock()
 		case <-s.stop:
@@ -105,8 +125,22 @@ func (s *Spinner) Step() {
 	if !s.started {
 		return
 	}
-	s.drawLocked(s.frames[s.idx%len(s.frames)] + " " + s.text)
+	s.drawLocked(s.renderLocked())
 	s.idx++
+}
+
+// renderLocked builds the current line: "frame text" plus a " · 12s"
+// elapsed counter when showElapsed is on and the spinner runs on a timer
+// (manual/test mode stays deterministic). Callers hold mu.
+func (s *Spinner) renderLocked() string {
+	line := s.frames[s.idx%len(s.frames)] + " " + s.text
+	if s.showElapsed && !s.manual && s.now != nil {
+		secs := int(s.now().Sub(s.startTime).Seconds())
+		if secs > 0 {
+			line += fmt.Sprintf(" · %ds", secs)
+		}
+	}
+	return line
 }
 
 // Update changes the animation text. The next tick (or Step) draws the

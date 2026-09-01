@@ -58,6 +58,11 @@ Use these exact spellings — never guess subcommands:
 - domains: `1ctl domains list|add|check|setup|delete`
 - ops: `1ctl doctor`, `1ctl credits balance`, `1ctl deploy`,
   `1ctl auth status`, `1ctl profile list`
+- NOTE: `1ctl app logs` fetches stored logs via the Loki backend — when
+  that backend is degraded the call can be slow or time out. If it fails
+  or times out, fall back to `1ctl app events <name>` / `1ctl app get
+  <name>` / `1ctl doctor` and diagnose from state instead. Never retry a
+  timing-out logs call more than once.
 
 ## How this chat works
 

@@ -3,8 +3,10 @@ package satusky
 import (
 	"context"
 	"errors"
+	"os"
 	"strings"
 	"testing"
+	"time"
 )
 
 // fakeRunner builds a runner whose Exec records calls and returns the
@@ -644,5 +646,69 @@ func TestSummary(t *testing.T) {
 	}
 	if strings.Contains(Summary(Result{ExitCode: 0}), "stdout") {
 		t.Errorf("Summary rendered empty streams")
+	}
+}
+
+func TestCommandTimeout(t *testing.T) {
+	cases := []struct {
+		args  []string
+		want  time.Duration
+		label string
+	}{
+		{[]string{"app", "--help"}, 10 * time.Second, "help is near-instant"},
+		{[]string{"deploy", "-h"}, 10 * time.Second, "deploy help is near-instant"},
+		{[]string{"deploy"}, 10 * time.Minute, "deploy waits for readiness"},
+		{[]string{"app", "delete", "x"}, 5 * time.Minute, "other mutations wait for reconciliation"},
+		{[]string{"postgres", "create", "--name", "db"}, 5 * time.Minute, "postgres create can wait"},
+		{[]string{"app", "get", "x"}, 30 * time.Second, "reads fail fast"},
+		{[]string{"app", "logs", "x"}, 30 * time.Second, "logs is read-only -> bounded"},
+		{[]string{"doctor"}, 30 * time.Second, "doctor is read-only -> bounded"},
+	}
+	for _, c := range cases {
+		if got := CommandTimeout(c.args); got != c.want {
+			t.Errorf("CommandTimeout(%v) = %v, want %v (%s)", c.args, got, c.want, c.label)
+		}
+	}
+}
+
+// TestRunTimeout verifies that a subprocess that does not finish is killed
+// by the runner timeout and surfaces as a clean, model-readable Result
+// (exit -1, "timed out" stderr) instead of a raw error. It uses the
+// standard Go helper-process pattern so the test never depends on `sleep`.
+func TestRunTimeout(t *testing.T) {
+	if os.Getenv("GO_WANT_HELPER_PROCESS") == "1" {
+		time.Sleep(30 * time.Second)
+		os.Exit(0)
+	}
+	t.Setenv("GO_WANT_HELPER_PROCESS", "1")
+	r := &Runner{Binary: os.Args[0], Timeout: 100 * time.Millisecond}
+	res, err := r.Run(context.Background(), "-test.run=^TestRunTimeout$")
+	if err != nil {
+		t.Fatalf("Run returned error on timeout: %v", err)
+	}
+	if res.ExitCode != -1 {
+		t.Errorf("ExitCode = %d, want -1 (timeout)", res.ExitCode)
+	}
+	if !strings.Contains(res.Stderr, "timed out") || !strings.Contains(res.Stderr, "100ms") {
+		t.Errorf("Stderr = %q, want a 'timed out after' message", res.Stderr)
+	}
+}
+
+// TestRunKeepsExplicitTimeout ensures an explicit runner Timeout wins over
+// CommandTimeout (used by tests and callers that need custom budgets).
+func TestRunKeepsExplicitTimeout(t *testing.T) {
+	if os.Getenv("GO_WANT_HELPER_PROCESS") == "1" {
+		time.Sleep(30 * time.Second)
+		os.Exit(0)
+	}
+	t.Setenv("GO_WANT_HELPER_PROCESS", "1")
+	// deploy would normally get 10m; an explicit short timeout must win.
+	r := &Runner{Binary: os.Args[0], Timeout: 100 * time.Millisecond}
+	res, err := r.Run(context.Background(), "deploy")
+	if err != nil {
+		t.Fatalf("Run returned error on timeout: %v", err)
+	}
+	if res.ExitCode != -1 || !strings.Contains(res.Stderr, "timed out") {
+		t.Errorf("res = %+v, want timeout result", res)
 	}
 }
