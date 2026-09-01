@@ -2,13 +2,24 @@ package chat
 
 import (
 	"context"
+	"strings"
 
-	"1ctl/internal/utils"
+	chatengine "1ctl/internal/chat"
+
+	"github.com/urfave/cli/v3"
 )
 
-// handleChat is the placeholder action for "1ctl chat". Phase 1 replaces it
-// with the interactive connect + streaming chat loop (internal/chat).
-func handleChat(ctx context.Context, in chatInput) error {
-	utils.PrintInfo("chat: under construction — Phase 1 will implement the interactive chat")
-	return nil
+// handleChat wires the "1ctl chat" command to the interactive chat engine.
+// Any positional args run a single turn (`1ctl chat "prompt"`); with no
+// args the interactive REPL starts.
+func handleChat(ctx context.Context, cmd *cli.Command, in chatInput) error {
+	opts := chatengine.ReplOptions{
+		Provider: chatengine.Provider(in.Provider),
+		Model:    in.Model,
+		ShowKey:  in.ShowKey,
+	}
+	if args := cmd.Args().Slice(); len(args) > 0 {
+		opts.OneShot = strings.Join(args, " ")
+	}
+	return chatengine.Run(ctx, opts)
 }

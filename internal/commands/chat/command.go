@@ -53,7 +53,7 @@ func Command() *cli.Command {
 			},
 		},
 		Action: func(ctx context.Context, cmd *cli.Command) error {
-			return handleChat(ctx, in)
+			return handleChat(ctx, cmd, in)
 		},
 	}
 }
