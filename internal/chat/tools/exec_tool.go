@@ -58,7 +58,7 @@ func (e *Executor) readFile(path string, offset, limit int) string {
 	if err != nil {
 		return "error: " + err.Error()
 	}
-	data, err := os.ReadFile(full)
+	data, err := os.ReadFile(full) // #nosec G304 -- path resolved via resolveUnder (traversal/symlink guard)
 	if err != nil {
 		return "error: read " + path + ": " + err.Error()
 	}
@@ -94,7 +94,7 @@ func (e *Executor) writeFile(path, content string) string {
 			return "cancelled by user: overwrite of " + path + " not confirmed"
 		}
 	}
-	if err := os.MkdirAll(filepath.Dir(full), 0755); err != nil {
+	if err := os.MkdirAll(filepath.Dir(full), 0755); err != nil { // #nosec G301 -- project directories, standard perms
 		return "error: create parent directories for " + path + ": " + err.Error()
 	}
 	tmp, err := os.CreateTemp(filepath.Dir(full), ".1ctl-chat-write-*")
@@ -104,13 +104,13 @@ func (e *Executor) writeFile(path, content string) string {
 	tmpName := tmp.Name()
 	defer os.Remove(tmpName) //nolint:errcheck // best-effort cleanup of the temp file
 	if _, err := tmp.WriteString(content); err != nil {
-		tmp.Close() //nolint:errcheck // the write failed; nothing to recover
+		_ = tmp.Close() // the write failed; nothing to recover
 		return "error: write " + path + ": " + err.Error()
 	}
 	if err := tmp.Close(); err != nil {
 		return "error: write " + path + ": " + err.Error()
 	}
-	if err := os.Chmod(tmpName, 0644); err != nil {
+	if err := os.Chmod(tmpName, 0644); err != nil { // #nosec G302 -- scaffolded project files, not secrets
 		return "error: write " + path + ": " + err.Error()
 	}
 	if err := os.Rename(tmpName, full); err != nil {
@@ -195,7 +195,7 @@ func (e *Executor) runShell(command, cwd string) string {
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), timeout)
 	defer cancel()
-	cmd := exec.CommandContext(ctx, "/bin/sh", "-c", command)
+	cmd := exec.CommandContext(ctx, "/bin/sh", "-c", command) // #nosec G204 -- run_shell is the feature; user-confirmed, timeout-bounded, destructive patterns blocked
 	cmd.Dir = dir
 	var stdout, stderr strings.Builder
 	cmd.Stdout = &stdout

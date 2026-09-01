@@ -38,7 +38,7 @@ func Load() (string, error) {
 // LoadPath reads a skill file from disk and records it as the active
 // source. Used by the SATUSKY_CHAT_SKILL override and /skill <path>.
 func LoadPath(path string) (string, error) {
-	content, err := os.ReadFile(path)
+	content, err := os.ReadFile(path) // #nosec G703 G304 -- /skill paths are traversal-guarded by the caller; SATUSKY_CHAT_SKILL is user-controlled
 	if err != nil {
 		return "", fmt.Errorf("load skill %s: %w", path, err)
 	}

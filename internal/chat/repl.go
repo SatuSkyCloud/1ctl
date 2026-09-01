@@ -296,7 +296,7 @@ func newInteractiveReader(stdin *os.File, st *Store, out io.Writer) (*interactiv
 	}
 	// Pre-create the history file with restrictive perms so prompts never
 	// sit in a world-readable file (readline itself uses 0666).
-	if f, err := os.OpenFile(historyPath, os.O_CREATE|os.O_RDWR, 0600); err == nil {
+	if f, err := os.OpenFile(historyPath, os.O_CREATE|os.O_RDWR, 0600); err == nil { // #nosec G304 -- history path built from the config dir
 		_ = f.Close() //nolint:errcheck // best-effort permission hardening
 	}
 	rl, err := readline.NewEx(&readline.Config{

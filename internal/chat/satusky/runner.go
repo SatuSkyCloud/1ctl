@@ -103,7 +103,7 @@ func (r *Runner) exec(ctx context.Context, args ...string) (Result, error) {
 	ctx, cancel := context.WithTimeout(ctx, timeout)
 	defer cancel()
 
-	cmd := exec.CommandContext(ctx, binary, args...)
+	cmd := exec.CommandContext(ctx, binary, args...) // #nosec G204 -- chat deliberately executes the 1ctl binary; args gated by the permission model + confirmation
 	out, err := cmd.Output()
 	res := Result{}
 	if err != nil {
@@ -561,7 +561,7 @@ var forceMutating = map[string]bool{
 // reason they are refused. These need an interactive TTY (wizards,
 // password prompts, psql) or spawn long-running processes (port
 // forwards, log streams, nested chat sessions).
-var blockedCommands = map[string]string{
+var blockedCommands = map[string]string{ // #nosec G101 -- refusal messages, no credentials
 	"launch":           "`1ctl launch` is an interactive wizard and cannot run inside chat — write a satusky.toml and use `1ctl deploy` instead",
 	"postgres connect": "`1ctl postgres connect` spawns interactive psql and cannot run inside chat",
 	"postgres proxy":   "`1ctl postgres proxy` opens a long-running port forward and cannot run inside chat",

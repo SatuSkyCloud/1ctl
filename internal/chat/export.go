@@ -65,10 +65,10 @@ func exportTranscript(session *Session, provider Provider, model, cwd, arg strin
 		return "", err
 	}
 	content := renderTranscript(session, provider, model, time.Now())
-	if err := os.MkdirAll(filepath.Dir(path), 0755); err != nil {
+	if err := os.MkdirAll(filepath.Dir(path), 0750); err != nil {
 		return "", fmt.Errorf("create export directory: %w", err)
 	}
-	if err := os.WriteFile(path, []byte(content), 0644); err != nil {
+	if err := os.WriteFile(path, []byte(content), 0600); err != nil {
 		return "", fmt.Errorf("write transcript: %w", err)
 	}
 	return path, nil
