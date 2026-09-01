@@ -3,6 +3,7 @@ package chat
 import (
 	"bufio"
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
@@ -17,6 +18,7 @@ import (
 	"1ctl/internal/skill"
 	"1ctl/internal/utils"
 
+	"1ctl/internal/chat/satusky"
 	chattools "1ctl/internal/chat/tools"
 
 	"github.com/chzyer/readline"
@@ -66,6 +68,13 @@ type replState struct {
 	// exec runs workspace tool calls; built once per Run with Cwd captured
 	// at REPL start and Confirm wired to opts.Stdin (declining in OneShot).
 	exec *chattools.Executor
+
+	// runner executes real 1ctl commands (read-only freely, mutating only
+	// after user confirmation). snapshot is the last SatuSky state digest
+	// gathered by refreshSnapshot; it is injected into the system prompt.
+	runner     *satusky.Runner
+	snapshot   *satusky.Snapshot
+	snapshotAt time.Time
 }
 
 // Run is the entry point for the chat engine: config resolution, guided
@@ -118,6 +127,16 @@ func Run(ctx context.Context, opts ReplOptions) error {
 
 	state.exec = buildExecutor(opts)
 	state.toolsEnabled = !opts.NoTools
+
+	// SatuSky copilot: the same confirmation gate as the workspace tools
+	// gates mutating 1ctl commands. The state snapshot is refreshed at
+	// REPL start, on /status, and by the satusky_status tool.
+	state.runner = satusky.NewRunner(state.exec.Confirm)
+	registerSatuskyTools(ctx, state)
+	if _, err := refreshSnapshot(ctx, state); err != nil {
+		// A broken snapshot must not kill the chat: report once, keep going.
+		writef(opts.Stdout, "%s\n", utils.WarnColor("SatuSky state check failed: %v", err))
+	}
 
 	if opts.OneShot != "" {
 		return runOneShot(ctx, state, opts.OneShot, opts.Stdout)
@@ -389,11 +408,16 @@ const maxToolRounds = 8
 const askInstruction = "\n\n## User instruction\nYou MUST ask up to 3 clarifying questions before taking any action. Do not use tools until the user has answered.\n"
 
 // buildSystem returns the system prompt for this turn: the session skill,
-// plus the question-first instruction when /ask is active.
-func buildSystem(session *Session, askFirst bool) string {
+// the question-first instruction when /ask is active, and the SatuSky
+// state digest when a snapshot exists (refreshed at REPL start, on
+// /status, and by the satusky_status tool).
+func buildSystem(session *Session, state *replState) string {
 	sys := session.System
-	if askFirst {
+	if state.askFirst {
 		sys += askInstruction
+	}
+	if state.snapshot != nil {
+		sys += "\n" + state.snapshot.Digest()
 	}
 	return sys
 }
@@ -410,7 +434,7 @@ func runTurn(ctx context.Context, state *replState, session *Session, userMsg st
 		writef(out, "%s", color.New(color.FgGreen).Sprint("assistant ▸ "))
 	}
 	messages := make([]openai.ChatCompletionMessage, 0, len(session.Raw())+1)
-	messages = append(messages, openai.ChatCompletionMessage{Role: openai.ChatMessageRoleSystem, Content: buildSystem(session, state.askFirst)})
+	messages = append(messages, openai.ChatCompletionMessage{Role: openai.ChatMessageRoleSystem, Content: buildSystem(session, state)})
 	messages = append(messages, session.Raw()...)
 
 	var reqTools []openai.Tool
@@ -513,6 +537,77 @@ func confirmAction(in io.Reader, out io.Writer, prompt string) bool {
 	}
 	response = strings.TrimSpace(strings.ToLower(response))
 	return response == "y" || response == "yes"
+}
+
+// refreshSnapshot re-runs the read-only state batch and caches the result
+// on the replState (used at REPL start, by /status, and by the
+// satusky_status tool).
+func refreshSnapshot(ctx context.Context, state *replState) (*satusky.Snapshot, error) {
+	if state.runner == nil {
+		return nil, errors.New("SatuSky runner unavailable in this session")
+	}
+	snap, err := state.runner.Snapshot(ctx)
+	if err != nil {
+		return nil, err
+	}
+	state.snapshot = snap
+	state.snapshotAt = time.Now()
+	return snap, nil
+}
+
+// registerSatuskyTools wires the satusky_status and satusky_run tools
+// into the workspace executor's custom-dispatch map, keeping the tools
+// package free of SatuSky dependencies. The handlers capture ctx so
+// Ctrl-C cancels in-flight 1ctl subprocesses.
+func registerSatuskyTools(ctx context.Context, state *replState) {
+	if state.exec == nil {
+		return
+	}
+	state.exec.Custom = map[string]func(argsJSON []byte) string{
+		"satusky_status": func([]byte) string {
+			snap, err := refreshSnapshot(ctx, state)
+			if err != nil {
+				return "error: " + err.Error()
+			}
+			return snap.Digest()
+		},
+		"satusky_run": func(argsJSON []byte) string {
+			return runSatuskyTool(ctx, state, argsJSON)
+		},
+	}
+}
+
+// runSatuskyTool implements satusky_run: parse {args:[...]} (preferred) or
+// {command:"..."} (shell-like splitting), run through the confirmation
+// gate, and summarize the result for the model.
+func runSatuskyTool(ctx context.Context, state *replState, argsJSON []byte) string {
+	if state.runner == nil {
+		return "error: SatuSky runner unavailable in this session"
+	}
+	var args struct {
+		Args    []string `json:"args"`
+		Command string   `json:"command"`
+	}
+	if err := json.Unmarshal(argsJSON, &args); err != nil {
+		return "error: invalid arguments for satusky_run: " + err.Error()
+	}
+	var cmd []string
+	switch {
+	case len(args.Args) > 0:
+		cmd = args.Args
+	case strings.TrimSpace(args.Command) != "":
+		cmd = satusky.SplitCommand(args.Command)
+	default:
+		return "error: satusky_run needs \"args\": a JSON array of 1ctl arguments, e.g. {\"args\":[\"postgres\",\"list\"]}"
+	}
+	if len(cmd) == 0 {
+		return "error: satusky_run received no arguments"
+	}
+	res, err := state.runner.RunConfirmed(ctx, cmd...)
+	if err != nil {
+		return "error: " + err.Error()
+	}
+	return satusky.Summary(res)
 }
 
 // printUsage renders the token/cost footer after a completion:
@@ -622,6 +717,18 @@ func dispatchSlash(ctx context.Context, st *Store, state *replState, session *Se
 		writef(opts.Stdout, "%s\n", utils.SuccessColor("model set to %s for %s", arg, state.info.Name))
 		return false, nil
 
+	case CmdStatus:
+		snap, err := refreshSnapshot(ctx, state)
+		if err != nil {
+			writef(opts.Stdout, "%s\n", utils.ErrorColor("SatuSky state check failed: %v", err))
+			return false, nil
+		}
+		if !snap.Authenticated {
+			writef(opts.Stdout, "%s\n", utils.InfoColor("not authenticated — run '1ctl auth login' to connect SatuSky"))
+		}
+		writef(opts.Stdout, "%s\n", snap.Digest())
+		return false, nil
+
 	case CmdTools:
 		switch strings.ToLower(arg) {
 		case "on":
@@ -720,6 +827,9 @@ func reloadState(st *Store, state *replState) error {
 		return err
 	}
 	next.exec = state.exec
+	next.runner = state.runner
+	next.snapshot = state.snapshot
+	next.snapshotAt = state.snapshotAt
 	next.toolsEnabled = state.toolsEnabled
 	next.askFirst = state.askFirst
 	*state = *next

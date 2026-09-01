@@ -21,8 +21,8 @@ func newTestExecutor(t *testing.T, confirm func(string) bool) *Executor {
 
 func TestDefinitionsExposeAllTools(t *testing.T) {
 	defs := Definitions()
-	if len(defs) != 4 {
-		t.Fatalf("Definitions() = %d tools, want 4", len(defs))
+	if len(defs) != 6 {
+		t.Fatalf("Definitions() = %d tools, want 6 (workspace + satusky)", len(defs))
 	}
 	names := map[string]bool{}
 	for _, d := range defs {
@@ -34,7 +34,7 @@ func TestDefinitionsExposeAllTools(t *testing.T) {
 		}
 		names[d.Function.Name] = true
 	}
-	for _, want := range []string{"read_file", "write_file", "list_dir", "run_shell"} {
+	for _, want := range []string{"read_file", "write_file", "list_dir", "run_shell", "satusky_status", "satusky_run"} {
 		if !names[want] {
 			t.Errorf("Definitions() missing tool %q", want)
 		}
@@ -312,6 +312,32 @@ func TestUnknownTool(t *testing.T) {
 	res := e.Execute("frobnicate", []byte(`{}`))
 	if !strings.Contains(res, `unknown tool "frobnicate"`) {
 		t.Errorf("unknown tool result = %q", res)
+	}
+}
+
+func TestExecuteCustomDispatchTakesPriority(t *testing.T) {
+	e := newTestExecutor(t, func(string) bool { return true })
+	called := false
+	e.Custom = map[string]func([]byte) string{
+		"satusky_run": func(argsJSON []byte) string {
+			called = true
+			return "custom result: " + string(argsJSON)
+		},
+	}
+	res := e.Execute("satusky_run", []byte(`{"args":["app","list"]}`))
+	if !called || res != "custom result: {\"args\":[\"app\",\"list\"]}" {
+		t.Errorf("Execute = %q, called=%v", res, called)
+	}
+	// Built-ins still work when not overridden.
+	if err := os.WriteFile(filepath.Join(e.Cwd, "x.txt"), []byte("x"), 0644); err != nil {
+		t.Fatal(err)
+	}
+	if res := e.Execute("list_dir", []byte(`{}`)); !strings.Contains(res, "x.txt") {
+		t.Errorf("built-in after Custom = %q", res)
+	}
+	// An unknown tool still errors even with Custom set.
+	if res := e.Execute("frobnicate", nil); !strings.Contains(res, `unknown tool "frobnicate"`) {
+		t.Errorf("unknown tool with Custom = %q", res)
 	}
 }
 

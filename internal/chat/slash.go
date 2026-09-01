@@ -13,6 +13,7 @@ const (
 	CmdDisconnect
 	CmdProviders
 	CmdModel
+	CmdStatus
 	CmdTools
 	CmdAsk
 	CmdGo
@@ -30,7 +31,8 @@ const helpText = `Commands:
   /disconnect [provider]  Remove a provider's API key (default: active provider)
   /providers              Show providers, models and connection status
   /model [name]           Show the active model, or set a new one
-  /tools on|off           Toggle workspace tools (files, shell) — default on
+  /status                 Refresh and show the SatuSky state snapshot (profile, apps, databases, domains, credits)
+  /tools on|off           Toggle workspace tools (files, shell, SatuSky) — default on
   /ask                    Ask clarifying questions before acting (this session)
   /go                     Skip questions and act directly (this session)
   /skill [path]           Show the loaded skill, or load an alternate SKILL.md
@@ -65,6 +67,8 @@ func ParseSlash(line string) (cmd SlashCommand, arg string, isSlash bool) {
 		return CmdProviders, arg, true
 	case "model":
 		return CmdModel, arg, true
+	case "status":
+		return CmdStatus, arg, true
 	case "tools":
 		return CmdTools, arg, true
 	case "ask":

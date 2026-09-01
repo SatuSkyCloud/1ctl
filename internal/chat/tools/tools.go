@@ -30,6 +30,9 @@ func Definitions() []openai.Tool {
 	}
 	stringProp := func(desc string) map[string]any { return map[string]any{"type": "string", "description": desc} }
 	intProp := func(desc string) map[string]any { return map[string]any{"type": "integer", "description": desc} }
+	stringArrayProp := func(desc string) map[string]any {
+		return map[string]any{"type": "array", "items": map[string]any{"type": "string"}, "description": desc}
+	}
 
 	defs := []ToolDef{
 		{
@@ -62,6 +65,19 @@ func Definitions() []openai.Tool {
 			Parameters: parameters([]string{"command"}, map[string]any{
 				"command": stringProp("The shell command to run"),
 				"cwd":     stringProp("Working directory for the command, relative to the chat working directory (optional)"),
+			}),
+		},
+		{
+			Name:        "satusky_status",
+			Description: "Inspect the current SatuSky state: authentication, profile, org, namespace, apps, managed databases, domains and credits. Refreshes the state snapshot via read-only 1ctl commands and returns a compact digest. Call this first before advising on or proposing any SatuSky action, so advice matches the user's real setup.",
+			Parameters:  parameters(nil, map[string]any{}),
+		},
+		{
+			Name:        "satusky_run",
+			Description: "Run a real 1ctl command (1ctl <args>) and return its output. Read-only commands (list, status, get, doctor, ...) run immediately; mutating commands (create, delete, set, deploy, ...) require user confirmation with a preview first, and destructive operations carry a warning. Pass a JSON array of argument strings: {\"args\":[\"postgres\",\"list\"]} or {\"args\":[\"app\",\"get\",\"my-app\"]}. Never invent subcommands — when unsure, run {\"args\":[\"<cmd>\",\"--help\"]}. Do not pass shell metacharacters or pipes; each argument is passed verbatim to 1ctl.",
+			Parameters: parameters(nil, map[string]any{
+				"args":    stringArrayProp("1ctl arguments as a JSON array of strings, e.g. [\"postgres\",\"list\"]"),
+				"command": stringProp("Alternative to args: a single command string parsed with shell-like splitting, e.g. \"postgres list\""),
 			}),
 		},
 	}

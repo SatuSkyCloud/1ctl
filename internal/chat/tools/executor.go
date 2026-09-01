@@ -18,10 +18,14 @@ const defaultShellTimeout = 60 * time.Second
 // paths, ".." traversal, and symlink escapes are rejected. Confirm gates
 // mutating actions (run_shell always, write_file only when overwriting an
 // existing file); a nil Confirm declines. Timeout bounds run_shell.
+// Custom dispatches tool calls by name before the built-in tools (the chat
+// REPL registers the SatuSky tools there, keeping this package free of
+// SatuSky dependencies).
 type Executor struct {
 	Cwd     string
 	Confirm func(action string) bool
 	Timeout time.Duration
+	Custom  map[string]func(argsJSON []byte) string
 }
 
 // NewExecutor builds an executor sandboxed to cwd with the default 60s
@@ -47,6 +51,9 @@ func (e *Executor) Execute(name string, argsJSON []byte) (result string) {
 			return "error: no working directory configured"
 		}
 		e.Cwd = cwd
+	}
+	if fn, ok := e.Custom[name]; ok && fn != nil {
+		return fn(argsJSON)
 	}
 	switch name {
 	case "read_file":
