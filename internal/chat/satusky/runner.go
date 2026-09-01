@@ -115,20 +115,26 @@ func (r *Runner) RunJSON(ctx context.Context, args ...string) (Result, error) {
 }
 
 // Mutating classifies a 1ctl invocation against the real command tree
-// (contracts/cli.json). Every known read-only path is listed explicitly;
-// anything unknown — new commands, typos, aliases we did not map —
-// defaults to mutating so the confirmation gate errs on the safe side.
+// (contracts/cli.json). Help requests never prompt. Known read-only
+// paths run free; bare commands only mutate for the handful of actions
+// that change state (deploy, init, launch, admin); unknown commands and
+// subcommands fall back to a keyword heuristic — a mutating verb marks
+// the invocation as mutating, anything else runs free (so `1ctl logs X`
+// or `1ctl app show X` never prompt).
 func Mutating(args []string) bool {
+	if hasHelp(args) {
+		return false // --help / -h / help: never prompt, ever
+	}
 	cmd, sub, sub2 := commandParts(args)
 	if cmd == "" {
 		return false // bare 1ctl prints help; harmless
 	}
-	if cmd == "launch" {
-		return true // interactive wizard; refused in RunConfirmed
+	if forceMutating[cmd] {
+		return true // e.g. admin: every invocation changes state
 	}
 	if ro, ok := readOnlyCommands[cmd]; ok {
 		if len(ro) == 0 {
-			return false // action command (doctor, cluster): read-only
+			return false // action command (doctor): whole command read-only
 		}
 		for _, s := range ro {
 			if s == sub {
@@ -148,27 +154,103 @@ func Mutating(args []string) bool {
 			}
 		}
 	}
-	return true
+	if sub == "" {
+		// Bare command: only a handful of top-level actions change state
+		// (deploy, init, launch, admin); every other bare command prints
+		// help, which is read-only.
+		return bareMutating[cmd]
+	}
+	// Unknown path: keyword heuristic. Read-only words win first so a
+	// benign query word can never be caught by a mutating verb.
+	words := []string{cmd, sub, sub2}
+	for _, w := range words {
+		if readOnlyKeywords[w] {
+			return false
+		}
+	}
+	for _, w := range words {
+		if mutatingKeywords[w] {
+			return true
+		}
+	}
+	return false
+}
+
+// Blocked reports whether an invocation is refused outright with a
+// reason: interactive wizards, long-running streams, and the nested chat
+// recursion guard. Blocked commands never run inside chat, even with
+// confirmation. Help requests are never blocked.
+func Blocked(args []string) (string, bool) {
+	if hasHelp(args) {
+		return "", false
+	}
+	cmd, sub, sub2 := commandParts(args)
+	switch cmd {
+	case "launch":
+		return blockedCommands["launch"], true
+	case "postgres":
+		if sub == "connect" || sub == "proxy" {
+			return blockedCommands[cmd+" "+sub], true
+		}
+	case "app":
+		if sub == "logs" && sub2 == "stream" {
+			return blockedCommands["app logs stream"], true
+		}
+	case "user":
+		if sub == "password" {
+			return blockedCommands["user password"], true
+		}
+	case "chat":
+		return blockedCommands["chat"], true
+	}
+	return "", false
+}
+
+// hasHelp reports whether the invocation asks for help: the --help/-h
+// flags anywhere (case-insensitive), or the bare `help` positional word
+// (flag values such as `--name help` do not count, matching how
+// commandParts skips them). Help must never prompt, refuse, or block, so
+// it short-circuits every classifier.
+func hasHelp(args []string) bool {
+	// The bare word `help` counts only as a positional word — flag values
+	// are skipped exactly like commandParts skips them.
+	for i := 0; i < len(args); i++ {
+		a := args[i]
+		if a == "" {
+			continue
+		}
+		if a[0] == '-' {
+			if !strings.Contains(a, "=") && valueFlags[a] && i+1 < len(args) {
+				i++
+			}
+			continue
+		}
+		if strings.EqualFold(a, "help") {
+			return true
+		}
+	}
+	for _, a := range args {
+		if strings.EqualFold(a, "--help") || strings.EqualFold(a, "-h") {
+			return true
+		}
+	}
+	return false
 }
 
 // BlastWarning inspects a mutating invocation for destructive or
 // expensive patterns and returns a human warning when one applies.
 func BlastWarning(args []string) (string, bool) {
-	cmd, sub, _ := commandParts(args)
+	cmd, sub, sub2 := commandParts(args)
 	if sub == "" {
 		return "", false
 	}
-	switch sub {
-	case "delete", "remove", "drop", "unset", "detach", "disable", "revoke", "logout":
-		return fmt.Sprintf("this deletes or removes a resource — the action is irreversible (%s %s)", cmd, sub), true
-	case "scale":
-		return "this changes the replica count — it affects availability and cost", true
-	case "rollback", "restart", "redeploy", "update":
-		return "this changes a running resource — it affects live traffic", true
-	case "rotate-password", "rotate-credentials":
-		return "this rotates credentials — existing connections using them will break", true
-	case "create", "add":
-		return "this provisions a new resource — it costs money on an ongoing basis", true
+	// Check the deepest positional word first: nested paths carry the
+	// action at sub2 (`postgres firewall enable`, `domains dns update`).
+	if w, ok := warningFor(cmd, sub2); ok {
+		return w, true
+	}
+	if w, ok := warningFor(cmd, sub); ok {
+		return w, true
 	}
 	// Plan/scale-up patterns: a size or plan flag on create/update/scale.
 	for _, arg := range args {
@@ -185,19 +267,48 @@ func BlastWarning(args []string) (string, bool) {
 	return "", false
 }
 
-// RunConfirmed runs a 1ctl command through the confirmation gate:
-// read-only commands run directly; mutating commands print a preview
-// line, any blast-radius warning, and ask for confirmation. A declined
-// (or missing) confirmation returns Result{ExitCode: -1, Stdout:
-// "cancelled by user"} without executing. `launch` is refused outright —
-// it is an interactive wizard that cannot run without a TTY.
+// warningFor maps a mutating verb to its blast-radius warning.
+func warningFor(cmd, verb string) (string, bool) {
+	switch verb {
+	case "delete", "remove", "drop", "unset", "detach", "disable", "revoke", "logout", "purge", "wipe", "destroy":
+		return fmt.Sprintf("this deletes or removes a resource — the action is irreversible (%s %s)", cmd, verb), true
+	case "scale":
+		return "this changes the replica count — it affects availability and cost", true
+	case "rollback", "restart", "redeploy", "update":
+		return "this changes a running resource — it affects live traffic", true
+	case "enable":
+		return "this toggles a resource on — it may affect availability or access", true
+	case "rotate-password", "rotate-credentials":
+		return "this rotates credentials — existing connections using them will break", true
+	case "create", "add":
+		return "this provisions a new resource — it costs money on an ongoing basis", true
+	case "purchase":
+		return "this purchases a resource or domain — it is charged against your credits", true
+	case "publish":
+		return "this publishes an artifact — it becomes visible to others", true
+	case "switch", "use":
+		return "this switches the active context (profile, org, or similar)", true
+	case "login":
+		return "this changes your stored authentication state", true
+	case "mark", "read":
+		return "this changes notification state", true
+	}
+	return "", false
+}
+
+// RunConfirmed runs a 1ctl command through the gate: blocked commands
+// are refused with a reason (no confirmation), read-only commands run
+// directly, and mutating commands print a preview line, any blast-radius
+// warning, and ask for confirmation. A declined (or missing)
+// confirmation returns Result{ExitCode: -1, Stdout: "cancelled by user"}
+// without executing.
 func (r *Runner) RunConfirmed(ctx context.Context, args ...string) (Result, error) {
 	action := strings.Join(args, " ")
-	if len(args) > 0 && args[0] == "launch" {
+	if reason, ok := Blocked(args); ok {
 		return Result{
 			Command:  action,
 			ExitCode: -1,
-			Stdout:   "refused: `1ctl launch` is an interactive wizard and cannot run inside chat — write a satusky.toml and use `1ctl deploy` instead",
+			Stdout:   "refused: " + reason,
 		}, nil
 	}
 	if !Mutating(args) {
@@ -352,41 +463,45 @@ func capStream(s string) string {
 
 // readOnlyCommands lists every top-level command's read-only subcommands,
 // verified against contracts/cli.json. An entry with an empty list means
-// the command's bare action is read-only (e.g. `1ctl doctor`).
+// the command's bare action is read-only (e.g. `1ctl doctor`). Anything
+// not listed falls through to the keyword heuristic (unknown paths) or
+// the bare-command rule.
 var readOnlyCommands = map[string][]string{
-	"app":           {"list", "get", "status", "logs", "stream", "events", "releases", "open"},
-	"doctor":        {},
+	"app":           {"list", "get", "status", "logs", "events", "releases", "open"},
 	"domains":       {"list", "check", "setup", "available", "search", "purchase-status"},
 	"config":        {"list"},
 	"env":           {"list"}, // alias of config
 	"environment":   {"list"}, // alias of config
 	"secret":        {"list", "get"},
 	"volumes":       {"list", "inspect"},
-	"postgres":      {"list", "get", "status", "credentials", "connect", "storage-classes"},
+	"postgres":      {"list", "get", "status", "credentials", "storage-classes"},
 	"valkey":        {"list", "get", "status", "credentials", "metrics", "logs"},
 	"nats":          {"list", "get", "status", "credentials"},
-	"machine":       {"list", "get", "inspect", "logs", "events", "available", "keys"},
-	"cluster":       {},
+	"machine":       {"list", "get", "inspect", "logs", "events", "available"},
+	"cluster":       {"list", "zones"},
 	"marketplace":   {"list", "get"},
 	"package":       {"list", "status"},
 	"auth":          {"status"},
 	"profile":       {"list", "current"},
 	"org":           {"list", "current"},
-	"team":          {"list"},
-	"user":          {"me", "permissions", "sessions"},
+	"user":          {"me", "permissions"},
 	"token":         {"list", "get"},
 	"credits":       {"balance", "transactions", "usage"},
 	"billing":       {"balance", "transactions", "usage"}, // alias of credits
 	"pricing":       {"list", "get", "lookup", "calculate"},
 	"audit":         {"list", "get"},
 	"notifications": {"list", "count"},
-	"completion":    {"install", "bash", "zsh", "fish", "powershell"},
+	"completion":    {"bash", "zsh", "fish", "powershell"},
 	"service":       {"list"},
 	"ingress":       {"list"},
+	"doctor":        {}, // bare action is read-only diagnostics
 }
 
 // nestedReadOnly lists read-only sub-subcommands for two-level command
-// paths, e.g. "domains dns list", "postgres firewall list".
+// paths, e.g. "domains dns list", "postgres firewall list". Empty list
+// would mean the bare two-level path is read-only; here every entry has
+// explicit subs and bare paths fall through to the keyword heuristic
+// (which treats them as read-only).
 var nestedReadOnly = map[string][]string{
 	"domains managed":   {"list", "verify"},
 	"domains dns":       {"list"},
@@ -394,6 +509,71 @@ var nestedReadOnly = map[string][]string{
 	"postgres firewall": {"list"},
 	"valkey users":      {"list"},
 	"machine usage":     {"list", "get", "cost"},
-	"machine labels":    {"list"},
-	"cluster zones":     {"list"},
+	"machine labels":    {"list", "keys"},
+	"org team":          {"list"},
+	"user sessions":     {"list"},
+}
+
+// bareMutating lists top-level commands whose bare action changes state
+// (deploys, writes satusky.toml, or runs guarded platform admin). Every
+// other bare command prints help, which is read-only.
+var bareMutating = map[string]bool{
+	"deploy": true,
+	"init":   true,
+	"launch": true,
+	"admin":  true,
+}
+
+// forceMutating names commands where EVERY invocation changes state (they
+// are never read-only regardless of subcommand), e.g. guarded platform
+// administration. --help still short-circuits before this.
+var forceMutating = map[string]bool{
+	"admin": true,
+}
+
+// blockedCommands maps invocations that must never run inside chat to the
+// reason they are refused. These need an interactive TTY (wizards,
+// password prompts, psql) or spawn long-running processes (port
+// forwards, log streams, nested chat sessions).
+var blockedCommands = map[string]string{
+	"launch":           "`1ctl launch` is an interactive wizard and cannot run inside chat — write a satusky.toml and use `1ctl deploy` instead",
+	"postgres connect": "`1ctl postgres connect` spawns interactive psql and cannot run inside chat",
+	"postgres proxy":   "`1ctl postgres proxy` opens a long-running port forward and cannot run inside chat",
+	"app logs stream":  "`1ctl app logs stream` tails logs forever and cannot run inside chat — use `1ctl app logs` for the recent tail",
+	"user password":    "`1ctl user password` is an interactive password prompt and cannot run inside chat",
+	"chat":             "`1ctl chat` spawns a nested chat session and cannot run inside chat",
+}
+
+// mutatingKeywords are verbs that mark an unknown invocation as
+// mutating. They cover every state-changing action across the command
+// tree (and then some), so unverified or brand-new commands that mutate
+// still hit the confirmation gate instead of running free.
+var mutatingKeywords = map[string]bool{
+	"delete": true, "remove": true, "drop": true, "create": true, "add": true,
+	"set": true, "unset": true, "deploy": true, "scale": true, "rotate": true,
+	"restart": true, "rollback": true, "redeploy": true, "update": true,
+	"upgrade": true, "downgrade": true, "switch": true, "use": true,
+	"login": true, "logout": true, "enable": true, "disable": true,
+	"attach": true, "detach": true, "revoke": true, "purchase": true,
+	"publish": true, "submit": true, "apply": true, "destroy": true,
+	"migrate": true, "reset": true, "install": true, "renew": true,
+	"rename": true, "suspend": true, "resume": true, "purge": true,
+	"wipe": true, "grant": true, "invite": true, "mark": true, "read": true,
+	"change": true, "password": true,
+	// Kebab-case verbs that appear as subcommand names in the tree.
+	"rotate-password": true, "rotate-credentials": true,
+}
+
+// readOnlyKeywords are words that must never be treated as mutating,
+// even on unknown commands — the fallback that lets query-style
+// invocations like `1ctl logs X` or `1ctl app show X` run free.
+var readOnlyKeywords = map[string]bool{
+	"verify": true, "check": true, "search": true, "available": true,
+	"setup": true, "list": true, "get": true, "status": true, "show": true,
+	"inspect": true, "logs": true, "events": true, "releases": true,
+	"open": true, "current": true, "me": true, "permissions": true,
+	"balance": true, "transactions": true, "usage": true, "lookup": true,
+	"calculate": true, "credentials": true, "metrics": true,
+	"storage-classes": true, "zones": true, "count": true, "keys": true,
+	"cost": true,
 }
