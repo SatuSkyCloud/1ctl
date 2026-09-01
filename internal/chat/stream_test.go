@@ -56,7 +56,7 @@ func usageChunk(promptTokens, completionTokens int) string {
 }
 
 func TestStreamCompletionAssemblesInOrder(t *testing.T) {
-	events := []string{streamChunk("Hel"), streamChunk("lo"), streamChunk(" world"), "[DONE]"}
+	events := []string{streamChunk("Wor"), streamChunk("ld"), streamChunk("!"), streamChunk(" Hello"), "[DONE]"}
 	srv, captured := fakeSSEServer(t, events)
 	client := NewClientWithBaseURL("sk-test-123", srv.URL)
 
@@ -66,11 +66,11 @@ func TestStreamCompletionAssemblesInOrder(t *testing.T) {
 	if err != nil {
 		t.Fatalf("StreamCompletion: %v", err)
 	}
-	if out.String() != "Hello world" {
-		t.Errorf("streamed output = %q, want %q", out.String(), "Hello world")
+	if out.String() != "World! Hello" {
+		t.Errorf("streamed output = %q, want %q", out.String(), "World! Hello")
 	}
-	if res.Text != "Hello world" {
-		t.Errorf("result.Text = %q, want %q", res.Text, "Hello world")
+	if res.Text != "World! Hello" {
+		t.Errorf("result.Text = %q, want %q", res.Text, "World! Hello")
 	}
 	if res.Model != "gpt-4o-mini" {
 		t.Errorf("result.Model = %q, want gpt-4o-mini", res.Model)

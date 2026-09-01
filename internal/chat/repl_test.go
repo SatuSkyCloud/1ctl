@@ -25,7 +25,7 @@ func replTestState(t *testing.T, serverURL string) *replState {
 
 func TestRunTurnStreamsToOutput(t *testing.T) {
 	color.NoColor = true
-	srv, _ := fakeSSEServer(t, []string{streamChunk("Hel"), streamChunk("lo"), streamChunk(" world"), "[DONE]"})
+	srv, _ := fakeSSEServer(t, []string{streamChunk("Wor"), streamChunk("ld"), streamChunk("!"), streamChunk(" Hello"), "[DONE]"})
 	state := replTestState(t, srv.URL)
 	session := NewSession("sys")
 
@@ -33,7 +33,7 @@ func TestRunTurnStreamsToOutput(t *testing.T) {
 	if err := runTurn(context.Background(), state, session, "hi there", &out, true); err != nil {
 		t.Fatalf("runTurn: %v", err)
 	}
-	if want := "assistant ▸ Hello world\n"; out.String() != want {
+	if want := "assistant ▸ World! Hello\n"; out.String() != want {
 		t.Errorf("output = %q, want %q", out.String(), want)
 	}
 	// Conversation must contain the user turn and the assistant reply.
@@ -44,7 +44,7 @@ func TestRunTurnStreamsToOutput(t *testing.T) {
 	if raw[0].Role != openai.ChatMessageRoleUser || raw[0].Content != "hi there" {
 		t.Errorf("raw[0] = %+v", raw[0])
 	}
-	if raw[1].Role != openai.ChatMessageRoleAssistant || raw[1].Content != "Hello world" {
+	if raw[1].Role != openai.ChatMessageRoleAssistant || raw[1].Content != "World! Hello" {
 		t.Errorf("raw[1] = %+v", raw[1])
 	}
 }
