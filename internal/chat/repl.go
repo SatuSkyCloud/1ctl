@@ -12,7 +12,9 @@ import (
 	"path/filepath"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
+	"unicode/utf8"
 
 	satuskyctx "1ctl/internal/context"
 	"1ctl/internal/skill"
@@ -75,6 +77,10 @@ type replState struct {
 	runner     *satusky.Runner
 	snapshot   *satusky.Snapshot
 	snapshotAt time.Time
+
+	// out is the session's output stream, used for progress spinners
+	// (nil in tests keeps them disabled).
+	out io.Writer
 }
 
 // Run is the entry point for the chat engine: config resolution, guided
@@ -108,8 +114,7 @@ func Run(ctx context.Context, opts ReplOptions) error {
 		if opts.OneShot != "" {
 			return fmt.Errorf("no API key configured for %s — run '1ctl chat' and /connect %s, or set %s", state.info.Name, state.info.Name, state.info.EnvKey)
 		}
-		writef(opts.Stdout, "1ctl chat — your SatuSky Cloud developer copilot\n")
-		utils.PrintInfo("No LLM provider connected yet. 30 seconds to set up.")
+		printFirstRunBanner(opts.Stdout)
 		if err := HandleConnect(ctx, st, ConnectOptions{ShowKey: opts.ShowKey, Stdin: opts.Stdin, Stdout: opts.Stdout}); err != nil {
 			return err
 		}
@@ -127,6 +132,7 @@ func Run(ctx context.Context, opts ReplOptions) error {
 
 	state.exec = buildExecutor(opts)
 	state.toolsEnabled = !opts.NoTools
+	state.out = opts.Stdout
 
 	// SatuSky copilot: the same confirmation gate as the workspace tools
 	// gates mutating 1ctl commands. The state snapshot is refreshed at
@@ -240,6 +246,10 @@ func runLoop(ctx context.Context, st *Store, state *replState, opts ReplOptions)
 				return nil // Ctrl-C mid-stream: clean stop, partial answer kept
 			}
 			writef(opts.Stdout, "%s %v\n", utils.ErrorColor("❌"), err)
+		}
+		if reader.Interactive() {
+			// Faint divider between turns, terminal-only.
+			writef(opts.Stdout, "%s\n", color.New(color.Faint).Sprint("───"))
 		}
 	}
 }
@@ -422,6 +432,24 @@ func buildSystem(session *Session, state *replState) string {
 	return sys
 }
 
+// firstWriteSpinner stops a spinner on the first byte written through it,
+// so the "thinking…" animation gives way to streamed output exactly when
+// the first delta arrives. The spinner's own Stop is idempotent, so the
+// caller can also stop it after an empty reply.
+//
+// It implements io.Writer so it can stand in for `out` without changing
+// StreamCompletion's signature.
+type firstWriteSpinner struct {
+	sp   *Spinner
+	w    io.Writer
+	once sync.Once
+}
+
+func (f *firstWriteSpinner) Write(p []byte) (int, error) {
+	f.once.Do(func() { f.sp.Stop() })
+	return f.w.Write(p)
+}
+
 // runTurn appends the user message and runs the agent loop: stream a
 // completion (with workspace tools when enabled), execute any tool calls
 // the model requests, feed the results back, and re-request until the
@@ -430,8 +458,10 @@ func buildSystem(session *Session, state *replState) string {
 // to the turn (session.Add records the user message + final answer only).
 func runTurn(ctx context.Context, state *replState, session *Session, userMsg string, out io.Writer, printPrefix bool) error {
 	session.Add(openai.ChatMessageRoleUser, userMsg)
+	prefix := ""
 	if printPrefix {
-		writef(out, "%s", color.New(color.FgGreen).Sprint("assistant ▸ "))
+		prefix = color.New(color.FgGreen).Sprint("assistant ▸ ")
+		writef(out, "%s", prefix)
 	}
 	messages := make([]openai.ChatCompletionMessage, 0, len(session.Raw())+1)
 	messages = append(messages, openai.ChatCompletionMessage{Role: openai.ChatMessageRoleSystem, Content: buildSystem(session, state)})
@@ -443,7 +473,12 @@ func runTurn(ctx context.Context, state *replState, session *Session, userMsg st
 	}
 
 	for round := 0; ; round++ {
-		res, err := StreamCompletion(ctx, state.client, state.model, messages, reqTools, out)
+		sp := NewSpinner(out, prefix+"thinking…")
+		sp.Start()
+		res, err := StreamCompletion(ctx, state.client, state.model, messages, reqTools, &firstWriteSpinner{sp: sp, w: out})
+		// Stopped by the first streamed delta (firstWriteSpinner) or here
+		// for tool-only/empty replies; Stop is idempotent.
+		sp.Stop()
 		if err != nil {
 			writef(out, "\n")
 			// Keep any partial text so the conversation stays coherent.
@@ -474,10 +509,13 @@ func runTurn(ctx context.Context, state *replState, session *Session, userMsg st
 		})
 		for _, tc := range res.ToolCalls {
 			writef(out, "%s\n", toolProgressLine(tc))
+			runSp := NewSpinner(out, "running…")
+			runSp.Start()
 			result := "error: workspace tools are not available in this session"
 			if state.exec != nil {
 				result = state.exec.Execute(tc.Function.Name, []byte(tc.Function.Arguments))
 			}
+			runSp.StopWith(toolMarker(tc.Function.Name, result))
 			messages = append(messages, openai.ChatCompletionMessage{
 				Role:       openai.ChatMessageRoleTool,
 				Content:    result,
@@ -491,10 +529,69 @@ func runTurn(ctx context.Context, state *replState, session *Session, userMsg st
 	}
 }
 
+// toolMarker renders the completion marker for a tool call: "✓ exit 0"
+// when a command tool reported success, "✗ <first line of the result>"
+// when it failed or was refused, and "✓ done" for file/list tools.
+func toolMarker(name, result string) string {
+	switch name {
+	case "run_shell", "satusky_run":
+		if strings.HasPrefix(strings.TrimSpace(result), "exit code 0") {
+			return "✓ exit 0"
+		}
+		return "✗ " + truncateFirstLine(result, 100)
+	default:
+		return "✓ done"
+	}
+}
+
+// truncateFirstLine takes the first line of s, trimmed, capped at
+// maxWidth runes with an ellipsis when cut.
+func truncateFirstLine(s string, maxWidth int) string {
+	if i := strings.IndexByte(s, '\n'); i >= 0 {
+		s = s[:i]
+	}
+	s = strings.TrimSpace(s)
+	if utf8.RuneCountInString(s) > maxWidth {
+		runes := []rune(s)
+		return string(runes[:maxWidth]) + "…"
+	}
+	return s
+}
+
 // toolProgressLine renders the one-line progress marker for a tool call:
-// "▸ tool: <name> <one-line arg summary>" in cyan.
+// "▸ tool: <name> <summary>" in cyan.
 func toolProgressLine(tc openai.ToolCall) string {
-	return color.New(color.FgCyan).Sprint("▸ tool: " + tc.Function.Name + " " + summarizeArgs(tc.Function.Arguments))
+	return color.New(color.FgCyan).Sprint("▸ tool: " + tc.Function.Name + " " + toolCallSummary(tc.Function.Name, tc.Function.Arguments))
+}
+
+// toolCallSummary renders a human-readable summary of a tool call's
+// arguments for the progress line: the 1ctl command for satusky_run
+// (parsed from the JSON args), the shell command for run_shell, and the
+// flattened JSON for everything else.
+func toolCallSummary(name, args string) string {
+	switch name {
+	case "satusky_run":
+		var parsed struct {
+			Args    []string `json:"args"`
+			Command string   `json:"command"`
+		}
+		if err := json.Unmarshal([]byte(args), &parsed); err == nil {
+			if len(parsed.Args) > 0 {
+				return "1ctl " + strings.Join(parsed.Args, " ")
+			}
+			if parsed.Command != "" {
+				return "1ctl " + parsed.Command
+			}
+		}
+	case "run_shell":
+		var parsed struct {
+			Command string `json:"command"`
+		}
+		if err := json.Unmarshal([]byte(args), &parsed); err == nil && parsed.Command != "" {
+			return parsed.Command
+		}
+	}
+	return summarizeArgs(args)
 }
 
 // summarizeArgs flattens a tool-call argument JSON for the progress line:
@@ -541,15 +638,20 @@ func confirmAction(in io.Reader, out io.Writer, prompt string) bool {
 
 // refreshSnapshot re-runs the read-only state batch and caches the result
 // on the replState (used at REPL start, by /status, and by the
-// satusky_status tool).
+// satusky_status tool). On a terminal a spinner shows the refresh; it is
+// a no-op elsewhere.
 func refreshSnapshot(ctx context.Context, state *replState) (*satusky.Snapshot, error) {
 	if state.runner == nil {
 		return nil, errors.New("SatuSky runner unavailable in this session")
 	}
+	sp := NewSpinner(state.out, "refreshing SatuSky state…")
+	sp.Start()
 	snap, err := state.runner.Snapshot(ctx)
 	if err != nil {
+		sp.StopWith(utils.ErrorColor("✗ failed: %v", err))
 		return nil, err
 	}
+	sp.StopWith(utils.SuccessColor("✓ refreshed"))
 	state.snapshot = snap
 	state.snapshotAt = time.Now()
 	return snap, nil
@@ -832,6 +934,7 @@ func reloadState(st *Store, state *replState) error {
 	next.snapshotAt = state.snapshotAt
 	next.toolsEnabled = state.toolsEnabled
 	next.askFirst = state.askFirst
+	next.out = state.out
 	*state = *next
 	return nil
 }
@@ -853,6 +956,19 @@ func printProviders(st *Store) {
 		rows = append(rows, []string{string(p.Name), model, status})
 	}
 	utils.PrintTable([]string{"provider", "model", "status"}, rows)
+}
+
+// printFirstRunBanner renders the first-run welcome: a compact
+// box-drawing banner (┌─┐│└┘) with the product title plus a hint line.
+// Colours degrade to plain text on pipes and in tests via color.NoColor.
+func printFirstRunBanner(out io.Writer) {
+	title := "1ctl chat — SatuSky Cloud developer copilot"
+	width := utf8.RuneCountInString(title) + 2
+	box := color.New(color.FgCyan, color.Bold)
+	writef(out, "%s\n", box.Sprint("┌"+strings.Repeat("─", width)+"┐"))
+	writef(out, "%s %s %s\n", box.Sprint("│"), box.Sprint(title), box.Sprint("│"))
+	writef(out, "%s\n", box.Sprint("└"+strings.Repeat("─", width)+"┘"))
+	writef(out, "%s\n", color.New(color.Faint).Sprint("  No LLM provider connected yet — 30 seconds to set up."))
 }
 
 // buildPrompt renders the REPL prompt: chat(provider·model) [ns] ~/cwd ▸

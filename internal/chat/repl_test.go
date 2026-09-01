@@ -122,6 +122,56 @@ func TestRunLoopEOFExits(t *testing.T) {
 	}
 }
 
+func TestToolProgressLineSatuskyRunRendersCommand(t *testing.T) {
+	color.NoColor = true
+	line := toolProgressLine(openai.ToolCall{
+		Function: openai.FunctionCall{Name: "satusky_run", Arguments: `{"args":["app","status","x"]}`},
+	})
+	if !strings.Contains(line, "▸ tool: satusky_run 1ctl app status x") {
+		t.Errorf("progress line = %q, want the 1ctl command rendered", line)
+	}
+}
+
+func TestToolProgressLineSatuskyRunCommandString(t *testing.T) {
+	color.NoColor = true
+	line := toolProgressLine(openai.ToolCall{
+		Function: openai.FunctionCall{Name: "satusky_run", Arguments: `{"command":"postgres list"}`},
+	})
+	if !strings.Contains(line, "1ctl postgres list") {
+		t.Errorf("progress line = %q, want the command string rendered", line)
+	}
+}
+
+func TestToolProgressLineRunShellRendersCommand(t *testing.T) {
+	color.NoColor = true
+	line := toolProgressLine(openai.ToolCall{
+		Function: openai.FunctionCall{Name: "run_shell", Arguments: `{"command":"go test ./...","cwd":"."}`},
+	})
+	if !strings.Contains(line, "▸ tool: run_shell go test ./...") {
+		t.Errorf("progress line = %q, want the shell command rendered", line)
+	}
+}
+
+func TestToolMarker(t *testing.T) {
+	cases := []struct {
+		name   string
+		result string
+		want   string
+	}{
+		{"run_shell", "exit code 0\n--- stdout ---\nhi", "✓ exit 0"},
+		{"satusky_run", "exit code 0\n--- stdout ---\nok", "✓ exit 0"},
+		{"run_shell", "exit code 1\n--- stderr ---\nboom\nlong line that keeps going after the first line", "✗ exit code 1"},
+		{"satusky_run", "refused: `1ctl launch` is an interactive wizard", "✗ refused: `1ctl launch` is an interactive wizard"},
+		{"write_file", "wrote hello.txt", "✓ done"},
+		{"read_file", "file contents", "✓ done"},
+	}
+	for _, c := range cases {
+		if got := toolMarker(c.name, c.result); got != c.want {
+			t.Errorf("toolMarker(%s, %q) = %q, want %q", c.name, c.result, got, c.want)
+		}
+	}
+}
+
 func TestRunTurnPrintsTokenAndCostFooter(t *testing.T) {
 	color.NoColor = true
 	events := []string{streamChunk("Hello "), streamChunk("world"), usageChunk(1000, 204), "[DONE]"}

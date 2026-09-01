@@ -84,13 +84,16 @@ func HandleConnect(ctx context.Context, st *Store, opts ConnectOptions) error {
 		return fmt.Errorf("API key cannot be empty")
 	}
 
-	writef(opts.Stdout, "%s Testing connection with a test message…\n", utils.InfoColor("▸"))
+	sp := NewSpinner(opts.Stdout, "Testing connection…")
+	sp.Start()
 	testCtx, cancel := context.WithTimeout(ctx, connectTimeout)
 	defer cancel()
 	if err := Connect(testCtx, NewClient(info, key), info); err != nil {
-		utils.PrintError("connection failed: %v", err)
+		sp.StopWith(utils.ErrorColor("✗ connection failed: %v", err))
+		utils.PrintError("connection failed: %v — nothing was saved; fix the issue and run /connect again", err)
 		return err
 	}
+	sp.StopWith(utils.SuccessColor("✅ Connected! model: %s (change anytime with /model)", info.DefaultModel))
 
 	pc := ProviderConfig{
 		APIKey:         key,
@@ -105,7 +108,6 @@ func HandleConnect(ctx context.Context, st *Store, opts ConnectOptions) error {
 	if err := st.SetActiveProvider(info.Name); err != nil {
 		return err
 	}
-	utils.PrintSuccess("Connected! model: %s (change anytime with /model)", info.DefaultModel)
 	return nil
 }
 
