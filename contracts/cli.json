@@ -9939,6 +9939,66 @@
     },
     {
       "path": [
+        "chat"
+      ],
+      "name": "chat",
+      "aliases": [],
+      "usage": "Start an interactive chat with an AI provider (OpenAI, Claude, DeepSeek)",
+      "category": "Developer tools",
+      "hidden": false,
+      "argsUsage": "",
+      "aritySource": "argsUsage",
+      "arguments": [],
+      "minArgs": 0,
+      "maxArgs": 0,
+      "flags": [
+        {
+          "name": "provider",
+          "aliases": [],
+          "type": "string",
+          "takesValue": true,
+          "required": false,
+          "multiple": false,
+          "usage": "AI provider to use: openai, claude or deepseek",
+          "envVars": []
+        },
+        {
+          "name": "model",
+          "aliases": [],
+          "type": "string",
+          "takesValue": true,
+          "required": false,
+          "multiple": false,
+          "usage": "Model to use (defaults to the provider's default model)",
+          "envVars": []
+        },
+        {
+          "name": "show-key",
+          "aliases": [],
+          "type": "boolean",
+          "takesValue": false,
+          "required": false,
+          "multiple": false,
+          "default": "false",
+          "usage": "Show the configured API key prefix (never the full key)",
+          "envVars": []
+        },
+        {
+          "name": "help",
+          "aliases": [
+            "h"
+          ],
+          "type": "boolean",
+          "takesValue": false,
+          "required": false,
+          "multiple": false,
+          "usage": "Show help",
+          "envVars": []
+        }
+      ]
+    },
+    {
+      "path": [
         "service"
       ],
       "name": "service",
