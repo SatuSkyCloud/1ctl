@@ -201,7 +201,8 @@ func (s *Store) Disconnect(p Provider) error {
 }
 
 // MaskKey renders a key for display: first 4 chars, an ellipsis, last 4
-// chars. Short keys are fully masked. Used by --show-key and /providers.
+// chars. Short keys are fully masked. Keys are never printed by the chat
+// itself; this helper exists for diagnostics and future key hints.
 func MaskKey(key string) string {
 	switch {
 	case key == "":

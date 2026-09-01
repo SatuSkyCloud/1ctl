@@ -22,9 +22,9 @@ const (
 // chatInput mirrors the command flags. It is populated by urfave/cli via
 // Destination bindings and consumed by the handlers.
 type chatInput struct {
-	Provider string // --provider: openai, claude or deepseek
-	Model    string // --model: override the provider's default model
-	ShowKey  bool   // --show-key: show the configured API key prefix
+	Provider string // --provider: openai, claude or deepseek (default: active provider)
+	Model    string // --model: override the provider's default model for this session
+	ShowKey  bool   // --show-key: echo the API key while typing during /connect (default: hidden)
 }
 
 // --- Command tree -------------------------------------------------------
@@ -33,22 +33,38 @@ type chatInput struct {
 func Command() *cli.Command {
 	var in chatInput
 	return &cli.Command{
-		Name:  "chat",
-		Usage: "Start an interactive chat with an AI provider (OpenAI, Claude, DeepSeek)",
+		Name:      "chat",
+		Usage:     "Interactive AI copilot for SatuSky Cloud (OpenAI, Claude or DeepSeek)",
+		ArgsUsage: "[message...]",
+		Description: `An interactive developer copilot: ask questions and get SatuSky best
+practices (advisor), provision Postgres/Valkey/NATS, domains, env/secrets and
+deploys through the real 1ctl (operator), and scaffold projects with file and
+shell tools (builder).
+
+With no arguments an interactive chat starts (connect a provider on first
+run by pasting an API key — input hidden and tested before "Connected").
+Positional arguments run a single turn instead:
+
+    1ctl chat "how do I do a zero-downtime deploy?"
+
+SatuSky actions require ` + "`1ctl auth login`" + `; questions and file work
+don't need it. Keys may also come from OPENAI_API_KEY,
+ANTHROPIC_API_KEY or DEEPSEEK_API_KEY. See /help inside the chat for the
+slash commands.`,
 		Flags: []cli.Flag{
 			&cli.StringFlag{
 				Name:        flagProvider,
-				Usage:       "AI provider to use: openai, claude or deepseek",
+				Usage:       "AI provider to use: openai, claude or deepseek (default: the active provider)",
 				Destination: &in.Provider,
 			},
 			&cli.StringFlag{
 				Name:        flagModel,
-				Usage:       "Model to use (defaults to the provider's default model)",
+				Usage:       "Model for this session (default: the provider's default model)",
 				Destination: &in.Model,
 			},
 			&cli.BoolFlag{
 				Name:        flagShowKey,
-				Usage:       "Show the configured API key prefix (never the full key)",
+				Usage:       "Echo the API key while typing during /connect (default: hidden input)",
 				Destination: &in.ShowKey,
 			},
 		},

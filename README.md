@@ -111,6 +111,60 @@ cd your-project
 
 > **Memory unit suffix is required** as of v0.8.0: use `--memory 512Mi`, never `--memory 512`. Bare numbers are parsed by Kubernetes as bytes and silently OOMKill the pod.
 
+## 1ctl chat
+
+`1ctl chat` is an interactive developer copilot for SatuSky Cloud, powered by your choice of OpenAI, Claude or DeepSeek. One interface, three capabilities:
+
+- **Advisor** — ask questions and get SatuSky best practices ("what's the difference between env and secret?", "what memory limit should my API have?")
+- **Operator** — provision managed Postgres/Valkey/NATS, add domains, set env/secrets, deploy and diagnose — by driving the real `1ctl` binary (read-only commands run freely; mutating actions show a preview and ask for confirmation)
+- **Builder** — "create my react application": the agent asks clarifying questions, writes files, runs install/build, and can deploy the result
+
+### Quick start
+
+```bash
+# First run: pick a provider, paste your API key (input hidden), and the
+# connection is tested with a real message before "Connected ✓"
+1ctl chat
+
+# Reconnect or switch providers from inside the chat
+/connect claude
+/switch deepseek
+
+# One-shot mode: ask without starting the REPL
+1ctl chat "how do I do a zero-downtime deploy?"
+```
+
+API keys can also come from environment variables — they take priority over stored keys and are never persisted:
+
+```bash
+export OPENAI_API_KEY=sk-...   # or ANTHROPIC_API_KEY, DEEPSEEK_API_KEY
+1ctl chat
+```
+
+`1ctl auth login` is required for SatuSky actions (provisioning, domains, deploys); questions and file work work without it.
+
+### Slash commands
+
+| Command | What it does |
+| --- | --- |
+| `/connect [provider]` | Connect or reconnect a provider (openai, claude, deepseek) |
+| `/switch <provider>` | Switch the active provider (auto-tests if never verified) |
+| `/disconnect [provider]` | Remove a provider's API key (default: active provider) |
+| `/providers` | Show providers, models and connection status |
+| `/model [name]` | Show the active model, or set a new one |
+| `/status` | Refresh and show the SatuSky state snapshot (profile, apps, databases, domains, credits) |
+| `/tools on\|off` | Toggle workspace tools (files, shell, SatuSky) — default on |
+| `/ask` · `/go` | Force question-first mode · skip questions and act |
+| `/skill [path]` | Show the loaded skill, or load an alternate SKILL.md |
+| `/export [path]` | Save the conversation transcript as markdown |
+| `/clear` | Reset the conversation (keeps the connection) |
+| `/help` | List all commands |
+| `/exit` | Leave the chat (Ctrl-C / Ctrl-D work too) |
+
+### Security
+
+API keys are stored in `~/.satusky/chat.json` (mode 0600), never logged, and never printed back after connect — key input is hidden while pasting (`--show-key` echoes it while you type, for verification). Environment variables (`OPENAI_API_KEY`, `ANTHROPIC_API_KEY`, `DEEPSEEK_API_KEY`) take priority over stored keys and are never written to disk.
+
 ## Usage Examples
 
 ### Deployments

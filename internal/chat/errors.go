@@ -21,11 +21,11 @@ func classifyError(err error) error {
 		message := strings.TrimSpace(apiErr.Message)
 		switch apiErr.HTTPStatusCode {
 		case 401:
-			return fmt.Errorf("key rejected (401)")
+			return fmt.Errorf("key rejected (401) — the API key is wrong or expired; run /connect and re-paste it")
 		case 429:
-			return fmt.Errorf("rate limited or out of quota (429)")
+			return fmt.Errorf("rate limited or out of quota (429) — wait a moment and retry, or check your provider's usage and billing")
 		case 404:
-			return fmt.Errorf("model not found (404)")
+			return fmt.Errorf("model not found (404) — run /model with a valid model id for this provider")
 		default:
 			if message != "" {
 				return fmt.Errorf("provider error (%d): %s", apiErr.HTTPStatusCode, message)
@@ -39,7 +39,7 @@ func classifyError(err error) error {
 		if parsed, parseErr := url.Parse(urlErr.URL); parseErr == nil && parsed.Host != "" {
 			host = parsed.Host
 		}
-		return fmt.Errorf("cannot reach %s: %v", host, urlErr.Err)
+		return fmt.Errorf("cannot reach %s — check your network connection and try again (%v)", host, urlErr.Err)
 	}
 	return err
 }

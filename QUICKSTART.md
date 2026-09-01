@@ -341,6 +341,27 @@ All of these are valid CPU values:
 
 ---
 
+## Chat with the SatuSky copilot
+
+`1ctl chat` is an interactive developer copilot: ask questions and get SatuSky best practices, or let the agent drive the real `1ctl` to provision databases, add domains, set env/secrets, deploy, and diagnose.
+
+First run connects you in about 30 seconds — pick a provider, paste your API key (input hidden), and it is tested with a real message before you're in:
+
+```bash
+1ctl chat
+# 1) openai   2) claude   3) deepseek
+# Paste your Claude API key (input hidden): ••••••••
+# ✅ Connected!  model: claude-sonnet-4-6
+```
+
+Then just describe what you want — try "create my react application": the agent asks a couple of clarifying questions, writes the files, runs the install, and offers to deploy. API keys also work from `OPENAI_API_KEY`, `ANTHROPIC_API_KEY` or `DEEPSEEK_API_KEY`; `1ctl auth login` is only needed for SatuSky actions. One-shot mode works too:
+
+```bash
+1ctl chat "what memory limit should my API use?"
+```
+
+See [README — 1ctl chat](README.md#1ctl-chat) for the full slash-command reference and security notes.
+
 ## Next steps
 
 - Browse available machines: `1ctl machine list`

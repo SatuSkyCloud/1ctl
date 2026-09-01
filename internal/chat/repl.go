@@ -481,10 +481,12 @@ func runTurn(ctx context.Context, state *replState, session *Session, userMsg st
 		sp.Stop()
 		if err != nil {
 			writef(out, "\n")
-			// Keep any partial text so the conversation stays coherent.
+			// Keep any partial text so the conversation stays coherent, and
+			// surface that the reply was cut off (the error line follows).
 			if res.Text != "" {
 				session.Add(openai.ChatMessageRoleAssistant, res.Text)
 				session.Trim()
+				writef(out, "%s\n", utils.WarnColor("(reply cut off — the partial answer above was kept)"))
 			}
 			return err
 		}
