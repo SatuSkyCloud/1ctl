@@ -68,6 +68,13 @@ func Definitions() []openai.Tool {
 			}),
 		},
 		{
+			Name:        "analyze_project",
+			Description: "Inspect the application in the chat working directory (or a subdirectory) and return a structured report: detected stack (go/rust/node/python/...), manifests found (go.mod, Cargo.toml, package.json, pyproject.toml, requirements.txt, Dockerfile, Taskfile.yml, Justfile, Makefile, runtime version pins), package scripts, categorized dependencies (web framework, SQL DB client, redis, nats), port hints (Dockerfile EXPOSE / framework defaults), any existing satusky.toml, and existing GitHub Actions workflows. Read-only. Call this FIRST before proposing deploy configuration, generating satusky.toml or GitHub Actions, or scaffolding into a non-empty directory — it tells you what to ask about.",
+			Parameters: parameters(nil, map[string]any{
+				"path": stringProp("Subdirectory to analyze, relative to the chat working directory (default: the working directory itself)"),
+			}),
+		},
+		{
 			Name:        "satusky_status",
 			Description: "Inspect the current SatuSky state: authentication, profile, org, namespace, apps, managed databases, domains and credits. Refreshes the state snapshot via read-only 1ctl commands and returns a compact digest. Call this first before advising on or proposing any SatuSky action, so advice matches the user's real setup.",
 			Parameters:  parameters(nil, map[string]any{}),

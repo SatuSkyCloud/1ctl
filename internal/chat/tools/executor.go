@@ -92,6 +92,16 @@ func (e *Executor) Execute(name string, argsJSON []byte) (result string) {
 			return fmt.Sprintf("error: invalid arguments for run_shell: %v", err)
 		}
 		return e.runShell(args.Command, args.Cwd)
+	case "analyze_project":
+		var args struct {
+			Path string `json:"path"`
+		}
+		if len(argsJSON) > 0 {
+			if err := json.Unmarshal(argsJSON, &args); err != nil {
+				return fmt.Sprintf("error: invalid arguments for analyze_project: %v", err)
+			}
+		}
+		return e.analyzeProject(args.Path)
 	default:
 		return fmt.Sprintf("error: unknown tool %q", name)
 	}

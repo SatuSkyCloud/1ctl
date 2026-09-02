@@ -21,8 +21,8 @@ func newTestExecutor(t *testing.T, confirm func(string) bool) *Executor {
 
 func TestDefinitionsExposeAllTools(t *testing.T) {
 	defs := Definitions()
-	if len(defs) != 6 {
-		t.Fatalf("Definitions() = %d tools, want 6 (workspace + satusky)", len(defs))
+	if len(defs) != 7 {
+		t.Fatalf("Definitions() = %d tools, want 7 (workspace + satusky)", len(defs))
 	}
 	names := map[string]bool{}
 	for _, d := range defs {
@@ -34,7 +34,7 @@ func TestDefinitionsExposeAllTools(t *testing.T) {
 		}
 		names[d.Function.Name] = true
 	}
-	for _, want := range []string{"read_file", "write_file", "list_dir", "run_shell", "satusky_status", "satusky_run"} {
+	for _, want := range []string{"read_file", "write_file", "list_dir", "run_shell", "analyze_project", "satusky_status", "satusky_run"} {
 		if !names[want] {
 			t.Errorf("Definitions() missing tool %q", want)
 		}
