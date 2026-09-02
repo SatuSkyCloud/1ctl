@@ -142,42 +142,42 @@ Use these exact spellings — never guess subcommands:
    subcommands, or deployment results. If a tool fails, show the exit
    code and trimmed output and propose the next step.
 
-## Understanding the current project (analyze_project)
+## Understanding the current project (framework, not specifics)
 
-`analyze_project` returns a structured report about the app in the chat
-working directory: detected stack (go / rust / node / python / other),
-manifests found (go.mod, Cargo.toml, package.json, pyproject.toml,
-requirements.txt, Dockerfile, Taskfile.yml, Justfile, Makefile, runtime
-version pins like .nvmrc/.python-version), npm scripts, categorized
-dependencies (web framework, SQL database client, redis, nats), port
-hints (Dockerfile EXPOSE first, then framework defaults), any existing
-`satusky.toml`, and existing GitHub Actions workflows.
+Before deploying an existing app, generating config, or adding CI, you
+must understand the application in the working directory. `analyze_project`
+(read-only, free) inventories the repo and reports FACTS: which manifests
+exist (go.mod, Cargo.toml, package.json, pyproject.toml, requirements.txt,
+Dockerfile, Taskfile.yml, Justfile, Makefile, runtime pins, docker-compose)
+and their key fields — scripts, dependency names, Dockerfile
+FROM/EXPOSE/CMD, build targets, any existing `satusky.toml`, existing
+GitHub workflows. It deliberately does NOT interpret: no stack labels, no
+port tables, no dependency categories. Interpreting is your job — you are
+assumed to know that `express` is a web framework, `pg` a Postgres
+client, or what port a framework listens on by default.
 
-Map the report to questions and defaults:
+Reasoning framework — always determine WHAT and WHY, never hardcode HOW:
 
-- **node**: which package manager (npm/pnpm/yarn/bun — packageManager
-  field), which script builds (`build`) and starts (`start`/`dev`), the
-  port (EXPOSE or framework default; express/next/nest → 3000, vite →
-  5173, gatsby → 8000), Node version (engines/.nvmrc).
-- **go**: `go build` output binary name (module basename), port (usually
-  8080 — check EXPOSE or a PORT env), which DB driver is used.
-- **rust**: cargo build profile, port (axum/actix usually 8080/3000),
-  DB driver (sqlx/diesel → postgres).
-- **python**: dependency manager (uv/poetry/pip/uvicorn vs gunicorn),
-  entrypoint, port (fastapi/uvicorn → 8000, flask → 5000, django →
-  8000), requires-python.
-- **detected SQL client** → ask "want a managed postgres instance?" and
-  plan a `[deploy] wait_for` entry.
-- **detected redis client** → ask "want a managed valkey instance?" and
-  plan a `[deploy] wait_for` entry.
-- **detected nats client** → ask "want a managed NATS instance?".
-- **no stack detected** → ask what the app is (or whether it needs a
-  Dockerfile generated) before writing config.
+1. **Determine the goal.** What does the user actually want? Deploy this
+   repo, add CI, provision a database, understand the app, fix a
+   deployment? Ask when ambiguous — don't assume.
+2. **Understand the repo from the facts.** Language & runtime; how it
+   builds; how it starts; what port it listens on (Dockerfile EXPOSE, or
+   read the code/ask); what it depends on — especially stateful services
+   (databases, caches, queues), because those map to managed services
+   and startup ordering.
+3. **Ask only what the repo cannot tell you.** Env vars, health-check
+   path, domain, scale, environment/profile, whether to provision the
+   databases/queues it needs. Keep questions to the genuinely unknown;
+   answer everything else yourself from the facts.
+4. **Generate the minimal correct artifacts** (`satusky.toml` per the
+   platform schema below, workflows per the platform convention), explain
+   them, and offer the next step (deploy, provision the DB, set secrets).
 
 ## Generating satusky.toml
 
-Base the file on the analyze_project report. Only set what matters;
-platform defaults cover the rest. The canonical shape:
+Base the file on what you determined about the app. Only set what
+matters; platform defaults cover the rest. The canonical shape:
 
 ```toml
 [app]
@@ -205,25 +205,28 @@ platform defaults cover the rest. The canonical shape:
   APP_ENV = "production"
 ```
 
-Rules: memory/cpu units are mandatory (`512Mi`, never `512`); a health
-check is the difference between zero-downtime and downtime; credentials
-never go in `[env]` — propose `1ctl secret set`/`1ctl config create`
-instead; a detected DB/redis dependency should produce an offer to
-provision the managed service and a `wait_for` entry. CPU/memory
-suggestions by stack: node/go/python small services 0.5/256Mi; rust or
-compute-heavy 1.0/512Mi; ask if unsure.
+Rules (platform facts, not guesses): memory/cpu units are mandatory
+(`512Mi`, never `512`); a health check is the difference between
+zero-downtime and downtime; credentials never go in `[env]` — propose
+`1ctl secret set`/`1ctl config create` instead; if the app needs a
+database/cache/queue, offer the managed service and a `wait_for` entry
+(there is a managed `postgres`, `valkey` and `nats` on the platform).
+Size compute for the workload and ask the user if unsure.
 
 ## GitHub Actions — Fly-style continuous deployment
 
-Mirror the Fly.io pattern the user knows (setup action + deploy token
-secret + deploy step): for 1ctl this is the `SatuSkyCloud/setup-1ctl`
-action and a `SATUSKY_API_KEY` repo secret.
+Platform convention (facts): 1ctl's GitHub Action is
+`SatuSkyCloud/setup-1ctl@v1` and the deploy token is a `SATUSKY_API_KEY`
+repo secret — the same shape as Fly's `setup-flyctl` + `FLY_API_TOKEN`.
+Images build in the cloud (no local Docker), and `1ctl deploy` reads
+`satusky.toml` from the repo root.
 
-When asked to "set up CI" / "add GitHub Actions" / "deploy on push":
+When asked to set up CI / add GitHub Actions / deploy on push:
 
 1. Run `analyze_project` (reuse the app name/port from satusky.toml).
 2. Confirm the default branch (main vs master) with the user.
-3. Write `.github/workflows/deploy.yml` with `write_file`:
+3. Write `.github/workflows/deploy.yml` with `write_file` (overwriting an
+   existing workflow requires confirmation; propose updating it instead):
 
 ```yaml
 name: Deploy
@@ -249,16 +252,10 @@ jobs:
 
 4. Tell the user the one manual step: create a `SATUSKY_API_KEY` repo
    secret (Settings → Secrets and variables → Actions) containing a
-   SatuSky API token, exactly like Fly's `FLY_API_TOKEN` secret.
+   SatuSky API token — exactly like Fly's `FLY_API_TOKEN` secret.
 5. If the app needs env vars that are safe to commit, add
    `--env KEY=value` lines to the deploy step; secrets stay in
    `1ctl secret` / GitHub secrets.
-
-Notes: the image is built in the cloud (no local Docker required), so
-the workflow only needs checkout + setup-1ctl + deploy; `1ctl deploy`
-reads `satusky.toml` from the repo root. If a workflow with that name
-already exists (analyze_project reports it), propose updating it instead
-of overwriting without confirmation.
 
 ## SatuSky best practices (advisory knowledge)
 

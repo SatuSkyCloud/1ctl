@@ -19,52 +19,54 @@ const maxManifestBytes = 64 * 1024
 // maxProjectReportBytes caps the whole analyze_project report.
 const maxProjectReportBytes = 4 * 1024
 
-// analyzeProject inspects the chat working directory (or a subdirectory)
-// for the files that describe an application — manifests, build files,
-// Dockerfile, existing satusky.toml and CI workflows — and returns a
-// compact structured report the model can use to understand the stack,
-// its dependencies, and what it needs to ask before generating
-// satusky.toml or a GitHub Actions workflow. Read-only; never prompts.
+// maxListedDeps caps how many dependency names are listed per manifest.
+const maxListedDeps = 30
+
+// analyzeProject inventories the chat working directory (or a
+// subdirectory) and reports FACTS about the application: which manifests
+// exist and their key fields (scripts, dependencies by name, Dockerfile
+// FROM/EXPOSE/CMD, build targets, runtime pins, any existing satusky.toml
+// and GitHub workflows). It deliberately does NOT interpret the facts —
+// no stack labels, no framework→port tables, no dependency
+// classification. Interpreting the report is the model's job. Read-only;
+// never prompts.
 func (e *Executor) analyzeProject(path string) string {
-	if strings.TrimSpace(path) == "" {
-		// No subdirectory: analyze the chat working directory itself.
-		if e.Cwd == "" {
-			cwd, err := os.Getwd()
-			if err != nil {
-				return "error: no working directory configured"
-			}
-			e.Cwd = cwd
+	root := e.Cwd
+	if strings.TrimSpace(path) != "" {
+		base, err := resolvePath(e.Cwd, path)
+		if err != nil {
+			return "error: " + err.Error()
 		}
-		report := newProjectReport(e.Cwd)
-		return report.render()
+		root = base
 	}
-	base, err := resolvePath(e.Cwd, path)
-	if err != nil {
-		return "error: " + err.Error()
+	if root == "" {
+		cwd, err := os.Getwd()
+		if err != nil {
+			return "error: no working directory configured"
+		}
+		root = cwd
 	}
-	report := newProjectReport(base)
+	report := newProjectReport(root)
 	return report.render()
 }
 
 // projectReport accumulates the analysis of one directory.
 type projectReport struct {
-	root       string
-	manifests  []string
-	workflows  []string
-	deps       map[string]bool // categorized dependency hints ("postgres", "redis", ...)
-	portHints  []string
-	stack      string
-	stackExtra string
-	satusky    string
-	scripts    string
+	root        string
+	manifests   []string
+	workflows   []string
+	sections    []string // one line per manifest with parsed facts
 	exposePorts []string
+	scripts     string
+	satusky     string
 }
 
 func newProjectReport(root string) *projectReport {
-	return &projectReport{root: root, deps: map[string]bool{}}
+	return &projectReport{root: root}
 }
 
-func (r *projectReport) addDep(category string) { r.deps[category] = true }
+// section records a facts line for one manifest.
+func (r *projectReport) section(line string) { r.sections = append(r.sections, line) }
 
 // readManifest returns the trimmed content of a file if it exists and is
 // under maxManifestBytes; ok=false otherwise.
@@ -88,60 +90,46 @@ func (r *projectReport) manifest(name string) (string, bool) {
 	return content, ok
 }
 
-// stackHint sets the detected stack if not already known (first match wins
-// by priority order of the caller).
-func (r *projectReport) stackHint(name string) {
-	if r.stack == "" {
-		r.stack = name
+// capStrings truncates a sorted list at maxListedDeps with a count note.
+func capStrings(names []string) string {
+	sort.Strings(names)
+	if len(names) == 0 {
+		return ""
 	}
+	if len(names) <= maxListedDeps {
+		return strings.Join(names, ", ")
+	}
+	return strings.Join(names[:maxListedDeps], ", ") + fmt.Sprintf(" …%d more", len(names)-maxListedDeps)
 }
 
-// port records a port hint in detection order (first recorded wins later).
-func (r *projectReport) port(hint string) {
-	r.portHints = append(r.portHints, hint)
-}
-
-// --- per-manifest parsers -------------------------------------------------
+// --- per-manifest parsers (facts only) -----------------------------------
 
 func (r *projectReport) parseGoMod(content string) {
-	r.stackHint("go")
 	reModule := regexp.MustCompile(`(?m)^module\s+(\S+)`)
 	reGo := regexp.MustCompile(`(?m)^go\s+(\S+)`)
 	reDep := regexp.MustCompile(`^\t?([^\s/]+(?:\/[^\s/]+)*)\s+v`)
+	parts := []string{}
 	if m := reModule.FindStringSubmatch(content); len(m) > 1 {
-		r.stackExtra = "module=" + m[1]
+		parts = append(parts, "module="+m[1])
 	}
 	if m := reGo.FindStringSubmatch(content); len(m) > 1 {
-		r.stackExtra += " go=" + m[1]
+		parts = append(parts, "go="+m[1])
 	}
+	var deps []string
 	for _, line := range strings.Split(content, "\n") {
 		if m := reDep.FindStringSubmatch(line); len(m) > 1 {
-			r.categorizeGoDep(m[1])
+			deps = append(deps, m[1])
 		}
 	}
-}
-
-func (r *projectReport) categorizeGoDep(mod string) {
-	mod = strings.TrimSpace(mod)
-	switch {
-	case strings.Contains(mod, "jackc/pgx"), strings.Contains(mod, "lib/pq"),
-		strings.Contains(mod, "go-sql-driver/mysql"), strings.Contains(mod, "mattn/go-sqlite3"),
-		strings.Contains(mod, "mongo-driver"), strings.Contains(mod, "gorm.io"),
-		strings.Contains(mod, "jmoiron/sqlx"):
-		r.addDep("postgres/mysql/sql db client")
-	case strings.Contains(mod, "go-redis"), strings.Contains(mod, "gomodule/redigo"):
-		r.addDep("redis")
-	case strings.Contains(mod, "gin-gonic"), strings.Contains(mod, "gorilla/mux"),
-		strings.Contains(mod, "labstack/echo"), strings.Contains(mod, "gofiber/fiber"),
-		strings.Contains(mod, "chi"):
-		r.addDep("web framework")
-	case strings.Contains(mod, "nats-io"):
-		r.addDep("nats")
+	if c := capStrings(deps); c != "" {
+		parts = append(parts, "requires: "+c)
+	}
+	if len(parts) > 0 {
+		r.section("go.mod: " + strings.Join(parts, " "))
 	}
 }
 
 func (r *projectReport) parseCargo(content string) {
-	r.stackHint("rust")
 	var c struct {
 		Package struct {
 			Name    string `toml:"name"`
@@ -152,26 +140,25 @@ func (r *projectReport) parseCargo(content string) {
 	if err := toml.Unmarshal([]byte(content), &c); err != nil {
 		return
 	}
+	parts := []string{}
 	if c.Package.Name != "" {
-		r.stackExtra = "crate=" + c.Package.Name
+		parts = append(parts, "crate="+c.Package.Name)
 	}
+	deps := make([]string, 0, len(c.Dependencies))
 	for dep := range c.Dependencies {
-		switch dep {
-		case "axum", "actix-web", "rocket", "warp", "tonic":
-			r.addDep("web framework")
-		case "sqlx", "diesel", "rusqlite":
-			r.addDep("sql db client")
-		case "redis":
-			r.addDep("redis")
-		}
+		deps = append(deps, dep)
+	}
+	if c := capStrings(deps); c != "" {
+		parts = append(parts, "deps: "+c)
+	}
+	if len(parts) > 0 {
+		r.section("Cargo.toml: " + strings.Join(parts, " "))
 	}
 }
 
 func (r *projectReport) parsePackageJSON(content string) {
-	r.stackHint("node")
 	var p struct {
 		Name            string            `json:"name"`
-		Version         string            `json:"version"`
 		PackageManager  string            `json:"packageManager"`
 		Engines         map[string]string `json:"engines"`
 		Scripts         map[string]string `json:"scripts"`
@@ -181,91 +168,62 @@ func (r *projectReport) parsePackageJSON(content string) {
 	if err := json.Unmarshal([]byte(content), &p); err != nil {
 		return
 	}
-	extra := []string{}
+	parts := []string{}
 	if p.Name != "" {
-		extra = append(extra, "name="+p.Name)
+		parts = append(parts, "name="+p.Name)
 	}
 	if p.PackageManager != "" {
-		extra = append(extra, "packageManager="+p.PackageManager)
+		parts = append(parts, "packageManager="+p.PackageManager)
 	}
 	if len(p.Engines) > 0 {
-		parts := make([]string, 0, len(p.Engines))
-		for k, v := range p.Engines {
-			parts = append(parts, k+"="+v)
+		keys := make([]string, 0, len(p.Engines))
+		for k := range p.Engines {
+			keys = append(keys, k)
 		}
-		sort.Strings(parts)
-		extra = append(extra, "engines["+strings.Join(parts, ", ")+"]")
+		sort.Strings(keys)
+		vals := make([]string, 0, len(keys))
+		for _, k := range keys {
+			vals = append(vals, k+"="+p.Engines[k])
+		}
+		parts = append(parts, "engines["+strings.Join(vals, ", ")+"]")
 	}
-	r.stackExtra = strings.Join(extra, " ")
+	if len(parts) > 0 {
+		r.section("package.json: " + strings.Join(parts, " "))
+	}
 	if len(p.Scripts) > 0 {
 		keys := []string{"dev", "start", "build", "test", "preview", "lint"}
-		var parts []string
+		var list []string
 		for _, k := range keys {
 			if v, ok := p.Scripts[k]; ok {
-				parts = append(parts, k+"=\""+v+"\"")
+				list = append(list, k+"=\""+v+"\"")
 			}
 		}
-		if len(parts) > 0 {
-			r.scripts = strings.Join(parts, " ")
+		if len(list) > 0 {
+			r.scripts = strings.Join(list, " ")
 		}
 	}
-	all := map[string]string{}
-	for k, v := range p.Dependencies {
-		all[k] = v
+	deps := make([]string, 0, len(p.Dependencies)+len(p.DevDependencies))
+	for k := range p.Dependencies {
+		deps = append(deps, k)
 	}
-	for k, v := range p.DevDependencies {
-		all[k] = v
+	dev := make([]string, 0, len(p.DevDependencies))
+	for k := range p.DevDependencies {
+		dev = append(dev, k)
 	}
-	r.categorizeNodeDeps(all)
-}
-
-func (r *projectReport) categorizeNodeDeps(all map[string]string) {
-	for dep := range all {
-		switch {
-		case nodeDB[dep]:
-			r.addDep("sql db client")
-		case nodeRedis[dep]:
-			r.addDep("redis")
-		case nodeNATS[dep]:
-			r.addDep("nats")
-		case nodeFramework[dep]:
-			r.addDep("web framework")
-			if p, ok := nodeFrameworkPorts[dep]; ok {
-				r.port(fmt.Sprintf("%s (%s)", p, dep))
-			}
-		}
+	if c := capStrings(deps); c != "" {
+		r.section("package.json dependencies: " + c)
 	}
-}
-
-var nodeDB = map[string]bool{
-	"pg": true, "pg-promise": true, "pg-pool": true, "mysql2": true, "mysql": true,
-	"sqlite3": true, "better-sqlite3": true, "mongodb": true, "mongoose": true,
-	"prisma": true, "@prisma/client": true, "typeorm": true, "knex": true, "sequelize": true,
-}
-var nodeRedis = map[string]bool{
-	"redis": true, "ioredis": true, "node-redis": true, "bullmq": true, "bull": true,
-}
-var nodeNATS = map[string]bool{"nats": true}
-var nodeFramework = map[string]bool{
-	"next": true, "nuxt": true, "sveltekit": true, "@sveltejs/kit": true, "vite": true,
-	"react-scripts": true, "express": true, "fastify": true, "@nestjs/core": true,
-	"koa": true, "remix": true, "gatsby": true, "astro": true, "@angular/core": true,
-	"vue": true, "@vue/cli-service": true,
-}
-var nodeFrameworkPorts = map[string]string{
-	"next": "3000", "nuxt": "3000", "@sveltejs/kit": "5173", "sveltekit": "5173",
-	"vite": "5173", "react-scripts": "3000", "express": "3000", "fastify": "3000",
-	"@nestjs/core": "3000", "koa": "3000", "remix": "3000", "gatsby": "8000",
-	"astro": "4321", "@angular/core": "4200", "vue": "5173", "@vue/cli-service": "8080",
+	if c := capStrings(dev); c != "" {
+		r.section("package.json devDependencies: " + c)
+	}
 }
 
 func (r *projectReport) parsePyProject(content string) {
-	r.stackHint("python")
 	var c struct {
 		Project struct {
-			Name            string   `toml:"name"`
-			RequiresPython  string   `toml:"requires-python"`
-			Dependencies    []string `toml:"dependencies"`
+			Name           string   `toml:"name"`
+			RequiresPython string   `toml:"requires-python"`
+			Dependencies   []string `toml:"dependencies"`
 		} `toml:"project"`
 		Tool struct {
 			Poetry struct {
@@ -277,23 +235,27 @@ func (r *projectReport) parsePyProject(content string) {
 	if err := toml.Unmarshal([]byte(content), &c); err != nil {
 		return
 	}
+	parts := []string{}
 	name := c.Project.Name
 	if name == "" {
 		name = c.Tool.Poetry.Name
 	}
 	if name != "" {
-		r.stackExtra = "project=" + name
+		parts = append(parts, "project="+name)
 	}
 	if c.Project.RequiresPython != "" {
-		r.stackExtra += " python=" + c.Project.RequiresPython
+		parts = append(parts, "python="+c.Project.RequiresPython)
 	}
-	for _, dep := range c.Project.Dependencies {
-		r.categorizePythonDep(dep)
+	if len(c.Project.Dependencies) > 0 {
+		parts = append(parts, "deps: "+strings.Join(c.Project.Dependencies, ", "))
+	}
+	if len(parts) > 0 {
+		r.section("pyproject.toml: " + strings.Join(parts, " "))
 	}
 }
 
 func (r *projectReport) parseRequirements(content string) {
-	r.stackHint("python")
+	var deps []string
 	for _, line := range strings.Split(content, "\n") {
 		line = strings.TrimSpace(line)
 		if line == "" || strings.HasPrefix(line, "#") {
@@ -305,57 +267,39 @@ func (r *projectReport) parseRequirements(content string) {
 			dep = dep[:i]
 		}
 		if dep != "" {
-			r.categorizePythonDep(dep)
+			deps = append(deps, dep)
 		}
 	}
-}
-
-func (r *projectReport) categorizePythonDep(dep string) {
-	dep = strings.ToLower(strings.TrimSpace(dep))
-	switch {
-	case strings.HasPrefix(dep, "fastapi"), strings.HasPrefix(dep, "flask"),
-		strings.HasPrefix(dep, "django"), strings.HasPrefix(dep, "aiohttp"),
-		strings.HasPrefix(dep, "tornado"), strings.HasPrefix(dep, "starlette"),
-		strings.HasPrefix(dep, "uvicorn"), strings.HasPrefix(dep, "gunicorn"):
-		r.addDep("web framework")
-	case strings.HasPrefix(dep, "psycopg"), strings.HasPrefix(dep, "asyncpg"),
-		strings.HasPrefix(dep, "pymysql"), strings.HasPrefix(dep, "sqlalchemy"),
-		strings.HasPrefix(dep, "pymongo"), strings.HasPrefix(dep, "aiosqlite"):
-		r.addDep("sql db client")
-	case strings.HasPrefix(dep, "redis"), strings.HasPrefix(dep, "aioredis"),
-		strings.HasPrefix(dep, "celery"):
-		r.addDep("redis")
-	case strings.HasPrefix(dep, "nats-py"), strings.HasPrefix(dep, "nats"):
-		r.addDep("nats")
+	if c := capStrings(deps); c != "" {
+		r.section("requirements.txt: " + c)
 	}
 }
 
 func (r *projectReport) parseDockerfile(content string) {
-	reExpose := regexp.MustCompile(`(?mi)^\s*EXPOSE\s+(\d+)`)
-	for _, m := range reExpose.FindAllStringSubmatch(content, -1) {
-		r.exposePorts = append(r.exposePorts, m[1])
-	}
+	parts := []string{}
 	reFrom := regexp.MustCompile(`(?mi)^\s*FROM\s+([^\s]+)`)
 	if m := reFrom.FindStringSubmatch(content); len(m) > 1 {
-		base := strings.ToLower(m[1])
-		switch {
-		case strings.Contains(base, "golang"):
-			r.stackHint("go (dockerfile)")
-		case strings.Contains(base, "node"):
-			r.stackHint("node (dockerfile)")
-		case strings.Contains(base, "python"):
-			r.stackHint("python (dockerfile)")
-		case strings.Contains(base, "rust"):
-			r.stackHint("rust (dockerfile)")
-		}
+		parts = append(parts, "FROM "+m[1])
+	}
+	reExpose := regexp.MustCompile(`(?mi)^\s*EXPOSE\s+([\d\s]+)`)
+	for _, m := range reExpose.FindAllStringSubmatch(content, -1) {
+		r.exposePorts = append(r.exposePorts, strings.Fields(m[1])...)
+	}
+	if len(r.exposePorts) > 0 {
+		parts = append(parts, "EXPOSE "+strings.Join(r.exposePorts, " "))
+	}
+	reCmd := regexp.MustCompile(`(?mi)^\s*(CMD|ENTRYPOINT)\s+(.+)$`)
+	if m := reCmd.FindStringSubmatch(content); len(m) > 1 {
+		parts = append(parts, m[1]+" "+strings.TrimSpace(m[2]))
+	}
+	if len(parts) > 0 {
+		r.section("Dockerfile: " + strings.Join(parts, " "))
 	}
 }
 
 // parseMakeLike scans Makefile / Taskfile.yml / Justfile for common
-// targets. It does not try to understand the build system — presence of a
-// target is enough for the model to ask the right question. Targets may
-// be top-level or indented (Makefile tabs, Taskfile/Justfile nesting).
-func (r *projectReport) parseMakeLike(content string, label string) {
+// targets (facts: which targets exist — not what they do).
+func (r *projectReport) parseMakeLike(content, label string) {
 	targets := []string{"build", "test", "run", "dev", "start", "install", "lint", "fmt"}
 	found := []string{}
 	for _, t := range targets {
@@ -365,7 +309,7 @@ func (r *projectReport) parseMakeLike(content string, label string) {
 		}
 	}
 	if len(found) > 0 {
-		r.stackExtra += " " + label + "[" + strings.Join(found, ",") + "]"
+		r.section(label + " targets: " + strings.Join(found, ", "))
 	}
 }
 
@@ -405,6 +349,9 @@ func (r *projectReport) parseSatuskyToml(content string) {
 	if c.App.Replicas > 0 {
 		parts = append(parts, fmt.Sprintf("replicas=%d", c.App.Replicas))
 	}
+	if c.Build.Dockerfile != "" {
+		parts = append(parts, "dockerfile="+c.Build.Dockerfile)
+	}
 	if c.Checks.HealthPath != "" {
 		parts = append(parts, "health_path="+c.Checks.HealthPath)
 	}
@@ -419,9 +366,8 @@ func (r *projectReport) parseSatuskyToml(content string) {
 
 // --- report assembly -----------------------------------------------------
 
-// render runs the whole scan and produces the compact text report.
+// render runs the whole scan and produces the compact facts report.
 func (r *projectReport) render() string {
-	// Priority order for stack detection: go > rust > node > python > others.
 	if content, ok := r.manifest("go.mod"); ok {
 		r.parseGoMod(content)
 	}
@@ -440,26 +386,25 @@ func (r *projectReport) render() string {
 	if content, ok := r.manifest("Dockerfile"); ok {
 		r.parseDockerfile(content)
 	}
-	// Build orchestrators (presence + common targets only).
 	for _, pair := range [][2]string{{"Taskfile.yml", "taskfile"}, {"Justfile", "justfile"}, {"Makefile", "makefile"}} {
 		if content, ok := r.manifest(pair[0]); ok {
 			r.parseMakeLike(content, pair[1])
 		}
 	}
-	// Runtime version pins.
-	for _, f := range []string{".nvmrc", ".node-version", ".python-version", ".tool-versions", "docker-compose.yml"} {
+	for _, f := range []string{".nvmrc", ".node-version", ".python-version", ".tool-versions"} {
 		if content, ok := r.manifest(f); ok {
-			first := strings.TrimSpace(strings.SplitN(content, "\n", 2)[0])
-			if first != "" {
-				r.stackExtra += " " + f + "=" + first
+			if first := strings.TrimSpace(strings.SplitN(content, "\n", 2)[0]); first != "" {
+				r.section(f + ": " + first)
 			}
 		}
+	}
+	if _, ok := r.manifest("docker-compose.yml"); ok {
+		r.section("docker-compose.yml present — the app may depend on services defined here")
 	}
 	if content, ok := r.manifest("satusky.toml"); ok {
 		r.parseSatuskyToml(content)
 	}
 	r.scanWorkflows()
-
 	return r.finalize()
 }
 
@@ -498,58 +443,25 @@ func (r *projectReport) finalize() string {
 		}
 	}
 	fmt.Fprintf(&b, "## Project analysis: %s\n", rel)
-	if r.stack != "" {
-		fmt.Fprintf(&b, "stack: %s", r.stack)
-		if r.stackExtra != "" {
-			b.WriteString(" (" + strings.TrimSpace(r.stackExtra) + ")")
-		}
-		b.WriteString("\n")
-	} else {
-		b.WriteString("stack: undetected — no go.mod/Cargo.toml/package.json/pyproject.toml/Dockerfile found at this level\n")
-	}
 	sort.Strings(r.manifests)
-	b.WriteString("manifests: " + strings.Join(r.manifests, ", ") + "\n")
+	if len(r.manifests) == 0 {
+		b.WriteString("no manifest files detected (no go.mod, Cargo.toml, package.json, pyproject.toml, requirements.txt, Dockerfile, Taskfile.yml, Justfile, Makefile or satusky.toml at this level)\n")
+	} else {
+		b.WriteString("manifests: " + strings.Join(r.manifests, ", ") + "\n")
+	}
+	for _, s := range r.sections {
+		b.WriteString(s + "\n")
+	}
 	if r.scripts != "" {
-		b.WriteString("scripts: " + r.scripts + "\n")
-	}
-	if len(r.deps) > 0 {
-		keys := make([]string, 0, len(r.deps))
-		for k := range r.deps {
-			keys = append(keys, k)
-		}
-		sort.Strings(keys)
-		b.WriteString("dependencies: " + strings.Join(keys, "; ") + "\n")
-	}
-	if len(r.exposePorts) > 0 || len(r.portHints) > 0 {
-		// Dockerfile EXPOSE is authoritative (the container must listen
-		// there); framework defaults are guesses and come after.
-		var ports []string
-		for _, p := range r.exposePorts {
-			ports = append(ports, "dockerfile EXPOSE "+p)
-		}
-		ports = append(ports, r.portHints...)
-		b.WriteString("port hints: " + strings.Join(ports, ", ") + "\n")
+		b.WriteString("package.json scripts: " + r.scripts + "\n")
 	}
 	if r.satusky != "" {
 		b.WriteString("existing satusky.toml: " + r.satusky + "\n")
-	} else {
-		b.WriteString("existing satusky.toml: none\n")
 	}
 	if len(r.workflows) > 0 {
 		b.WriteString("existing github workflows: " + strings.Join(r.workflows, ", ") + "\n")
 	}
-	if r.deps["sql db client"] {
-		b.WriteString("hint: detected a SQL database client — offer a managed postgres instance and a [deploy] wait_for dependency\n")
-	}
-	if r.deps["redis"] {
-		b.WriteString("hint: detected a redis client — offer a managed valkey instance and a [deploy] wait_for dependency\n")
-	}
-	if r.deps["nats"] {
-		b.WriteString("hint: detected a nats client — offer a managed NATS instance\n")
-	}
-	if r.stack == "" {
-		b.WriteString("hint: ask whether a Dockerfile exists or should be generated, and what runtime the app expects\n")
-	}
+	b.WriteString("next: determine the stack, build/start commands, port and stateful dependencies from the facts above (read files or ask the user for anything not determinable), then decide what the user actually needs (deploy config, CI, managed services, ...).\n")
 	out := b.String()
 	if len(out) > maxProjectReportBytes {
 		out = out[:maxProjectReportBytes] + "\n…(report truncated)"

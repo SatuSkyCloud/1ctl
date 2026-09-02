@@ -39,49 +39,44 @@ func wantContains(t *testing.T, got string, want ...string) {
 	}
 }
 
-func TestAnalyzeProjectNodeExpress(t *testing.T) {
+func wantNotContains(t *testing.T, got string, notWant ...string) {
+	t.Helper()
+	for _, w := range notWant {
+		if strings.Contains(got, w) {
+			t.Errorf("report should not contain %q\nreport:\n%s", w, got)
+		}
+	}
+}
+
+// The analyzer reports FACTS only. It must never impose interpretation —
+// no stack labels, no framework->port tables, no dependency categories.
+func TestAnalyzeProjectReportsFactsNotInterpretation(t *testing.T) {
 	dir := writeTree(t, map[string]string{
 		"package.json": `{
   "name": "api-service",
-  "version": "1.2.0",
   "packageManager": "pnpm@9.15.0",
   "engines": {"node": ">=20"},
-  "scripts": {"dev": "tsx watch src/index.ts", "build": "tsc", "start": "node dist/index.js", "test": "vitest"},
-  "dependencies": {"express": "^4.19.0", "pg": "^8.11.0", "ioredis": "^5.4.0", "zod": "^3.23.0"},
+  "scripts": {"dev": "tsx watch src/index.ts", "build": "tsc", "start": "node dist/index.js"},
+  "dependencies": {"express": "^4.19.0", "pg": "^8.11.0", "ioredis": "^5.4.0"},
   "devDependencies": {"typescript": "^5.4.0"}
 }`,
 		"Dockerfile": "FROM node:20-alpine\nWORKDIR /app\nCOPY . .\nEXPOSE 3000\nCMD [\"npm\", \"start\"]\n",
-		"Taskfile.yml": "version: '3'\ntasks:\n  build:\n    cmds: [pnpm build]\n  test:\n    cmds: [pnpm test]\n",
-		".github/workflows/deploy.yml": "name: Deploy\non: [push]\n",
 	})
 	got := analyze(t, dir)
 	wantContains(t, got,
-		"stack: node",
-		"name=api-service",
-		"packageManager=pnpm@9.15.0",
-		"engines[node=>=20]",
-		`scripts: dev="tsx watch src/index.ts" start="node dist/index.js" build="tsc"`,
-		"dependencies: redis; sql db client; web framework",
-		"port hints: dockerfile EXPOSE 3000, 3000 (express)",
-		"existing satusky.toml: none",
-		"existing github workflows: Deploy (deploy.yml)",
-		"hint: detected a SQL database client — offer a managed postgres",
-		"hint: detected a redis client — offer a managed valkey",
-		"taskfile[build,test]",
+		"manifests: Dockerfile, package.json",
+		"package.json: name=api-service packageManager=pnpm@9.15.0 engines[node=>=20]",
+		`package.json scripts: dev="tsx watch src/index.ts" start="node dist/index.js" build="tsc"`,
+		"package.json dependencies: express, ioredis, pg",
+		"package.json devDependencies: typescript",
+		"Dockerfile: FROM node:20-alpine EXPOSE 3000 CMD [\"npm\", \"start\"]",
 	)
-}
-
-func TestAnalyzeProjectNodeNextDockerExpose(t *testing.T) {
-	dir := writeTree(t, map[string]string{
-		"package.json": `{"name":"dashboard","scripts":{"dev":"next dev","build":"next build","start":"next start"},"dependencies":{"next":"^14.2.0","react":"^18.3.0","@prisma/client":"^5.0.0"}}`,
-		"Dockerfile":   "FROM node:20\nEXPOSE 8080\n",
-	})
-	got := analyze(t, dir)
-	wantContains(t, got, "stack: node", "port hints: dockerfile EXPOSE 8080, 3000 (next)", "sql db client")
-	// Dockerfile EXPOSE is authoritative and listed before framework defaults.
-	if strings.Index(got, "dockerfile EXPOSE 8080") > strings.Index(got, "3000 (next)") {
-		t.Errorf("EXPOSE port should be listed before framework default:\n%s", got)
-	}
+	// Facts, not interpretation: no stack label, no "web framework", no
+	// "redis" or "sql db client" categorization, no implied port.
+	wantNotContains(t, got,
+		"stack:", "web framework", "sql db client", "redis client",
+		"port hints", "3000 (express)", "managed postgres", "managed valkey",
+	)
 }
 
 func TestAnalyzeProjectGo(t *testing.T) {
@@ -99,11 +94,10 @@ require (
 	})
 	got := analyze(t, dir)
 	wantContains(t, got,
-		"stack: go",
-		"module=github.com/acme/myapi",
-		"go=1.24.0",
-		"dependencies: postgres/mysql/sql db client; redis; web framework",
+		"manifests: go.mod",
+		"go.mod: module=github.com/acme/myapi go=1.24.0 requires: github.com/gin-gonic/gin, github.com/jackc/pgx/v5, github.com/redis/go-redis/v9",
 	)
+	wantNotContains(t, got, "stack:", "web framework", "sql db client")
 }
 
 func TestAnalyzeProjectRust(t *testing.T) {
@@ -120,7 +114,8 @@ redis = "0.25"
 `,
 	})
 	got := analyze(t, dir)
-	wantContains(t, got, "stack: rust", "crate=turboservice", "dependencies: redis; sql db client; web framework")
+	wantContains(t, got, "manifests: Cargo.toml", "Cargo.toml: crate=turboservice deps: axum, redis, sqlx, tokio")
+	wantNotContains(t, got, "stack:", "web framework")
 }
 
 func TestAnalyzeProjectPython(t *testing.T) {
@@ -128,24 +123,25 @@ func TestAnalyzeProjectPython(t *testing.T) {
 		"pyproject.toml": `[project]
 name = "mlapi"
 requires-python = ">=3.11"
-dependencies = [
-  "fastapi>=0.110",
-  "uvicorn[standard]>=0.29",
-  "psycopg[binary]>=3.1",
-  "redis>=5.0",
-]
+dependencies = ["fastapi>=0.110", "uvicorn[standard]>=0.29", "psycopg[binary]>=3.1"]
 `,
+		"requirements.txt": "flask==3.0.0\nSQLAlchemy==2.0.0\n",
 	})
 	got := analyze(t, dir)
-	wantContains(t, got, "stack: python", "project=mlapi", "python=>=3.11", "dependencies: redis; sql db client; web framework")
+	wantContains(t, got,
+		"pyproject.toml: project=mlapi python=>=3.11 deps: fastapi>=0.110, uvicorn[standard]>=0.29, psycopg[binary]>=3.1",
+		"requirements.txt: SQLAlchemy, flask",
+	)
+	wantNotContains(t, got, "stack:", "web framework", "sql db client")
 }
 
-func TestAnalyzeProjectPythonRequirementsFallback(t *testing.T) {
+func TestAnalyzeProjectBuildTargetsAndPins(t *testing.T) {
 	dir := writeTree(t, map[string]string{
-		"requirements.txt": "# deps\nflask==3.0.0\nSQLAlchemy==2.0.0\ncelery==5.3.0\n",
+		"Taskfile.yml": "version: '3'\ntasks:\n  build:\n    cmds: [go build]\n  test:\n    cmds: [go test]\n",
+		".nvmrc":       "20\n",
 	})
 	got := analyze(t, dir)
-	wantContains(t, got, "stack: python", "dependencies: redis; sql db client; web framework")
+	wantContains(t, got, "taskfile targets: build, test", ".nvmrc: 20")
 }
 
 func TestAnalyzeProjectExistingSatusky(t *testing.T) {
@@ -163,16 +159,16 @@ strategy = "rolling"
 `,
 	})
 	got := analyze(t, dir)
-	wantContains(t, got, "stack: undetected", "existing satusky.toml: name=legacy-app port=8080 memory=256Mi health_path=/health strategy=rolling")
+	wantContains(t, got,
+		"manifests: satusky.toml",
+		"existing satusky.toml: name=legacy-app port=8080 memory=256Mi health_path=/health strategy=rolling",
+	)
 }
 
 func TestAnalyzeProjectEmpty(t *testing.T) {
 	dir := writeTree(t, map[string]string{})
 	got := analyze(t, dir)
-	wantContains(t, got, "stack: undetected", "manifests:", "existing satusky.toml: none")
-	if strings.Contains(got, "dependencies:") {
-		t.Errorf("empty dir should not list dependencies:\n%s", got)
-	}
+	wantContains(t, got, "no manifest files detected")
 }
 
 func TestAnalyzeProjectSubdir(t *testing.T) {
@@ -181,7 +177,7 @@ func TestAnalyzeProjectSubdir(t *testing.T) {
 	})
 	ex := NewExecutor(dir, nil)
 	got := ex.analyzeProject("services/api")
-	wantContains(t, got, "stack: node", "name=svc", "port hints: 3000 (fastify)")
+	wantContains(t, got, "package.json: name=svc", "package.json dependencies: fastify")
 }
 
 func TestAnalyzeProjectTraversalRejected(t *testing.T) {
@@ -193,22 +189,20 @@ func TestAnalyzeProjectTraversalRejected(t *testing.T) {
 }
 
 func TestAnalyzeProjectLargeManifestCapped(t *testing.T) {
-	big := strings.Repeat("dep", 30_000) // > 64KB
+	big := strings.Repeat("dep==1.0\n", 10_000) // > 64KB
 	dir := writeTree(t, map[string]string{"requirements.txt": big})
 	got := analyze(t, dir)
 	if len(got) > maxProjectReportBytes+200 {
 		t.Errorf("report too large: %d bytes", len(got))
 	}
-	if !strings.Contains(got, "stack: python") {
-		t.Errorf("requirements fixture should still detect python:\n%s", got[:200])
-	}
+	wantContains(t, got, "requirements.txt:")
 }
 
 func TestExecutorDispatchAnalyzeProject(t *testing.T) {
 	dir := writeTree(t, map[string]string{"package.json": `{"name":"x","dependencies":{"express":"^4"}}`})
 	ex := NewExecutor(dir, nil)
 	got := ex.Execute("analyze_project", nil)
-	wantContains(t, got, "stack: node", "name=x")
+	wantContains(t, got, "package.json: name=x", "package.json dependencies: express")
 	if strings.Contains(got, "error:") {
 		t.Errorf("dispatch should not error:\n%s", got)
 	}

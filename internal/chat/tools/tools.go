@@ -69,7 +69,7 @@ func Definitions() []openai.Tool {
 		},
 		{
 			Name:        "analyze_project",
-			Description: "Inspect the application in the chat working directory (or a subdirectory) and return a structured report: detected stack (go/rust/node/python/...), manifests found (go.mod, Cargo.toml, package.json, pyproject.toml, requirements.txt, Dockerfile, Taskfile.yml, Justfile, Makefile, runtime version pins), package scripts, categorized dependencies (web framework, SQL DB client, redis, nats), port hints (Dockerfile EXPOSE / framework defaults), any existing satusky.toml, and existing GitHub Actions workflows. Read-only. Call this FIRST before proposing deploy configuration, generating satusky.toml or GitHub Actions, or scaffolding into a non-empty directory — it tells you what to ask about.",
+			Description: "Inventory the application in the chat working directory (or a subdirectory) and report FACTS: which manifests exist (go.mod, Cargo.toml, package.json, pyproject.toml, requirements.txt, Dockerfile, Taskfile.yml, Justfile, Makefile, runtime pins) and their key fields — package scripts and dependency NAMES, go.mod module/requires, Dockerfile FROM/EXPOSE/CMD, build targets, any existing satusky.toml, and existing GitHub Actions workflows. It does not interpret: no stack labels, no port tables, no dependency categories — determine those yourself from the facts, reading files or asking the user as needed. Read-only. Call this FIRST before proposing deploy configuration, generating satusky.toml or GitHub Actions, or scaffolding into a non-empty directory.",
 			Parameters: parameters(nil, map[string]any{
 				"path": stringProp("Subdirectory to analyze, relative to the chat working directory (default: the working directory itself)"),
 			}),
