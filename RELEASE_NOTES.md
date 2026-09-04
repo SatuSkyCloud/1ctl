@@ -1,5 +1,23 @@
 # Release Notes
 
+## Version 0.12.0 (04-09-2026)
+
+Interactive AI developer copilot: `1ctl chat`.
+
+* `1ctl chat` REPL with three modes — **Advisor** (answers SatuSky questions),
+  **Operator** (drives the real `1ctl` binary to provision, deploy and diagnose,
+  read-only commands run automatically, mutations are confirmed), and **Builder**
+  (analyzes the current project and scaffolds `satusky.toml` + GitHub Actions CI).
+* Provider choice of **OpenAI, Claude or DeepSeek** via OpenAI-compatible chat
+  completions; connect once with a hidden key input (tested with a real message),
+  or via `OPENAI_API_KEY` / `ANTHROPIC_API_KEY` / `DEEPSEEK_API_KEY`.
+* One-shot mode for scripting: `1ctl chat "<prompt>"`.
+* Slash commands: `/connect`, `/switch`, `/providers`, `/model`, `/status`,
+  `/tools`, `/ask`, `/go`, `/skill`, `/clear`, `/export`, `/help`, `/exit`.
+* Safety: API keys stored in `~/.satusky/chat.json` (mode 0600), shell/file tools
+  sandboxed to the working directory with traversal and symlink guards, per-command
+  timeouts, and destructive-pattern refusal.
+
 ## Version 0.11.1 (29-07-2026)
 
 This patch release hardens the copy-paste managed messaging workflow.

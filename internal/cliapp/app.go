@@ -93,6 +93,7 @@ Tokens: https://cloud.satusky.com/<org-id>/token`,
 			withCategory(commands.AuditCommand(), "Billing & operations"),
 			withCategory(commands.NotificationsCommand(), "Billing & operations"),
 			withCategory(commands.CompletionCommand(), "Billing & operations"),
+			withCategory(commands.ChatCommand(), "Developer tools"),
 			commands.ServiceCommand(),
 			commands.IngressCommand(),
 		},
@@ -119,6 +120,7 @@ Tokens: https://cloud.satusky.com/<org-id>/token`,
 				cmdName == "org" ||
 				cmdName == "init" ||
 				cmdName == "completion" ||
+				cmdName == "chat" ||
 				packageCreate ||
 				cmdName == "help" ||
 				cmd.Bool("help") ||

@@ -10030,6 +10030,73 @@
     },
     {
       "path": [
+        "chat"
+      ],
+      "name": "chat",
+      "aliases": [],
+      "usage": "Interactive AI copilot for SatuSky Cloud (OpenAI, Claude or DeepSeek)",
+      "description": "An interactive developer copilot: ask questions and get SatuSky best\npractices (advisor), provision Postgres/Valkey/NATS, domains, env/secrets and\ndeploys through the real 1ctl (operator), and scaffold projects with file and\nshell tools (builder).\n\nWith no arguments an interactive chat starts (connect a provider on first\nrun by pasting an API key — input hidden and tested before \"Connected\").\nPositional arguments run a single turn instead:\n\n    1ctl chat \"how do I do a zero-downtime deploy?\"\n\nSatuSky actions require `1ctl auth login`; questions and file work\ndon't need it. Keys may also come from OPENAI_API_KEY,\nANTHROPIC_API_KEY or DEEPSEEK_API_KEY. See /help inside the chat for the\nslash commands.",
+      "category": "Developer tools",
+      "hidden": false,
+      "argsUsage": "[message...]",
+      "aritySource": "argsUsage",
+      "arguments": [
+        {
+          "name": "message",
+          "required": false,
+          "variadic": true
+        }
+      ],
+      "minArgs": 0,
+      "maxArgs": null,
+      "flags": [
+        {
+          "name": "provider",
+          "aliases": [],
+          "type": "string",
+          "takesValue": true,
+          "required": false,
+          "multiple": false,
+          "usage": "AI provider to use: openai, claude or deepseek (default: the active provider)",
+          "envVars": []
+        },
+        {
+          "name": "model",
+          "aliases": [],
+          "type": "string",
+          "takesValue": true,
+          "required": false,
+          "multiple": false,
+          "usage": "Model for this session (default: the provider's default model)",
+          "envVars": []
+        },
+        {
+          "name": "show-key",
+          "aliases": [],
+          "type": "boolean",
+          "takesValue": false,
+          "required": false,
+          "multiple": false,
+          "default": "false",
+          "usage": "Echo the API key while typing during /connect (default: hidden input)",
+          "envVars": []
+        },
+        {
+          "name": "help",
+          "aliases": [
+            "h"
+          ],
+          "type": "boolean",
+          "takesValue": false,
+          "required": false,
+          "multiple": false,
+          "usage": "Show help",
+          "envVars": []
+        }
+      ]
+    },
+    {
+      "path": [
         "service"
       ],
       "name": "service",

@@ -11,6 +11,7 @@ import (
 	"1ctl/internal/commands/admin"
 	"1ctl/internal/commands/audit"
 	"1ctl/internal/commands/auth"
+	"1ctl/internal/commands/chat"
 	"1ctl/internal/commands/cluster"
 	"1ctl/internal/commands/completion"
 	"1ctl/internal/commands/credits"
@@ -46,6 +47,9 @@ func AdminCommand() *cli.Command { return admin.Command() }
 
 // AuthCommand returns the "1ctl auth" command tree.
 func AuthCommand() *cli.Command { return auth.Command() }
+
+// ChatCommand returns the "1ctl chat" command tree.
+func ChatCommand() *cli.Command { return chat.Command() }
 
 // ProfileCommand returns the "1ctl profile" command tree.
 func ProfileCommand() *cli.Command { return profile.Command() }
