@@ -130,6 +130,8 @@ type Deployment struct {
 	EnvEnabled           bool                      `json:"env_enabled"`
 	SecretEnabled        bool                      `json:"secret_enabled"`
 	VolumeEnabled        bool                      `json:"volume_enabled"`
+	DesiredGeneration    int64                     `json:"desired_generation"`
+	ObservedGeneration   int64                     `json:"observed_generation"`
 	Status               string                    `json:"status"`
 	Environment          string                    `json:"environment"`
 	DeploymentSource     string                    `json:"deployment_source,omitempty"`

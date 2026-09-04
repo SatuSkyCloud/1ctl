@@ -1,7 +1,6 @@
 package utils
 
 import (
-	"encoding/json"
 	"fmt"
 	"io"
 	"math"
@@ -293,30 +292,6 @@ func PrintProgressBarWithSize(current, total int64, label string) {
 	if current >= total {
 		fmt.Println()
 	}
-}
-
-// ============================================================================
-// JSON Output
-// ============================================================================
-
-// PrintJSON prints data as formatted JSON
-func PrintJSON(data interface{}) error {
-	output, err := json.MarshalIndent(data, "", "  ")
-	if err != nil {
-		return err
-	}
-	fmt.Println(string(output))
-	return nil
-}
-
-// PrintJSONCompact prints data as compact JSON
-func PrintJSONCompact(data interface{}) error {
-	output, err := json.Marshal(data)
-	if err != nil {
-		return err
-	}
-	fmt.Println(string(output))
-	return nil
 }
 
 // ============================================================================

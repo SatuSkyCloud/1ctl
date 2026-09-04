@@ -242,7 +242,7 @@ func GetDeploymentByAppLabel(namespace, appLabel string) (*Deployment, error) {
 		Error bool       `json:"error"`
 		Data  Deployment `json:"data"`
 	}
-	if err := makeRequest("GET", fmt.Sprintf("/deployments/namespace/%s/app/%s", namespace, appLabel), nil, &resp); err != nil {
+	if err := makeRequestWithRetry(http.MethodGet, fmt.Sprintf("/deployments/namespace/%s/app/%s", namespace, appLabel), nil, &resp); err != nil {
 		return nil, err
 	}
 	return &resp.Data, nil
@@ -591,11 +591,19 @@ func DeleteVolumePVC(volumeID string) (*VolumeLifecycleStatus, error) {
 // GetDeploymentStatus gets the current status of a deployment.
 // Uses the typed-inline-struct pattern (see GetDeployment for rationale).
 func GetDeploymentStatus(deploymentID string) (*DeploymentStatus, error) {
+	return getDeploymentStatus(deploymentID, 0)
+}
+
+func getDeploymentStatus(deploymentID string, generation int64) (*DeploymentStatus, error) {
 	var resp struct {
 		Error bool             `json:"error"`
 		Data  DeploymentStatus `json:"data"`
 	}
-	if err := makeRequest("GET", fmt.Sprintf("/deployments/status/%s", deploymentID), nil, &resp); err != nil {
+	path := fmt.Sprintf("/deployments/status/%s", deploymentID)
+	if generation > 0 {
+		path += "?generation=" + strconv.FormatInt(generation, 10)
+	}
+	if err := makeRequest("GET", path, nil, &resp); err != nil {
 		return nil, err
 	}
 	return &resp.Data, nil
@@ -649,6 +657,8 @@ func WaitForDeploymentGeneration(deploymentID string, generation int64, timeout 
 // WaitForDeploymentWithOptions polls live readiness conditions. A legacy or
 // 404 live endpoint is intentionally unverified, never a successful Running.
 func WaitForDeploymentWithOptions(deploymentID string, timeout time.Duration, options DeploymentWaitOptions) (*DeploymentStatus, error) {
+	generationAnnounced := false
+	transientAnnounced := false
 	mode := options.Mode
 	if mode == "" {
 		mode = DeploymentWaitModeApplication
@@ -661,6 +671,9 @@ func WaitForDeploymentWithOptions(deploymentID string, timeout time.Duration, op
 		pollInterval = 5 * time.Second
 	}
 	deadline := time.Now().Add(timeout)
+	const terminalFailureThreshold = 3
+	terminalFailureCode := ""
+	terminalFailureCount := 0
 
 	for {
 		if time.Now().After(deadline) {
@@ -669,34 +682,77 @@ func WaitForDeploymentWithOptions(deploymentID string, timeout time.Duration, op
 
 		status, err := GetLiveDeploymentStatus(deploymentID)
 		if err != nil {
+			// The deployment is already accepted and reconciling server-side, so a
+			// transport blip — an API restart, a dropped connection — is not a
+			// deployment failure. Aborting here reports a working rollout as
+			// failed and leaves the user with no way to resume the wait.
+			if isTransientWaitError(err) {
+				if !transientAnnounced {
+					utils.PrintWarning("Lost contact with the API; retrying until the deployment is ready.")
+					transientAnnounced = true
+				}
+				time.Sleep(pollInterval)
+				continue
+			}
 			if statusErr, ok := err.(*HTTPStatusError); !ok || statusErr.StatusCode != http.StatusNotFound {
 				return nil, err
 			}
 			status = &DeploymentStatus{}
 		}
 
-		if options.Generation > 0 && (status.Readiness == nil || status.Readiness.Reconciliation.ObservedGeneration < options.Generation) {
-			utils.PrintInfo(
-				"Deployment generation: observed %d, waiting for %d",
-				statusObservedGeneration(status),
-				options.Generation,
-			)
-			time.Sleep(pollInterval)
-			continue
+		if options.Generation > 0 {
+			generationStatus, generationErr := getDeploymentStatus(deploymentID, options.Generation)
+			if generationErr != nil {
+				if isTransientWaitError(generationErr) {
+					time.Sleep(pollInterval)
+					continue
+				}
+				return nil, generationErr
+			}
+			if strings.EqualFold(generationStatus.Status, "failed") {
+				return status, newReadinessStatusError("READINESS_FAILED", "deployment generation reconciliation is failing")
+			}
+			if !strings.EqualFold(generationStatus.Status, "running") {
+				// Announced once. This loop polls for minutes, and repeating an
+				// identical line per tick hides the outcome the user is waiting for.
+				if !generationAnnounced {
+					utils.PrintInfo("Waiting for generation %d to reconcile...", options.Generation)
+					generationAnnounced = true
+				}
+				time.Sleep(pollInterval)
+				continue
+			}
 		}
 
 		evaluation := status.readinessEvaluation(mode)
 		if evaluation.Ready {
+			status.Progress = 100
 			return status, nil
 		}
 		if evaluation.TerminalError != nil {
 			statusErr, isReadinessStatus := evaluation.TerminalError.(*HTTPStatusError)
 			if mode == DeploymentWaitModeApplication && options.VerifyApplication != nil && isReadinessStatus && statusErr.Code == "READINESS_UNVERIFIED" && options.VerifyApplication() {
+				status.Progress = 100
 				return status, nil
 			}
-			return status, evaluation.TerminalError
+			if !isReadinessStatus || statusErr.Code == "READINESS_UNVERIFIED" {
+				return status, evaluation.TerminalError
+			}
+			if statusErr.Code == terminalFailureCode {
+				terminalFailureCount++
+			} else {
+				terminalFailureCode = statusErr.Code
+				terminalFailureCount = 1
+			}
+			if terminalFailureCount >= terminalFailureThreshold {
+				return status, evaluation.TerminalError
+			}
+		} else {
+			terminalFailureCode = ""
+			terminalFailureCount = 0
 		}
 		if mode == DeploymentWaitModeApplication && options.VerifyApplication != nil && options.VerifyApplication() {
+			status.Progress = 100
 			return status, nil
 		}
 
@@ -714,18 +770,17 @@ func WaitForDeploymentWithOptions(deploymentID string, timeout time.Duration, op
 	}
 }
 
-func statusObservedGeneration(status *DeploymentStatus) int64 {
-	if status == nil || status.Readiness == nil {
-		return 0
-	}
-	return status.Readiness.Reconciliation.ObservedGeneration
-}
-
 // makeRequest is a helper function to make HTTP requests
 func makeRequest(method, path string, body interface{}, response interface{}) error {
 	config := config.GetConfig()
 	url := fmt.Sprintf("%s%s", config.ApiURL, path)
 	return makeRequestURL(method, url, body, response)
+}
+
+func makeRequestWithRetry(method, path string, body interface{}, response interface{}) error {
+	config := config.GetConfig()
+	url := fmt.Sprintf("%s%s", config.ApiURL, path)
+	return makeRequestURLWithHeadersRetry(method, url, body, response, nil)
 }
 
 func makeRequestWithStatus(method, path string, body interface{}, response interface{}) (int, error) {
@@ -809,6 +864,10 @@ func makeRequestURLWithHeadersRetry(method, url string, body interface{}, respon
 }
 
 func makeRequestURLWithHeadersOnce(method, url string, body interface{}, response interface{}, headers http.Header) (int, error) {
+	return makeRequestURLWithHeadersOnceUsingClient(httpClient, method, url, body, response, headers, false)
+}
+
+func makeRequestURLWithHeadersOnceUsingClient(client *http.Client, method, url string, body interface{}, response interface{}, headers http.Header, disableReplay bool) (int, error) {
 	// Enforce HTTPS for non-localhost API URLs to prevent token leakage over plaintext
 	if !utils.IsLocalhostURL(url) && !strings.HasPrefix(url, "https://") {
 		return 0, utils.NewError(fmt.Sprintf("refusing to send auth token over insecure connection (%s). Use HTTPS or http://localhost for local development", url), nil)
@@ -827,6 +886,11 @@ func makeRequestURLWithHeadersOnce(method, url string, body interface{}, respons
 	if err != nil {
 		return 0, utils.NewError(fmt.Sprintf("failed to create request: %s", err.Error()), nil)
 	}
+	if disableReplay {
+		// Marketplace create has no idempotency key. Prevent net/http from
+		// replaying its body after a connection failure or redirect.
+		req.GetBody = nil
+	}
 
 	token := context.GetToken()
 	if token == "" {
@@ -844,7 +908,7 @@ func makeRequestURLWithHeadersOnce(method, url string, body interface{}, respons
 		}
 	}
 
-	resp, err := httpClient.Do(req)
+	resp, err := client.Do(req)
 	if err != nil {
 		return 0, utils.NewError(fmt.Sprintf("failed to make request: %s", err.Error()), nil)
 	}
@@ -855,7 +919,7 @@ func makeRequestURLWithHeadersOnce(method, url string, body interface{}, respons
 		return resp.StatusCode, utils.NewError(fmt.Sprintf("failed to read response body: %s", err.Error()), nil)
 	}
 
-	if resp.StatusCode >= 400 {
+	if resp.StatusCode < http.StatusOK || resp.StatusCode >= http.StatusMultipleChoices {
 		// Check for resource exhausted error (422 Unprocessable Entity)
 		resourceErr, parseErr := utils.ParseResourceExhaustedFromBytes(respBody, resp.StatusCode)
 		if parseErr == nil && resourceErr != nil {
@@ -1573,4 +1637,27 @@ func UpdateNotificationPreferences(orgID string, req NotificationPreferencesRequ
 		return nil, utils.NewError(fmt.Sprintf("failed to unmarshal notification preferences: %s", err.Error()), nil)
 	}
 	return &prefs, nil
+}
+
+// isTransientWaitError reports whether a readiness poll failed for a reason
+// that says nothing about the deployment: a connection refused or reset while
+// the API restarts, a timeout, an EOF mid-response. A typed HTTP status is
+// never transient — the server answered, and its answer is the outcome.
+func isTransientWaitError(err error) bool {
+	if err == nil {
+		return false
+	}
+	if _, ok := err.(*HTTPStatusError); ok {
+		return false
+	}
+	message := strings.ToLower(err.Error())
+	for _, marker := range []string{
+		"connection refused", "connection reset", "no such host", "eof",
+		"i/o timeout", "timeout awaiting", "broken pipe", "server closed",
+	} {
+		if strings.Contains(message, marker) {
+			return true
+		}
+	}
+	return false
 }

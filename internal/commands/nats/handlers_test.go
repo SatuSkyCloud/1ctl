@@ -8,6 +8,7 @@ import (
 	"net/http/httptest"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"1ctl/internal/api"
@@ -76,7 +77,7 @@ func TestHandleCreateSendsExactJetStreamHAProfile(t *testing.T) {
 			if token != "<< $NATS_TOKEN >>" {
 				t.Fatalf("token template = %q", token)
 			}
-			_, _ = io.WriteString(w, `{"error":false,"data":{"deployment_id":"`+deploymentID+`","app_label":"orders","status":"deploying"}}`)
+			_, _ = io.WriteString(w, `{"error":false,"data":{"deployment_id":"`+deploymentID+`","app_label":"orders","domain":"orders.example.com","status":"deploying"}}`)
 		default:
 			http.NotFound(w, r)
 		}
@@ -84,13 +85,55 @@ func TestHandleCreateSendsExactJetStreamHAProfile(t *testing.T) {
 	defer server.Close()
 	setupNATSHandlerTest(t, server.URL)
 
-	err := handleCreate(stdcontext.Background(), createInput{
-		Name: "orders", JetStream: true, CPU: "300m", Memory: "512Mi",
-		StorageSize: "20Gi", StorageClass: "ceph-block",
+	output, err := captureNATSStdout(t, func() error {
+		return handleCreate(stdcontext.Background(), createInput{
+			Name: "orders", JetStream: true, CPU: "300m", Memory: "512Mi",
+			StorageSize: "20Gi", StorageClass: "ceph-block",
+		})
 	})
 	if err != nil {
 		t.Fatalf("handleCreate() error = %v", err)
 	}
+	for _, want := range []string{
+		deploymentID,
+		"NATS Deployment Accepted",
+		"Name: orders",
+		"1ctl nats status orders",
+		"1ctl nats credentials orders --output-dir .secrets/nats",
+	} {
+		if !strings.Contains(output, want) {
+			t.Fatalf("output %q does not contain %q", output, want)
+		}
+	}
+	for _, forbidden := range []string{"orders.example.com", "Public URL", "domains check"} {
+		if strings.Contains(output, forbidden) {
+			t.Fatalf("private NATS output %q contains %q", output, forbidden)
+		}
+	}
+}
+
+func captureNATSStdout(t *testing.T, run func() error) (string, error) {
+	t.Helper()
+	original := os.Stdout
+	reader, writer, err := os.Pipe()
+	if err != nil {
+		t.Fatal(err)
+	}
+	os.Stdout = writer
+	runErr := run()
+	if err := writer.Close(); err != nil {
+		t.Fatal(err)
+	}
+	os.Stdout = original
+	t.Cleanup(func() {
+		os.Stdout = original
+		_ = reader.Close()
+	})
+	output, err := io.ReadAll(reader)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return string(output), runErr
 }
 
 func TestHandleListMatchesBackendDeploymentByPackageRelease(t *testing.T) {

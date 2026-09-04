@@ -244,49 +244,6 @@ func TestPrintTable(t *testing.T) {
 	})
 }
 
-func TestPrintJSON(t *testing.T) {
-	t.Run("valid struct", func(t *testing.T) {
-		data := struct {
-			Name  string `json:"name"`
-			Value int    `json:"value"`
-		}{
-			Name:  "test",
-			Value: 123,
-		}
-		err := PrintJSON(data)
-		if err != nil {
-			t.Errorf("PrintJSON() returned error: %v", err)
-		}
-	})
-
-	t.Run("valid map", func(t *testing.T) {
-		data := map[string]interface{}{
-			"name":  "test",
-			"value": 123,
-		}
-		err := PrintJSON(data)
-		if err != nil {
-			t.Errorf("PrintJSON() returned error: %v", err)
-		}
-	})
-}
-
-func TestPrintJSONCompact(t *testing.T) {
-	t.Run("valid struct", func(t *testing.T) {
-		data := struct {
-			Name  string `json:"name"`
-			Value int    `json:"value"`
-		}{
-			Name:  "test",
-			Value: 123,
-		}
-		err := PrintJSONCompact(data)
-		if err != nil {
-			t.Errorf("PrintJSONCompact() returned error: %v", err)
-		}
-	})
-}
-
 func TestPrintKeyValue(t *testing.T) {
 	t.Run("empty pairs", func(t *testing.T) {
 		// Should not panic

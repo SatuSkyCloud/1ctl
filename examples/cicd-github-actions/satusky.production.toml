@@ -1,0 +1,35 @@
+[app]
+name = "cicd-backend-api"
+port = 8080
+cpu_request = "250m"
+cpu_limit = "500m"
+memory = "256Mi"
+
+[build]
+dockerfile = "Dockerfile"
+
+[checks]
+health_path = "/health"
+
+[checks.readiness]
+timeout_seconds = 2
+period_seconds = 5
+failure_threshold = 3
+
+[checks.readiness.http_get]
+path = "/health"
+port = 8080
+
+[checks.liveness]
+timeout_seconds = 2
+period_seconds = 10
+failure_threshold = 3
+
+[checks.liveness.http_get]
+path = "/health"
+port = 8080
+
+[deploy]
+strategy = "rolling"
+rolling_max_surge = "25%"
+rolling_max_unavailable = "0"

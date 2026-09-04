@@ -185,11 +185,12 @@ func LoadConfig(configArg string) (*ProjectConfig, error) {
 	return decodeProjectConfig(path)
 }
 
-// FindConfig looks for a config file without requiring one to exist. Returns nil, nil if not found.
+// FindConfig looks for the default config file without requiring one to exist.
+// An explicit config name or path must exist.
 func FindConfig(configArg string) (*ProjectConfig, error) {
 	path, err := resolveConfigPath(configArg)
 	if err != nil {
-		if os.IsNotExist(err) {
+		if configArg == "" && os.IsNotExist(err) {
 			return nil, nil
 		}
 		return nil, err

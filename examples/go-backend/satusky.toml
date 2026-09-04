@@ -12,3 +12,18 @@
 
 [deploy]
   strategy   = "rolling"
+
+# main.go serves /health. health_path drives the public smoke test; the
+# readiness probe is what `1ctl deploy --wait` verifies, and it runs inside the
+# cluster so readiness never waits on public DNS.
+[checks]
+  health_path = "/health"
+
+[checks.readiness]
+  initial_delay_seconds = 2
+  timeout_seconds       = 2
+  period_seconds        = 5
+
+[checks.readiness.http_get]
+  path = "/health"
+  port = 8080

@@ -7,6 +7,7 @@ on:
 
 permissions:
   contents: write
+  actions: read
 
 concurrency:
   group: release-${{ github.ref }}
@@ -23,6 +24,47 @@ jobs:
         with:
           fetch-depth: 0
 
+      - name: Verify release tag and successful CI provenance
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          RELEASE_TAG: ${{ github.ref_name }}
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          if [[ ! "${RELEASE_TAG}" =~ ^v[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z.-]+)?$ ]]; then
+            echo "::error::Release tag must be semantic versioned, got ${RELEASE_TAG}."
+            exit 1
+          fi
+
+          version="$(awk '/^## Version / { print $3; exit }' RELEASE_NOTES.md)"
+          expected_tag="v${version#v}"
+          if [[ "${RELEASE_TAG}" != "${expected_tag}" ]]; then
+            echo "::error::Tag ${RELEASE_TAG} does not match top RELEASE_NOTES.md version ${expected_tag}."
+            exit 1
+          fi
+
+          head_sha="$(git rev-parse HEAD)"
+          tag_sha="$(git rev-parse "refs/tags/${RELEASE_TAG}^{commit}")"
+          if [[ "${tag_sha}" != "${head_sha}" ]]; then
+            echo "::error::Checked-out HEAD ${head_sha} does not match ${RELEASE_TAG} commit ${tag_sha}."
+            exit 1
+          fi
+
+          successful_runs="$(
+            gh api --method GET \
+              "repos/${GITHUB_REPOSITORY}/actions/workflows/ci.yaml/runs" \
+              -f event=push \
+              -f head_sha="${head_sha}" \
+              -f status=completed \
+              -f per_page=100 \
+              --jq '[.workflow_runs[] | select(.conclusion == "success" and .event == "push" and .head_branch == "main")] | length'
+          )"
+          if [[ "${successful_runs}" -lt 1 ]]; then
+            echo "::error::No successful completed push CI run exists on main for ${head_sha}."
+            exit 1
+          fi
+
       - name: Set up Go
         uses: actions/setup-go@924ae3a1cded613372ab5595356fb5720e22ba16 # v6
         with:
@@ -36,18 +78,8 @@ jobs:
         uses: goreleaser/goreleaser-action@e435ccd777264be153ace6237001ef4d979d3a7a # v6
         with:
           distribution: goreleaser
-          version: "~> v2"
+          version: "v2.17.0"
           args: release --clean
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           HOMEBREW_TAP_TOKEN: ${{ secrets.HOMEBREW_TAP_TOKEN }}
-
-      - name: Upload contract artifacts
-        uses: softprops/action-gh-release@3bb12739c298aeb8a4eeaf626c5b8d85266b0e65 # v2
-        with:
-          files: |
-            contracts/cli.json
-            contracts/api-types.ts
-          fail_on_unmatched_files: true
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

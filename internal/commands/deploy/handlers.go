@@ -53,7 +53,7 @@ func handleDeploy(ctx context.Context, in DeployInput) error {
 		if _, ok := err.(*utils.ResourceExhaustedCLIError); ok {
 			return err
 		}
-		return utils.NewError(fmt.Sprintf("deployment failed: %s", err.Error()), nil)
+		return fmt.Errorf("deployment failed: %w", err)
 	}
 	if resp.Intent != nil {
 		return reportAtomicIntent(resp.Intent, merged.Wait, merged.WaitMode, merged.HealthPath, merged.StrictSmoke)
@@ -166,77 +166,164 @@ type mergedInput struct {
 
 func mergeConfig(in DeployInput, cfg *config.ProjectConfig) mergedInput {
 	m := mergedInput{DeployInput: in}
-	m.UserSetFlags = make(map[string]bool)
-
-	trackSet := func(name string, isSet bool) {
-		m.UserSetFlags[name] = isSet
+	m.UserSetFlags = in.SetFlags
+	if m.UserSetFlags == nil {
+		// mergeConfig is also used directly by package tests. Production callers
+		// always provide cmd.IsSet results through DeployInput.SetFlags.
+		m.UserSetFlags = map[string]bool{
+			flagCPU:               in.CPU != "",
+			flagCPURequest:        in.CPURequest != "" && in.CPURequest != "250m",
+			flagCPULimit:          in.CPULimit != "" && in.CPULimit != "1",
+			flagMemory:            in.Memory != "" && in.Memory != "256Mi",
+			flagDomain:            in.Domain != "",
+			flagHealthPath:        in.HealthPath != "",
+			flagDockerfile:        in.Dockerfile != "" && in.Dockerfile != "Dockerfile",
+			flagImage:             in.Image != "",
+			flagStrategy:          in.Strategy != "" && in.Strategy != "rolling",
+			flagRollingMaxSurge:   in.RollingMaxSurge != "" && in.RollingMaxSurge != "25%",
+			flagRollingMaxUnavail: in.RollingMaxUnavail != "" && in.RollingMaxUnavail != "25%",
+			flagMachineTag:        in.MachineTag != "",
+			flagMulticluster:      in.Multicluster,
+			flagFast:              in.Fast,
+			flagHPA:               in.HPA,
+			flagVPA:               in.VPA,
+			flagPDB:               in.PDB,
+		}
 	}
-
-	trackSet("cpu", in.CPU != "")
-	trackSet("cpu-request", in.CPURequest != "" && in.CPURequest != "250m")
-	trackSet("cpu-limit", in.CPULimit != "" && in.CPULimit != "1")
-	trackSet("memory", in.Memory != "" && in.Memory != "256Mi")
-	trackSet("domain", in.Domain != "")
-	trackSet("health-path", in.HealthPath != "")
-	trackSet("strategy", in.Strategy != "" && in.Strategy != "rolling")
-	trackSet("rolling-max-surge", in.RollingMaxSurge != "" && in.RollingMaxSurge != "25%")
-	trackSet("rolling-max-unavailable", in.RollingMaxUnavail != "" && in.RollingMaxUnavail != "25%")
-	trackSet("machine-tag", in.MachineTag != "")
-	trackSet("multi-cluster", in.Multicluster)
-	trackSet("fast", in.Fast)
+	isSet := func(name string) bool { return m.UserSetFlags[name] }
 
 	if cfg != nil {
-		if m.CPURequest == "" || m.CPURequest == "250m" {
+		if !isSet(flagCPURequest) {
 			if cfg.App.CPURequest != "" {
 				m.CPURequest = cfg.App.CPURequest
 			}
 		}
-		if m.CPULimit == "" || m.CPULimit == "1" {
+		if !isSet(flagCPULimit) && !isSet(flagCPU) {
 			if cfg.App.CPULimit != "" {
 				m.CPULimit = cfg.App.CPULimit
 			} else if cfg.App.CPU != "" {
 				m.CPULimit = cfg.App.CPU
 			}
 		}
-		if m.Memory == "" || m.Memory == "256Mi" {
-			applyIf(&m.Memory, cfg.App.Memory)
+		if !isSet(flagMemory) && cfg.App.Memory != "" {
+			m.Memory = cfg.App.Memory
 		}
-		if m.Port == 0 || m.Port == 8080 {
+		if !isSet(flagPort) {
 			if cfg.App.Port != 0 {
 				m.Port = cfg.App.Port
 			}
 		}
-		applyIf(&m.Domain, cfg.App.Domain)
-		applyIf(&m.Dockerfile, cfg.Build.Dockerfile)
-		applyIf(&m.Image, cfg.Build.Image)
+		if !isSet(flagDomain) && cfg.App.Domain != "" {
+			m.Domain = cfg.App.Domain
+		}
+		if !isSet(flagDockerfile) && !isSet(flagImage) {
+			if cfg.Build.Dockerfile != "" {
+				m.Dockerfile = cfg.Build.Dockerfile
+			}
+			if cfg.Build.Image != "" {
+				m.Image = cfg.Build.Image
+			}
+		}
 		m.TargetArch = cfg.Build.TargetArch
-		if m.Replicas == 0 {
+		if !isSet(flagReplicas) {
 			if cfg.App.Replicas > 0 {
 				m.Replicas = cfg.App.Replicas
 			}
 		}
-		applyIf(&m.Zone, cfg.App.Zone)
+		if !isSet(flagZone) {
+			applyIf(&m.Zone, cfg.App.Zone)
+		}
 		applyIf(&m.Organization, cfg.App.Organization)
-		applyIf(&m.HealthPath, cfg.Checks.HealthPath)
-		if !m.UserSetFlags["strategy"] && cfg.Deploy.Strategy != "" {
+		if !isSet(flagHealthPath) {
+			applyIf(&m.HealthPath, cfg.Checks.HealthPath)
+		}
+		if !isSet(flagStrategy) && cfg.Deploy.Strategy != "" {
 			m.Strategy = cfg.Deploy.Strategy
 		}
-		if !m.UserSetFlags["rolling-max-surge"] && cfg.Deploy.RollingMaxSurge != "" {
+		if !isSet(flagRollingMaxSurge) && cfg.Deploy.RollingMaxSurge != "" {
 			m.RollingMaxSurge = cfg.Deploy.RollingMaxSurge
 		}
-		if !m.UserSetFlags["rolling-max-unavailable"] && cfg.Deploy.RollingMaxUnavailable != "" {
+		if !isSet(flagRollingMaxUnavail) && cfg.Deploy.RollingMaxUnavailable != "" {
 			m.RollingMaxUnavail = cfg.Deploy.RollingMaxUnavailable
 		}
-		applyIf(&m.VolumeSize, cfg.Volume.Size)
-		applyIf(&m.VolumeMount, cfg.Volume.Mount)
-		applyIf(&m.MachineTag, cfg.Deploy.MachineTag)
-		if !m.Multicluster && cfg.Multicluster.Enabled {
-			m.Multicluster = true
-			if m.MulticlusterMode == "" || m.MulticlusterMode == "active-passive" {
-				m.MulticlusterMode = cfg.Multicluster.Mode
-			}
+		if !isSet(flagVolumeSize) {
+			applyIf(&m.VolumeSize, cfg.Volume.Size)
 		}
-		m.Fast = in.Fast || cfg.Build.FastBuild
+		if !isSet(flagVolumeMount) {
+			applyIf(&m.VolumeMount, cfg.Volume.Mount)
+		}
+		if !isSet(flagMachineTag) {
+			applyIf(&m.MachineTag, cfg.Deploy.MachineTag)
+		}
+		if !isSet(flagMulticluster) {
+			m.Multicluster = cfg.Multicluster.Enabled
+		}
+		if !isSet(flagMulticlusterMode) && cfg.Multicluster.Mode != "" {
+			m.MulticlusterMode = cfg.Multicluster.Mode
+		}
+		hasMulticlusterConfig := cfg.Multicluster.Enabled || cfg.Multicluster.Mode != "" ||
+			cfg.Multicluster.BackupEnabled || cfg.Multicluster.BackupSchedule != "" ||
+			cfg.Multicluster.BackupRetention != "" || cfg.Multicluster.BackupPriorityCluster != 0
+		if hasMulticlusterConfig && !isSet(flagBackupEnabled) {
+			m.BackupEnabled = cfg.Multicluster.BackupEnabled
+		}
+		if !isSet(flagBackupSchedule) && cfg.Multicluster.BackupSchedule != "" {
+			m.BackupSchedule = cfg.Multicluster.BackupSchedule
+		}
+		if !isSet(flagBackupRetention) && cfg.Multicluster.BackupRetention != "" {
+			m.BackupRetention = cfg.Multicluster.BackupRetention
+		}
+		if !isSet(flagBackupPriority) && cfg.Multicluster.BackupPriorityCluster != 0 {
+			m.BackupPriority = cfg.Multicluster.BackupPriorityCluster
+		}
+		if !isSet(flagFast) {
+			m.Fast = cfg.Build.FastBuild
+		}
+		if !isSet(flagHPA) {
+			m.HPA = cfg.HPA.Enabled
+		}
+		if !isSet(flagHPAMinReplicas) && cfg.HPA.MinReplicas > 0 {
+			m.HPAMinReplicas = int(cfg.HPA.MinReplicas)
+		}
+		if !isSet(flagHPAMaxReplicas) && cfg.HPA.MaxReplicas > 0 {
+			m.HPAMaxReplicas = int(cfg.HPA.MaxReplicas)
+		}
+		if !isSet(flagHPACPUCoreTarget) && cfg.HPA.CPUTarget > 0 {
+			m.HPACPUCoreTarget = int(cfg.HPA.CPUTarget)
+		}
+		if !isSet(flagHPAMemoryTarget) && cfg.HPA.MemoryTarget > 0 {
+			m.HPAMemoryTarget = int(cfg.HPA.MemoryTarget)
+		}
+		if !isSet(flagVPA) {
+			m.VPA = cfg.VPA.Enabled
+		}
+		if !isSet(flagVPAMode) && cfg.VPA.Mode != "" {
+			m.VPAMode = cfg.VPA.Mode
+		}
+		if !isSet(flagVPAMinCPU) {
+			applyIf(&m.VPAMinCPU, cfg.VPA.MinCPU)
+		}
+		if !isSet(flagVPAMaxCPU) {
+			applyIf(&m.VPAMaxCPU, cfg.VPA.MaxCPU)
+		}
+		if !isSet(flagVPAMinMemory) {
+			applyIf(&m.VPAMinMemory, cfg.VPA.MinMemory)
+		}
+		if !isSet(flagVPAMaxMemory) {
+			applyIf(&m.VPAMaxMemory, cfg.VPA.MaxMemory)
+		}
+		if !isSet(flagPDB) {
+			m.PDB = cfg.PDB.Enabled
+		}
+		if !isSet(flagPDBType) && cfg.PDB.Type != "" {
+			m.PDBType = cfg.PDB.Type
+		}
+		if !isSet(flagPDBMinAvailable) && cfg.PDB.MinAvailable > 0 {
+			m.PDBMinAvailable = int(cfg.PDB.MinAvailable)
+		}
+		if !isSet(flagPDBPercent) && cfg.PDB.Percent > 0 {
+			m.PDBPercent = int(cfg.PDB.Percent)
+		}
 		if len(m.WaitFor) == 0 && len(cfg.Deploy.WaitFor) > 0 {
 			m.WaitFor = cfg.Deploy.WaitFor
 		}
@@ -603,21 +690,6 @@ func prepareDeploymentOptions(m mergedInput, cfg *config.ProjectConfig) (deployp
 		return deploypkg.DeploymentOptions{}, utils.NewError(fmt.Sprintf("invalid --strategy %q: must be 'rolling' or 'recreate'", opts.Strategy), nil)
 	}
 
-	if cfg != nil {
-		if !m.HPA && cfg.HPA.Enabled {
-			applyConfigHPA(&opts, cfg.HPA)
-		}
-		if !m.VPA && cfg.VPA.Enabled {
-			applyConfigVPA(&opts, cfg.VPA)
-		}
-		if !m.PDB && cfg.PDB.Enabled {
-			applyConfigPDB(&opts, cfg.PDB)
-		}
-		if !m.Multicluster && cfg.Multicluster.Enabled {
-			applyConfigMulticluster(&opts, cfg.Multicluster)
-		}
-	}
-
 	return opts, nil
 }
 
@@ -670,75 +742,6 @@ func deploymentIntentVolumes(volumes []config.VolumeConfig) []api.DeploymentInte
 		})
 	}
 	return converted
-}
-
-func applyConfigHPA(opts *deploypkg.DeploymentOptions, hpa config.HPAConfig) {
-	cfg := &api.HPAConfig{
-		Enabled:     true,
-		MinReplicas: defaultInt32(hpa.MinReplicas, 1),
-		MaxReplicas: defaultInt32(hpa.MaxReplicas, 10),
-	}
-	cpu := defaultInt32(hpa.CPUTarget, 80)
-	cfg.CPUTarget = &cpu
-	if hpa.MemoryTarget > 0 {
-		mem := hpa.MemoryTarget
-		cfg.MemoryTarget = &mem
-	}
-	opts.HPAConfig = cfg
-}
-
-func applyConfigVPA(opts *deploypkg.DeploymentOptions, vpa config.VPAConfig) {
-	mode := vpa.Mode
-	if mode == "" {
-		mode = "Off"
-	}
-	opts.VPAConfig = &api.VPAConfig{
-		Enabled:    true,
-		UpdateMode: mode,
-		MinCPU:     vpa.MinCPU,
-		MaxCPU:     vpa.MaxCPU,
-		MinMemory:  vpa.MinMemory,
-		MaxMemory:  vpa.MaxMemory,
-	}
-}
-
-func applyConfigPDB(opts *deploypkg.DeploymentOptions, pdb config.PDBConfig) {
-	typ := pdb.Type
-	if typ == "" {
-		typ = "auto"
-	}
-	cfg := &deploypkg.PDBConfig{Enabled: true, Type: deploypkg.PDBConfigType(typ)}
-	if pdb.MinAvailable > 0 {
-		v := pdb.MinAvailable
-		cfg.MinAvailable = &v
-	}
-	if pdb.Percent > 0 {
-		v := pdb.Percent
-		cfg.Percent = &v
-	}
-	opts.PDBConfig = cfg
-}
-
-func applyConfigMulticluster(opts *deploypkg.DeploymentOptions, mc config.MulticlusterConfig) {
-	opts.MulticlusterEnabled = true
-	opts.MulticlusterMode = mc.Mode
-	if opts.MulticlusterMode == "" {
-		opts.MulticlusterMode = "active-passive"
-	}
-	opts.BackupEnabled = mc.BackupEnabled
-	opts.BackupSchedule = mc.BackupSchedule
-	opts.BackupRetention = mc.BackupRetention
-	opts.BackupPriorityCluster = mc.BackupPriorityCluster
-	if opts.BackupPriorityCluster == 0 {
-		opts.BackupPriorityCluster = 1
-	}
-}
-
-func defaultInt32(v, fallback int32) int32 {
-	if v == 0 {
-		return fallback
-	}
-	return v
 }
 
 func resolveMachineTagExpr(expr string) ([]string, error) {
@@ -799,23 +802,70 @@ func handleListDeployments(ctx context.Context) error {
 		return nil
 	}
 
+	var domains map[string]string
+	if utils.IsWideOutput() {
+		domains = deploymentDomains()
+	}
+
+	headers, rows := deploymentListTable(deployments, domains, utils.IsWideOutput())
+	utils.PrintTable(headers, rows)
+	return nil
+}
+
+// deploymentDomains maps deployment ID to its ingress domain for the current
+// namespace. One namespace-wide call rather than one lookup per deployment.
+//
+// A failure here is not fatal: the URL is an extra column on a listing that is
+// otherwise complete, so the column renders as "-" and the listing still
+// prints.
+func deploymentDomains() map[string]string {
+	ingresses, err := api.ListIngresses()
+	if err != nil {
+		utils.PrintWarning("Could not resolve application URLs: %s", err.Error())
+		return nil
+	}
+	domains := make(map[string]string, len(ingresses))
+	for _, ing := range ingresses {
+		if ing.DomainName == "" {
+			continue
+		}
+		domains[ing.DeploymentID.String()] = "https://" + ing.DomainName
+	}
+	return domains
+}
+
+// deploymentListTable renders the `app list` table. In wide mode it gains a URL
+// column resolved from domains, which HOSTNAMES does not carry — that column is
+// the machines a deployment is pinned to, and is empty for every deployment
+// that was not machine-targeted.
+func deploymentListTable(deployments []api.Deployment, domains map[string]string, wide bool) ([]string, [][]string) {
 	headers := []string{"NAME", "DEPLOYMENT ID", "HOSTNAMES", "STATUS", "CREATED"}
+	if wide {
+		headers = []string{"NAME", "DEPLOYMENT ID", "URL", "HOSTNAMES", "STATUS", "CREATED"}
+	}
+
 	rows := make([][]string, 0, len(deployments))
 	for _, d := range deployments {
 		name := d.AppLabel
 		if name == "" {
 			name = "-"
 		}
-		rows = append(rows, []string{
-			name,
-			d.DeploymentID.String(),
+		row := []string{name, d.DeploymentID.String()}
+		if wide {
+			domain := domains[d.DeploymentID.String()]
+			if domain == "" {
+				domain = "-"
+			}
+			row = append(row, domain)
+		}
+		row = append(row,
 			strings.Join(d.Hostnames, ", "),
 			d.Status,
 			api.FormatTimeAgo(d.CreatedAt),
-		})
+		)
+		rows = append(rows, row)
 	}
-	utils.PrintTable(headers, rows)
-	return nil
+	return headers, rows
 }
 
 func handleGetDeployment(ctx context.Context, in GetDeploymentInput) error {
@@ -888,7 +938,10 @@ func handleDeploymentStatus(ctx context.Context, in StatusInput) error {
 		if mode == api.DeploymentWaitModeWorkload {
 			utils.PrintWarning("--wait-mode workload bypasses application verification; success only means the reconciled workload is available.")
 		}
-		status, err = api.WaitForDeploymentWithOptions(deploymentID, 5*time.Minute, api.DeploymentWaitOptions{Mode: mode})
+		status, err = api.WaitForDeploymentWithOptions(deploymentID, 5*time.Minute, api.DeploymentWaitOptions{
+			Mode:       mode,
+			Generation: deployment.DesiredGeneration,
+		})
 		if err != nil {
 			return err
 		}
@@ -979,17 +1032,30 @@ func handleDestroyDeployment(ctx context.Context, in DestroyInput) error {
 		return err
 	}
 
-	if in.PurgeRetained {
+	// Delete means delete. Volumes go with the app unless --retain-volumes says
+	// otherwise, because an app deleted from the CLI leaving 10Gi of bound
+	// storage behind is invisible: nothing lists it and, once the deployment
+	// record is gone, no command can reach it.
+	purgeRetained := in.PurgeRetainedResources()
+
+	if purgeRetained {
 		deployment, getErr := api.GetDeployment(deploymentID)
 		if getErr != nil {
 			return utils.NewError(fmt.Sprintf("failed to verify deployment source: %s", getErr.Error()), nil)
 		}
 		if !deployment.IsMarketplaceManaged() {
-			return utils.NewError("--purge-retained is only supported for marketplace-managed deployments; generic deployments must retain their resources", nil)
+			// The backend only supports purging for marketplace-managed
+			// deployments. An explicit request must still fail loudly; the
+			// default must not turn every generic delete into an error.
+			if in.PurgeExplicit {
+				return utils.NewError("--purge-retained is only supported for marketplace-managed deployments; generic deployments must retain their resources", nil)
+			}
+			utils.PrintWarning("Retained resources are kept: purging is only supported for marketplace-managed deployments.")
+			purgeRetained = false
 		}
 	}
 
-	preview, pErr := previewDeletion(deploymentID)
+	preview, pErr := previewDeletion(deploymentID, purgeRetained)
 	if pErr == nil {
 		fmt.Println(strings.Join(preview, "\n"))
 		fmt.Println()
@@ -997,13 +1063,17 @@ func handleDestroyDeployment(ctx context.Context, in DestroyInput) error {
 		utils.PrintWarning("Could not preview resources: %s", pErr.Error())
 	}
 
-	if !utils.Confirm("This will permanently destroy the deployment and all its associated resources.", in.Yes) {
+	confirmation := "This will permanently destroy the deployment and all its associated resources."
+	if purgeRetained {
+		confirmation += " Persistent volumes and the data in them are deleted too and cannot be recovered (pass --retain-volumes to keep them)."
+	}
+	if !utils.Confirm(confirmation, in.Yes) {
 		fmt.Println("Aborted.")
 		return nil
 	}
 
 	utils.PrintInfo("Requesting deletion of deployment %s...", deploymentID)
-	operation, err := api.DeleteDeployment(deploymentID, in.PurgeRetained)
+	operation, err := api.DeleteDeployment(deploymentID, purgeRetained)
 	if err != nil {
 		return utils.NewError(fmt.Sprintf("failed to delete deployment: %s", err.Error()), nil)
 	}
@@ -1098,8 +1168,13 @@ func deletionLifecycleError(operation *api.DeploymentDeletionOperation) string {
 	return operation.Status
 }
 
-func previewDeletion(deploymentID string) ([]string, error) {
+// previewDeletion lists what the delete will take. purgeRetained decides which
+// side of the list the volumes fall on, and they are always named: the volumes
+// were absent from this preview entirely, so a caller was never told that
+// deleting an app left its storage behind, still billed and unreachable.
+func previewDeletion(deploymentID string, purgeRetained bool) ([]string, error) {
 	var lines []string
+	var retainedLines []string
 	dep, err := api.GetDeployment(deploymentID)
 	if err != nil {
 		return nil, err
@@ -1120,11 +1195,13 @@ func previewDeletion(deploymentID string) ([]string, error) {
 	volumes, err := api.GetDeploymentVolumeLifecycleStatuses(deploymentID)
 	if err == nil {
 		for _, v := range volumes {
-			policy := v.DestroyPolicy
-			if policy == "" {
-				policy = "default"
+			if purgeRetained {
+				lines = append(lines, fmt.Sprintf(
+					"  • Volume   — %s (%s) AND ITS DATA", v.Volume.ClaimName, v.Volume.StorageSize))
+				continue
 			}
-			lines = append(lines, fmt.Sprintf("  • Volume   — %s (%s, destroy: %s)", v.Volume.ClaimName, v.Volume.StorageSize, policy))
+			retainedLines = append(retainedLines, fmt.Sprintf(
+				"  • Volume   — %s (%s)", v.Volume.ClaimName, v.Volume.StorageSize))
 		}
 	}
 
@@ -1137,8 +1214,17 @@ func previewDeletion(deploymentID string) ([]string, error) {
 		}
 	}
 
-	if len(lines) == 2 {
+	if len(lines) == 3 {
 		lines = append(lines, "  (no additional resources found)")
+	}
+
+	// Anything surviving the delete is named too. Storage that outlives its app
+	// is still billed, and after the deployment record is gone no command can
+	// reach it -- so silence here is the expensive kind.
+	if len(retainedLines) > 0 {
+		lines = append(lines, "")
+		lines = append(lines, "Resources that will be KEPT (--retain-volumes):")
+		lines = append(lines, retainedLines...)
 	}
 	return lines, nil
 }
@@ -1155,7 +1241,7 @@ func handleRestartDeployment(ctx context.Context, in DeployRefInput) error {
 		return utils.NewError(fmt.Sprintf("failed to restart: %s", err.Error()), nil)
 	}
 	utils.PrintSuccess("Rolling restart initiated.")
-	utils.PrintInfo("Use '1ctl deploy status --deployment-id %s' to monitor progress.", deploymentID)
+	utils.PrintInfo("Use '1ctl app status %s' to monitor progress.", in.App)
 	return nil
 }
 
@@ -1211,7 +1297,7 @@ func handleRollback(ctx context.Context, in RollbackInput) error {
 		return utils.NewError(fmt.Sprintf("rollback failed: %s", err.Error()), nil)
 	}
 	utils.PrintSuccess("Rollback to version %d initiated", version)
-	utils.PrintInfo("Use '1ctl deploy status --deployment-id %s' to monitor progress.", deploymentID)
+	utils.PrintInfo("Use '1ctl app status %s' to monitor progress.", in.App)
 	return nil
 }
 
@@ -1245,6 +1331,9 @@ func handleScaleDeployment(ctx context.Context, in ScaleInput) error {
 	if replicas < 1 {
 		return utils.NewError("--replicas must be >= 1", nil)
 	}
+	if replicas > 4 {
+		return utils.NewError("--replicas must be <= 4", nil)
+	}
 
 	current, err := api.GetDeployment(deploymentID)
 	if err != nil {
@@ -1260,14 +1349,32 @@ func handleScaleDeployment(ctx context.Context, in ScaleInput) error {
 		utils.PrintInfo("Deployment %s already at %d replicas — no change.", deploymentID, replicas)
 		return nil
 	}
-	current.Replicas = replicas
-
-	var resp string
-	if err := api.UpsertDeployment(*current, &resp, uuid.NewString()); err != nil {
+	accepted, err := submitScaleDeployment(deploymentID, replicas, current.DesiredGeneration, uuid.NewString(), api.ScaleDeployment)
+	if err != nil {
 		return utils.NewError(fmt.Sprintf("failed to scale deployment: %s", err.Error()), nil)
 	}
-	utils.PrintSuccess("Scaled deployment %s to %d replicas", deploymentID, replicas)
+	utils.PrintSuccess("Scaled deployment %s to %d replicas (generation %d accepted)", deploymentID, replicas, accepted.DesiredGeneration)
 	return nil
+}
+
+func submitScaleDeployment(
+	deploymentID string,
+	replicas int32,
+	currentGeneration int64,
+	requestID string,
+	scale func(string, int32, string) (*api.DeploymentScaleAccepted, error),
+) (*api.DeploymentScaleAccepted, error) {
+	accepted, err := scale(deploymentID, replicas, requestID)
+	if err != nil {
+		return nil, err
+	}
+	if accepted == nil || accepted.Data.DeploymentID != deploymentID || accepted.Data.Replicas != replicas {
+		return nil, errors.New("backend returned a mismatched scale acceptance")
+	}
+	if accepted.DesiredGeneration <= currentGeneration {
+		return nil, errors.New("backend did not accept a new deployment generation")
+	}
+	return accepted, nil
 }
 
 // --- Display helpers ----------------------------------------------------

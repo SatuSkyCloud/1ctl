@@ -2,7 +2,6 @@ package deploy
 
 import (
 	"1ctl/internal/api"
-	"1ctl/internal/cleanup"
 	"1ctl/internal/context"
 	"1ctl/internal/docker"
 	"1ctl/internal/utils"
@@ -13,6 +12,8 @@ import (
 	"regexp"
 	"strings"
 	"time"
+
+	"github.com/google/uuid"
 )
 
 type deploymentProgress struct {
@@ -35,7 +36,10 @@ func (dp *deploymentProgress) complete() {
 // Deploy handles the sequential deployment process
 func Deploy(opts DeploymentOptions, requestID string) (*api.CreateDeploymentResponse, error) {
 	progress := &deploymentProgress{total: 5}
-	cmgr := cleanup.NewCleanupManager()
+
+	if fallbackReason := atomicIntentFallbackReason(opts); fallbackReason != "" {
+		return nil, utils.NewError(fmt.Sprintf("deployment cannot be submitted safely: %s is not supported by the atomic deployment API", fallbackReason), nil)
+	}
 
 	userID := context.GetUserID()
 	if userID == "" {
@@ -92,129 +96,109 @@ func Deploy(opts DeploymentOptions, requestID string) (*api.CreateDeploymentResp
 		progress.complete()
 	}
 
-	if fallbackReason := atomicIntentFallbackReason(opts); fallbackReason == "" {
-		return deployAtomicIntent(opts, image, projectName, userID, requestID)
-	} else if opts.AtomicOnlyConfig {
-		return nil, utils.NewError(fmt.Sprintf("canonical deployment declarations require the atomic intent path, but this deploy requires legacy fallback: %s", fallbackReason), nil)
-	} else {
-		reportLegacyFallback(fallbackReason)
-	}
-
-	// Step 2: Create deployment
-	progress.step = 2
-	progress.message = "Creating/updating deployment"
-	progress.resource = projectName
-	progress.done = false
-	progress.print()
-
-	deploymentID, err := mainDeploy(opts, image, projectName, userID, opts.Organization, opts.Hostnames, requestID)
-	if err != nil {
-		return nil, err
-	}
-	cmgr.AddResource(cleanup.ResourceDeployment, deploymentID, projectName)
-	progress.complete()
-
-	// Step 3: Configure services
-	progress.step = 3
-	progress.message = "Configuring services"
-	progress.resource = projectName
-	progress.done = false
-	progress.print()
-
-	serviceID, err := upsertService(deploymentID, opts, projectName, opts.Organization)
-	if err != nil {
-		deployCleanup(cmgr)
-		return nil, utils.NewError(fmt.Sprintf("failed to create service: %s", err.Error()), nil)
-	}
-	cmgr.AddResource(cleanup.ResourceService, serviceID, projectName)
-	progress.complete()
-
-	// Step 4: Handle environment and volumes
-	progress.step = 4
-	progress.message = "Setting up environment and storage"
-	progress.resource = projectName
-	progress.done = false
-	progress.print()
-
-	envID, volumeName, err := handleEnvironmentAndVolumes(opts, deploymentID, projectName, opts.Organization)
-	if err != nil {
-		deployCleanup(cmgr)
-		return nil, utils.NewError(fmt.Sprintf("failed to setup environment and volumes: %s", err.Error()), nil)
-	}
-	if envID != "" {
-		cmgr.AddResource(cleanup.ResourceEnv, envID, projectName)
-	}
-	if volumeName != "" {
-		cmgr.AddResource(cleanup.ResourceVolume, volumeName, projectName)
-	}
-	progress.complete()
-
-	// Step 5: Handle ingress and dependencies
-	progress.step = 5
-	progress.message = "Configuring ingress and dependencies"
-	progress.resource = projectName
-	progress.done = false
-	progress.print()
-
-	domainName, ingressID, err := handleIngressAndDependencies(opts, deploymentID, serviceID, userID, opts.Organization, projectName, opts.Hostnames, requestID)
-	if err != nil {
-		deployCleanup(cmgr)
-		return nil, utils.NewError(fmt.Sprintf("failed to configure ingress and dependencies: %s", err.Error()), nil)
-	}
-	if ingressID != "" {
-		cmgr.AddResource(cleanup.ResourceIngress, ingressID, projectName)
-	}
-	progress.complete()
-
-	return &api.CreateDeploymentResponse{
-		DeploymentID: api.ToUUID(deploymentID),
-		IngressID:    api.ToUUID(ingressID),
-		AppLabel:     projectName,
-		Domain:       domainName,
-	}, nil
+	return deployAtomicIntent(opts, image, projectName, userID, requestID)
 }
 
 // atomicIntentFallbackReason returns the first setting the durable intent
-// endpoint cannot faithfully express. The legacy workflow remains explicit so
-// no setting is silently omitted during a partial cutover.
+// endpoint cannot faithfully express. Unsupported settings fail closed so no
+// setting is silently omitted and the retired legacy endpoint is never called.
 func atomicIntentFallbackReason(opts DeploymentOptions) string {
 	switch {
-	case opts.Domain != "":
-		return "custom domain routing"
-	case len(opts.Hostnames) > 0:
-		return "explicit machine placement"
-	case opts.MulticlusterEnabled:
-		return "multi-cluster deployment"
 	case len(opts.Dependencies) > 0:
 		return "dependent workload creation"
+	case len(opts.WaitFor) > 0:
+		return "dependency readiness declarations (--wait-for)"
 	default:
 		return ""
 	}
 }
 
-func reportLegacyFallback(reason string) {
-	if utils.IsJSONOutput() {
-		utils.TryPrintJSON(map[string]string{"mode": "legacy", "fallback_reason": reason})
-		return
-	}
-	utils.PrintInfo("Deployment path: legacy fallback (%s)", reason)
+func deployAtomicIntent(opts DeploymentOptions, image, projectName, userID, requestID string) (*api.CreateDeploymentResponse, error) {
+	return deployAtomicIntentWithClient(opts, image, projectName, userID, requestID, context.GetCurrentOrgID(), atomicDeployClient{
+		createIntent: api.CreateDeploymentIntent,
+		getIngress:   api.GetIngressByDeploymentID,
+		attachDomain: api.AttachDomain,
+		sleep:        time.Sleep,
+	})
 }
 
-func deployAtomicIntent(opts DeploymentOptions, image, projectName, userID, requestID string) (*api.CreateDeploymentResponse, error) {
+type atomicDeployClient struct {
+	createIntent func(api.DeploymentIntent, string) (*api.DeploymentIntentAccepted, error)
+	getIngress   func(string) (*api.Ingress, error)
+	attachDomain func(string, api.AttachDomainRequest) (*api.IngressAlias, error)
+	sleep        func(time.Duration)
+}
+
+func deployAtomicIntentWithClient(opts DeploymentOptions, image, projectName, userID, requestID, currentOrgID string, client atomicDeployClient) (*api.CreateDeploymentResponse, error) {
 	intent, err := buildAtomicDeploymentIntent(opts, image, projectName, userID)
 	if err != nil {
 		return nil, err
 	}
+	var orgID uuid.UUID
+	if opts.Domain != "" {
+		orgID, err = api.ParseUUID(strings.TrimSpace(currentOrgID))
+		if err != nil {
+			return nil, fmt.Errorf("cannot attach custom domain %q without a valid active organization ID: %w", opts.Domain, err)
+		}
+	}
 	utils.PrintInfo("Deployment path: atomic intent")
-	accepted, err := api.CreateDeploymentIntent(intent, requestID)
+	accepted, err := client.createIntent(intent, requestID)
 	if err != nil {
 		return nil, err
 	}
-	return &api.CreateDeploymentResponse{
+	response := &api.CreateDeploymentResponse{
 		DeploymentID: api.ToUUID(accepted.DeploymentID),
 		AppLabel:     accepted.AppLabel,
 		Intent:       accepted,
-	}, nil
+	}
+	if opts.Domain == "" {
+		return response, nil
+	}
+
+	ingress, err := waitForAtomicIngress(accepted.DeploymentID, client.getIngress, client.sleep)
+	if err != nil {
+		return nil, fmt.Errorf("deployment intent was accepted, but custom domain %q could not be attached: %w", opts.Domain, err)
+	}
+	alias, err := client.attachDomain(ingress.IngressID.String(), api.AttachDomainRequest{
+		OrgID:      orgID,
+		DomainName: opts.Domain,
+	})
+	if err != nil {
+		return nil, fmt.Errorf("deployment intent was accepted, but attaching custom domain %q failed: %w", opts.Domain, err)
+	}
+	response.IngressID = ingress.IngressID
+	response.Domain = alias.DomainName
+	return response, nil
+}
+
+func waitForAtomicIngress(deploymentID string, lookup func(string) (*api.Ingress, error), sleep func(time.Duration)) (*api.Ingress, error) {
+	const (
+		attempts = 60
+		interval = time.Second
+	)
+	var lastErr error
+	for attempt := 0; attempt < attempts; attempt++ {
+		ingress, err := lookup(deploymentID)
+		if err == nil && ingress != nil && ingress.IngressID != uuid.Nil {
+			return ingress, nil
+		}
+		if err != nil {
+			var statusErr *api.HTTPStatusError
+			notFound := (errors.As(err, &statusErr) && statusErr.StatusCode == 404) ||
+				strings.Contains(strings.ToLower(err.Error()), "not found")
+			if !notFound {
+				return nil, err
+			}
+			lastErr = err
+		}
+		if attempt+1 < attempts {
+			sleep(interval)
+		}
+	}
+	if lastErr != nil {
+		return nil, fmt.Errorf("timed out waiting for the default ingress: %w", lastErr)
+	}
+	return nil, errors.New("timed out waiting for the default ingress")
 }
 
 func buildAtomicDeploymentIntent(opts DeploymentOptions, image, projectName, userID string) (api.DeploymentIntent, error) {
@@ -246,6 +230,7 @@ func buildAtomicDeploymentIntent(opts DeploymentOptions, image, projectName, use
 		UserID:         api.ToUUID(userID),
 		Type:           "production",
 		Environment:    "production",
+		Hostnames:      append([]string(nil), opts.Hostnames...),
 		CpuRequest:     cpuRequest,
 		CPULimit:       cpuLimit,
 		MemoryRequest:  opts.Memory,
@@ -263,6 +248,24 @@ func buildAtomicDeploymentIntent(opts DeploymentOptions, image, projectName, use
 		WaitFor:        opts.WaitFor,
 		StrategyConfig: buildStrategyConfig(opts),
 		TargetArch:     opts.TargetArch,
+	}
+	if opts.MulticlusterEnabled {
+		schedule := map[string]string{
+			"hourly": "0 * * * *",
+			"daily":  "0 0 * * *",
+			"weekly": "0 18 * * 6",
+		}[opts.BackupSchedule]
+		activePassive := opts.MulticlusterMode == "active-passive"
+		priority := opts.BackupPriorityCluster
+		if priority <= 0 {
+			priority = 1
+		}
+		deployment.MulticlusterConfig = &api.MulticlusterConfig{
+			Enabled: true, Mode: opts.MulticlusterMode,
+			BackupEnabled: activePassive || opts.BackupEnabled, BackupSchedule: schedule,
+			BackupRetention: opts.BackupRetention, BackupPriorityCluster: priority,
+			FailoverEnabled: activePassive, RestoreOnFailover: activePassive,
+		}
 	}
 	if opts.PDBConfig != nil && opts.PDBConfig.Enabled {
 		deployment.PDBConfig = &api.PDBConfig{Enabled: true, Type: string(opts.PDBConfig.Type), MinAvailable: opts.PDBConfig.MinAvailable, Percent: opts.PDBConfig.Percent}
@@ -295,16 +298,6 @@ func buildAtomicDeploymentIntent(opts DeploymentOptions, image, projectName, use
 		Service:     &api.DeploymentIntentService{Name: projectName, Port: port},
 		PublicRoute: &api.DeploymentIntentPublicRoute{Kind: "default_dns"},
 	}, nil
-}
-
-// deployCleanup runs best-effort cleanup on partial deployment failure.
-func deployCleanup(cmgr *cleanup.CleanupManager) {
-	utils.PrintWarning("Deployment failed, attempting cleanup of created resources...")
-	if errs := cmgr.Cleanup(); len(errs) > 0 {
-		utils.PrintWarning("Cleanup encountered errors:\n%s", cleanup.FormatCleanupErrors(errs))
-	} else {
-		utils.PrintSuccess("Successfully cleaned up partial deployment resources")
-	}
 }
 
 // submitRemoteBuild packages the local build context, uploads it to the backend,
@@ -380,354 +373,6 @@ func normalizeTargetArch(imageArch string) string {
 	}
 }
 
-func mainDeploy(opts DeploymentOptions, image, name, userID, organization string, hostnames []string, requestID string) (string, error) {
-	port, err := api.SafeInt32(opts.Port)
-	if err != nil {
-		return "", utils.NewError(fmt.Sprintf("invalid port: %s", err.Error()), nil)
-	}
-	cpuRequest := opts.CPURequest
-	if cpuRequest == "" {
-		cpuRequest = "250m"
-	}
-	cpuLimit := opts.CPULimit
-	if cpuLimit == "" {
-		cpuLimit = opts.CPU
-	}
-	if cpuLimit == "" {
-		cpuLimit = "1"
-	}
-
-	// Replica count: use manual override if set, otherwise derive from hostnames
-	var replicas int32
-	if opts.Replicas > 0 {
-		replicas, err = api.SafeInt32(opts.Replicas)
-		if err != nil {
-			return "", utils.NewError(fmt.Sprintf("invalid replicas count: %s", err.Error()), nil)
-		}
-	} else {
-		replicas, err = api.SafeInt32(len(hostnames))
-		if err != nil {
-			return "", utils.NewError(fmt.Sprintf("invalid replicas count: %s", err.Error()), nil)
-		}
-	}
-
-	// if replicas is 0, set it to 1
-	// this is to avoid creating a deployment with 0 replicas (mainly for user with no hostnames)
-	if replicas == 0 {
-		replicas = 1
-	}
-
-	// TODO: Should we be hardcoding any of the values here? Make it strict and require to pass in params.
-	deployment := api.Deployment{
-		UserID:        api.ToUUID(userID),
-		Type:          "production", // Default to production (cluster env)
-		Environment:   "production", // Default to production (app env - can switch between development (preview) and production in future)
-		Hostnames:     hostnames,
-		CpuRequest:    cpuRequest,
-		CPULimit:      cpuLimit,
-		MemoryRequest: opts.Memory,
-		MemoryLimit:   opts.Memory,
-		Namespace:     organization,
-		Port:          port,
-		Image:         image,
-		Zone:          opts.Zone, // Target zone for cluster routing
-		SSD:           "true",
-		GPU:           "false",
-		AppLabel:      name,
-		Replicas:      replicas,
-		EnvEnabled:    opts.EnvEnabled,
-		VolumeEnabled: opts.VolumeEnabled,
-	}
-
-	// Add multicluster configuration if enabled
-	if opts.MulticlusterEnabled {
-		scheduleMap := map[string]string{
-			"hourly": "0 * * * *",
-			"daily":  "0 0 * * *",
-			"weekly": "0 18 * * 6", // 2 AM MYT Sunday
-		}
-
-		isActivePassive := opts.MulticlusterMode == "active-passive"
-
-		// For active-passive: backup is always enabled
-		// For active-active: backup is optional (user can toggle via --backup-enabled)
-		backupEnabled := isActivePassive || opts.BackupEnabled
-
-		// Priority cluster defaults to 1 (primary) if not set
-		priorityCluster := opts.BackupPriorityCluster
-		if priorityCluster <= 0 {
-			priorityCluster = 1
-		}
-
-		deployment.MulticlusterConfig = &api.MulticlusterConfig{
-			Enabled:               true,
-			Mode:                  opts.MulticlusterMode,
-			BackupEnabled:         backupEnabled,
-			BackupSchedule:        scheduleMap[opts.BackupSchedule],
-			BackupRetention:       opts.BackupRetention,
-			BackupPriorityCluster: priorityCluster,
-			FailoverEnabled:       isActivePassive,
-			RestoreOnFailover:     isActivePassive,
-		}
-	}
-
-	// Add PDB configuration
-	if opts.PDBConfig != nil && opts.PDBConfig.Enabled {
-		deployment.PDBConfig = &api.PDBConfig{
-			Enabled:      opts.PDBConfig.Enabled,
-			Type:         string(opts.PDBConfig.Type),
-			MinAvailable: opts.PDBConfig.MinAvailable,
-			Percent:      opts.PDBConfig.Percent,
-		}
-	} else if replicas > 1 {
-		// Auto-enable PDB when replicas > 1
-		deployment.PDBConfig = &api.PDBConfig{
-			Enabled: true,
-			Type:    "auto",
-		}
-	}
-
-	// Add HPA configuration
-	if opts.HPAConfig != nil {
-		deployment.HPAConfig = opts.HPAConfig
-	}
-
-	// Add VPA configuration
-	if opts.VPAConfig != nil {
-		deployment.VPAConfig = opts.VPAConfig
-	}
-
-	// Add wait-for dependencies (platform injects init containers)
-	if len(opts.WaitFor) > 0 {
-		deployment.WaitFor = opts.WaitFor
-	}
-
-	// Add deployment strategy configuration
-	deployment.StrategyConfig = buildStrategyConfig(opts)
-
-	// Pass image architecture so the backend sets the kubernetes.io/arch nodeSelector.
-	deployment.TargetArch = opts.TargetArch
-
-	var deploymentID string
-	if err := api.UpsertDeployment(deployment, &deploymentID, requestID); err != nil {
-		// Check if this is a resource exhausted error and handle it specially
-		if resourceErr, ok := err.(*utils.ResourceExhaustedCLIError); ok {
-			utils.PrintResourceExhaustedError(resourceErr.ResourceError)
-			return "", resourceErr
-		}
-		return "", utils.NewError(fmt.Sprintf("failed to upsert deployment: %s", err.Error()), nil)
-	}
-
-	return deploymentID, nil
-}
-
-func upsertService(deploymentID string, opts DeploymentOptions, projectName, organization string) (string, error) {
-	port, err := api.SafeInt32(opts.Port)
-	if err != nil {
-		return "", utils.NewError(fmt.Sprintf("invalid port: %s", err.Error()), nil)
-	}
-
-	service := api.Service{
-		DeploymentID: api.ToUUID(deploymentID),
-		Namespace:    organization,
-		ServiceName:  projectName,
-		Port:         port,
-	}
-
-	var serviceID string
-	if err := api.UpsertService(service, &serviceID); err != nil {
-		return "", utils.NewError(fmt.Sprintf("failed to upsert service: %s", err.Error()), nil)
-	}
-
-	return serviceID, nil
-}
-
-func upsertIngress(deploymentID string, serviceID string, opts DeploymentOptions, organization, projectName string) (domainName, ingressID string, err error) {
-	// Check if there's an existing ingress for this deployment
-	existingIngress, err := api.GetIngressByDeploymentID(deploymentID)
-	if err != nil {
-		utils.PrintInfo("No existing ingress found for deployment %s, will create new one: %s", deploymentID, err.Error())
-
-		// Generate domain name if not provided and no existing ingress
-		if opts.Domain == "" {
-			domainName, err = api.GenerateDomainName(projectName)
-			if err != nil {
-				return "", "", utils.NewError(fmt.Sprintf("failed to generate domain name: %s", err.Error()), nil)
-			}
-			utils.PrintInfo("Generated new domain: %s", domainName)
-		} else {
-			domainName = opts.Domain
-		}
-	} else {
-		// Use existing domain name if no explicit domain provided.
-		// If the existing domain is a custom (non-satusky.com) domain,
-		// generate a fresh auto-domain instead. The user can explicitly
-		// pass --domain (or set domain in satusky.toml) to use a custom domain.
-		if opts.Domain == "" {
-			if !strings.HasSuffix(existingIngress.DomainName, ".satusky.com") {
-				domainName, err = api.GenerateDomainName(projectName)
-				if err != nil {
-					return "", "", utils.NewError(fmt.Sprintf("failed to generate domain name: %s", err.Error()), nil)
-				}
-				utils.PrintInfo("Generated new domain: %s", domainName)
-			} else {
-				domainName = existingIngress.DomainName
-			}
-		} else {
-			domainName = opts.Domain
-		}
-	}
-
-	port, err := api.SafeInt32(opts.Port)
-	if err != nil {
-		return "", "", utils.NewError(fmt.Sprintf("invalid port: %s", err.Error()), nil)
-	}
-
-	ingress := api.Ingress{
-		DeploymentID: api.ToUUID(deploymentID),
-		ServiceID:    api.ToUUID(serviceID),
-		Namespace:    organization,
-		AppLabel:     projectName,
-		DomainName:   domainName,
-		DnsConfig:    api.DnsConfigDefault,
-		Port:         port,
-	}
-
-	ingressResp, err := api.UpsertIngress(ingress)
-	if err != nil {
-		return "", "", utils.NewError(fmt.Sprintf("failed to upsert ingress: %s", err.Error()), nil)
-	}
-
-	return ingressResp.DomainName, ingressResp.IngressID.String(), nil
-}
-
-func handleDependencies(deps []api.Dependency, userID, organization string, hostnames []string, requestID string) error {
-	for _, dep := range deps {
-		opts := DeploymentOptions{
-			CPURequest:   "125m",  // TODO: change this when CPU is specified for each dependency
-			CPULimit:     "1000m", // TODO: change this when CPU is specified for each dependency
-			Memory:       "128Mi", // TODO: change this when memory is specified for each dependency
-			Organization: organization,
-			Port:         int(dep.Service.Port), // Convert int32 to int
-		}
-
-		// Create deployment for dependency
-		deploymentID, err := mainDeploy(opts, dep.Image, dep.Name, userID, organization, hostnames, requestID)
-		if err != nil {
-			return utils.NewError(fmt.Sprintf("failed to create dependency deployment: %s", err.Error()), nil)
-		}
-
-		// Create service for dependency
-		if dep.Service != nil {
-			dep.Service.DeploymentID = api.ToUUID(deploymentID)
-			if err := api.UpsertService(*dep.Service, nil); err != nil {
-				return utils.NewError(fmt.Sprintf("failed to upsert dependency service: %s", err.Error()), nil)
-			}
-		}
-
-		// Create volume for dependency if specified
-		if dep.Volume != nil {
-			dep.Volume.DeploymentID = api.ToUUID(deploymentID)
-			if err := api.CreateVolume(*dep.Volume); err != nil {
-				return utils.NewError(fmt.Sprintf("failed to create dependency volume: %s", err.Error()), nil)
-			}
-		}
-	}
-
-	return nil
-}
-
-// handleEnvironmentAndVolumes returns the envID and volumeName of any resources
-// it created so the caller can register them with the cleanup manager.
-// Either may be "" when the corresponding feature wasn't enabled.
-func handleEnvironmentAndVolumes(opts DeploymentOptions, deploymentID, projectName, organization string) (envID, volumeName string, err error) {
-	type envResult struct {
-		id  string
-		err error
-	}
-	type volResult struct {
-		name string
-		err  error
-	}
-	envChan := make(chan envResult, 1)
-	volChan := make(chan volResult, 1)
-
-	go func() {
-		if opts.EnvEnabled && opts.Environment != nil {
-			opts.Environment.DeploymentID = api.ToUUID(deploymentID)
-			opts.Environment.AppLabel = projectName
-			opts.Environment.Namespace = organization
-
-			created, e := api.UpsertEnvironment(*opts.Environment)
-			if e != nil {
-				envChan <- envResult{err: utils.NewError(fmt.Sprintf("failed to create environment: %s", e.Error()), nil)}
-				return
-			}
-			envChan <- envResult{id: created.EnvironmentID.String()}
-			return
-		}
-		envChan <- envResult{}
-	}()
-
-	go func() {
-		if opts.VolumeEnabled && opts.Volume != nil {
-			opts.Volume.DeploymentID = api.ToUUID(deploymentID)
-			opts.Volume.VolumeName = fmt.Sprintf("%s-volume", projectName)
-			opts.Volume.ClaimName = fmt.Sprintf("%s-claim", projectName)
-			opts.Volume.DesiredAttached = true
-			if e := api.CreateVolume(*opts.Volume); e != nil {
-				volChan <- volResult{err: utils.NewError(fmt.Sprintf("failed to create volume: %s", e.Error()), nil)}
-				return
-			}
-			// Poll for PVC readiness. The storage provisioner (Ceph RBD) typically
-			// binds PVCs in under 30 seconds. We poll for up to 60s with a fast
-			// initial interval then exponential backoff so the deploy doesn't
-			// block unnecessarily while the PVC is provisioning.
-			//
-			// Check both PVC.Exists AND PVC.Phase == "Bound" — a PVC can exist
-			// (created by the backend) but still be Pending while the provisioner
-			// creates the backing volume.
-			bound := false
-			for i := 0; i < 30; i++ {
-				statuses, sErr := api.GetDeploymentVolumeLifecycleStatuses(deploymentID)
-				if sErr == nil {
-					for _, s := range statuses {
-						if s.PVC.Exists && s.PVC.Phase == "Bound" {
-							bound = true
-							break
-						}
-					}
-					if bound {
-						break
-					}
-				}
-				// 2s for first 10 attempts, then 5s — provisions usually
-				// complete quickly and we don't want to hold up deploy.
-				delay := 2 * time.Second
-				if i >= 10 {
-					delay = 5 * time.Second
-				}
-				time.Sleep(delay)
-			}
-			if !bound {
-				utils.PrintWarning("PVC %s is still provisioning after 60s — storage will be available shortly", opts.Volume.ClaimName)
-			}
-			volChan <- volResult{name: opts.Volume.VolumeName}
-			return
-		}
-		volChan <- volResult{}
-	}()
-
-	envRes := <-envChan
-	volRes := <-volChan
-	// Both errors are surfaced — previously only errs[0] was returned, hiding
-	// the second when both goroutines failed simultaneously.
-	if joined := errors.Join(envRes.err, volRes.err); joined != nil {
-		return envRes.id, volRes.name, joined
-	}
-	return envRes.id, volRes.name, nil
-}
-
 // buildStrategyConfig converts DeploymentOptions strategy fields into the API struct.
 //
 // Optimisation: when the user didn't touch any strategy flag, we omit the
@@ -755,45 +400,6 @@ func buildStrategyConfig(opts DeploymentOptions) *api.DeploymentStrategyConfig {
 		return &api.DeploymentStrategyConfig{Type: api.StrategyRecreate}
 	}
 	return nil
-}
-
-// handleIngressAndDependencies returns the resolved domain name and the
-// ingressID of any ingress it created so the caller can register the resource
-// with the cleanup manager.
-func handleIngressAndDependencies(opts DeploymentOptions, deploymentID, serviceID, userID, organization, projectName string, hostnames []string, requestID string) (domainName, ingressID string, err error) {
-	type ingressResult struct {
-		domain string
-		id     string
-		err    error
-	}
-	ingressChan := make(chan ingressResult, 1)
-	depErrChan := make(chan error, 1)
-
-	go func() {
-		domain, id, e := upsertIngress(deploymentID, serviceID, opts, organization, projectName)
-		if e != nil {
-			ingressChan <- ingressResult{err: utils.NewError(fmt.Sprintf("failed to create ingress: %s", e.Error()), nil)}
-			return
-		}
-		ingressChan <- ingressResult{domain: domain, id: id}
-	}()
-
-	go func() {
-		if len(opts.Dependencies) > 0 {
-			if e := handleDependencies(opts.Dependencies, userID, organization, hostnames, requestID); e != nil {
-				depErrChan <- utils.NewError(fmt.Sprintf("failed to handle dependencies: %s", e.Error()), nil)
-				return
-			}
-		}
-		depErrChan <- nil
-	}()
-
-	ing := <-ingressChan
-	depErr := <-depErrChan
-	if joined := errors.Join(ing.err, depErr); joined != nil {
-		return "", ing.id, joined
-	}
-	return ing.domain, ing.id, nil
 }
 
 // dns1035 matches valid K8s Service names (DNS-1035): starts with a letter,

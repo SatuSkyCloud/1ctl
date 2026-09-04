@@ -36,6 +36,7 @@ Examples:
 			appStatusCommand(),
 			appDestroyCommand(),
 			appRestartCommand(),
+			appEventsCommand(),
 			appReleasesCommand(),
 			appRollbackCommand(),
 			appOpenCommand(),
@@ -48,6 +49,10 @@ func appListCommand() *cli.Command {
 	return &cli.Command{
 		Name:  "list",
 		Usage: "List deployed applications",
+		Description: `List deployed applications in the current namespace.
+
+   Use --output wide to add each application's URL:
+      1ctl app list -o wide`,
 		Action: func(ctx context.Context, cmd *cli.Command) error {
 			return handleListDeployments(ctx)
 		},
@@ -119,12 +124,12 @@ func appDestroyCommand() *cli.Command {
 			},
 			&cli.BoolFlag{
 				Name:        "retain-volumes",
-				Usage:       "Compatibility inverse of --purge-retained",
+				Usage:       "Keep persistent volumes instead of deleting them",
 				Destination: &in.RetainVolumes,
 			},
 			&cli.BoolFlag{
 				Name:        flagPurgeRetained,
-				Usage:       "Purge retained resources (marketplace-managed deployments only)",
+				Usage:       "Delete retained resources such as volumes (default; marketplace-managed deployments only)",
 				Destination: &in.PurgeRetained,
 			},
 			&cli.BoolFlag{
@@ -142,6 +147,10 @@ func appDestroyCommand() *cli.Command {
 					in.App = arg
 				}
 			}
+			// Purging is the default, so the flag being SET is what separates a
+			// deliberate request from it. Only a deliberate one may fail loudly
+			// on a deployment whose resources cannot be purged.
+			in.PurgeExplicit = cmd.IsSet(flagPurgeRetained)
 			return handleDestroyDeployment(ctx, in)
 		},
 	}

@@ -5,6 +5,7 @@ import (
 	"1ctl/internal/utils"
 	"fmt"
 	"net/http"
+	"net/url"
 	"strings"
 )
 
@@ -18,6 +19,39 @@ type DeploymentIntent struct {
 	Volumes     []DeploymentIntentVolume     `json:"volumes,omitempty"`
 	Service     *DeploymentIntentService     `json:"service,omitempty"`
 	PublicRoute *DeploymentIntentPublicRoute `json:"public_route,omitempty"`
+}
+
+type DeploymentScaleRequest struct {
+	Replicas int32 `json:"replicas"`
+}
+
+type DeploymentScaleResult struct {
+	DeploymentID string `json:"deployment_id"`
+	Replicas     int32  `json:"replicas"`
+}
+
+type DeploymentScaleAccepted struct {
+	Error             bool                  `json:"error"`
+	Message           string                `json:"message"`
+	Data              DeploymentScaleResult `json:"data"`
+	DesiredGeneration int64                 `json:"desired_generation"`
+}
+
+// ScaleDeployment persists a replica-only desired-state mutation. Retrying a
+// transient failure reuses requestID so the backend can replay one generation.
+func ScaleDeployment(deploymentID string, replicas int32, requestID string) (*DeploymentScaleAccepted, error) {
+	if strings.TrimSpace(requestID) == "" {
+		return nil, utils.NewError("X-Request-ID is required", nil)
+	}
+
+	response := &DeploymentScaleAccepted{}
+	headers := make(http.Header)
+	headers.Set(requestIDHeader, requestID)
+	endpoint := strings.TrimSuffix(config.GetConfig().ApiURL, "/") + "/deployments/" + url.PathEscape(deploymentID) + "/scale"
+	if err := makeRequestURLWithHeadersRetry(http.MethodPost, endpoint, DeploymentScaleRequest{Replicas: replicas}, response, headers); err != nil {
+		return nil, fmt.Errorf("scale deployment: %w", err)
+	}
+	return response, nil
 }
 
 type DeploymentDesiredStateConfig struct {

@@ -52,7 +52,7 @@
           "required": false,
           "multiple": false,
           "default": "\"table\"",
-          "usage": "Output format: table or json",
+          "usage": "Output format: table, wide or json",
           "envVars": []
         },
         {
@@ -663,7 +663,7 @@
           "takesValue": true,
           "required": false,
           "multiple": true,
-          "usage": "TCP dependency to wait for (format: host:port). Repeatable.",
+          "usage": "Reserved TCP dependency declaration (host:port); currently rejected until atomic backend support is available",
           "envVars": []
         },
         {
@@ -998,6 +998,7 @@
       "name": "list",
       "aliases": [],
       "usage": "List deployed applications",
+      "description": "List deployed applications in the current namespace.\n\n   Use --output wide to add each application's URL:\n      1ctl app list -o wide",
       "hidden": false,
       "argsUsage": "",
       "aritySource": "argsUsage",
@@ -1186,7 +1187,7 @@
           "required": false,
           "multiple": false,
           "default": "false",
-          "usage": "Compatibility inverse of --purge-retained",
+          "usage": "Keep persistent volumes instead of deleting them",
           "envVars": []
         },
         {
@@ -1197,7 +1198,7 @@
           "required": false,
           "multiple": false,
           "default": "false",
-          "usage": "Purge retained resources (marketplace-managed deployments only)",
+          "usage": "Delete retained resources such as volumes (default; marketplace-managed deployments only)",
           "envVars": []
         },
         {
@@ -1246,6 +1247,86 @@
       "minArgs": 1,
       "maxArgs": 1,
       "flags": [
+        {
+          "name": "help",
+          "aliases": [
+            "h"
+          ],
+          "type": "boolean",
+          "takesValue": false,
+          "required": false,
+          "multiple": false,
+          "usage": "Show help",
+          "envVars": []
+        }
+      ]
+    },
+    {
+      "path": [
+        "app",
+        "events"
+      ],
+      "name": "events",
+      "aliases": [],
+      "usage": "Show what has happened to an application",
+      "description": "Show the lifecycle timeline for an application: when it was accepted,\n   when each reconciliation ran, when its hostname was reserved, and what DNS\n   has actually observed.\n\n   Use --follow to keep watching while a deployment settles:\n      1ctl app events my-app --follow",
+      "hidden": false,
+      "argsUsage": "\u003capp-name\u003e",
+      "aritySource": "argsUsage",
+      "arguments": [
+        {
+          "name": "app-name",
+          "required": true,
+          "variadic": false
+        }
+      ],
+      "minArgs": 1,
+      "maxArgs": 1,
+      "flags": [
+        {
+          "name": "deployment-id",
+          "aliases": [],
+          "type": "string",
+          "takesValue": true,
+          "required": false,
+          "multiple": false,
+          "usage": "Deployment ID (alternative to positional arg)",
+          "envVars": []
+        },
+        {
+          "name": "config",
+          "aliases": [],
+          "type": "string",
+          "takesValue": true,
+          "required": false,
+          "multiple": false,
+          "usage": "Config name or path",
+          "envVars": []
+        },
+        {
+          "name": "follow",
+          "aliases": [
+            "f"
+          ],
+          "type": "boolean",
+          "takesValue": false,
+          "required": false,
+          "multiple": false,
+          "default": "false",
+          "usage": "Keep watching for new events",
+          "envVars": []
+        },
+        {
+          "name": "last",
+          "aliases": [],
+          "type": "integer",
+          "takesValue": true,
+          "required": false,
+          "multiple": false,
+          "default": "0",
+          "usage": "Show only the most recent N events (0 shows all)",
+          "envVars": []
+        },
         {
           "name": "help",
           "aliases": [
@@ -3249,6 +3330,16 @@
           "required": false,
           "multiple": true,
           "usage": "Secret key-value pairs (format: KEY=VALUE)",
+          "envVars": []
+        },
+        {
+          "name": "from-file",
+          "aliases": [],
+          "type": "string",
+          "takesValue": true,
+          "required": false,
+          "multiple": false,
+          "usage": "Read secret key-value pairs from an owner-only KEY=VALUE file",
           "envVars": []
         },
         {
@@ -8021,7 +8112,7 @@
       ],
       "name": "create",
       "aliases": [],
-      "usage": "Create a new profile",
+      "usage": "Create a profile (standard environment names infer their API URL)",
       "hidden": false,
       "argsUsage": "\u003cname\u003e",
       "aritySource": "argsUsage",
@@ -8042,7 +8133,7 @@
           "takesValue": true,
           "required": false,
           "multiple": false,
-          "usage": "API URL for this profile (e.g. http://localhost:8080/v1/cli)",
+          "usage": "API URL for a custom profile (required unless the name is local, dev/develop/development, or prod/production)",
           "envVars": []
         },
         {

@@ -13,6 +13,15 @@ import (
 	"github.com/google/uuid"
 )
 
+const marketplaceDeployTimeout = 120 * time.Second
+
+var marketplaceDeployHTTPClient = &http.Client{
+	Timeout: marketplaceDeployTimeout,
+	CheckRedirect: func(_ *http.Request, _ []*http.Request) error {
+		return http.ErrUseLastResponse
+	},
+}
+
 // MarketplaceApp represents a marketplace application
 type MarketplaceApp struct {
 	MarketplaceID     uuid.UUID                  `json:"marketplace_id"`
@@ -157,7 +166,8 @@ func ResolveMarketplaceApp(nameOrID string) (*MarketplaceApp, error) {
 // DeployMarketplaceApp deploys a marketplace app
 func DeployMarketplaceApp(namespace, marketplaceID string, req MarketplaceDeployRequest) (*MarketplaceDeployResponse, error) {
 	var resp apiResponse
-	err := makeMainAPIRequestWithHeaders(http.MethodPost, fmt.Sprintf("/marketplaces/deploy/create/%s/%s", url.PathEscape(namespace), url.PathEscape(marketplaceID)), req, &resp, marketplaceOrganizationHeaders())
+	path := fmt.Sprintf("/marketplaces/deploy/create/%s/%s", url.PathEscape(namespace), url.PathEscape(marketplaceID))
+	_, err := makeRequestURLWithHeadersOnceUsingClient(marketplaceDeployHTTPClient, http.MethodPost, resolveMainAPIURL(path), req, &resp, marketplaceOrganizationHeaders(), true)
 	if err != nil {
 		return nil, err
 	}

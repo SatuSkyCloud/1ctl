@@ -10,4 +10,7 @@ RUN apk add --no-cache ca-certificates
 WORKDIR /app
 COPY --from=builder /app/server .
 EXPOSE 8080
+# SatuSky runs workloads with runAsNonRoot, so an image that defaults to root
+# is rejected by the kubelet with CreateContainerConfigError before it starts.
+USER 65532:65532
 CMD ["./server"]

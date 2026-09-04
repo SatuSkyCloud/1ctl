@@ -29,7 +29,7 @@ A standard build connects to `api.satusky.com` by default:
 ```bash
 git clone https://github.com/satuskycloud/1ctl.git
 cd 1ctl
-go build -o 1ctl ./cmd/...
+go build -o 1ctl ./cmd/1ctl
 ```
 
 To point the binary at a local API server, override the default URLs at compile time via ldflags:
@@ -38,7 +38,7 @@ To point the binary at a local API server, override the default URLs at compile 
 go build \
   -ldflags "-X '1ctl/internal/config.defaultAPIURL=http://localhost:8080/v1/cli' \
             -X '1ctl/internal/config.defaultDockerUploadURL=http://localhost:3000'" \
-  -o 1ctl ./cmd/...
+  -o 1ctl ./cmd/1ctl
 ```
 
 Alternatively, override at runtime with environment variables (no rebuild needed):
@@ -194,8 +194,8 @@ API keys are stored in `~/.satusky/chat.json` (mode 0600), never logged, and nev
 # Deploy with recreate strategy (stops all pods before starting new ones)
 1ctl deploy --cpu-request 250m --cpu-limit 1 --memory 1Gi --strategy recreate
 
-# Wait for TCP dependencies to be ready before the app starts
-1ctl deploy --cpu-request 250m --cpu-limit 1 --memory 1Gi --wait-for postgres:5432 --wait-for redis:6379
+# Reserved: --wait-for currently fails before build because the atomic backend
+# cannot persist or reconcile dependency-readiness declarations safely.
 
 # Block until pods are Running (5min default timeout)
 1ctl deploy --cpu-request 250m --cpu-limit 1 --memory 1Gi --wait
@@ -458,14 +458,34 @@ updates, ACL users, credential rotation, metrics, logs, and current limitations.
 1ctl marketplace list
 1ctl marketplace list --limit 10 --sort popularity
 
-# Get app details
-1ctl marketplace get <marketplace-id>
+# Get app details (accepts the app name or its marketplace ID)
+1ctl marketplace get paperless
 
-# Deploy a marketplace app
-1ctl marketplace deploy <marketplace-id> --name my-marketplace-app \
+# Deploy a marketplace app (app name first, optional deployment name second)
+1ctl marketplace deploy paperless my-paperless \
   --hostname my-machine --cpu 2 --memory 4Gi \
   --storage-size 20Gi
 ```
+
+`1ctl marketplace list` reports one of three statuses:
+
+| Status | Meaning |
+| --- | --- |
+| `Available` | A trusted package release is pinned. `marketplace deploy` will work. |
+| `Coming Soon` | No release is pinned yet, but the app is planned. |
+| `Unavailable` | No release is pinned and an `Availability code` explains why. |
+
+An app only becomes `Available` once a signed, certified package release is
+registered and pinned to its catalog row. If an app you need shows `Coming Soon`
+or `Unavailable`, that pin is what is missing.
+
+### Marketplace package authoring (maintainers)
+
+Authoring, signing, certifying, and registering marketplace packages is operator
+workflow that runs from the **`satusky-core_backend`** repository — it needs
+database credentials and the operator signing key, so it is not something a CLI
+user runs. See `configs/marketplace/README.md` in that repository for the full
+runbook, including package layout, digest-pinning, and troubleshooting.
 
 ### User Profile
 

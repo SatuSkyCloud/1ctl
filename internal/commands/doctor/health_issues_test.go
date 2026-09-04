@@ -1,0 +1,170 @@
+package doctor
+
+import (
+	"encoding/json"
+	"strings"
+	"testing"
+
+	"1ctl/internal/api"
+)
+
+// A deployment that is failed, unrouted, not resolving and unreachable used to
+// produce zero issues, so Doctor printed every one of those lines and then
+// summarized them as "No issues found" with a zero exit code.
+func TestDeploymentHealthIssuesFlagsBrokenDeployment(t *testing.T) {
+	entry := doctorDeploymentReport{
+		AppLabel: "broken-app",
+		Domain:   "broken.satusky.com",
+		Status:   "failed",
+		DomainStatus: &api.DomainStatusResponse{
+			Route: api.DomainRouteStatus{Attached: false, Message: "HTTPRoute not found"},
+			DNS:   api.DNSStatusResponse{Status: api.DNSStatusPropagating},
+			Reachability: api.DomainReachabilityStatus{
+				Checked: true, Reachable: false, Message: "no such host",
+			},
+		},
+	}
+
+	issues := deploymentHealthIssues(entry)
+	if len(issues) != 4 {
+		t.Fatalf("expected 4 issues (status, route, dns, http), got %d: %v", len(issues), issues)
+	}
+	for _, want := range []string{"deployment status", "route", "dns", "http"} {
+		if !containsSubstring(issues, want) {
+			t.Errorf("expected an issue mentioning %q, got %v", want, issues)
+		}
+	}
+}
+
+func TestDeploymentHealthIssuesSilentOnHealthyDeployment(t *testing.T) {
+	entry := doctorDeploymentReport{
+		AppLabel: "healthy-app",
+		Domain:   "healthy.satusky.com",
+		Status:   "ready",
+		DomainStatus: &api.DomainStatusResponse{
+			Route: api.DomainRouteStatus{Attached: true, ResourceKind: "HTTPRoute", ResourceName: "healthy-app-route"},
+			DNS:   api.DNSStatusResponse{Status: api.DNSStatusResolved},
+			Reachability: api.DomainReachabilityStatus{
+				Checked: true, Reachable: true, StatusCode: 200,
+			},
+		},
+	}
+
+	if issues := deploymentHealthIssues(entry); len(issues) != 0 {
+		t.Fatalf("healthy deployment must raise no issues, got %v", issues)
+	}
+}
+
+// Doctor is routinely run while a rollout is still settling; those states are
+// not failures and must not make it exit non-zero.
+func TestDeploymentHealthIssuesIgnoresTransientStates(t *testing.T) {
+	for _, status := range []string{"pending", "reconciling", "deleting"} {
+		entry := doctorDeploymentReport{AppLabel: "app", Status: status}
+		if issues := deploymentHealthIssues(entry); len(issues) != 0 {
+			t.Errorf("status %q must not be reported as an issue, got %v", status, issues)
+		}
+	}
+}
+
+// A typed condition is authoritative when present: resolved-but-unverified is
+// still a failure, and verified passes even though the check would otherwise
+// look at Status.
+func TestDeploymentHealthIssuesPrefersTypedDNSCondition(t *testing.T) {
+	base := func(cond *api.DNSCondition) doctorDeploymentReport {
+		return doctorDeploymentReport{
+			AppLabel: "app",
+			Domain:   "app.example.com",
+			Status:   "ready",
+			DomainStatus: &api.DomainStatusResponse{
+				Route: api.DomainRouteStatus{Attached: true},
+				DNS:   api.DNSStatusResponse{Status: api.DNSStatusResolved, Condition: cond},
+			},
+		}
+	}
+
+	unverified := base(&api.DNSCondition{Status: api.DNSConditionStatusWrongTarget})
+	if issues := deploymentHealthIssues(unverified); len(issues) != 1 {
+		t.Errorf("wrong_target condition must be an issue even when status is resolved, got %v", issues)
+	}
+
+	verified := base(&api.DNSCondition{Status: api.DNSConditionStatusVerified})
+	if issues := deploymentHealthIssues(verified); len(issues) != 0 {
+		t.Errorf("verified condition must raise no issue, got %v", issues)
+	}
+}
+
+// An unrequested probe proves nothing and must not be reported as unreachable.
+func TestDeploymentHealthIssuesIgnoresUncheckedReachability(t *testing.T) {
+	entry := doctorDeploymentReport{
+		AppLabel: "app",
+		Domain:   "app.satusky.com",
+		Status:   "ready",
+		DomainStatus: &api.DomainStatusResponse{
+			Route:        api.DomainRouteStatus{Attached: true},
+			DNS:          api.DNSStatusResponse{Status: api.DNSStatusResolved},
+			Reachability: api.DomainReachabilityStatus{Checked: false, Reachable: false},
+		},
+	}
+
+	if issues := deploymentHealthIssues(entry); len(issues) != 0 {
+		t.Fatalf("unchecked reachability must not be an issue, got %v", issues)
+	}
+}
+
+// Having no public domain is not itself an issue — a private app legitimately
+// has no route — but the deployment must still be checked for everything else,
+// so the status test has to run before the no-domain early return.
+func TestDeploymentHealthIssuesChecksStatusWithoutADomain(t *testing.T) {
+	failed := doctorDeploymentReport{AppLabel: "private-app", Status: "failed"}
+	issues := deploymentHealthIssues(failed)
+	if len(issues) != 1 || !containsSubstring(issues, "deployment status") {
+		t.Fatalf("a failed deployment with no domain must still be reported, got %v", issues)
+	}
+
+	healthy := doctorDeploymentReport{AppLabel: "private-app", Status: "ready"}
+	if issues := deploymentHealthIssues(healthy); len(issues) != 0 {
+		t.Fatalf("a healthy deployment with no domain must raise nothing, got %v", issues)
+	}
+}
+
+// A clean run is exactly when a caller most wants to script Doctor, and it was
+// the one run where `jq '.issues[]'` failed: omitempty dropped the key, so the
+// path resolved to null. Both arrays must survive a round trip as arrays.
+func TestDoctorReportAlwaysEncodesArrays(t *testing.T) {
+	encoded, err := json.Marshal(doctorReport{
+		UserEmail:    "user@example.com",
+		Organization: "org",
+		Namespace:    "ns",
+		Deployments:  []doctorDeploymentReport{},
+		Issues:       []string{},
+	})
+	if err != nil {
+		t.Fatalf("marshal report: %v", err)
+	}
+
+	var decoded struct {
+		Deployments *[]doctorDeploymentReport `json:"deployments"`
+		Issues      *[]string                 `json:"issues"`
+	}
+	if err := json.Unmarshal(encoded, &decoded); err != nil {
+		t.Fatalf("unmarshal report: %v", err)
+	}
+	if decoded.Issues == nil {
+		t.Fatalf("issues must be present and an array, got %s", encoded)
+	}
+	if decoded.Deployments == nil {
+		t.Fatalf("deployments must be present and an array, got %s", encoded)
+	}
+	if !strings.Contains(string(encoded), `"issues":[]`) {
+		t.Fatalf("empty issues must encode as [], got %s", encoded)
+	}
+}
+
+func containsSubstring(values []string, want string) bool {
+	for _, v := range values {
+		if strings.Contains(v, want) {
+			return true
+		}
+	}
+	return false
+}

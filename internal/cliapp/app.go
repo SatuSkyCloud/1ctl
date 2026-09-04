@@ -60,7 +60,7 @@ Tokens: https://cloud.satusky.com/<org-id>/token`,
 			&cli.StringFlag{
 				Name:    "output",
 				Aliases: []string{"o"},
-				Usage:   "Output format: table or json",
+				Usage:   "Output format: table, wide or json",
 				Value:   "table",
 			},
 		},
@@ -158,10 +158,10 @@ Tokens: https://cloud.satusky.com/<org-id>/token`,
 }
 
 func validateOutputFormat(format string) error {
-	if format == "table" || format == "json" {
+	if format == "table" || format == "wide" || format == "json" {
 		return nil
 	}
-	return utils.NewError(fmt.Sprintf("invalid --output %q: expected table or json", format), nil)
+	return utils.NewError(fmt.Sprintf("invalid --output %q: expected table, wide or json", format), nil)
 }
 
 func withCategory(cmd *cli.Command, category string) *cli.Command {

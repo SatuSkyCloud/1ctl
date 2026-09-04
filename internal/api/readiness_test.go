@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 	"time"
 )
@@ -128,10 +129,13 @@ func TestWaitForDeploymentUsesLiveReadinessAndCompatibilityModes(t *testing.T) {
 			defer server.Close()
 			configureAdminAPITestContext(t, server.URL+"/v1/cli")
 
-			_, err := WaitForDeploymentWithOptions("dep-1", 8*time.Millisecond, DeploymentWaitOptions{Mode: tt.mode, PollInterval: time.Millisecond, VerifyApplication: tt.verify})
+			status, err := WaitForDeploymentWithOptions("dep-1", 20*time.Millisecond, DeploymentWaitOptions{Mode: tt.mode, PollInterval: time.Millisecond, VerifyApplication: tt.verify})
 			if tt.wantSuccess {
 				if err != nil {
 					t.Fatalf("WaitForDeploymentWithOptions() error = %v", err)
+				}
+				if status.Progress != 100 {
+					t.Fatalf("status progress = %d, want 100", status.Progress)
 				}
 				return
 			}
@@ -145,6 +149,83 @@ func TestWaitForDeploymentUsesLiveReadinessAndCompatibilityModes(t *testing.T) {
 				}
 			}
 		})
+	}
+}
+
+func TestWaitForDeploymentToleratesTransientApplicationFailure(t *testing.T) {
+	polls := 0
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		polls++
+		state := "failing"
+		if polls == 2 {
+			state = "verified"
+		}
+		writeLiveReadiness(w, readinessStatus(state, "current", "available"))
+	}))
+	defer server.Close()
+	configureAdminAPITestContext(t, server.URL+"/v1/cli")
+
+	status, err := WaitForDeploymentWithOptions("dep-1", 20*time.Millisecond, DeploymentWaitOptions{PollInterval: time.Millisecond})
+	if err != nil {
+		t.Fatalf("WaitForDeploymentWithOptions() error = %v", err)
+	}
+	if polls != 2 || status.Progress != 100 {
+		t.Fatalf("polls = %d, progress = %d; want 2 and 100", polls, status.Progress)
+	}
+}
+
+func TestWaitForDeploymentWaitsForRequestedGeneration(t *testing.T) {
+	polls := 0
+	generationPolls := 0
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if strings.Contains(r.URL.Path, "/deployments/status/") {
+			generationPolls++
+			if generationPolls == 1 {
+				_, _ = fmt.Fprint(w, `{"data":{"status":"progressing"}}`)
+			} else {
+				_, _ = fmt.Fprint(w, `{"data":{"status":"Running"}}`)
+			}
+			return
+		}
+		polls++
+		observed := 2
+		if polls == 2 {
+			observed = 3
+		}
+		_, _ = fmt.Fprintf(w, `{"readiness":{"reconciliation":{"state":"current","generation":3,"observed_generation":%d},"workload":{"state":"available"},"application":{"state":"verified"}}}`, observed)
+	}))
+	defer server.Close()
+	configureAdminAPITestContext(t, server.URL+"/v1/cli")
+
+	status, err := WaitForDeploymentWithOptions("dep-1", 20*time.Millisecond, DeploymentWaitOptions{
+		Generation:   3,
+		PollInterval: time.Millisecond,
+	})
+	if err != nil {
+		t.Fatalf("WaitForDeploymentWithOptions() error = %v", err)
+	}
+	if polls != 2 || status.Progress != 100 {
+		t.Fatalf("polls = %d, progress = %d; want 2 and 100", polls, status.Progress)
+	}
+}
+
+func TestWaitForDeploymentReturnsRequestedGenerationFailure(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if strings.Contains(r.URL.Path, "/deployments/status/") {
+			_, _ = fmt.Fprint(w, `{"data":{"status":"Failed"}}`)
+			return
+		}
+		writeLiveReadiness(w, readinessStatus("verified", "current", "available"))
+	}))
+	defer server.Close()
+	configureAdminAPITestContext(t, server.URL+"/v1/cli")
+
+	_, err := WaitForDeploymentWithOptions("dep-1", 20*time.Millisecond, DeploymentWaitOptions{
+		Generation:   3,
+		PollInterval: time.Millisecond,
+	})
+	if err == nil || !strings.Contains(err.Error(), "generation reconciliation is failing") {
+		t.Fatalf("WaitForDeploymentWithOptions() error = %v, want generation failure", err)
 	}
 }
 

@@ -1,33 +1,56 @@
 name: Auto Release
 
 on:
-  push:
+  workflow_run:
+    workflows:
+      - CI
     branches:
       - main
+    types:
+      - completed
 
 # Creates the next release tag from the top RELEASE_NOTES.md entry. The
-# tag-triggered release workflow is the single publisher for binaries and
-# contract artifacts.
+# successful main CI commit is tagged exactly; the tag-triggered release
+# workflow is the single publisher for binaries and contract artifacts.
 
 permissions:
   contents: write
 
 jobs:
   release:
+    if: >-
+      github.event.workflow_run.conclusion == 'success' &&
+      github.event.workflow_run.event == 'push' &&
+      github.event.workflow_run.head_branch == 'main'
     runs-on: ubuntu-latest
     timeout-minutes: 10
-    environment: release
     steps:
       - name: Checkout
         uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
         with:
           fetch-depth: 0
+          ref: ${{ github.event.workflow_run.head_sha }}
 
       - name: Resolve release tag
         id: release
+        env:
+          CI_HEAD_SHA: ${{ github.event.workflow_run.head_sha }}
         shell: bash
         run: |
           set -euo pipefail
+
+          if [[ "$(git rev-parse HEAD)" != "${CI_HEAD_SHA}" ]]; then
+            echo "::error::Checkout HEAD does not match the commit that passed CI."
+            exit 1
+          fi
+
+          git fetch --no-tags origin \
+            "+refs/heads/main:refs/remotes/origin/main"
+          main_sha="$(git rev-parse refs/remotes/origin/main)"
+          if [[ "${main_sha}" != "${CI_HEAD_SHA}" ]]; then
+            echo "::error::origin/main advanced after CI; refusing to tag stale commit ${CI_HEAD_SHA}."
+            exit 1
+          fi
 
           version="$(awk '/^## Version / { print $3; exit }' RELEASE_NOTES.md)"
           tag="v${version#v}"
@@ -37,9 +60,16 @@ jobs:
             exit 1
           fi
 
-          git fetch --tags --force
-          if git rev-parse -q --verify "refs/tags/${tag}" >/dev/null; then
-            echo "Release tag ${tag} already exists; skipping."
+          tag_commit="$(git ls-remote --tags origin "refs/tags/${tag}^{}" | awk 'NR == 1 { print $1 }')"
+          if [[ -z "${tag_commit}" ]]; then
+            tag_commit="$(git ls-remote --tags origin "refs/tags/${tag}" | awk 'NR == 1 { print $1 }')"
+          fi
+          if [[ -n "${tag_commit}" && "${tag_commit}" != "${CI_HEAD_SHA}" ]]; then
+            echo "::error::Release tag ${tag} already points to ${tag_commit}, not ${CI_HEAD_SHA}."
+            exit 1
+          fi
+          if [[ -n "${tag_commit}" ]]; then
+            echo "Release tag ${tag} already points to the successful CI commit; skipping."
             echo "skip=true" >> "$GITHUB_OUTPUT"
             echo "tag=${tag}" >> "$GITHUB_OUTPUT"
             exit 0
@@ -50,11 +80,22 @@ jobs:
 
       - name: Create release tag
         if: steps.release.outputs.skip != 'true'
+        env:
+          CI_HEAD_SHA: ${{ github.event.workflow_run.head_sha }}
+          RELEASE_TAG: ${{ steps.release.outputs.tag }}
         shell: bash
         run: |
           set -euo pipefail
 
+          git fetch --no-tags origin \
+            "+refs/heads/main:refs/remotes/origin/main"
+          main_sha="$(git rev-parse refs/remotes/origin/main)"
+          if [[ "${main_sha}" != "${CI_HEAD_SHA}" ]]; then
+            echo "::error::origin/main advanced before tagging; refusing to tag stale commit ${CI_HEAD_SHA}."
+            exit 1
+          fi
+
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git tag -a "${{ steps.release.outputs.tag }}" -m "Release ${{ steps.release.outputs.tag }}"
-          git push origin "${{ steps.release.outputs.tag }}"
+          git tag -a "${RELEASE_TAG}" "${CI_HEAD_SHA}" -m "Release ${RELEASE_TAG}"
+          git push origin "refs/tags/${RELEASE_TAG}"

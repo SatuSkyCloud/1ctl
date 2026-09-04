@@ -190,6 +190,19 @@ export interface DeploymentIntent {
   service?: DeploymentIntentService;
   public_route?: DeploymentIntentPublicRoute;
 }
+export interface DeploymentScaleRequest {
+  replicas: number /* int32 */;
+}
+export interface DeploymentScaleResult {
+  deployment_id: string;
+  replicas: number /* int32 */;
+}
+export interface DeploymentScaleAccepted {
+  error: boolean;
+  message: string;
+  data: DeploymentScaleResult;
+  desired_generation: number /* int64 */;
+}
 export interface DeploymentDesiredStateConfig {
   startup_probe?: DeploymentProbe;
   readiness_probe?: DeploymentProbe;
@@ -244,6 +257,25 @@ export interface DeploymentIntentAccepted {
   state: string;
   status_url: string;
   missing_required_secrets?: string[];
+}
+
+//////////
+// source: events.go
+
+export interface DeploymentEvent {
+  id: string;
+  at: string /* RFC3339 */;
+  category: string;
+  type: string;
+  level: string;
+  message: string;
+  detail?: { [key: string]: string};
+  generation?: number /* int64 */;
+}
+export interface DeploymentEventsResponse {
+  deployment_id: string;
+  app_label: string;
+  events: DeploymentEvent[];
 }
 
 //////////
@@ -439,6 +471,8 @@ export interface Deployment {
   env_enabled: boolean;
   secret_enabled: boolean;
   volume_enabled: boolean;
+  desired_generation: number /* int64 */;
+  observed_generation: number /* int64 */;
   status: string;
   environment: string;
   deployment_source?: string;

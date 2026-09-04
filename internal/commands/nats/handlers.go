@@ -10,7 +10,6 @@ import (
 
 	"1ctl/internal/api"
 	satuskyctx "1ctl/internal/context"
-	deploypkg "1ctl/internal/deploy"
 	"1ctl/internal/utils"
 
 	"github.com/google/uuid"
@@ -54,14 +53,16 @@ func handleCreate(ctx context.Context, in createInput) error {
 	if err != nil {
 		return utils.NewError(fmt.Sprintf("failed to create NATS deployment: %s", err.Error()), nil)
 	}
-	return deploypkg.ReportDeployResult(
-		response.AppLabel,
-		response.DeploymentID.String(),
-		response.Domain,
-		deploypkg.PublicURLReadiness{Ready: false, Reason: "deployment accepted; readiness was not verified"},
-		"",
-		true,
-	)
+	printNATSCreateAccepted(response.AppLabel, response.DeploymentID.String())
+	return nil
+}
+
+func printNATSCreateAccepted(appLabel, deploymentID string) {
+	utils.PrintHeader("NATS Deployment Accepted")
+	utils.PrintStatusLine("Name", appLabel)
+	utils.PrintStatusLine("Deployment ID", deploymentID)
+	utils.PrintStatusLine("Status command", fmt.Sprintf("1ctl nats status %s", appLabel))
+	utils.PrintStatusLine("Credentials command", fmt.Sprintf("1ctl nats credentials %s --output-dir .secrets/nats", appLabel))
 }
 
 func validateCreateInput(in createInput) error {
