@@ -1,0 +1,24 @@
+[app]
+name = "quickstart-08062228"
+port = 8080
+cpu_request = "10m"
+cpu_limit = "50m"
+memory = "32Mi"
+
+[build]
+dockerfile = "Dockerfile"
+fast_build = true
+
+[checks]
+health_path = "/health"
+
+[checks.readiness]
+period_seconds = 5
+[checks.readiness.http_get]
+path = "/health"
+port = 8080
+
+[deploy]
+strategy = "rolling"
+rolling_max_surge = "25%"
+rolling_max_unavailable = "0"

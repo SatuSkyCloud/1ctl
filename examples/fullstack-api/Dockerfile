@@ -27,14 +27,17 @@ FROM alpine:3.21
 RUN apk add --no-cache ca-certificates tzdata curl
 
 # Create non-root user.
-RUN addgroup -S appgroup && adduser -S appuser -G appgroup
+RUN addgroup -g 1000 -S appgroup && adduser -u 1000 -S appuser -G appgroup
 
 # Volume mount point for persistent uploads.
 RUN mkdir -p /data/uploads && chown appuser:appgroup /data/uploads
 
 COPY --from=builder /app /app
 
-USER appuser
+# The platform runs containers with runAsNonRoot. Kubernetes cannot verify a
+# named user is non-root, so the UID must be numeric or the container never
+# starts (CreateContainerConfigError).
+USER 1000
 EXPOSE 8080
 
 # Health check that SatuSky smoke checks will hit.

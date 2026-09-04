@@ -385,7 +385,7 @@ func handleManagedDomainsList(ctx context.Context) error {
 
 func handleManagedDomainsAdd(ctx context.Context, in domainsManagedAddInput) error {
 	if in.Domain == "" {
-		return utils.NewError("--domain is required. Usage: 1ctl domains managed add --domain <domain>", nil)
+		return utils.NewError("domain is required. Usage: 1ctl domains managed add <domain>", nil)
 	}
 	userID, orgID, err := domainAPIScope()
 	if err != nil {
@@ -410,7 +410,7 @@ func handleManagedDomainsAdd(ctx context.Context, in domainsManagedAddInput) err
 
 func handleManagedDomainsVerify(ctx context.Context, in domainsManagedVerifyInput) error {
 	if in.Domain == "" {
-		return utils.NewError("--domain is required. Usage: 1ctl domains managed verify --domain <domain|domain-id>", nil)
+		return utils.NewError("domain is required. Usage: 1ctl domains managed verify <domain|domain-id>", nil)
 	}
 	userID, orgID, err := domainAPIScope()
 	if err != nil {
@@ -434,7 +434,7 @@ func handleManagedDomainsVerify(ctx context.Context, in domainsManagedVerifyInpu
 
 func handleManagedDomainsDelete(ctx context.Context, in domainsManagedDeleteInput) error {
 	if in.Domain == "" {
-		return utils.NewError("--domain is required. Usage: 1ctl domains managed delete --domain <domain|domain-id>", nil)
+		return utils.NewError("domain is required. Usage: 1ctl domains managed delete <domain|domain-id>", nil)
 	}
 	userID, orgID, err := domainAPIScope()
 	if err != nil {

@@ -3,10 +3,16 @@ package profile
 import (
 	"context"
 	"fmt"
+	"strings"
 
 	"1ctl/internal/config"
 	satuskyctx "1ctl/internal/context"
 	"1ctl/internal/utils"
+)
+
+const (
+	developmentAPIURL = "https://dev-core-api.satusky.com/v1/cli"
+	localAPIURL       = "http://localhost:8080/v1/cli"
 )
 
 func defaultAPIURLDisplay() string {
@@ -74,20 +80,42 @@ func handleProfileList(ctx context.Context) error {
 }
 
 func handleProfileCreate(ctx context.Context, in profileCreateInput) error {
+	apiURL, err := resolveProfileAPIURL(in.Name, in.URL)
+	if err != nil {
+		return err
+	}
+	in.URL = apiURL
+
 	if err := satuskyctx.CreateProfile(in.Name, in.URL); err != nil {
 		return utils.NewError(fmt.Sprintf("failed to create profile: %s", err.Error()), nil)
 	}
 
 	utils.PrintSuccess("Profile '%s' created", in.Name)
-	if in.URL != "" {
-		utils.PrintStatusLine("API URL", in.URL)
-	} else {
-		utils.PrintStatusLine("API URL", defaultAPIURLDisplay())
-	}
+	utils.PrintStatusLine("API URL", in.URL)
 	utils.PrintInfo("Next steps:")
 	utils.PrintInfo("  1ctl profile use %s", in.Name)
 	utils.PrintInfo("  1ctl auth login --token=<your-token>")
 	return nil
+}
+
+func resolveProfileAPIURL(name, explicitURL string) (string, error) {
+	if explicitURL != "" {
+		return explicitURL, nil
+	}
+
+	switch strings.ToLower(name) {
+	case "dev", "develop", "development":
+		return developmentAPIURL, nil
+	case "local":
+		return localAPIURL, nil
+	case "prod", "production":
+		return config.DefaultAPIURL(), nil
+	default:
+		return "", utils.NewError(
+			fmt.Sprintf("API URL is required for profile %q; pass --url <api-url> or use a standard profile name: local, development, or production", name),
+			nil,
+		)
+	}
 }
 
 func handleProfileUse(ctx context.Context, in profileNameInput) error {

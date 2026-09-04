@@ -1,0 +1,41 @@
+[app]
+name = "ml-model-api"
+port = 8080
+cpu_request = "100m"
+cpu_limit = "250m"
+memory = "256Mi"
+replicas = 1
+
+[build]
+dockerfile = "Dockerfile"
+fast_build = true
+
+[checks]
+health_path = "/healthz"
+
+[checks.startup]
+timeout_seconds = 2
+period_seconds = 3
+failure_threshold = 10
+[checks.startup.http_get]
+path = "/readyz"
+port = 8080
+
+[checks.readiness]
+timeout_seconds = 2
+period_seconds = 3
+failure_threshold = 3
+[checks.readiness.http_get]
+path = "/readyz"
+port = 8080
+
+[checks.liveness]
+timeout_seconds = 2
+period_seconds = 5
+failure_threshold = 3
+[checks.liveness.http_get]
+path = "/healthz"
+port = 8080
+
+[env]
+PREDICTION_DELAY_MS = "100"

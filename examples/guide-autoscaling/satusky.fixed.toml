@@ -1,0 +1,16 @@
+[app]
+  name        = "guide-autoscale-nginx"
+  port        = 8080
+  cpu_request = "10m"
+  cpu_limit   = "250m"
+  memory      = "64Mi"
+  replicas    = 1
+
+[build]
+  image = "nginxinc/nginx-unprivileged:1.27.5-alpine"
+
+[checks]
+  health_path = "/"
+
+[hpa]
+  enabled = false

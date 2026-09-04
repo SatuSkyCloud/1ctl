@@ -111,3 +111,143 @@ func TestMergeConfigUsesDeployStrategyInsteadOfCommandDefaults(t *testing.T) {
 		t.Errorf("RollingMaxUnavail = %q, want 0", merged.RollingMaxUnavail)
 	}
 }
+
+func TestMergeConfigExplicitDefaultValuedFlagsTakePrecedence(t *testing.T) {
+	cfg := &config.ProjectConfig{
+		App: config.AppConfig{
+			CPURequest: "500m",
+			CPULimit:   "2",
+			Memory:     "1Gi",
+			Port:       3000,
+		},
+		Deploy: config.DeployConfig{
+			Strategy:              "recreate",
+			RollingMaxSurge:       "1",
+			RollingMaxUnavailable: "0",
+		},
+	}
+	in := DeployInput{
+		CPURequest:        "250m",
+		CPULimit:          "1",
+		Memory:            "256Mi",
+		Port:              8080,
+		Strategy:          "rolling",
+		RollingMaxSurge:   "25%",
+		RollingMaxUnavail: "25%",
+		SetFlags: map[string]bool{
+			flagCPURequest: true, flagCPULimit: true, flagMemory: true,
+			flagPort: true, flagStrategy: true, flagRollingMaxSurge: true,
+			flagRollingMaxUnavail: true,
+		},
+	}
+
+	got := mergeConfig(in, cfg)
+	if got.CPURequest != "250m" || got.CPULimit != "1" || got.Memory != "256Mi" || got.Port != 8080 {
+		t.Fatalf("resource flags were overwritten by config: %+v", got.DeployInput)
+	}
+	if got.Strategy != "rolling" || got.RollingMaxSurge != "25%" || got.RollingMaxUnavail != "25%" {
+		t.Fatalf("rollout flags were overwritten by config: %+v", got.DeployInput)
+	}
+}
+
+func TestMergeConfigUsesConfiguredDockerfileWhenFlagIsUnset(t *testing.T) {
+	cfg := &config.ProjectConfig{Build: config.BuildConfig{Dockerfile: "Dockerfile.prod"}}
+
+	got := mergeConfig(DeployInput{
+		Dockerfile: "Dockerfile",
+		SetFlags:   map[string]bool{},
+	}, cfg)
+
+	if got.Dockerfile != "Dockerfile.prod" {
+		t.Fatalf("Dockerfile = %q, want Dockerfile.prod", got.Dockerfile)
+	}
+}
+
+func TestMergeConfigExplicitDefaultDockerfileTakesPrecedence(t *testing.T) {
+	cfg := &config.ProjectConfig{Build: config.BuildConfig{Dockerfile: "Dockerfile.prod"}}
+
+	got := mergeConfig(DeployInput{
+		Dockerfile: "Dockerfile",
+		SetFlags:   map[string]bool{flagDockerfile: true},
+	}, cfg)
+
+	if got.Dockerfile != "Dockerfile" {
+		t.Fatalf("Dockerfile = %q, want explicit Dockerfile", got.Dockerfile)
+	}
+}
+
+func TestMergeConfigUsesMulticlusterBackupConfiguration(t *testing.T) {
+	cfg := &config.ProjectConfig{Multicluster: config.MulticlusterConfig{
+		Enabled:               true,
+		Mode:                  "active-active",
+		BackupEnabled:         false,
+		BackupSchedule:        "hourly",
+		BackupRetention:       "72h",
+		BackupPriorityCluster: 2,
+	}}
+
+	got := mergeConfig(DeployInput{
+		MulticlusterMode: "active-passive",
+		BackupEnabled:    true,
+		BackupSchedule:   "daily",
+		BackupRetention:  "168h",
+		BackupPriority:   1,
+		SetFlags:         map[string]bool{},
+	}, cfg)
+
+	if !got.Multicluster || got.MulticlusterMode != "active-active" {
+		t.Fatalf("multicluster = %v mode = %q", got.Multicluster, got.MulticlusterMode)
+	}
+	if got.BackupEnabled || got.BackupSchedule != "hourly" || got.BackupRetention != "72h" || got.BackupPriority != 2 {
+		t.Fatalf("backup config not applied: enabled=%v schedule=%q retention=%q priority=%d",
+			got.BackupEnabled, got.BackupSchedule, got.BackupRetention, got.BackupPriority)
+	}
+}
+
+func TestMergeConfigExplicitBackupDefaultsTakePrecedence(t *testing.T) {
+	cfg := &config.ProjectConfig{Multicluster: config.MulticlusterConfig{
+		Enabled: true, BackupEnabled: false, BackupSchedule: "hourly",
+		BackupRetention: "72h", BackupPriorityCluster: 2,
+	}}
+
+	got := mergeConfig(DeployInput{
+		BackupEnabled: true, BackupSchedule: "daily", BackupRetention: "168h", BackupPriority: 1,
+		SetFlags: map[string]bool{
+			flagBackupEnabled: true, flagBackupSchedule: true,
+			flagBackupRetention: true, flagBackupPriority: true,
+		},
+	}, cfg)
+
+	if !got.BackupEnabled || got.BackupSchedule != "daily" || got.BackupRetention != "168h" || got.BackupPriority != 1 {
+		t.Fatalf("explicit backup flags were overwritten: enabled=%v schedule=%q retention=%q priority=%d",
+			got.BackupEnabled, got.BackupSchedule, got.BackupRetention, got.BackupPriority)
+	}
+}
+
+func TestMergeConfigSuppliesAutoscalingAndDisruptionValues(t *testing.T) {
+	cfg := &config.ProjectConfig{
+		HPA: config.HPAConfig{Enabled: true, MinReplicas: 3, MaxReplicas: 20, CPUTarget: 60, MemoryTarget: 70},
+		VPA: config.VPAConfig{Enabled: true, Mode: "Initial", MinCPU: "100m", MaxCPU: "2", MinMemory: "128Mi", MaxMemory: "2Gi"},
+		PDB: config.PDBConfig{Enabled: true, Type: "fixed", MinAvailable: 2},
+	}
+	merged := mergeConfig(DeployInput{
+		Image: "registry.example/api:v1", HPAMinReplicas: 1, HPAMaxReplicas: 10,
+		HPACPUCoreTarget: 80, VPAMode: "Off", PDBType: "auto", Strategy: "rolling", SetFlags: map[string]bool{},
+	}, cfg)
+
+	opts, err := prepareDeploymentOptions(merged, cfg)
+	if err != nil {
+		t.Fatalf("prepareDeploymentOptions: %v", err)
+	}
+	if opts.HPAConfig == nil || opts.HPAConfig.MinReplicas != 3 || opts.HPAConfig.MaxReplicas != 20 ||
+		opts.HPAConfig.CPUTarget == nil || *opts.HPAConfig.CPUTarget != 60 ||
+		opts.HPAConfig.MemoryTarget == nil || *opts.HPAConfig.MemoryTarget != 70 {
+		t.Fatalf("HPA config = %+v", opts.HPAConfig)
+	}
+	if opts.VPAConfig == nil || opts.VPAConfig.UpdateMode != "Initial" || opts.VPAConfig.MinCPU != "100m" || opts.VPAConfig.MaxMemory != "2Gi" {
+		t.Fatalf("VPA config = %+v", opts.VPAConfig)
+	}
+	if opts.PDBConfig == nil || opts.PDBConfig.Type != "fixed" || opts.PDBConfig.MinAvailable == nil || *opts.PDBConfig.MinAvailable != 2 {
+		t.Fatalf("PDB config = %+v", opts.PDBConfig)
+	}
+}

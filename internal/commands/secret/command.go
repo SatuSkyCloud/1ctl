@@ -15,6 +15,7 @@ const (
 	flagConfig       = "config"
 	flagName         = "name"
 	flagKV           = "kv"
+	flagFromFile     = "from-file"
 	flagKey          = "key"
 	flagID           = "id"
 )
@@ -27,6 +28,7 @@ type secretCreateInput struct {
 	Config       string
 	Name         string
 	KV           []string
+	FromFile     string
 	Args         []string // positional args (KEY=VALUE pairs)
 }
 
@@ -95,6 +97,11 @@ func secretCreateCommand() *cli.Command {
 				Aliases:     []string{"env"},
 				Usage:       "Secret key-value pairs (format: KEY=VALUE)",
 				Destination: &in.KV,
+			},
+			&cli.StringFlag{
+				Name:        flagFromFile,
+				Usage:       "Read secret key-value pairs from an owner-only KEY=VALUE file",
+				Destination: &in.FromFile,
 			},
 		},
 		Action: func(ctx context.Context, cmd *cli.Command) error {

@@ -121,7 +121,12 @@ func SubmitBuild(contextTarPath, projectName, dockerfilePath, builder string, bu
 	if err != nil {
 		return "", utils.NewError(fmt.Sprintf("failed to read build response: %s", err.Error()), nil)
 	}
-	if resp.StatusCode != http.StatusOK && resp.StatusCode != http.StatusCreated {
+	// A cloud build is queued, not performed, so the server answers 202 Accepted
+	// with the build ID to poll. Accept the whole 2xx range rather than a list of
+	// codes: the meaningful question is whether the submission was accepted, and
+	// enumerating codes made a correct async response read as a failure while the
+	// build ran on regardless.
+	if resp.StatusCode < http.StatusOK || resp.StatusCode >= http.StatusMultipleChoices {
 		var apiErr APIError
 		if jsonErr := json.Unmarshal(respBody, &apiErr); jsonErr == nil && apiErr.Message != "" {
 			return "", utils.NewError(fmt.Sprintf("build submission failed: %s", apiErr.Message), nil)
@@ -138,6 +143,11 @@ func SubmitBuild(contextTarPath, projectName, dockerfilePath, builder string, bu
 	}
 	if apiResp.Error {
 		return "", utils.NewError("build submission rejected by server", nil)
+	}
+	// Without this an accepted-but-empty response returns a blank ID and the
+	// caller polls /builds//status forever instead of reporting the problem.
+	if strings.TrimSpace(apiResp.Data.BuildID) == "" {
+		return "", utils.NewError("build was accepted but the server returned no build ID", nil)
 	}
 	return apiResp.Data.BuildID, nil
 }

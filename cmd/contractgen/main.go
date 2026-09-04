@@ -33,6 +33,7 @@ var apiTypeFiles = []string{
 	"cluster.go",
 	"credits.go",
 	"deployment_intent.go",
+	"events.go",
 	"logs.go",
 	"marketplace.go",
 	"marketplace_publisher.go",

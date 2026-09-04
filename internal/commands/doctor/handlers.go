@@ -22,7 +22,11 @@ type doctorReport struct {
 	Zones        int                      `json:"zones"`
 	Clusters     int                      `json:"clusters"`
 	Deployments  []doctorDeploymentReport `json:"deployments"`
-	Issues       []string                 `json:"issues,omitempty"`
+	// Always emitted, and always an array. With omitempty a healthy run
+	// dropped the key entirely, so `jq '.issues[]'` failed with "Cannot
+	// iterate over null" on exactly the runs a caller most wants to script.
+	// An empty issues list is meaningful output for a diagnostic.
+	Issues []string `json:"issues"`
 }
 
 type doctorDeploymentReport struct {
@@ -55,6 +59,11 @@ func handleDoctor(ctx context.Context, in doctorInput) error {
 		UserEmail:    user.Email,
 		Organization: user.Organization,
 		Namespace:    namespace,
+		// Non-nil so an empty result encodes as [] rather than null. These are
+		// nested fields, which the top-level TryPrintJSON normalization does
+		// not reach.
+		Deployments: []doctorDeploymentReport{},
+		Issues:      []string{},
 	}
 
 	if zones, err := api.GetAvailableZones(); err != nil {
@@ -110,6 +119,7 @@ func handleDoctor(ctx context.Context, in doctorInput) error {
 			}
 		}
 
+		report.Issues = append(report.Issues, deploymentHealthIssues(entry)...)
 		report.Deployments = append(report.Deployments, entry)
 	}
 
@@ -153,7 +163,10 @@ func handleDoctor(ctx context.Context, in doctorInput) error {
 					}
 				}
 			} else {
-				utils.PrintStatusLine("  Domain", "not attached")
+				// Deliberately not "not attached": that phrase is reserved for
+				// a route that failed to attach, which is an issue. A
+				// deployment with no domain at all is a valid private app.
+				utils.PrintStatusLine("  Domain", "none")
 			}
 		}
 	}
@@ -168,6 +181,60 @@ func handleDoctor(ctx context.Context, in doctorInput) error {
 
 	utils.PrintSuccess("No issues found")
 	return nil
+}
+
+// deploymentHealthIssues inspects the signals Doctor already renders and
+// reports the ones that describe a broken deployment.
+//
+// Without this, Issues only ever collected transport errors from the calls
+// above, so an app could print "Route: not attached", "DNS: propagating" and
+// "HTTP: unreachable" and still be summarized as "No issues found" with a
+// zero exit code. A diagnostic that contradicts its own output is worse than
+// no diagnostic.
+func deploymentHealthIssues(entry doctorDeploymentReport) []string {
+	var issues []string
+	label := entry.AppLabel
+
+	// Terminal reconciliation states. Transient states (pending, reconciling)
+	// are not flagged: Doctor is often run while a rollout is still settling.
+	switch strings.ToLower(strings.TrimSpace(entry.Status)) {
+	case "failed":
+		issues = append(issues, fmt.Sprintf("%s deployment status: failed", label))
+	case "deletion_failed":
+		issues = append(issues, fmt.Sprintf("%s deployment status: deletion_failed", label))
+	}
+
+	if entry.Domain == "" || entry.DomainStatus == nil {
+		return issues
+	}
+
+	// An unattached route means the hostname reaches nothing, whatever the
+	// pods are doing.
+	if !entry.DomainStatus.Route.Attached {
+		issues = append(issues, fmt.Sprintf("%s route: %s", label, domainRouteText(entry.DomainStatus.Route)))
+	}
+
+	// Mirrors the readiness rule used elsewhere in the CLI: a typed condition
+	// is authoritative when present, otherwise the legacy resolved status is.
+	// not_configured is skipped — a deployment may legitimately have no DNS
+	// target reserved yet.
+	dns := entry.DomainStatus.DNS
+	if dns.Condition != nil {
+		if dns.Condition.Status != api.DNSConditionStatusVerified {
+			issues = append(issues, fmt.Sprintf("%s dns: %s", label, domainDNSText(dns)))
+		}
+	} else if dns.Status == api.DNSStatusPropagating {
+		issues = append(issues, fmt.Sprintf("%s dns: %s", label, domainDNSText(dns)))
+	}
+
+	// Doctor always requests the probe, so Checked is true on its own path.
+	// The guard is defensive: a DomainStatus obtained without probing must not
+	// be read as "unreachable" when it simply was not measured.
+	if entry.DomainStatus.Reachability.Checked && !entry.DomainStatus.Reachability.Reachable {
+		issues = append(issues, fmt.Sprintf("%s http: %s", label, domainHTTPText(entry.DomainStatus.Reachability)))
+	}
+
+	return issues
 }
 
 // --- Target resolution --------------------------------------------------

@@ -49,7 +49,7 @@ from the self-contained chart. Publication is private by default; do not add
 
 ```bash
 cd /path/to/1ctl
-go build -o bin/1ctl ./cmd/...
+go build -o bin/1ctl ./cmd/1ctl
 
 bin/1ctl package create \
   --chart examples/marketplace-wordpress/chart \

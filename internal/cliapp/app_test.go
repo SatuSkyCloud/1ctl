@@ -7,14 +7,14 @@ import (
 )
 
 func TestValidateOutputFormat(t *testing.T) {
-	for _, format := range []string{"table", "json"} {
+	for _, format := range []string{"table", "wide", "json"} {
 		if err := validateOutputFormat(format); err != nil {
 			t.Errorf("validateOutputFormat(%q) error = %v", format, err)
 		}
 	}
 
 	err := validateOutputFormat("yaml")
-	if err == nil || !strings.Contains(err.Error(), "expected table or json") {
+	if err == nil || !strings.Contains(err.Error(), "expected table, wide or json") {
 		t.Fatalf("validateOutputFormat(\"yaml\") error = %v, want supported formats", err)
 	}
 }

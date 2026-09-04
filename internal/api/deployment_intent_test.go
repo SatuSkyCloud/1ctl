@@ -100,3 +100,45 @@ func TestCreateDeploymentIntentDoesNotRetryConflict(t *testing.T) {
 		t.Fatalf("attempts = %d, want 1", attempts)
 	}
 }
+
+func TestScaleDeploymentContractAndRetryIdempotency(t *testing.T) {
+	deploymentID := uuid.NewString()
+	requestID := uuid.NewString()
+	attempts := 0
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		attempts++
+		if r.Method != http.MethodPost || r.URL.Path != "/v1/cli/deployments/"+deploymentID+"/scale" {
+			t.Fatalf("request = %s %s", r.Method, r.URL.Path)
+		}
+		if got := r.Header.Get(requestIDHeader); got != requestID {
+			t.Fatalf("%s = %q, want %q", requestIDHeader, got, requestID)
+		}
+		var body map[string]any
+		if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+			t.Fatal(err)
+		}
+		if len(body) != 1 || body["replicas"] != float64(3) {
+			t.Fatalf("scale body = %#v, want only replicas=3; complete deployment state must not be replaced", body)
+		}
+		if attempts == 1 {
+			w.WriteHeader(http.StatusServiceUnavailable)
+			_, _ = fmt.Fprint(w, `{"message":"try again"}`)
+			return
+		}
+		w.WriteHeader(http.StatusAccepted)
+		_, _ = fmt.Fprintf(w, `{"error":false,"data":{"deployment_id":%q,"replicas":3},"desired_generation":9}`, deploymentID)
+	}))
+	defer server.Close()
+	configureAdminAPITestContext(t, server.URL+"/v1/cli")
+
+	accepted, err := ScaleDeployment(deploymentID, 3, requestID)
+	if err != nil {
+		t.Fatalf("ScaleDeployment: %v", err)
+	}
+	if attempts != 2 {
+		t.Fatalf("attempts = %d, want 2", attempts)
+	}
+	if accepted.Data.DeploymentID != deploymentID || accepted.Data.Replicas != 3 || accepted.DesiredGeneration != 9 {
+		t.Fatalf("accepted = %+v", accepted)
+	}
+}
