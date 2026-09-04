@@ -71,6 +71,10 @@ release:
 changelog:
   disable: false
 
+# 1ctl is published as a Homebrew CASK (not a formula) on purpose.
+# GoReleaser deprecated `brews` (formulas) in favor of `homebrew_casks` for
+# pre-compiled binaries. Install with:
+#   brew install --cask SatuSkyCloud/tap/satuctl
 homebrew_casks:
   - name: satuctl
     ids:
