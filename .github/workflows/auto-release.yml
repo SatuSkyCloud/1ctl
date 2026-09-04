@@ -12,6 +12,11 @@ on:
 # Creates the next release tag from the top RELEASE_NOTES.md entry. The
 # successful main CI commit is tagged exactly; the tag-triggered release
 # workflow is the single publisher for binaries and contract artifacts.
+#
+# The tag is pushed with a dedicated token (RELEASE_TAG_TOKEN) rather than the
+# default GITHUB_TOKEN: GitHub does not create new workflow runs for events
+# triggered by GITHUB_TOKEN, so a GITHUB_TOKEN tag push would never trigger the
+# release.yml tag workflow. A PAT/App token push does trigger it.
 
 permissions:
   contents: write
@@ -30,6 +35,7 @@ jobs:
         with:
           fetch-depth: 0
           ref: ${{ github.event.workflow_run.head_sha }}
+          token: ${{ secrets.RELEASE_TAG_TOKEN }}
 
       - name: Resolve release tag
         id: release
