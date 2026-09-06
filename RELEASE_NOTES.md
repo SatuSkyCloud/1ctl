@@ -1,5 +1,44 @@
 # Release Notes
 
+## Version 0.13.0 (07-09-2026)
+
+Managed Convex, deployment readiness and machine-readable output fixes.
+
+* Add `1ctl convex create/list/get/status/connection/credentials/redeploy/delete`
+  for managed Convex with isolated Spaces provisioning. Engine checks prevent
+  accidental mutations of other database types; ambiguous names fail closed.
+  Connection output hides secrets, general output omits legacy annotations,
+  and JSON deletion requires `--yes`. Provisioning remains asynchronous and
+  workload status does not claim public DNS/HTTPS verification.
+* Document repeatable curl upgrades, checksum verification, published-release
+  selection and PATH conflicts with Homebrew. macOS signing remains deferred.
+
+* JSON deployment deletion requires explicit `--yes`, sends resource previews
+  to stderr, and keeps stdout limited to the backend deletion operation.
+
+* `deploy --wait` checks DNS and route readiness for the actual requested
+  hostname, retries pending observations within a bounded deadline, and rejects
+  status returned for a different hostname. Workload readiness alone does not
+  prove a public URL is ready.
+* Public health verification rediscovers ingress while reconciliation is in
+  progress instead of relying on an early, incomplete route lookup.
+* Atomic `deploy --wait -o json` waits for the result and emits one JSON result;
+  deployment progress no longer contaminates stdout, and remote-build logs go
+  to stderr in JSON mode. `application_verification.source=client_public_http`
+  distinguishes a successful CLI public-health probe from backend observations.
+* Marketplace deployment acceptance remains asynchronous: a queued deployment
+  is not reported as ready or treated as a failed strict health check. JSON mode
+  emits the accepted response as one JSON document without table output.
+* Marketplace `--hostname` resolves machine names to stable IDs and deduplicates
+  selections; explicit machine IDs remain supported. Server ownership and
+  placement eligibility checks still apply.
+* Update the PostgreSQL example to pgx 5.9.2, removing its outdated x/crypto
+  dependency; align its build image with the CLI CI Go toolchain.
+
+Operational note: validate against the dev backend's DNS/readiness fixes before
+merging. Main CI automatically tags this version and starts release publishing;
+the PR is the release gate. Existing instances are not redeployed by a CLI update.
+
 ## Version 0.12.0 (04-09-2026)
 
 Interactive AI developer copilot: `1ctl chat`.

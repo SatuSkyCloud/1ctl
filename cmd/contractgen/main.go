@@ -31,6 +31,7 @@ var apiTypeFiles = []string{
 	"audit.go",
 	"build.go",
 	"cluster.go",
+	"convex.go",
 	"credits.go",
 	"deployment_intent.go",
 	"events.go",

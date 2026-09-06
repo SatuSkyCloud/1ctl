@@ -2,7 +2,11 @@ package marketplace
 
 import (
 	"context"
+	"encoding/hex"
 	"fmt"
+	"strings"
+
+	"github.com/google/uuid"
 
 	"1ctl/internal/api"
 	satuskyctx "1ctl/internal/context"
@@ -107,10 +111,14 @@ func handleMarketplaceDeploy(ctx context.Context, in marketplaceDeployInput) err
 	if deployName == "" {
 		deployName = app.MarketplaceName
 	}
+	machineIDs, err := resolveMarketplaceMachineReferences(in.Hostnames, api.GetMachineByName)
+	if err != nil {
+		return err
+	}
 
 	req := api.MarketplaceDeployRequest{
 		DeploymentName: deployName,
-		Hostnames:      in.Hostnames,
+		Hostnames:      machineIDs,
 		CPURequest:     in.CPU,
 		MemoryRequest:  in.Memory,
 		StorageSize:    in.StorageSize,
@@ -122,8 +130,40 @@ func handleMarketplaceDeploy(ctx context.Context, in marketplaceDeployInput) err
 	}
 
 	// Marketplace create returns 202 Accepted: the request was queued, not made ready.
+	if utils.TryPrintJSON(resp) {
+		return nil
+	}
 	return deploypkg.ReportDeployResult(resp.AppLabel, resp.DeploymentID.String(), resp.Domain,
-		deploypkg.PublicURLReadiness{Ready: false, Reason: "deployment accepted; readiness was not verified"}, "", true)
+		deploypkg.PublicURLReadiness{Ready: false, Reason: "deployment accepted; readiness was not verified"}, "", false)
+}
+
+func resolveMarketplaceMachineReferences(references []string, lookup func(string) (*api.Machine, error)) ([]string, error) {
+	var result []string
+	seen := make(map[string]bool)
+	for _, reference := range references {
+		reference = strings.TrimSpace(reference)
+		if reference == "" {
+			return nil, fmt.Errorf("machine hostname must not be empty")
+		}
+		id := reference
+		raw, hexErr := hex.DecodeString(reference)
+		_, uuidErr := uuid.Parse(reference)
+		if (hexErr != nil || len(raw) != 16) && uuidErr != nil {
+			machine, err := lookup(reference)
+			if err != nil {
+				return nil, fmt.Errorf("resolve marketplace machine %q: %w", reference, err)
+			}
+			if machine == nil || machine.MachineID == "" {
+				return nil, fmt.Errorf("machine %q has no stable ID", reference)
+			}
+			id = machine.MachineID
+		}
+		if !seen[id] {
+			seen[id] = true
+			result = append(result, id)
+		}
+	}
+	return result, nil
 }
 
 // marketplaceAvailability answers "can I deploy this right now?".

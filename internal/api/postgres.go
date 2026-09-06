@@ -61,6 +61,7 @@ type StorageConfig struct {
 	ReplicationMode    *string           `json:"replication_mode,omitempty"`
 	PersistenceEnabled *bool             `json:"persistence_enabled,omitempty"`
 	Valkey             *ValkeyConfig     `json:"valkey,omitempty"`
+	Convex             *ConvexConfig     `json:"convex,omitempty"`
 	AdminUIEnabled     *bool             `json:"admin_ui_enabled,omitempty"`
 	Labels             map[string]string `json:"labels,omitempty"`
 	Annotations        map[string]string `json:"annotations,omitempty"`

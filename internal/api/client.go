@@ -715,7 +715,7 @@ func WaitForDeploymentWithOptions(deploymentID string, timeout time.Duration, op
 			if !strings.EqualFold(generationStatus.Status, "running") {
 				// Announced once. This loop polls for minutes, and repeating an
 				// identical line per tick hides the outcome the user is waiting for.
-				if !generationAnnounced {
+				if !generationAnnounced && !utils.IsJSONOutput() {
 					utils.PrintInfo("Waiting for generation %d to reconcile...", options.Generation)
 					generationAnnounced = true
 				}
@@ -725,16 +725,26 @@ func WaitForDeploymentWithOptions(deploymentID string, timeout time.Duration, op
 		}
 
 		evaluation := status.readinessEvaluation(mode)
+		if mode == DeploymentWaitModeApplication && options.VerifyApplication != nil {
+			statusErr, unverified := evaluation.TerminalError.(*HTTPStatusError)
+			canProbe := evaluation.Ready || (unverified && statusErr.Code == "READINESS_UNVERIFIED")
+			if canProbe {
+				if options.VerifyApplication() {
+					status.Progress = 100
+					return status, nil
+				}
+				// A supplied health endpoint is an explicit requirement. A ready
+				// pod must not skip it, nor may a pending DNS record fail it once
+				// and abort before the route has had a chance to converge.
+				evaluation = deploymentReadinessEvaluation{Reason: "waiting for verified public health endpoint"}
+			}
+		}
 		if evaluation.Ready {
 			status.Progress = 100
 			return status, nil
 		}
 		if evaluation.TerminalError != nil {
 			statusErr, isReadinessStatus := evaluation.TerminalError.(*HTTPStatusError)
-			if mode == DeploymentWaitModeApplication && options.VerifyApplication != nil && isReadinessStatus && statusErr.Code == "READINESS_UNVERIFIED" && options.VerifyApplication() {
-				status.Progress = 100
-				return status, nil
-			}
 			if !isReadinessStatus || statusErr.Code == "READINESS_UNVERIFIED" {
 				return status, evaluation.TerminalError
 			}
@@ -751,12 +761,7 @@ func WaitForDeploymentWithOptions(deploymentID string, timeout time.Duration, op
 			terminalFailureCode = ""
 			terminalFailureCount = 0
 		}
-		if mode == DeploymentWaitModeApplication && options.VerifyApplication != nil && options.VerifyApplication() {
-			status.Progress = 100
-			return status, nil
-		}
-
-		if evaluation.Reason != "" {
+		if evaluation.Reason != "" && !utils.IsJSONOutput() {
 			utils.PrintInfo("Deployment readiness: %s", evaluation.Reason)
 		}
 		remaining := time.Until(deadline)
@@ -1079,6 +1084,12 @@ func GetIngressByDeploymentID(deploymentID string) (*Ingress, error) {
 
 // GetDomainStatus returns consolidated backend, route, DNS, TLS, and optional HTTP status.
 func GetDomainStatus(ingressID, domain string, probe bool) (*DomainStatusResponse, error) {
+	return GetDomainStatusWithTimeout(ingressID, domain, probe, 0)
+}
+
+// GetDomainStatusWithTimeout bounds a polling request by the caller's remaining
+// wait budget without changing the shared client's timeout for other commands.
+func GetDomainStatusWithTimeout(ingressID, domain string, probe bool, timeout time.Duration) (*DomainStatusResponse, error) {
 	query := url.Values{}
 	if domain != "" {
 		query.Set("domain", domain)
@@ -1095,8 +1106,16 @@ func GetDomainStatus(ingressID, domain string, probe bool) (*DomainStatusRespons
 		Error bool                 `json:"error"`
 		Data  DomainStatusResponse `json:"data"`
 	}
-	if err := makeRequest("GET", path, nil, &resp); err != nil {
+	client := *httpClient
+	if timeout > 0 && (client.Timeout == 0 || timeout < client.Timeout) {
+		client.Timeout = timeout
+	}
+	apiURL := fmt.Sprintf("%s%s", config.GetConfig().ApiURL, path)
+	if _, err := makeRequestURLWithHeadersOnceUsingClient(&client, "GET", apiURL, nil, &resp, nil, false); err != nil {
 		return nil, err
+	}
+	if resp.Error {
+		return nil, utils.NewError("backend could not determine domain status", nil)
 	}
 	return &resp.Data, nil
 }

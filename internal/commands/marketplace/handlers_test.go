@@ -2,6 +2,7 @@ package marketplace
 
 import (
 	stdcontext "context"
+	"encoding/json"
 	"errors"
 	"io"
 	"net/http"
@@ -193,6 +194,38 @@ func TestMarketplaceGetPrintsResolvedAppAsJSON(t *testing.T) {
 	}
 	if strings.Contains(output, "Marketplace App:") {
 		t.Fatalf("table output leaked into JSON mode: %q", output)
+	}
+}
+
+func TestMarketplaceDeployPrintsAcceptedResponseAsJSON(t *testing.T) {
+	marketplaceID, deploymentID := uuid.NewString(), uuid.NewString()
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case "/v1/marketplaces/all":
+			_, _ = io.WriteString(w, `{"error":false,"data":[{"marketplace_id":"`+marketplaceID+`","marketplace_name":"demo","deployable":true}]}`)
+		case "/v1/marketplaces/deploy/create/tenant-a/" + marketplaceID:
+			w.WriteHeader(http.StatusAccepted)
+			_, _ = io.WriteString(w, `{"error":false,"data":{"deployment_id":"`+deploymentID+`","app_label":"demo","domain":"demo.example.com","status":"deploying"}}`)
+		default:
+			http.NotFound(w, r)
+		}
+	}))
+	defer server.Close()
+	setupMarketplaceHandlerTest(t, server.URL)
+	utils.SetOutputFormat("json")
+	t.Cleanup(func() { utils.SetOutputFormat("table") })
+	output, err := captureMarketplaceStdout(t, func() error {
+		return handleMarketplaceDeploy(stdcontext.Background(), marketplaceDeployInput{AppName: "demo"})
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	var response api.MarketplaceDeployResponse
+	if err := json.Unmarshal([]byte(output), &response); err != nil {
+		t.Fatalf("output must be one JSON document: %v; output=%q", err, output)
+	}
+	if response.DeploymentID.String() != deploymentID || response.Status != "deploying" {
+		t.Fatalf("accepted response changed or claimed readiness: %+v", response)
 	}
 }
 

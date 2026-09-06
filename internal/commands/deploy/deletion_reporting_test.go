@@ -1,8 +1,11 @@
 package deploy
 
 import (
+	"context"
 	"encoding/json"
 	"io"
+	"net/http"
+	"net/http/httptest"
 	"os"
 	"strings"
 	"testing"
@@ -10,6 +13,43 @@ import (
 	"1ctl/internal/api"
 	"1ctl/internal/utils"
 )
+
+func TestDestroyJSONRequiresConfirmationAndEmitsOnlyOperation(t *testing.T) {
+	const id = "3b521364-98b0-4787-bd07-a311bff3f223"
+	deletes := 0
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method == http.MethodDelete && r.URL.Path == "/v1/deployments/"+id {
+			deletes++
+			w.WriteHeader(http.StatusAccepted)
+			_, _ = io.WriteString(w, `{"data":{"deployment_id":"`+id+`","status":"requested","terminal":false}}`)
+			return
+		}
+		http.NotFound(w, r)
+	}))
+	defer server.Close()
+	setupDeploymentStatusTest(t, server.URL)
+	output := captureDeletionOutput(t, "json", func() {
+		err := handleDestroyDeployment(context.Background(), DestroyInput{DeploymentID: id, RetainVolumes: true, NoWait: true})
+		if err == nil || !strings.Contains(err.Error(), "--yes") {
+			t.Fatalf("expected explicit confirmation error, got %v", err)
+		}
+	})
+	if output != "" || deletes != 0 {
+		t.Fatalf("unconfirmed deletion wrote output or mutated: %q, %d", output, deletes)
+	}
+	output = captureDeletionOutput(t, "json", func() {
+		if err := handleDestroyDeployment(context.Background(), DestroyInput{DeploymentID: id, RetainVolumes: true, NoWait: true, Yes: true}); err != nil {
+			t.Fatal(err)
+		}
+	})
+	var operation api.DeploymentDeletionOperation
+	if err := json.Unmarshal([]byte(output), &operation); err != nil {
+		t.Fatalf("output must be a single JSON document: %v; %q", err, output)
+	}
+	if deletes != 1 || operation.Status != "requested" || operation.Terminal {
+		t.Fatalf("accepted deletion was misreported: %+v, calls=%d", operation, deletes)
+	}
+}
 
 func TestPrintDeploymentDeletionOperationReportsPendingAndFailedDurableStates(t *testing.T) {
 	pending := captureDeletionOutput(t, "table", func() {

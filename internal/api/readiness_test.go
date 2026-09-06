@@ -112,7 +112,9 @@ func TestWaitForDeploymentUsesLiveReadinessAndCompatibilityModes(t *testing.T) {
 		{name: "default does not accept running unverified", status: ptrReadinessStatus("unknown", "current", "available")},
 		{name: "old endpoint does not accept legacy running", liveNotFound: true},
 		{name: "failing has stable code", status: ptrReadinessStatus("failing", "current", "available"), wantCode: "READINESS_FAILED"},
-		{name: "health verifier only succeeds when positive", liveNotFound: true, verify: func() bool { return true }, wantSuccess: true},
+		{name: "public health cannot replace missing workload evidence", liveNotFound: true, verify: func() bool { return true }},
+		{name: "public health verifies an unconfigured probe after workload readiness", status: ptrReadinessStatus("unconfigured", "current", "available"), verify: func() bool { return true }, wantSuccess: true},
+		{name: "configured public health is required even with verified pod readiness", status: ptrReadinessStatus("verified", "current", "available"), verify: func() bool { return false }},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {

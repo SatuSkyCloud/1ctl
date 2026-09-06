@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"net/http"
+	"os"
 	"regexp"
 	"strconv"
 	"strings"
@@ -63,7 +64,7 @@ func handleDeploy(ctx context.Context, in DeployInput) error {
 	if resp != nil && resp.IngressID != uuid.Nil {
 		ingressID = resp.IngressID.String()
 	}
-	publicURL := deploypkg.WaitForPublicURL(ingressID, resp.Domain)
+	publicURL := deploypkg.PublicURLReadiness{Reason: "public URL has not been checked"}
 	if merged.Wait {
 		mode, err := api.ValidateDeploymentWaitMode(merged.WaitMode)
 		if err != nil {
@@ -73,14 +74,8 @@ func handleDeploy(ctx context.Context, in DeployInput) error {
 			utils.PrintWarning("--wait-mode workload bypasses application verification; success only means the reconciled workload is available.")
 		}
 		waitOptions := api.DeploymentWaitOptions{Mode: mode}
-		if mode == api.DeploymentWaitModeApplication && merged.HealthPath != "" && publicURL.Ready && resp.Domain != "" {
-			waitOptions.VerifyApplication = func() bool {
-				// The regular non-strict smoke accepts 401/403/404 as evidence of
-				// reachability. That is useful for reporting, but only a successful
-				// health-path response may satisfy application verification.
-				smoke := deploypkg.CheckPublicURLSmoke("https://"+resp.Domain, deploypkg.SmokePathCandidates(merged.HealthPath), true)
-				return smoke.Ready
-			}
+		if mode == api.DeploymentWaitModeApplication && merged.HealthPath != "" {
+			waitOptions.VerifyApplication = publicHealthVerifier(resp.DeploymentID.String(), merged.HealthPath)
 		}
 		final, waitErr := api.WaitForDeploymentWithOptions(resp.DeploymentID.String(), 5*time.Minute, waitOptions)
 		if waitErr != nil {
@@ -94,20 +89,28 @@ func handleDeploy(ctx context.Context, in DeployInput) error {
 			utils.PrintSuccess("Deployment %s application readiness is verified by successful public health check %s", resp.AppLabel, merged.HealthPath)
 		}
 	}
+	if resp.Domain != "" {
+		publicURL = deploypkg.WaitForPublicURL(ingressID, resp.Domain)
+		if merged.Wait && !publicURL.Ready {
+			return utils.NewError("deployment public URL remains unverified: "+publicURL.Reason, nil)
+		}
+	}
 	return deploypkg.ReportDeployResult(resp.AppLabel, resp.DeploymentID.String(), resp.Domain, publicURL, merged.HealthPath, merged.StrictSmoke)
 }
 
 func reportAtomicIntent(accepted *api.DeploymentIntentAccepted, wait bool, waitMode, healthPath string, strictSmoke bool) error {
-	if utils.TryPrintJSON(map[string]interface{}{"mode": "atomic", "intent": accepted}) {
+	if !wait && utils.TryPrintJSON(map[string]interface{}{"mode": "atomic", "intent": accepted}) {
 		return nil
 	}
-	utils.PrintStatusLine("Deployment path", "atomic intent")
-	utils.PrintStatusLine("Operation ID", accepted.OperationID)
-	utils.PrintStatusLine("Deployment ID", accepted.DeploymentID)
-	utils.PrintStatusLine("Generation", fmt.Sprintf("%d", accepted.Generation))
-	utils.PrintStatusLine("State", accepted.State)
-	if len(accepted.MissingRequiredSecrets) > 0 {
-		utils.PrintWarning("Required secret keys are not supplied by satusky.toml: %s", strings.Join(accepted.MissingRequiredSecrets, ", "))
+	if !utils.IsJSONOutput() {
+		utils.PrintStatusLine("Deployment path", "atomic intent")
+		utils.PrintStatusLine("Operation ID", accepted.OperationID)
+		utils.PrintStatusLine("Deployment ID", accepted.DeploymentID)
+		utils.PrintStatusLine("Generation", fmt.Sprintf("%d", accepted.Generation))
+		utils.PrintStatusLine("State", accepted.State)
+		if len(accepted.MissingRequiredSecrets) > 0 {
+			utils.PrintWarning("Required secret keys are not supplied by satusky.toml: %s", strings.Join(accepted.MissingRequiredSecrets, ", "))
+		}
 	}
 	if !wait {
 		utils.PrintInfo("Deployment intent was accepted and is pending reconciliation. Use --wait to observe readiness.")
@@ -117,41 +120,72 @@ func reportAtomicIntent(accepted *api.DeploymentIntentAccepted, wait bool, waitM
 	if err != nil {
 		return err
 	}
-	if mode == api.DeploymentWaitModeWorkload {
+	if mode == api.DeploymentWaitModeWorkload && !utils.IsJSONOutput() {
 		utils.PrintWarning("--wait-mode workload bypasses application verification; success only means the reconciled workload is available.")
 	}
 	waitOptions := api.DeploymentWaitOptions{Mode: mode, Generation: accepted.Generation}
 	var ingress *api.Ingress
-	var publicURL deploypkg.PublicURLReadiness
 	if mode == api.DeploymentWaitModeApplication && healthPath != "" {
-		ingress, err = api.GetIngressByDeploymentID(accepted.DeploymentID)
-		if err != nil {
-			return utils.NewError(fmt.Sprintf("deployment was accepted but public route lookup failed: %s", err.Error()), nil)
-		}
-		publicURL = deploypkg.WaitForPublicURL(ingress.IngressID.String(), ingress.DomainName)
-		if publicURL.Ready {
-			waitOptions.VerifyApplication = func() bool {
-				return deploypkg.CheckPublicURLSmoke(
-					"https://"+ingress.DomainName,
-					deploypkg.SmokePathCandidates(healthPath),
-					true,
-				).Ready
-			}
-		}
+		waitOptions.VerifyApplication = publicHealthVerifier(accepted.DeploymentID, healthPath)
 	}
 	final, err := api.WaitForDeploymentWithOptions(accepted.DeploymentID, 5*time.Minute, waitOptions)
 	if err != nil {
 		return err
 	}
+	structured := map[string]interface{}{"mode": "atomic", "intent": accepted, "readiness": final, "wait_mode": mode}
+	if mode == api.DeploymentWaitModeApplication && waitOptions.VerifyApplication != nil {
+		// The wait only succeeds after this callback passes. Keep the client
+		// proof separate from the server's potentially unconfigured probe state.
+		structured["application_verification"] = map[string]interface{}{
+			"source": "client_public_http", "verified": true, "health_path": healthPath,
+		}
+	}
 	if mode == api.DeploymentWaitModeWorkload {
+		if utils.TryPrintJSON(structured) {
+			return nil
+		}
 		utils.PrintSuccess("Deployment %s workload is available (%s); application readiness was not verified.", accepted.AppLabel, final.WorkloadStatus())
 		return nil
 	}
-	if ingress != nil {
+	ingress, err = api.GetIngressByDeploymentID(accepted.DeploymentID)
+	if err != nil {
+		var statusErr *api.HTTPStatusError
+		if !errors.As(err, &statusErr) || statusErr.StatusCode != http.StatusNotFound {
+			return fmt.Errorf("application is ready but public route lookup failed: %w", err)
+		}
+	}
+	if ingress != nil && ingress.DomainName != "" {
+		publicURL := deploypkg.WaitForPublicURL(ingress.IngressID.String(), ingress.DomainName)
+		if !publicURL.Ready {
+			return utils.NewError("application is ready but public URL remains unverified: "+publicURL.Reason, nil)
+		}
+		structured["public_url"] = map[string]interface{}{"domain": ingress.DomainName, "dns_and_route_verified": publicURL.Ready}
+		if utils.TryPrintJSON(structured) {
+			return nil
+		}
 		return deploypkg.ReportDeployResult(accepted.AppLabel, accepted.DeploymentID, ingress.DomainName, publicURL, healthPath, strictSmoke)
 	}
+	structured["public_url"] = map[string]interface{}{"dns_and_route_verified": false, "reason": "no public hostname observed"}
+	if utils.TryPrintJSON(structured) {
+		return nil
+	}
 	utils.PrintSuccess("Deployment %s application readiness is verified (%s)", accepted.AppLabel, final.ApplicationReadinessText())
+	utils.PrintInfo("No public hostname has been observed; external access was not verified.")
 	return nil
+}
+
+func publicHealthVerifier(deploymentID, healthPath string) func() bool {
+	return func() bool {
+		ingress, err := api.GetIngressByDeploymentID(deploymentID)
+		if err != nil || ingress == nil || ingress.DomainName == "" {
+			return false
+		}
+		status, err := api.GetDomainStatusWithTimeout(ingress.IngressID.String(), ingress.DomainName, false, 5*time.Second)
+		if err != nil || !deploypkg.PublicDomainReady(status, ingress.DomainName) {
+			return false
+		}
+		return deploypkg.CheckPublicURLSmoke("https://"+ingress.DomainName, deploypkg.SmokePathCandidates(healthPath), true).Ready
+	}
 }
 
 type mergedInput struct {
@@ -1024,6 +1058,9 @@ func handleDeploymentStatus(ctx context.Context, in StatusInput) error {
 // --- Destroy ------------------------------------------------------------
 
 func handleDestroyDeployment(ctx context.Context, in DestroyInput) error {
+	if utils.IsJSONOutput() && !in.Yes {
+		return utils.NewError("JSON deletion requires --yes; inspect the deployment before confirming deletion", nil)
+	}
 	if in.PurgeRetained && in.RetainVolumes {
 		return utils.NewError("--purge-retained conflicts with --retain-volumes", nil)
 	}
@@ -1050,13 +1087,23 @@ func handleDestroyDeployment(ctx context.Context, in DestroyInput) error {
 			if in.PurgeExplicit {
 				return utils.NewError("--purge-retained is only supported for marketplace-managed deployments; generic deployments must retain their resources", nil)
 			}
-			utils.PrintWarning("Retained resources are kept: purging is only supported for marketplace-managed deployments.")
+			if utils.IsJSONOutput() {
+				fmt.Fprintln(os.Stderr, "Retained resources are kept: purging is only supported for marketplace-managed deployments.")
+			} else {
+				utils.PrintWarning("Retained resources are kept: purging is only supported for marketplace-managed deployments.")
+			}
 			purgeRetained = false
 		}
 	}
 
 	preview, pErr := previewDeletion(deploymentID, purgeRetained)
-	if pErr == nil {
+	if utils.IsJSONOutput() {
+		if pErr == nil {
+			fmt.Fprintln(os.Stderr, strings.Join(preview, "\n"))
+		} else {
+			fmt.Fprintln(os.Stderr, "Could not preview deletion resources.")
+		}
+	} else if pErr == nil {
 		fmt.Println(strings.Join(preview, "\n"))
 		fmt.Println()
 	} else {
@@ -1072,7 +1119,9 @@ func handleDestroyDeployment(ctx context.Context, in DestroyInput) error {
 		return nil
 	}
 
-	utils.PrintInfo("Requesting deletion of deployment %s...", deploymentID)
+	if !utils.IsJSONOutput() {
+		utils.PrintInfo("Requesting deletion of deployment %s...", deploymentID)
+	}
 	operation, err := api.DeleteDeployment(deploymentID, purgeRetained)
 	if err != nil {
 		return utils.NewError(fmt.Sprintf("failed to delete deployment: %s", err.Error()), nil)
