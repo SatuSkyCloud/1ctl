@@ -16,6 +16,8 @@ Deployment readiness and machine-readable output fixes.
   distinguishes a successful CLI public-health probe from backend observations.
 * Marketplace deployment acceptance remains asynchronous: a queued deployment
   is not reported as ready or treated as a failed strict health check.
+* Update the PostgreSQL example to pgx 5.9.2, removing its outdated x/crypto
+  dependency; align its build image with the CLI CI Go toolchain.
 
 Operational note: validate against the dev backend's DNS/readiness fixes before
 merging. Main CI automatically tags this version and starts release publishing;
