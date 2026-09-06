@@ -1,7 +1,9 @@
 package deploy
 
 import (
+	"errors"
 	"fmt"
+	"net/http"
 	"strings"
 	"time"
 
@@ -18,10 +20,14 @@ type PublicURLReadiness struct {
 // WaitForPublicURL checks DNS propagation and domain readiness for a deployment
 // identified by its ingress ID and domain name. Localhost domains return
 // immediately because they are local-profile placeholders, not public DNS.
-// For other domains, an empty ingress ID skips the check.
+// Checks the requested hostname, not an ingress's potentially different alias.
 func WaitForPublicURL(ingressID, domain string) PublicURLReadiness {
+	return waitForPublicURL(ingressID, domain, 2*time.Minute, 3*time.Second, api.GetDomainStatusWithTimeout)
+}
+
+func waitForPublicURL(ingressID, domain string, timeout, interval time.Duration, fetch func(string, string, bool, time.Duration) (*api.DomainStatusResponse, error)) PublicURLReadiness {
 	if domain == "" {
-		return PublicURLReadiness{Ready: true}
+		return PublicURLReadiness{Reason: "deployment has no public hostname yet"}
 	}
 	if isLocalhostDomain(domain) {
 		return PublicURLReadiness{
@@ -30,29 +36,43 @@ func WaitForPublicURL(ingressID, domain string) PublicURLReadiness {
 		}
 	}
 	if ingressID == "" {
-		return PublicURLReadiness{Ready: true}
+		return PublicURLReadiness{Reason: "ingress metadata is not available yet"}
 	}
-
-	r := PublicURLReadiness{Ready: true}
-	if _, err := api.WaitForIngressDNSStatus(ingressID, 2*time.Minute); err != nil {
-		r.Ready = false
-		r.Reason = fmt.Sprintf("DNS propagation timed out: %s", err.Error())
-		utils.PrintWarning("DNS is still propagating for https://%s: %s", domain, err.Error())
-	}
-
-	status, err := api.GetDomainStatus(ingressID, domain, false)
-	if err != nil {
-		if r.Ready {
-			r.Ready = false
-			r.Reason = fmt.Sprintf("domain status unavailable: %s", err.Error())
+	deadline := time.Now().Add(timeout)
+	lastReason := "domain status has not been observed"
+	for time.Until(deadline) > 0 {
+		status, err := fetch(ingressID, domain, false, time.Until(deadline))
+		if err != nil {
+			lastReason = "domain status unavailable: " + err.Error()
+			var statusErr *api.HTTPStatusError
+			if errors.As(err, &statusErr) && statusErr.StatusCode >= 400 && statusErr.StatusCode < 500 && statusErr.StatusCode != http.StatusNotFound && statusErr.StatusCode != http.StatusTooManyRequests {
+				return PublicURLReadiness{Reason: lastReason}
+			}
+		} else if status != nil && (normalizeDomain(status.DomainName) != normalizeDomain(domain) || (status.DNS.Domain != "" && normalizeDomain(status.DNS.Domain) != normalizeDomain(domain))) {
+			lastReason = "backend returned status for a different or missing hostname"
+		} else if domainStatusReady(status) {
+			return PublicURLReadiness{Ready: true}
+		} else {
+			lastReason = domainStatusReason(status)
 		}
-		return r
+		delay := min(interval, time.Until(deadline))
+		if delay <= 0 {
+			break
+		}
+		time.Sleep(delay)
 	}
-	if !domainStatusReady(status) {
-		r.Ready = false
-		r.Reason = domainStatusReason(status)
-	}
-	return r
+	return PublicURLReadiness{Reason: fmt.Sprintf("timed out waiting for %s: %s", domain, lastReason)}
+}
+
+func normalizeDomain(domain string) string {
+	return strings.TrimSuffix(strings.ToLower(strings.TrimSpace(domain)), ".")
+}
+
+// PublicDomainReady binds readiness evidence to the requested hostname.
+func PublicDomainReady(status *api.DomainStatusResponse, domain string) bool {
+	return normalizeDomain(domain) != "" && status != nil &&
+		normalizeDomain(status.DomainName) == normalizeDomain(domain) &&
+		(status.DNS.Domain == "" || normalizeDomain(status.DNS.Domain) == normalizeDomain(domain)) && domainStatusReady(status)
 }
 
 func isLocalhostDomain(domain string) bool {
@@ -87,6 +107,9 @@ func ReportDeployResult(appLabel, deploymentID, domain string, ready PublicURLRe
 				utils.PrintStatusLine("Public URL reason", ready.Reason)
 			}
 			utils.PrintInfo("Run: 1ctl domains check %s --probe", domain)
+		}
+		if strictSmoke {
+			return utils.NewError("public URL verification failed: "+ready.Reason, nil)
 		}
 		return nil
 	}
@@ -128,7 +151,8 @@ func domainStatusReady(status *api.DomainStatusResponse) bool {
 	return status != nil &&
 		status.Attached &&
 		status.Route.Attached &&
-		status.DNS.Status == api.DNSStatusResolved
+		status.DNS.Status == api.DNSStatusResolved &&
+		(status.DNS.Condition == nil || status.DNS.Condition.Status == api.DNSConditionStatusVerified)
 }
 
 func domainStatusReason(status *api.DomainStatusResponse) string {
@@ -143,6 +167,9 @@ func domainStatusReason(status *api.DomainStatusResponse) string {
 			return "route is not attached: " + status.Route.Message
 		}
 		return "route is not attached"
+	}
+	if status.DNS.Condition != nil && status.DNS.Condition.Status != api.DNSConditionStatusVerified {
+		return fmt.Sprintf("DNS is %s (%s): %s", status.DNS.Condition.Status, status.DNS.Condition.Code, status.DNS.Message)
 	}
 	if status.DNS.Status != api.DNSStatusResolved {
 		if status.DNS.Message != "" {

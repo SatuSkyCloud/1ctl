@@ -25,7 +25,16 @@ type deploymentProgress struct {
 }
 
 func (dp *deploymentProgress) print() {
+	if utils.IsJSONOutput() {
+		return
+	}
 	utils.PrintLoadingStep(dp.step, dp.total, dp.message, dp.resource, dp.done)
+}
+
+func printDeployInfo(format string, args ...interface{}) {
+	if !utils.IsJSONOutput() {
+		utils.PrintInfo(format, args...)
+	}
 }
 
 func (dp *deploymentProgress) complete() {
@@ -46,12 +55,10 @@ func Deploy(opts DeploymentOptions, requestID string) (*api.CreateDeploymentResp
 		return nil, utils.NewError("Failed to get user ID", nil)
 	}
 
-	// BYOA targeting is now explicit: the user must pass --machine or
-	// --machine-tag to deploy to owned hardware. Default behaviour deploys
-	// to managed cloud — issue #24 retires the implicit owner-machine
-	// auto-selection that bypassed quota enforcement and confused new users.
+	// Leave automatic placement to the backend so ownership, quotas and
+	// rentable fallback share the same authoritative eligibility checks.
 	if len(opts.Hostnames) == 0 {
-		utils.PrintInfo("Deploying to managed cloud — backend will select the cheapest suitable machine.")
+		printDeployInfo("Automatic placement: eligible owned machines first, then rentable capacity.")
 	}
 
 	var projectName string
@@ -63,7 +70,7 @@ func Deploy(opts DeploymentOptions, requestID string) (*api.CreateDeploymentResp
 		if err2 != nil {
 			return nil, utils.NewError("Failed to determine project name", err2)
 		}
-		utils.PrintInfo("App name: %s (auto-detected — use --name to override)", projectName)
+		printDeployInfo("App name: %s (auto-detected — use --name to override)", projectName)
 	}
 
 	// K8s Services use DNS-1035: must start with a letter, only [a-z0-9-], end with alphanumeric.
@@ -78,7 +85,7 @@ func Deploy(opts DeploymentOptions, requestID string) (*api.CreateDeploymentResp
 	)
 	if opts.PrebuiltImage != "" {
 		image = opts.PrebuiltImage
-		utils.PrintInfo("Using pre-built image: %s", image)
+		printDeployInfo("Using pre-built image: %s", image)
 	} else {
 		progress.step = 1
 		progress.message = "Building image (cloud)"
@@ -141,7 +148,7 @@ func deployAtomicIntentWithClient(opts DeploymentOptions, image, projectName, us
 			return nil, fmt.Errorf("cannot attach custom domain %q without a valid active organization ID: %w", opts.Domain, err)
 		}
 	}
-	utils.PrintInfo("Deployment path: atomic intent")
+	printDeployInfo("Deployment path: atomic intent")
 	accepted, err := client.createIntent(intent, requestID)
 	if err != nil {
 		return nil, err
@@ -310,7 +317,7 @@ func submitRemoteBuild(dockerfilePath, projectName string, fastBuild bool) (imag
 	}
 
 	// Package the build context into a gzipped tar, respecting .dockerignore.
-	utils.PrintInfo("Packaging build context...")
+	printDeployInfo("Packaging build context...")
 	contextPath, err := docker.PackageContext(".")
 	if err != nil {
 		return "", "", utils.NewError(fmt.Sprintf("failed to package build context: %s", err.Error()), nil)
@@ -324,26 +331,32 @@ func submitRemoteBuild(dockerfilePath, projectName string, fastBuild bool) (imag
 
 	// Submit the context to the backend; it returns a build ID immediately.
 	if fastBuild {
-		utils.PrintInfo("Submitting fast build to cloud...")
+		printDeployInfo("Submitting fast build to cloud...")
 	} else {
-		utils.PrintInfo("Submitting build to cloud...")
+		printDeployInfo("Submitting build to cloud...")
 	}
 	buildID, err := api.SubmitBuild(contextPath, projectName, dockerfilePath, builder, nil)
 	if err != nil {
 		return "", "", utils.NewError(fmt.Sprintf("failed to submit build: %s", err.Error()), nil)
 	}
-	utils.PrintInfo("Build queued (ID: %s)", buildID)
+	printDeployInfo("Build queued (ID: %s)", buildID)
 
 	// Poll until the cloud build finishes, streaming log output as it arrives.
 	// TODO: Should we be polling? is there a better way other than polling?
-	result, err := api.WaitForBuildResult(buildID, os.Stdout)
+	buildOutput := os.Stdout
+	if utils.IsJSONOutput() {
+		buildOutput = os.Stderr
+	}
+	result, err := api.WaitForBuildResult(buildID, buildOutput)
 	if err != nil {
 		return "", "", err
 	}
 
-	utils.PrintSuccess("Cloud build complete: %s", result.ImageRef)
+	if !utils.IsJSONOutput() {
+		utils.PrintSuccess("Cloud build complete: %s", result.ImageRef)
+	}
 	if result.ImageArch != "" {
-		utils.PrintInfo("Image architecture: %s", result.ImageArch)
+		printDeployInfo("Image architecture: %s", result.ImageArch)
 	}
 	return result.ImageRef, result.ImageArch, nil
 }

@@ -123,7 +123,7 @@ func handleMarketplaceDeploy(ctx context.Context, in marketplaceDeployInput) err
 
 	// Marketplace create returns 202 Accepted: the request was queued, not made ready.
 	return deploypkg.ReportDeployResult(resp.AppLabel, resp.DeploymentID.String(), resp.Domain,
-		deploypkg.PublicURLReadiness{Ready: false, Reason: "deployment accepted; readiness was not verified"}, "", true)
+		deploypkg.PublicURLReadiness{Ready: false, Reason: "deployment accepted; readiness was not verified"}, "", false)
 }
 
 // marketplaceAvailability answers "can I deploy this right now?".

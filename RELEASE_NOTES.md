@@ -1,5 +1,26 @@
 # Release Notes
 
+## Version 0.12.1 (06-09-2026)
+
+Deployment readiness and machine-readable output fixes.
+
+* `deploy --wait` checks DNS and route readiness for the actual requested
+  hostname, retries pending observations within a bounded deadline, and rejects
+  status returned for a different hostname. Workload readiness alone does not
+  prove a public URL is ready.
+* Public health verification rediscovers ingress while reconciliation is in
+  progress instead of relying on an early, incomplete route lookup.
+* Atomic `deploy --wait -o json` waits for the result and emits one JSON result;
+  deployment progress no longer contaminates stdout, and remote-build logs go
+  to stderr in JSON mode. `application_verification.source=client_public_http`
+  distinguishes a successful CLI public-health probe from backend observations.
+* Marketplace deployment acceptance remains asynchronous: a queued deployment
+  is not reported as ready or treated as a failed strict health check.
+
+Operational note: validate against the dev backend's DNS/readiness fixes before
+merging. Main CI automatically tags this version and starts release publishing;
+the PR is the release gate. Existing instances are not redeployed by a CLI update.
+
 ## Version 0.12.0 (04-09-2026)
 
 Interactive AI developer copilot: `1ctl chat`.
