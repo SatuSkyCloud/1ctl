@@ -14,6 +14,7 @@ import (
 	"1ctl/internal/commands/chat"
 	"1ctl/internal/commands/cluster"
 	"1ctl/internal/commands/completion"
+	"1ctl/internal/commands/convex"
 	"1ctl/internal/commands/credits"
 	deploycmd "1ctl/internal/commands/deploy"
 	"1ctl/internal/commands/doctor"
@@ -145,3 +146,6 @@ func PostgresCommand() *cli.Command { return postgres.Command() }
 
 // ValkeyCommand returns the "1ctl valkey" command tree.
 func ValkeyCommand() *cli.Command { return valkey.Command() }
+
+// ConvexCommand returns the managed Convex command tree.
+func ConvexCommand() *cli.Command { return convex.Command() }

@@ -5762,6 +5762,404 @@
     },
     {
       "path": [
+        "convex"
+      ],
+      "name": "convex",
+      "aliases": [],
+      "usage": "Manage SatuSky managed Convex services",
+      "category": "Data",
+      "hidden": false,
+      "argsUsage": "",
+      "aritySource": "argsUsage",
+      "arguments": [],
+      "minArgs": 0,
+      "maxArgs": 0,
+      "flags": [
+        {
+          "name": "help",
+          "aliases": [
+            "h"
+          ],
+          "type": "boolean",
+          "takesValue": false,
+          "required": false,
+          "multiple": false,
+          "usage": "Show help",
+          "envVars": []
+        }
+      ]
+    },
+    {
+      "path": [
+        "convex",
+        "create"
+      ],
+      "name": "create",
+      "aliases": [],
+      "usage": "Provision Convex with isolated managed Spaces (asynchronous)",
+      "hidden": false,
+      "argsUsage": "",
+      "aritySource": "argsUsage",
+      "arguments": [],
+      "minArgs": 0,
+      "maxArgs": 0,
+      "flags": [
+        {
+          "name": "name",
+          "aliases": [],
+          "type": "string",
+          "takesValue": true,
+          "required": true,
+          "multiple": false,
+          "usage": "",
+          "envVars": []
+        },
+        {
+          "name": "size",
+          "aliases": [],
+          "type": "string",
+          "takesValue": true,
+          "required": false,
+          "multiple": false,
+          "default": "\"10Gi\"",
+          "usage": "",
+          "envVars": []
+        },
+        {
+          "name": "storage-class",
+          "aliases": [],
+          "type": "string",
+          "takesValue": true,
+          "required": false,
+          "multiple": false,
+          "usage": "Storage class (defaults to the cluster default)",
+          "envVars": []
+        },
+        {
+          "name": "cpu-request",
+          "aliases": [],
+          "type": "string",
+          "takesValue": true,
+          "required": false,
+          "multiple": false,
+          "default": "\"500m\"",
+          "usage": "",
+          "envVars": []
+        },
+        {
+          "name": "cpu",
+          "aliases": [],
+          "type": "string",
+          "takesValue": true,
+          "required": false,
+          "multiple": false,
+          "default": "\"2\"",
+          "usage": "",
+          "envVars": []
+        },
+        {
+          "name": "memory-request",
+          "aliases": [],
+          "type": "string",
+          "takesValue": true,
+          "required": false,
+          "multiple": false,
+          "default": "\"1Gi\"",
+          "usage": "",
+          "envVars": []
+        },
+        {
+          "name": "memory",
+          "aliases": [],
+          "type": "string",
+          "takesValue": true,
+          "required": false,
+          "multiple": false,
+          "default": "\"2Gi\"",
+          "usage": "",
+          "envVars": []
+        },
+        {
+          "name": "dashboard",
+          "aliases": [],
+          "type": "boolean",
+          "takesValue": false,
+          "required": false,
+          "multiple": false,
+          "default": "true",
+          "usage": "",
+          "envVars": []
+        },
+        {
+          "name": "help",
+          "aliases": [
+            "h"
+          ],
+          "type": "boolean",
+          "takesValue": false,
+          "required": false,
+          "multiple": false,
+          "usage": "Show help",
+          "envVars": []
+        }
+      ]
+    },
+    {
+      "path": [
+        "convex",
+        "list"
+      ],
+      "name": "list",
+      "aliases": [],
+      "usage": "List Convex services in the selected organization",
+      "hidden": false,
+      "argsUsage": "",
+      "aritySource": "argsUsage",
+      "arguments": [],
+      "minArgs": 0,
+      "maxArgs": 0,
+      "flags": [
+        {
+          "name": "help",
+          "aliases": [
+            "h"
+          ],
+          "type": "boolean",
+          "takesValue": false,
+          "required": false,
+          "multiple": false,
+          "usage": "Show help",
+          "envVars": []
+        }
+      ]
+    },
+    {
+      "path": [
+        "convex",
+        "get"
+      ],
+      "name": "get",
+      "aliases": [],
+      "usage": "Show configuration (without secrets)",
+      "hidden": false,
+      "argsUsage": "\u003cid-or-name\u003e",
+      "aritySource": "argsUsage",
+      "arguments": [
+        {
+          "name": "id-or-name",
+          "required": true,
+          "variadic": false
+        }
+      ],
+      "minArgs": 1,
+      "maxArgs": 1,
+      "flags": [
+        {
+          "name": "help",
+          "aliases": [
+            "h"
+          ],
+          "type": "boolean",
+          "takesValue": false,
+          "required": false,
+          "multiple": false,
+          "usage": "Show help",
+          "envVars": []
+        }
+      ]
+    },
+    {
+      "path": [
+        "convex",
+        "status"
+      ],
+      "name": "status",
+      "aliases": [],
+      "usage": "Observe workload readiness; does not verify public DNS/HTTPS",
+      "hidden": false,
+      "argsUsage": "\u003cid-or-name\u003e",
+      "aritySource": "argsUsage",
+      "arguments": [
+        {
+          "name": "id-or-name",
+          "required": true,
+          "variadic": false
+        }
+      ],
+      "minArgs": 1,
+      "maxArgs": 1,
+      "flags": [
+        {
+          "name": "help",
+          "aliases": [
+            "h"
+          ],
+          "type": "boolean",
+          "takesValue": false,
+          "required": false,
+          "multiple": false,
+          "usage": "Show help",
+          "envVars": []
+        }
+      ]
+    },
+    {
+      "path": [
+        "convex",
+        "connection"
+      ],
+      "name": "connection",
+      "aliases": [],
+      "usage": "Show connection URLs without the instance secret",
+      "hidden": false,
+      "argsUsage": "\u003cid-or-name\u003e",
+      "aritySource": "argsUsage",
+      "arguments": [
+        {
+          "name": "id-or-name",
+          "required": true,
+          "variadic": false
+        }
+      ],
+      "minArgs": 1,
+      "maxArgs": 1,
+      "flags": [
+        {
+          "name": "help",
+          "aliases": [
+            "h"
+          ],
+          "type": "boolean",
+          "takesValue": false,
+          "required": false,
+          "multiple": false,
+          "usage": "Show help",
+          "envVars": []
+        }
+      ]
+    },
+    {
+      "path": [
+        "convex",
+        "credentials"
+      ],
+      "name": "credentials",
+      "aliases": [],
+      "usage": "Reveal the sensitive instance secret and connection URLs",
+      "hidden": false,
+      "argsUsage": "\u003cid-or-name\u003e",
+      "aritySource": "argsUsage",
+      "arguments": [
+        {
+          "name": "id-or-name",
+          "required": true,
+          "variadic": false
+        }
+      ],
+      "minArgs": 1,
+      "maxArgs": 1,
+      "flags": [
+        {
+          "name": "help",
+          "aliases": [
+            "h"
+          ],
+          "type": "boolean",
+          "takesValue": false,
+          "required": false,
+          "multiple": false,
+          "usage": "Show help",
+          "envVars": []
+        }
+      ]
+    },
+    {
+      "path": [
+        "convex",
+        "redeploy"
+      ],
+      "name": "redeploy",
+      "aliases": [],
+      "usage": "Reconcile the existing service without changing its version",
+      "hidden": false,
+      "argsUsage": "\u003cid-or-name\u003e",
+      "aritySource": "argsUsage",
+      "arguments": [
+        {
+          "name": "id-or-name",
+          "required": true,
+          "variadic": false
+        }
+      ],
+      "minArgs": 1,
+      "maxArgs": 1,
+      "flags": [
+        {
+          "name": "help",
+          "aliases": [
+            "h"
+          ],
+          "type": "boolean",
+          "takesValue": false,
+          "required": false,
+          "multiple": false,
+          "usage": "Show help",
+          "envVars": []
+        }
+      ]
+    },
+    {
+      "path": [
+        "convex",
+        "delete"
+      ],
+      "name": "delete",
+      "aliases": [
+        "destroy"
+      ],
+      "usage": "Delete service resources and database volume; retain Spaces bucket data",
+      "hidden": false,
+      "argsUsage": "\u003cid-or-name\u003e",
+      "aritySource": "argsUsage",
+      "arguments": [
+        {
+          "name": "id-or-name",
+          "required": true,
+          "variadic": false
+        }
+      ],
+      "minArgs": 1,
+      "maxArgs": 1,
+      "flags": [
+        {
+          "name": "yes",
+          "aliases": [
+            "y"
+          ],
+          "type": "boolean",
+          "takesValue": false,
+          "required": false,
+          "multiple": false,
+          "default": "false",
+          "usage": "Confirm destructive service deletion",
+          "envVars": []
+        },
+        {
+          "name": "help",
+          "aliases": [
+            "h"
+          ],
+          "type": "boolean",
+          "takesValue": false,
+          "required": false,
+          "multiple": false,
+          "usage": "Show help",
+          "envVars": []
+        }
+      ]
+    },
+    {
+      "path": [
         "nats"
       ],
       "name": "nats",

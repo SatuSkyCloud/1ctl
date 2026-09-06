@@ -102,6 +102,43 @@ export interface ClusterInfo {
 }
 
 //////////
+// source: convex.go
+
+export const StorageEngineConvex: StorageEngine = "convex";
+export interface ConvexConfig {
+  instance_name: string;
+  dashboard_enabled: boolean;
+}
+export interface ConvexCreateOptions {
+  Name: string;
+  StorageSize: string;
+  StorageClass: string;
+  CPURequest: string;
+  CPULimit: string;
+  MemoryRequest: string;
+  MemoryLimit: string;
+  DashboardEnabled: boolean;
+}
+export interface ConvexStatus {
+  engine: string;
+  status: string;
+  cluster_exists: boolean;
+  database_ready: boolean;
+  backend_ready: boolean;
+  dashboard_enabled: boolean;
+  dashboard_ready: boolean;
+  public_reachability_verified: boolean;
+}
+export interface ConvexCredentials {
+  api_host: string;
+  api_port: string;
+  api_url: string;
+  site_url: string;
+  dashboard_url?: string;
+  instance_secret?: string;
+}
+
+//////////
 // source: credits.go
 
 export interface TierLimits {
@@ -1245,6 +1282,7 @@ export interface StorageConfig {
   replication_mode?: string;
   persistence_enabled?: boolean;
   valkey?: ValkeyConfig;
+  convex?: ConvexConfig;
   admin_ui_enabled?: boolean;
   labels?: { [key: string]: string};
   annotations?: { [key: string]: string};

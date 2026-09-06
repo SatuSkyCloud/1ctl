@@ -19,8 +19,51 @@ brew upgrade --cask SatuSkyCloud/tap/satuctl
 ### Shell script (Linux/macOS)
 
 ```bash
-curl -sSL https://raw.githubusercontent.com/SatuSkyCloud/1ctl/main/install.sh | bash
+curl -fsSL https://raw.githubusercontent.com/SatuSkyCloud/1ctl/main/install.sh | bash
 ```
+
+To upgrade a shell-script installation, rerun the same command. The installer
+downloads the latest **published release**, verifies its SHA-256 checksum and
+replaces `/usr/local/bin/1ctl`. It does not install unreleased PR code or change
+your saved profiles. Updates are manual, not automatic.
+
+```bash
+type -a 1ctl
+/usr/local/bin/1ctl --version
+```
+
+Use one installation method: an existing Homebrew binary in `/opt/homebrew/bin`
+may take precedence over the shell installation. Check `type -a 1ctl` if the
+version appears unchanged. The shell installer is not a replacement for macOS
+Developer ID signing/notarization; do not disable Gatekeeper to install 1ctl.
+
+### Managed Convex
+
+With an authenticated profile and organization selected:
+
+```bash
+1ctl convex create --name my-convex --size 10Gi
+1ctl convex list
+1ctl convex status <id-or-name>
+1ctl convex connection <id-or-name>
+1ctl convex get <id-or-name>
+1ctl convex redeploy <id-or-name>
+1ctl convex credentials <id-or-name> # Explicitly reveals the sensitive instance secret
+1ctl --output json convex delete <id-or-name> --yes
+```
+
+Convex uses platform-managed, instance-isolated Spaces credentials; no S3 keys
+are needed on the command line. `--dashboard=false` disables its dashboard.
+Creation/redeploy are asynchronous: acceptance is not readiness. `status`
+observes Kubernetes readiness, **not public DNS/HTTPS reachability**; this command
+group does not yet offer `--wait`. `connection` returns backend-provided URLs
+without exposing the instance secret. General get/list output omits credential
+annotations, including for legacy instances.
+
+Deletion tears down service resources and may remove its database volume;
+Spaces bucket data is retained, and the instance IAM credentials are revoked.
+Back up before deletion. JSON deletion requires `--yes`. Redeploy preserves the
+existing instance's package pin and credentials; it is not a version upgrade.
 
 ### Windows
 

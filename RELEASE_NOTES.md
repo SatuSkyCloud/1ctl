@@ -1,8 +1,17 @@
 # Release Notes
 
-## Version 0.12.1 (06-09-2026)
+## Version 0.13.0 (07-09-2026)
 
-Deployment readiness and machine-readable output fixes.
+Managed Convex, deployment readiness and machine-readable output fixes.
+
+* Add `1ctl convex create/list/get/status/connection/credentials/redeploy/delete`
+  for managed Convex with isolated Spaces provisioning. Engine checks prevent
+  accidental mutations of other database types; ambiguous names fail closed.
+  Connection output hides secrets, general output omits legacy annotations,
+  and JSON deletion requires `--yes`. Provisioning remains asynchronous and
+  workload status does not claim public DNS/HTTPS verification.
+* Document repeatable curl upgrades, checksum verification, published-release
+  selection and PATH conflicts with Homebrew. macOS signing remains deferred.
 
 * JSON deployment deletion requires explicit `--yes`, sends resource previews
   to stderr, and keeps stdout limited to the backend deletion operation.
