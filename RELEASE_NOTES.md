@@ -4,6 +4,9 @@
 
 Deployment readiness and machine-readable output fixes.
 
+* JSON deployment deletion requires explicit `--yes`, sends resource previews
+  to stderr, and keeps stdout limited to the backend deletion operation.
+
 * `deploy --wait` checks DNS and route readiness for the actual requested
   hostname, retries pending observations within a bounded deadline, and rejects
   status returned for a different hostname. Workload readiness alone does not

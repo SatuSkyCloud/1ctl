@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"net/http"
+	"os"
 	"regexp"
 	"strconv"
 	"strings"
@@ -1057,6 +1058,9 @@ func handleDeploymentStatus(ctx context.Context, in StatusInput) error {
 // --- Destroy ------------------------------------------------------------
 
 func handleDestroyDeployment(ctx context.Context, in DestroyInput) error {
+	if utils.IsJSONOutput() && !in.Yes {
+		return utils.NewError("JSON deletion requires --yes; inspect the deployment before confirming deletion", nil)
+	}
 	if in.PurgeRetained && in.RetainVolumes {
 		return utils.NewError("--purge-retained conflicts with --retain-volumes", nil)
 	}
@@ -1083,13 +1087,23 @@ func handleDestroyDeployment(ctx context.Context, in DestroyInput) error {
 			if in.PurgeExplicit {
 				return utils.NewError("--purge-retained is only supported for marketplace-managed deployments; generic deployments must retain their resources", nil)
 			}
-			utils.PrintWarning("Retained resources are kept: purging is only supported for marketplace-managed deployments.")
+			if utils.IsJSONOutput() {
+				fmt.Fprintln(os.Stderr, "Retained resources are kept: purging is only supported for marketplace-managed deployments.")
+			} else {
+				utils.PrintWarning("Retained resources are kept: purging is only supported for marketplace-managed deployments.")
+			}
 			purgeRetained = false
 		}
 	}
 
 	preview, pErr := previewDeletion(deploymentID, purgeRetained)
-	if pErr == nil {
+	if utils.IsJSONOutput() {
+		if pErr == nil {
+			fmt.Fprintln(os.Stderr, strings.Join(preview, "\n"))
+		} else {
+			fmt.Fprintln(os.Stderr, "Could not preview deletion resources.")
+		}
+	} else if pErr == nil {
 		fmt.Println(strings.Join(preview, "\n"))
 		fmt.Println()
 	} else {
@@ -1105,7 +1119,9 @@ func handleDestroyDeployment(ctx context.Context, in DestroyInput) error {
 		return nil
 	}
 
-	utils.PrintInfo("Requesting deletion of deployment %s...", deploymentID)
+	if !utils.IsJSONOutput() {
+		utils.PrintInfo("Requesting deletion of deployment %s...", deploymentID)
+	}
 	operation, err := api.DeleteDeployment(deploymentID, purgeRetained)
 	if err != nil {
 		return utils.NewError(fmt.Sprintf("failed to delete deployment: %s", err.Error()), nil)
