@@ -15,7 +15,11 @@ Deployment readiness and machine-readable output fixes.
   to stderr in JSON mode. `application_verification.source=client_public_http`
   distinguishes a successful CLI public-health probe from backend observations.
 * Marketplace deployment acceptance remains asynchronous: a queued deployment
-  is not reported as ready or treated as a failed strict health check.
+  is not reported as ready or treated as a failed strict health check. JSON mode
+  emits the accepted response as one JSON document without table output.
+* Marketplace `--hostname` resolves machine names to stable IDs and deduplicates
+  selections; explicit machine IDs remain supported. Server ownership and
+  placement eligibility checks still apply.
 * Update the PostgreSQL example to pgx 5.9.2, removing its outdated x/crypto
   dependency; align its build image with the CLI CI Go toolchain.
 
