@@ -12,7 +12,7 @@ require (
 	github.com/joho/godotenv v1.5.1
 	github.com/pkg/browser v0.0.0-20240102092130-5ac0b6a4141c
 	github.com/sashabaranov/go-openai v1.42.0
-	github.com/urfave/cli/v3 v3.10.0
+	github.com/urfave/cli/v3 v3.13.0
 	golang.org/x/term v0.38.0
 	gopkg.in/yaml.v3 v3.0.1
 )
