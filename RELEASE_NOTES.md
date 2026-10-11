@@ -1,5 +1,23 @@
 # Release Notes
 
+## Version 0.13.2 (11-10-2026)
+
+The post-deploy smoke resolves through the system resolver instead of 8.8.8.8.
+
+* Fix `internal/deploy/smoke.go` pinning DNS to a hardcoded `8.8.8.8`. That address
+  is unreachable from many environments — a GitHub Actions runner among them — so
+  the lookup failed, the smoke never passed, `VerifyApplication()` was always
+  false, and deployments ended at "timeout waiting for verified deployment
+  readiness" with a healthy workload and every platform-side check green.
+  This is #605's defect in the client, fixed the same way that was.
+* Add `SMOKE_DNS_RESOLVER` to pin a specific server for environments whose default
+  resolver cannot see the edge.
+* Toolchain Go 1.26.9, with `go 1.26.0` declared in `go.mod`, where the
+  standard-library advisories the security scan reported are fixed.
+
+Once this ships, `--wait-mode workload` is no longer needed for apps whose health
+endpoint is not `/health`.
+
 ## Version 0.13.1 (08-09-2026)
 
 Accelerated cloud builds now honor the explicit CLI flag.
