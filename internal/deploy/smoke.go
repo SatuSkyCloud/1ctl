@@ -6,6 +6,7 @@ import (
 	"net"
 	"net/http"
 	"net/url"
+	"os"
 	"strings"
 	"time"
 
@@ -62,19 +63,40 @@ func CheckPublicURLSmoke(baseURL string, paths []string, strict bool) PublicURLS
 }
 
 // CheckPublicURLSmokeAtPath probes a single URL path and returns the result.
+// smokeResolver returns the system resolver, unless SMOKE_DNS_RESOLVER pins a
+// specific server ("1.1.1.1" or "1.1.1.1:53") for environments whose default
+// resolver cannot see the edge.
+func smokeResolver() *net.Resolver {
+	if pin := strings.TrimSpace(os.Getenv("SMOKE_DNS_RESOLVER")); pin != "" {
+		server := pin
+		if !strings.Contains(server, ":") {
+			server += ":53"
+		}
+		return &net.Resolver{
+			PreferGo: true,
+			Dial: func(ctx context.Context, network, address string) (net.Conn, error) {
+				d := net.Dialer{Timeout: 3 * time.Second}
+				return d.DialContext(ctx, "udp", server)
+			},
+		}
+	}
+	return net.DefaultResolver
+}
+
 func CheckPublicURLSmokeAtPath(baseURL, path string, strict bool) PublicURLSmokeResult {
 	targetURL := strings.TrimRight(baseURL, "/") + path
+	// Resolve through the host's resolver. A hardcoded 8.8.8.8 was used here and
+	// it is unreachable from many environments — a GitHub Actions runner among
+	// them — so every smoke failed, VerifyApplication() was always false, and a
+	// healthy deployment ended at "timeout waiting for verified deployment
+	// readiness". The platform had the identical bug in its DNS status check
+	// (#605) and fixed it the same way: the system resolver, with an override for
+	// callers that need a specific server.
 	client := &http.Client{
 		Timeout: 10 * time.Second,
 		Transport: &http.Transport{
 			DialContext: (&net.Dialer{
-				Resolver: &net.Resolver{
-					PreferGo: true,
-					Dial: func(ctx context.Context, network, address string) (net.Conn, error) {
-						d := net.Dialer{Timeout: 3 * time.Second}
-						return d.DialContext(ctx, "udp", "8.8.8.8:53")
-					},
-				},
+				Resolver: smokeResolver(),
 			}).DialContext,
 		},
 	}
