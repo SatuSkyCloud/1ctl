@@ -1,5 +1,16 @@
 # Release Notes
 
+## Version 0.13.1 (08-09-2026)
+
+Accelerated cloud builds now honor the explicit CLI flag.
+
+* Fix `1ctl deploy --fast` losing its parsed value while project configuration
+  is merged. The backend now receives `builder=depot` as requested instead of
+  silently falling back to Buildx.
+* Add regression coverage for explicit `--fast` flag propagation.
+* Verified against the dev backend: Depot completed the build on its first
+  attempt in 26.4 seconds and the resulting workload became available.
+
 ## Version 0.13.0 (07-09-2026)
 
 Managed Convex, deployment readiness and machine-readable output fixes.

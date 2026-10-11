@@ -190,7 +190,6 @@ func publicHealthVerifier(deploymentID, healthPath string) func() bool {
 
 type mergedInput struct {
 	DeployInput
-	Fast         bool
 	StrictSmoke  bool
 	AppName      string
 	Organization string

@@ -96,6 +96,29 @@ func TestDeployExplicitFalseAndDefaultFlagsOverrideConfig(t *testing.T) {
 	}
 }
 
+func TestDeployFastFlagReachesMergedOptions(t *testing.T) {
+	var in DeployInput
+	cmd := &cli.Command{
+		Name:  "deploy",
+		Flags: deployFlags(&in),
+		Action: func(ctx context.Context, cmd *cli.Command) error {
+			captureDeploySetFlags(cmd, &in)
+			return nil
+		},
+	}
+	if err := cmd.Run(context.Background(), []string{"deploy", "--fast"}); err != nil {
+		t.Fatalf("parse deploy flags: %v", err)
+	}
+	if !in.Fast || !in.SetFlags[flagFast] {
+		t.Fatalf("explicit fast flag was not captured: fast=%v set=%v", in.Fast, in.SetFlags[flagFast])
+	}
+
+	merged := mergeConfig(in, &config.ProjectConfig{})
+	if !merged.Fast {
+		t.Fatal("an explicit --fast did not survive project config merging")
+	}
+}
+
 func TestAppDeleteAsyncFlags(t *testing.T) {
 	var deleteCommand *cli.Command
 	for _, command := range AppCommand().Commands {
