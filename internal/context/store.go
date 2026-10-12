@@ -402,6 +402,55 @@ func (s *Store) CreateProfile(name, apiURL string) error {
 	return os.WriteFile(profilePath, data, 0600)
 }
 
+// EnsureProfile creates the profile if it does not exist, and treats an existing
+// profile as success when it points at the same API URL. Returns whether a new
+// profile was written.
+//
+// `profile create` is used as a bootstrap — "make sure this profile exists before
+// I log in" — and CI jobs often do it in more than one step. Failing the second
+// call made every workflow in the organisation carry `|| true`, which is the tell
+// that the contract did not match the usage. A profile that exists and points
+// somewhere else is still an error: that is a genuine conflict, not a repeat.
+func (s *Store) EnsureProfile(name, apiURL string) (bool, error) {
+	name = sanitizeProfileName(name)
+	if name == "" {
+		return false, utils.NewError("invalid profile name: only letters, numbers, dashes, and underscores are allowed", nil)
+	}
+	if apiURL != "" && !utils.IsLocalhostURL(apiURL) && !strings.HasPrefix(apiURL, "https://") {
+		return false, utils.NewError("API URL must use HTTPS for non-localhost endpoints. Use http://localhost for local development", nil)
+	}
+	profilesDir := filepath.Join(s.configDir, "profiles")
+	if err := os.MkdirAll(profilesDir, 0750); err != nil {
+		return false, fmt.Errorf("failed to create profiles directory: %w", err)
+	}
+	profilePath := filepath.Join(profilesDir, name+".json")
+
+	if data, readErr := os.ReadFile(profilePath); readErr == nil {
+		var existing CLIContext
+		if jsonErr := json.Unmarshal(data, &existing); jsonErr != nil {
+			return false, fmt.Errorf("failed to read existing profile '%s': %w", name, jsonErr)
+		}
+		if apiURL == "" || existing.APIURL == apiURL {
+			return false, nil
+		}
+		return false, utils.NewError(
+			fmt.Sprintf("profile '%s' already exists and points at %s, not %s — delete it first with '1ctl profile delete %s' or choose another name",
+				name, existing.APIURL, apiURL, name),
+			nil,
+		)
+	}
+
+	ctx := CLIContext{APIURL: apiURL}
+	data, err := json.MarshalIndent(ctx, "", "  ")
+	if err != nil {
+		return false, err
+	}
+	if err := os.WriteFile(profilePath, data, 0600); err != nil {
+		return false, err
+	}
+	return true, nil
+}
+
 // UseProfile switches the active profile. Errors if the profile doesn't exist.
 func (s *Store) UseProfile(name string) error {
 	name = sanitizeProfileName(name)

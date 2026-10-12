@@ -18,6 +18,14 @@ func ListProfiles() ([]ProfileInfo, error) { return Default().ListProfiles() }
 // CreateProfile creates a new profile in the default Store.
 func CreateProfile(name, apiURL string) error { return Default().CreateProfile(name, apiURL) }
 
+// EnsureProfile creates the profile on the default Store if it does not exist,
+// and reports whether a new profile was written. See Store.EnsureProfile: an
+// existing profile pointing at the same API URL is success, not an error, so a
+// bootstrap can run more than once in the same job without `|| true`.
+func EnsureProfile(name, apiURL string) (bool, error) {
+	return Default().EnsureProfile(name, apiURL)
+}
+
 // UseProfile switches the default Store's active profile.
 func UseProfile(name string) error { return Default().UseProfile(name) }
 
