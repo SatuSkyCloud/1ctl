@@ -155,7 +155,10 @@ func reportAtomicIntent(accepted *api.DeploymentIntentAccepted, wait bool, waitM
 		}
 	}
 	if ingress != nil && ingress.DomainName != "" {
-		publicURL := deploypkg.WaitForPublicURL(ingress.IngressID.String(), ingress.DomainName)
+		// The atomic path reports and smokes the same address the wait loop
+		// verifies: ingress.DomainName is the managed <random>.satusky.com
+		// hostname, fronted by Cloudflare, not the address anyone opens.
+		publicURL := deploypkg.WaitForPublicURL(ingress.IngressID.String(), verificationHost(ingress))
 		if !publicURL.Ready {
 			return utils.NewError("application is ready but public URL remains unverified: "+publicURL.Reason, nil)
 		}
@@ -163,7 +166,7 @@ func reportAtomicIntent(accepted *api.DeploymentIntentAccepted, wait bool, waitM
 		if utils.TryPrintJSON(structured) {
 			return nil
 		}
-		return deploypkg.ReportDeployResult(accepted.AppLabel, accepted.DeploymentID, ingress.DomainName, publicURL, healthPath, strictSmoke)
+		return deploypkg.ReportDeployResult(accepted.AppLabel, accepted.DeploymentID, verificationHost(ingress), publicURL, healthPath, strictSmoke)
 	}
 	structured["public_url"] = map[string]interface{}{"dns_and_route_verified": false, "reason": "no public hostname observed"}
 	if utils.TryPrintJSON(structured) {
