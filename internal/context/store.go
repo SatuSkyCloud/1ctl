@@ -425,6 +425,9 @@ func (s *Store) EnsureProfile(name, apiURL string) (bool, error) {
 	}
 	profilePath := filepath.Join(profilesDir, name+".json")
 
+	// #nosec G304 -- profilePath is s.configDir + "profiles" +
+	// sanitizeProfileName(name) + ".json". The sanitizer reduces the name to
+	// [a-zA-Z0-9_-], so it cannot contain a separator or escape the directory.
 	if data, readErr := os.ReadFile(profilePath); readErr == nil {
 		var existing CLIContext
 		if jsonErr := json.Unmarshal(data, &existing); jsonErr != nil {
