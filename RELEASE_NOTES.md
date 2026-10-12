@@ -1,5 +1,15 @@
 # Release Notes
 
+## Version 0.13.4 (12-10-2026)
+
+Ships the change 0.13.3 described.
+
+* 0.13.3 was tagged from the release-notes commit before the fix landed, so its binaries
+  do not contain it. Nothing else differs: this release carries
+  `1ctl profile create` becoming idempotent — an existing profile pointing at the same
+  API URL is success, a profile pointing elsewhere is still an error, and the message
+  now names both URLs.
+
 ## Version 0.13.3 (12-10-2026)
 
 `1ctl profile create` can be run more than once.
