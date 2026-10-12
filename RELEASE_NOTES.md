@@ -1,5 +1,20 @@
 # Release Notes
 
+## Version 0.13.3 (12-10-2026)
+
+`1ctl profile create` can be run more than once.
+
+* `profile create` no longer fails when the profile already exists. It is used as a
+  bootstrap — create the profile, select it, log in — and jobs commonly do that in
+  more than one step. The second call used to exit 1 with "profile 'x' already
+  exists", which broke whole pipelines and pushed every workflow on the platform to
+  write `|| true` after it.
+* An existing profile pointing at the same API URL is now success, and the command
+  says so rather than reporting a creation that did not happen. A profile pointing
+  at a *different* URL is still an error, and the message now names both URLs and
+  the way out.
+* `profile create <name>` with no `--url` leaves an existing profile's URL alone.
+
 ## Version 0.13.2 (11-10-2026)
 
 The post-deploy smoke resolves through the system resolver instead of 8.8.8.8.
