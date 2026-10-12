@@ -1,5 +1,21 @@
 # Release Notes
 
+## Version 0.13.6 (12-10-2026)
+
+`--wait` verifies the address your users open — for real this time.
+
+* 0.13.5 fixed the application-mode wait loop, but a deploy takes the atomic path,
+  which returns early, and that path had its own call sites reporting and
+  smoke-testing the ingress's managed `<random>.satusky.com` hostname. That hostname
+  is fronted by Cloudflare, so the check tested Cloudflare's treatment of the
+  runner's IP rather than the deployment, and it never passed on CI.
+* Both call sites now use the same decision as the wait loop, so the address
+  verified, the address waited on, and the address printed are the same one.
+* Verified against a live app before release:
+
+      💡 Waiting for app to respond at https://dev.strikezone.futurify.my...
+      ✅ Public smoke check … succeeded at: https://dev.strikezone.futurify.my
+
 ## Version 0.13.5 (12-10-2026)
 
 `deploy --wait` verifies the hostname your users actually open.
