@@ -174,17 +174,65 @@ func reportAtomicIntent(accepted *api.DeploymentIntentAccepted, wait bool, waitM
 	return nil
 }
 
+// verificationHost picks the hostname to verify. The ingress's own DomainName is
+// the managed <random>.satusky.com one it was generated with, and that hostname is
+// fronted by Cloudflare — so probing it from a GitHub runner tested Cloudflare's
+// treatment of the runner's IP rather than the deployment. A custom domain attaches
+// as an ingress alias and is served by the Satusky edge, which is what customers
+// actually open, so it is the address worth verifying.
+func verificationHost(ingress *api.Ingress) string {
+	if ingress == nil || ingress.DomainName == "" {
+		return ""
+	}
+	aliases, err := api.ListDomainAliases(ingress.IngressID.String())
+	if err != nil {
+		// The alias list is a refinement, not a requirement: fall back to the
+		// managed hostname rather than failing verification over a lookup.
+		return ingress.DomainName
+	}
+	return pickVerificationHost(ingress, aliases)
+}
+
+// pickVerificationHost is the decision on its own, so the precedence can be
+// tested without an API round trip.
+func pickVerificationHost(ingress *api.Ingress, aliases []api.IngressAlias) string {
+	if ingress == nil || ingress.DomainName == "" {
+		return ""
+	}
+	for _, alias := range aliases {
+		// A redirect alias points at its target instead of serving the app, so
+		// probing it would follow the redirect rather than test this deployment.
+		if alias.IsRedirect {
+			continue
+		}
+		host := strings.TrimSpace(alias.DomainName)
+		if host == "" {
+			continue
+		}
+		lower := strings.ToLower(host)
+		if lower == "satusky.com" || strings.HasSuffix(lower, ".satusky.com") {
+			continue
+		}
+		return host
+	}
+	return ingress.DomainName
+}
+
 func publicHealthVerifier(deploymentID, healthPath string) func() bool {
 	return func() bool {
 		ingress, err := api.GetIngressByDeploymentID(deploymentID)
 		if err != nil || ingress == nil || ingress.DomainName == "" {
 			return false
 		}
-		status, err := api.GetDomainStatusWithTimeout(ingress.IngressID.String(), ingress.DomainName, false, 5*time.Second)
-		if err != nil || !deploypkg.PublicDomainReady(status, ingress.DomainName) {
+		host := verificationHost(ingress)
+		if host == "" {
 			return false
 		}
-		return deploypkg.CheckPublicURLSmoke("https://"+ingress.DomainName, deploypkg.SmokePathCandidates(healthPath), true).Ready
+		status, err := api.GetDomainStatusWithTimeout(ingress.IngressID.String(), host, false, 5*time.Second)
+		if err != nil || !deploypkg.PublicDomainReady(status, host) {
+			return false
+		}
+		return deploypkg.CheckPublicURLSmoke("https://"+host, deploypkg.SmokePathCandidates(healthPath), true).Ready
 	}
 }
 
