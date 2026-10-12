@@ -1,5 +1,22 @@
 # Release Notes
 
+## Version 0.13.5 (12-10-2026)
+
+`deploy --wait` verifies the hostname your users actually open.
+
+* The post-deploy smoke probed the ingress's managed `<random>.satusky.com` hostname,
+  which is fronted by Cloudflare, instead of the app's custom domain, which is served
+  by the Satusky edge. From a CI runner the first never answered, so `--wait` looped
+  until it timed out even when the platform reported the deployment verified and
+  reachable — and every workflow on the platform had to fall back to
+  `--wait-mode workload`, which skips public-health verification altogether.
+* A custom domain attaches as an ingress alias, so the verifier now prefers a
+  non-redirect custom alias and falls back to the managed hostname. Redirect aliases
+  (`www` -> apex) are skipped: they point at their target rather than serving the app.
+
+Once this ships, `--wait` is usable again and `--wait-mode workload` stops being the
+default answer for apps whose health endpoint is not `/health`.
+
 ## Version 0.13.4 (12-10-2026)
 
 Ships the change 0.13.3 described.
