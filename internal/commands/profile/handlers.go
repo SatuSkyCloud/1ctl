@@ -86,8 +86,17 @@ func handleProfileCreate(ctx context.Context, in profileCreateInput) error {
 	}
 	in.URL = apiURL
 
-	if err := satuskyctx.CreateProfile(in.Name, in.URL); err != nil {
+	created, err := satuskyctx.EnsureProfile(in.Name, in.URL)
+	if err != nil {
 		return utils.NewError(fmt.Sprintf("failed to create profile: %s", err.Error()), nil)
+	}
+	if !created {
+		// Already present and pointing at the same API URL — this is the second
+		// bootstrap in the same job, or a re-run. Saying "created" would be a lie,
+		// and failing (as this used to) forced every workflow to write `|| true`.
+		utils.PrintInfo("Profile '%s' already exists; leaving it unchanged", in.Name)
+		utils.PrintStatusLine("API URL", in.URL)
+		return nil
 	}
 
 	utils.PrintSuccess("Profile '%s' created", in.Name)
