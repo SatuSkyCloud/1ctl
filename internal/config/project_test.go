@@ -771,3 +771,18 @@ func TestCheckedInExamplesLoad(t *testing.T) {
 		})
 	}
 }
+
+func TestValidateRejectsNonPositiveRunAsUser(t *testing.T) {
+	zero := int64(0)
+	cfg := &ProjectConfig{App: AppConfig{Name: "api", RunAsUser: &zero}, Deploy: DeployConfig{Strategy: "rolling"}}
+	err := cfg.Validate()
+	if err == nil || !strings.Contains(err.Error(), "run_as_user must be a positive uid") {
+		t.Fatalf("Validate() with run_as_user=0 = %v, want a run_as_user error", err)
+	}
+
+	valid := int64(101)
+	cfg.App.RunAsUser = &valid
+	if err := cfg.Validate(); err != nil {
+		t.Fatalf("Validate() with run_as_user=101 = %v, want nil", err)
+	}
+}

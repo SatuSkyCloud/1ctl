@@ -309,6 +309,9 @@ func mergeConfig(in DeployInput, cfg *config.ProjectConfig) mergedInput {
 			}
 		}
 		m.TargetArch = cfg.Build.TargetArch
+		if cfg.App.RunAsUser != nil {
+			m.RunAsUser = cfg.App.RunAsUser
+		}
 		if !isSet(flagReplicas) {
 			if cfg.App.Replicas > 0 {
 				m.Replicas = cfg.App.Replicas
@@ -613,6 +616,7 @@ func prepareDeploymentOptions(m mergedInput, cfg *config.ProjectConfig) (deployp
 		PrebuiltImage:  m.Image,
 		FastBuild:      m.Fast,
 		TargetArch:     m.TargetArch,
+		RunAsUser:      m.RunAsUser,
 	}
 
 	opts.Name = m.AppName

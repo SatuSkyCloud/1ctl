@@ -51,8 +51,13 @@ type DeploymentOptions struct {
 	BackupRetention       string // "24h", "72h", "168h", "720h"
 	BackupPriorityCluster int    // Which cluster performs backups (1 = primary, 2 = secondary)
 	// HA settings
-	Replicas  int            // Manual replica count override (0 = auto from hostnames)
-	PDBConfig *PDBConfig     `json:"pdb_config,omitempty"`
+	Replicas  int        // Manual replica count override (0 = auto from hostnames)
+	PDBConfig *PDBConfig `json:"pdb_config,omitempty"`
+	// RunAsUser is applied to the container's securityContext. Only set it when
+	// the image's USER is a name: a numeric USER needs nothing, and setting a uid
+	// the image does not own makes the container run as a different user than the
+	// one its files are owned by.
+	RunAsUser *int64         `json:"run_as_user,omitempty"`
 	HPAConfig *api.HPAConfig `json:"hpa_config,omitempty"`
 	VPAConfig *api.VPAConfig `json:"vpa_config,omitempty"`
 	// Zone targeting. Region is intentionally not on the struct: the

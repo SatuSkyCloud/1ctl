@@ -141,6 +141,7 @@ type Deployment struct {
 	MarketplaceAppName   string                    `json:"marketplace_app_name"`
 	MulticlusterConfig   *MulticlusterConfig       `json:"multicluster_config,omitempty"`
 	PDBConfig            *PDBConfig                `json:"pdb_config,omitempty"`
+	RunAsUser            *int64                    `json:"run_as_user,omitempty"`
 	HPAConfig            *HPAConfig                `json:"hpa_config,omitempty"`
 	VPAConfig            *VPAConfig                `json:"vpa_config,omitempty"`
 	StrategyConfig       *DeploymentStrategyConfig `json:"deployment_strategy,omitempty"`

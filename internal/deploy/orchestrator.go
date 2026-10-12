@@ -255,6 +255,7 @@ func buildAtomicDeploymentIntent(opts DeploymentOptions, image, projectName, use
 		WaitFor:        opts.WaitFor,
 		StrategyConfig: buildStrategyConfig(opts),
 		TargetArch:     opts.TargetArch,
+		RunAsUser:      opts.RunAsUser,
 	}
 	if opts.MulticlusterEnabled {
 		schedule := map[string]string{
