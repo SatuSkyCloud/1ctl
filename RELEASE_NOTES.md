@@ -1,5 +1,35 @@
 # Release Notes
 
+## Version 0.13.7 (12-10-2026)
+
+`[app] run_as_user` lets an app declare the uid its container runs as.
+
+* The platform runs every container as non-root, but the kubelet cannot verify an
+  image whose `USER` is a name — `nginx`, for example — against that, so the
+  container never starts:
+
+  ```
+  CreateContainerConfigError: container has runAsNonRoot and image has non-numeric
+  user (nginx), cannot verify user is non-root
+  ```
+
+  The hostname answers 503 and the only clue is a container status no UI surfaces.
+* Two apps were kept alive with hand-built images carrying a numeric `USER`
+  instead — `strikezone-landing:user101-*` and `wedding-knot-app-dev:user1001-*`.
+  Neither tag is produced by any workflow, and one of them became a four-day
+  outage.
+* `run_as_user` is optional. Unset leaves the kubelet to infer the user from the
+  image exactly as before, so deployments that do not need it are unchanged.
+  `0` is refused in config validation and by the platform: it is root, and it
+  contradicts the non-root policy the platform applies to every container.
+
+Configure it beside the Dockerfile that determines the uid:
+
+```toml
+[app]
+run_as_user = 101
+```
+
 ## Version 0.13.6 (12-10-2026)
 
 `--wait` verifies the address your users open — for real this time.
