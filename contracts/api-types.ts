@@ -519,6 +519,7 @@ export interface Deployment {
   marketplace_app_name: string;
   multicluster_config?: MulticlusterConfig;
   pdb_config?: PDBConfig;
+  run_as_user?: number /* int64 */;
   hpa_config?: HPAConfig;
   vpa_config?: VPAConfig;
   deployment_strategy?: DeploymentStrategyConfig;
