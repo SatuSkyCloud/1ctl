@@ -100,29 +100,32 @@ type DeployInput struct {
 	BackupRetention    string
 	BackupPriority     int
 	Replicas           int
-	PDB                bool
-	PDBType            string
-	PDBMinAvailable    int
-	PDBPercent         int
-	HPA                bool
-	HPAMinReplicas     int
-	HPAMaxReplicas     int
-	HPACPUCoreTarget   int
-	HPAMemoryTarget    int
-	VPA                bool
-	VPAMode            string
-	VPAMinCPU          string
-	VPAMaxCPU          string
-	VPAMinMemory       string
-	VPAMaxMemory       string
-	WaitFor            []string
-	Strategy           string
-	RollingMaxSurge    string
-	RollingMaxUnavail  string
-	Config             string
-	Wait               bool
-	WaitMode           string
-	SetFlags           map[string]bool
+	// RunAsUser mirrors [app].run_as_user: the uid the container runs as, for
+	// images whose USER is a name the runtime cannot verify against runAsNonRoot.
+	RunAsUser         *int64
+	PDB               bool
+	PDBType           string
+	PDBMinAvailable   int
+	PDBPercent        int
+	HPA               bool
+	HPAMinReplicas    int
+	HPAMaxReplicas    int
+	HPACPUCoreTarget  int
+	HPAMemoryTarget   int
+	VPA               bool
+	VPAMode           string
+	VPAMinCPU         string
+	VPAMaxCPU         string
+	VPAMinMemory      string
+	VPAMaxMemory      string
+	WaitFor           []string
+	Strategy          string
+	RollingMaxSurge   string
+	RollingMaxUnavail string
+	Config            string
+	Wait              bool
+	WaitMode          string
+	SetFlags          map[string]bool
 }
 
 // GetDeploymentInput holds flags for the "get" subcommand.

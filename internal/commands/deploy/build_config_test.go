@@ -251,3 +251,33 @@ func TestMergeConfigSuppliesAutoscalingAndDisruptionValues(t *testing.T) {
 		t.Fatalf("PDB config = %+v", opts.PDBConfig)
 	}
 }
+
+func TestMergeConfigSuppliesRunAsUser(t *testing.T) {
+	runAsUser := int64(101)
+	cfg := &config.ProjectConfig{App: config.AppConfig{RunAsUser: &runAsUser}}
+	merged := mergeConfig(DeployInput{Image: "registry.example/api:v1", Strategy: "rolling", SetFlags: map[string]bool{}}, cfg)
+
+	opts, err := prepareDeploymentOptions(merged, cfg)
+	if err != nil {
+		t.Fatalf("prepareDeploymentOptions: %v", err)
+	}
+	if opts.RunAsUser == nil || *opts.RunAsUser != 101 {
+		t.Fatalf("run_as_user = %v, want 101", opts.RunAsUser)
+	}
+}
+
+// TestMergeConfigLeavesRunAsUserUnset is the half that matters most: an app that
+// does not declare a uid must keep sending nothing, so the kubelet continues to
+// infer the user from the image exactly as before.
+func TestMergeConfigLeavesRunAsUserUnset(t *testing.T) {
+	cfg := &config.ProjectConfig{}
+	merged := mergeConfig(DeployInput{Image: "registry.example/api:v1", Strategy: "rolling", SetFlags: map[string]bool{}}, cfg)
+
+	opts, err := prepareDeploymentOptions(merged, cfg)
+	if err != nil {
+		t.Fatalf("prepareDeploymentOptions: %v", err)
+	}
+	if opts.RunAsUser != nil {
+		t.Fatalf("run_as_user = %d, want nil", *opts.RunAsUser)
+	}
+}

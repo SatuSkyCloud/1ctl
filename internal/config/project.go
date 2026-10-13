@@ -42,13 +42,18 @@ type ProjectConfig struct {
 // AppConfig holds app identity and resource fields.
 // For build, health-check, and deploy-strategy settings see [build], [checks], [deploy].
 type AppConfig struct {
-	Name         string `toml:"name"`
-	Port         int    `toml:"port"`
-	CPU          string `toml:"cpu"` // Deprecated: legacy burst CPU alias.
-	CPURequest   string `toml:"cpu_request"`
-	CPULimit     string `toml:"cpu_limit"`
-	Memory       string `toml:"memory"`
-	Replicas     int    `toml:"replicas"`
+	Name       string `toml:"name"`
+	Port       int    `toml:"port"`
+	CPU        string `toml:"cpu"` // Deprecated: legacy burst CPU alias.
+	CPURequest string `toml:"cpu_request"`
+	CPULimit   string `toml:"cpu_limit"`
+	Memory     string `toml:"memory"`
+	Replicas   int    `toml:"replicas"`
+	// RunAsUser is the numeric uid the container runs as. It exists for images
+	// that declare a named USER (nginx, for example): the platform runs every
+	// container as non-root and the kubelet cannot verify a name against that, so
+	// the container never starts. Nil leaves the kubelet to infer the user.
+	RunAsUser    *int64 `toml:"run_as_user"`
 	Domain       string `toml:"domain"`
 	Zone         string `toml:"zone"`
 	Organization string `toml:"organization"`
@@ -288,6 +293,9 @@ func (cfg *ProjectConfig) Validate() error {
 	case "", "amd64", "arm64":
 	default:
 		return fmt.Errorf("[build].target_arch must be empty, \"amd64\", or \"arm64\" (got %q)", cfg.Build.TargetArch)
+	}
+	if cfg.App.RunAsUser != nil && *cfg.App.RunAsUser <= 0 {
+		return fmt.Errorf("[app].run_as_user must be a positive uid (got %d): 0 is root, and the platform runs every container as non-root", *cfg.App.RunAsUser)
 	}
 	if cfg.legacyVolumeSet && len(cfg.Volumes) > 1 {
 		return fmt.Errorf("[volume] and [[volumes]] cannot be used together")
