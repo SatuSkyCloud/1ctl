@@ -1,5 +1,26 @@
 # Release Notes
 
+## Version 0.13.8 (12-10-2026)
+
+A pre-push gate, so the checks that only ran in CI now run before you push.
+
+* Contract freshness, `gofmt`, `go vet`, `golangci-lint` and `actionlint` all
+  existed as CI jobs. The `Taskfile` had the first two as tasks that nothing ran,
+  so a stale generated contract failed twenty minutes after the push instead of
+  before it — which is exactly what happened to `run_as_user` (#644). The fix
+  afterwards was to run the check by hand and commit the result.
+* Enable once per clone:
+
+  ```
+  pre-commit install --hook-type pre-push
+  ```
+
+* It runs exactly the checks CI runs, so there is nothing new to keep in sync.
+  Tests are deliberately excluded: they are minutes, not seconds.
+* The file records the one setup trap: `golangci-lint` refuses to load the config
+  when its build Go is older than `go.mod`'s, and a plain `go install` can produce
+  that. The command that matches what CI installs is in the file.
+
 ## Version 0.13.7 (12-10-2026)
 
 `[app] run_as_user` lets an app declare the uid its container runs as.
