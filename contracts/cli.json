@@ -147,7 +147,7 @@
       ],
       "name": "adopt",
       "aliases": [],
-      "usage": "Transfer a legacy Deployment to durable reconciliation",
+      "usage": "Removed: adoption is no longer served by the API",
       "hidden": false,
       "argsUsage": "\u003cdeployment-id\u003e",
       "aritySource": "argsUsage",
@@ -161,70 +161,6 @@
       "minArgs": 1,
       "maxArgs": 1,
       "flags": [
-        {
-          "name": "reason",
-          "aliases": [],
-          "type": "string",
-          "takesValue": true,
-          "required": true,
-          "multiple": false,
-          "usage": "Audit reason for the ownership transfer (required)",
-          "envVars": []
-        },
-        {
-          "name": "expected-uid",
-          "aliases": [],
-          "type": "string",
-          "takesValue": true,
-          "required": true,
-          "multiple": false,
-          "usage": "Exact live Deployment UID (required)",
-          "envVars": []
-        },
-        {
-          "name": "expected-resource-version",
-          "aliases": [],
-          "type": "string",
-          "takesValue": true,
-          "required": true,
-          "multiple": false,
-          "usage": "Exact live Deployment resourceVersion (required)",
-          "envVars": []
-        },
-        {
-          "name": "expected-generation",
-          "aliases": [],
-          "type": "integer",
-          "takesValue": true,
-          "required": true,
-          "multiple": false,
-          "default": "0",
-          "usage": "Exact live Deployment generation (required)",
-          "envVars": []
-        },
-        {
-          "name": "request-id",
-          "aliases": [],
-          "type": "string",
-          "takesValue": true,
-          "required": true,
-          "multiple": false,
-          "usage": "Stable UUID for this adoption attempt (required)",
-          "envVars": []
-        },
-        {
-          "name": "yes",
-          "aliases": [
-            "y"
-          ],
-          "type": "boolean",
-          "takesValue": false,
-          "required": false,
-          "multiple": false,
-          "default": "false",
-          "usage": "Skip confirmation prompt",
-          "envVars": []
-        },
         {
           "name": "help",
           "aliases": [
@@ -247,7 +183,7 @@
       ],
       "name": "routing-adopt",
       "aliases": [],
-      "usage": "Transfer a legacy HTTPRoute to durable reconciliation",
+      "usage": "Removed: adoption is no longer served by the API",
       "hidden": false,
       "argsUsage": "\u003cdeployment-id\u003e",
       "aritySource": "argsUsage",
@@ -261,70 +197,6 @@
       "minArgs": 1,
       "maxArgs": 1,
       "flags": [
-        {
-          "name": "reason",
-          "aliases": [],
-          "type": "string",
-          "takesValue": true,
-          "required": true,
-          "multiple": false,
-          "usage": "Audit reason for the ownership transfer (required)",
-          "envVars": []
-        },
-        {
-          "name": "expected-uid",
-          "aliases": [],
-          "type": "string",
-          "takesValue": true,
-          "required": true,
-          "multiple": false,
-          "usage": "Exact live HTTPRoute UID (required)",
-          "envVars": []
-        },
-        {
-          "name": "expected-resource-version",
-          "aliases": [],
-          "type": "string",
-          "takesValue": true,
-          "required": true,
-          "multiple": false,
-          "usage": "Exact live HTTPRoute resourceVersion (required)",
-          "envVars": []
-        },
-        {
-          "name": "expected-generation",
-          "aliases": [],
-          "type": "integer",
-          "takesValue": true,
-          "required": true,
-          "multiple": false,
-          "default": "0",
-          "usage": "Exact live HTTPRoute generation (required)",
-          "envVars": []
-        },
-        {
-          "name": "request-id",
-          "aliases": [],
-          "type": "string",
-          "takesValue": true,
-          "required": true,
-          "multiple": false,
-          "usage": "Stable UUID for this adoption attempt (required)",
-          "envVars": []
-        },
-        {
-          "name": "yes",
-          "aliases": [
-            "y"
-          ],
-          "type": "boolean",
-          "takesValue": false,
-          "required": true,
-          "multiple": false,
-          "default": "false",
-          "usage": "Confirm the routing ownership transfer (required)",
-          "envVars": []
-        },
         {
           "name": "help",
           "aliases": [
