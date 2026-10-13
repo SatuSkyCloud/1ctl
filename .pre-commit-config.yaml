@@ -1,0 +1,35 @@
+# Fast local gate mirroring the CI checks that most often reject a push.
+#
+# Enable once per clone:
+#   pre-commit install --hook-type pre-push
+#
+# Why this exists: the workflow gates live in .github/workflows/ci.yaml, so
+# without this the first thing that tells you the contract artifacts are stale is
+# a CI run 20 minutes later. Every check here is one CI already runs -- this only
+# moves the discovery to before the push.
+#
+# Tests are deliberately excluded: they are minutes, not seconds. Run
+# `task test` when the change warrants it.
+#
+# If lint fails with "the Go language version used to build golangci-lint is lower
+# than the targeted Go version", the installed binary is stale. It must be built
+# with a Go at least as new as go.mod's, so match what CI installs:
+#   GOTOOLCHAIN=go1.26.9 go install github.com/golangci/golangci-lint/v2/cmd/golangci-lint@v2.8.0
+repos:
+  - repo: local
+    hooks:
+      - id: 1ctl-preflight
+        name: 1ctl preflight (gofmt, vet, lint, contract freshness)
+        entry: >-
+          bash -c 'set -euo pipefail
+          && test -z "$(gofmt -l .)"
+          && go vet ./...
+          && task lint
+          && task contract:check
+          && if command -v actionlint >/dev/null 2>&1; then
+               actionlint .github/workflows/*.yml .github/workflows/*.yaml;
+             fi'
+        language: system
+        pass_filenames: false
+        always_run: true
+        stages: [pre-push]
