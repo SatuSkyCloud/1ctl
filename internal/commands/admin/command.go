@@ -10,14 +10,7 @@ import (
 	"github.com/urfave/cli/v3"
 )
 
-const (
-	flagReason                  = "reason"
-	flagExpectedUID             = "expected-uid"
-	flagExpectedResourceVersion = "expected-resource-version"
-	flagExpectedGeneration      = "expected-generation"
-	flagRequestID               = "request-id"
-	flagYes                     = "yes"
-)
+const ()
 
 type deploymentAdoptInput struct {
 	DeploymentID            string
@@ -55,22 +48,9 @@ func deploymentAdoptCommand() *cli.Command {
 	var in deploymentAdoptInput
 	return &cli.Command{
 		Name:      "adopt",
-		Usage:     "Transfer a legacy Deployment to durable reconciliation",
+		Usage:     "Removed: adoption is no longer served by the API",
 		ArgsUsage: "<deployment-id>",
-		Flags: []cli.Flag{
-			requiredString(flagReason, "Audit reason for the ownership transfer", &in.Reason, validateReason),
-			requiredString(flagExpectedUID, "Exact live Deployment UID", &in.ExpectedUID, validateUUID),
-			requiredString(flagExpectedResourceVersion, "Exact live Deployment resourceVersion", &in.ExpectedResourceVersion, validateNonEmpty),
-			&cli.Int64Flag{
-				Name:        flagExpectedGeneration,
-				Usage:       requiredUsage("Exact live Deployment generation"),
-				Destination: &in.ExpectedGeneration,
-				Required:    true,
-				Validator:   validateGeneration,
-			},
-			requiredString(flagRequestID, "Stable UUID for this adoption attempt", &in.RequestID, validateUUID),
-			&cli.BoolFlag{Name: flagYes, Aliases: []string{"y"}, Usage: "Skip confirmation prompt", Destination: &in.Yes},
-		},
+		Flags:     []cli.Flag{},
 		Action: func(ctx context.Context, cmd *cli.Command) error {
 			if cmd.Args().Len() != 1 {
 				return invalidPositionalArgs(cmd)
@@ -88,25 +68,9 @@ func deploymentRoutingAdoptCommand() *cli.Command {
 	var in deploymentAdoptInput
 	return &cli.Command{
 		Name:      "routing-adopt",
-		Usage:     "Transfer a legacy HTTPRoute to durable reconciliation",
+		Usage:     "Removed: adoption is no longer served by the API",
 		ArgsUsage: "<deployment-id>",
-		Flags: []cli.Flag{
-			requiredString(flagReason, "Audit reason for the ownership transfer", &in.Reason, validateReason),
-			requiredString(flagExpectedUID, "Exact live HTTPRoute UID", &in.ExpectedUID, validateUUID),
-			requiredString(flagExpectedResourceVersion, "Exact live HTTPRoute resourceVersion", &in.ExpectedResourceVersion, validateNonEmpty),
-			&cli.Int64Flag{
-				Name:        flagExpectedGeneration,
-				Usage:       requiredUsage("Exact live HTTPRoute generation"),
-				Destination: &in.ExpectedGeneration,
-				Required:    true,
-				Validator:   validateGeneration,
-			},
-			requiredString(flagRequestID, "Stable UUID for this adoption attempt", &in.RequestID, validateUUID),
-			&cli.BoolFlag{
-				Name: flagYes, Aliases: []string{"y"}, Usage: requiredUsage("Confirm the routing ownership transfer"),
-				Destination: &in.Yes, Required: true,
-			},
-		},
+		Flags:     []cli.Flag{},
 		Action: func(ctx context.Context, cmd *cli.Command) error {
 			if cmd.Args().Len() != 1 {
 				return invalidPositionalArgs(cmd)
@@ -120,20 +84,6 @@ func deploymentRoutingAdoptCommand() *cli.Command {
 	}
 }
 
-func requiredString(name, usage string, destination *string, validator func(string) error) *cli.StringFlag {
-	return &cli.StringFlag{
-		Name:        name,
-		Usage:       requiredUsage(usage),
-		Destination: destination,
-		Required:    true,
-		Validator:   validator,
-	}
-}
-
-func requiredUsage(usage string) string {
-	return usage + " (required)"
-}
-
 func invalidPositionalArgs(cmd *cli.Command) error {
 	if err := cli.ShowSubcommandHelp(cmd); err != nil {
 		return err
@@ -145,31 +95,6 @@ func validateUUID(value string) error {
 	parsed, err := uuid.Parse(strings.TrimSpace(value))
 	if err != nil || parsed == uuid.Nil {
 		return fmt.Errorf("must be a non-zero UUID")
-	}
-	return nil
-}
-
-func validateNonEmpty(value string) error {
-	if strings.TrimSpace(value) == "" {
-		return fmt.Errorf("must not be empty")
-	}
-	return nil
-}
-
-func validateReason(value string) error {
-	value = strings.TrimSpace(value)
-	if value == "" {
-		return fmt.Errorf("must not be empty")
-	}
-	if len(value) > 500 {
-		return fmt.Errorf("must not exceed 500 characters")
-	}
-	return nil
-}
-
-func validateGeneration(value int64) error {
-	if value < 1 {
-		return fmt.Errorf("must be at least 1")
 	}
 	return nil
 }
