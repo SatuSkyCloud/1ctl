@@ -1,5 +1,24 @@
 # Release Notes
 
+## Version 0.13.9 (17-10-2026)
+
+An operator command for a machine that the platform has stopped reconciling, and
+honest errors on two commands that no longer work.
+
+* **`1ctl admin machine-state-retire <machine-id> --generation N`** — clears a
+  dead-lettered machine-state event. The platform refuses to queue reconciliation while
+  a dead-letter exists for the same machine and generation, and a generation never
+  advances on its own, so without this a single dead-letter is permanent. In production
+  that froze three machines for six weeks and reduced the placement pool to two nodes,
+  one of them a machine named `test`.
+* `--generation` is required rather than defaulted: retiring the wrong generation clears
+  a different incident than the one you are looking at. A zero count is reported as a
+  note, because "nothing was dead-lettered" and "four were retired" mean different
+  things.
+* **`admin deployment adopt` and `admin routing-adopt`** now fail immediately with an
+  explanation instead of calling endpoints that were deliberately unregistered. They no
+  longer require flags that could never have been acted on.
+
 ## Version 0.13.8 (12-10-2026)
 
 A pre-push gate, so the checks that only ran in CI now run before you push.
