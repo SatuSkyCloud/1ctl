@@ -37,6 +37,11 @@ export interface DeploymentRoutingAdoptionResult {
   already_managed: boolean;
   request_id: string;
 }
+export interface MachineStateRetireResult {
+  machine_id: string;
+  generation: number /* int64 */;
+  retired: number /* int64 */;
+}
 
 //////////
 // source: audit.go

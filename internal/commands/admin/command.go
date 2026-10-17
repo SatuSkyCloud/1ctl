@@ -6,7 +6,9 @@ import (
 	"fmt"
 	"strings"
 
+	"1ctl/internal/utils"
 	"github.com/google/uuid"
+
 	"github.com/urfave/cli/v3"
 )
 
@@ -28,6 +30,7 @@ func Command() *cli.Command {
 		Name:  "admin",
 		Usage: "Perform guarded platform administration operations",
 		Commands: []*cli.Command{
+			machineStateRetireCommand(),
 			deploymentCommand(),
 		},
 	}
@@ -97,4 +100,33 @@ func validateUUID(value string) error {
 		return fmt.Errorf("must be a non-zero UUID")
 	}
 	return nil
+}
+
+type machineStateRetireInput struct {
+	MachineID  string
+	Generation int64
+}
+
+func machineStateRetireCommand() *cli.Command {
+	var in machineStateRetireInput
+	return &cli.Command{
+		Name:      "machine-state-retire",
+		Usage:     "Retire a dead-lettered machine state event so reconciliation can resume",
+		ArgsUsage: "<machine-id>",
+		Flags: []cli.Flag{
+			&cli.Int64Flag{
+				Name:        "generation",
+				Usage:       "Machine generation the dead-letter belongs to",
+				Required:    true,
+				Destination: &in.Generation,
+			},
+		},
+		Action: func(ctx context.Context, cmd *cli.Command) error {
+			if cmd.Args().Len() != 1 {
+				return utils.NewError("exactly one machine id is required", nil)
+			}
+			in.MachineID = cmd.Args().First()
+			return handleMachineStateRetire(ctx, in)
+		},
+	}
 }

@@ -82,3 +82,33 @@ func AdoptDeploymentRouting(deploymentID, requestID string, request DeploymentAd
 	}
 	return &response.Data, nil
 }
+
+// MachineStateRetireResult reports what an operator's retire call changed.
+type MachineStateRetireResult struct {
+	MachineID  string `json:"machine_id"`
+	Generation int64  `json:"generation"`
+	Retired    int64  `json:"retired"`
+}
+
+// RetireMachineStateDeadLetters clears a dead-lettered machine-state event so the
+// platform can reconcile that machine generation again.
+//
+// EnsureReconciliationEvent refuses to queue while a dead-letter exists for the same
+// (machine, generation) — "intentionally left for an operator" — and a machine's
+// generation never advances on its own, so a single dead-letter is permanent without
+// this call (satusky-core_backend#660). Generation is required for the same reason:
+// retiring the wrong one clears a different incident than the operator is looking at.
+func RetireMachineStateDeadLetters(machineID string, generation int64) (*MachineStateRetireResult, error) {
+	var response struct {
+		Error bool                     `json:"error"`
+		Data  MachineStateRetireResult `json:"data"`
+	}
+	path := fmt.Sprintf("/admin/machine-state/%s/dead-letters/retire", url.PathEscape(machineID))
+	body := struct {
+		Generation int64 `json:"generation"`
+	}{Generation: generation}
+	if err := makeMainAPIRequestWithHeaders(http.MethodPost, path, body, &response, nil); err != nil {
+		return nil, err
+	}
+	return &response.Data, nil
+}

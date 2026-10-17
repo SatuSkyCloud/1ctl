@@ -113,6 +113,52 @@
     {
       "path": [
         "admin",
+        "machine-state-retire"
+      ],
+      "name": "machine-state-retire",
+      "aliases": [],
+      "usage": "Retire a dead-lettered machine state event so reconciliation can resume",
+      "hidden": false,
+      "argsUsage": "\u003cmachine-id\u003e",
+      "aritySource": "argsUsage",
+      "arguments": [
+        {
+          "name": "machine-id",
+          "required": true,
+          "variadic": false
+        }
+      ],
+      "minArgs": 1,
+      "maxArgs": 1,
+      "flags": [
+        {
+          "name": "generation",
+          "aliases": [],
+          "type": "integer",
+          "takesValue": true,
+          "required": true,
+          "multiple": false,
+          "default": "0",
+          "usage": "Machine generation the dead-letter belongs to",
+          "envVars": []
+        },
+        {
+          "name": "help",
+          "aliases": [
+            "h"
+          ],
+          "type": "boolean",
+          "takesValue": false,
+          "required": false,
+          "multiple": false,
+          "usage": "Show help",
+          "envVars": []
+        }
+      ]
+    },
+    {
+      "path": [
+        "admin",
         "deployment"
       ],
       "name": "deployment",
