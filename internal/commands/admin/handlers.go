@@ -5,6 +5,7 @@ import (
 	"fmt"
 
 	"1ctl/internal/api"
+	"1ctl/internal/deploy"
 	"1ctl/internal/utils"
 )
 
@@ -62,5 +63,58 @@ func handleMachineStateRetire(_ context.Context, in machineStateRetireInput) err
 	if result.Retired == 0 {
 		utils.PrintStatusLine("Note", "nothing was dead-lettered at that generation; reconciliation was already free to queue")
 	}
+	return nil
+}
+
+// Injectable seams so tests can prove what the move command sends.
+var (
+	moveDeploymentPlacement = api.MoveDeploymentPlacement
+	resolveMoveDeploymentID = deploy.ResolveDeploymentID
+	resolveMachineID        = func(name string) (string, error) {
+		machine, err := api.GetMachineByName(name)
+		if err != nil {
+			return "", err
+		}
+		if machine == nil || machine.MachineID == "" {
+			return "", fmt.Errorf("machine %q has no machine ID", name)
+		}
+		return machine.MachineID, nil
+	}
+	confirmMove = utils.Confirm
+)
+
+func handleDeploymentMove(_ context.Context, in deploymentMoveInput) error {
+	deploymentID, err := resolveMoveDeploymentID(in.DeploymentID, in.App, "")
+	if err != nil {
+		return utils.NewError(err.Error(), nil)
+	}
+	fromID, err := resolveMachineID(in.From)
+	if err != nil {
+		return utils.NewError(fmt.Sprintf("resolve machine %q: %s", in.From, err.Error()), nil)
+	}
+	toID, err := resolveMachineID(in.To)
+	if err != nil {
+		return utils.NewError(fmt.Sprintf("resolve machine %q: %s", in.To, err.Error()), nil)
+	}
+	label := in.App
+	if label == "" {
+		label = deploymentID
+	}
+	if !confirmMove(fmt.Sprintf("Move %s from %s to %s? Its pods will roll to the new machine", label, in.From, in.To), in.Yes) {
+		return utils.NewError("move cancelled", nil)
+	}
+	result, err := moveDeploymentPlacement(deploymentID, fromID, toID)
+	if err != nil {
+		return utils.NewError(fmt.Sprintf("failed to move deployment: %s", err.Error()), nil)
+	}
+	if utils.TryPrintJSON(result) {
+		return nil
+	}
+	utils.PrintSuccess("Move accepted; the rolling update runs in the background")
+	utils.PrintStatusLine("Deployment", deploymentID)
+	utils.PrintStatusLine("From", fmt.Sprintf("%s (%s)", in.From, fromID))
+	utils.PrintStatusLine("To", fmt.Sprintf("%s (%s)", in.To, toID))
+	utils.PrintStatusLine("Generation", fmt.Sprintf("%d", result.DesiredGeneration))
+	utils.PrintStatusLine("Next", "watch it with: 1ctl app status "+label)
 	return nil
 }
