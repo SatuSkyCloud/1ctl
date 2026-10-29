@@ -1,5 +1,18 @@
 # Release Notes
 
+## Version 0.14.0 (29-10-2026)
+
+A super-admin command to move a running app off one machine and onto another.
+
+* **`1ctl admin deployment move <app> --from <machine> --to <machine>`** — swaps the
+  machine an app runs on with a rolling update. The target gets the same checks as
+  automatic placement, and the old machine is released only after the new pods are
+  Ready. Only stateless renter apps with no rollout in progress can move. Use
+  `--deployment-id` instead of the app name if needed, and `--yes` to skip the prompt.
+* Needs platform v0.96.0 or later, which also fixes "Missing authentication" on
+  admin commands for API-token logins.
+* Built with Go 1.26.10, which fixes GO-2026-6809 in `crypto/x509`.
+
 ## Version 0.13.9 (17-10-2026)
 
 An operator command for a machine that the platform has stopped reconciling, and
