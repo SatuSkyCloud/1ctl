@@ -42,6 +42,10 @@ export interface MachineStateRetireResult {
   generation: number /* int64 */;
   retired: number /* int64 */;
 }
+export interface PlacementMoveResult {
+  desired_generation: number /* int64 */;
+  changed: boolean;
+}
 
 //////////
 // source: audit.go

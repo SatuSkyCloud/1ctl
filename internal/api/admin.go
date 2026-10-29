@@ -112,3 +112,28 @@ func RetireMachineStateDeadLetters(machineID string, generation int64) (*Machine
 	}
 	return &response.Data, nil
 }
+
+// PlacementMoveResult is what the API reports after accepting a placement move.
+type PlacementMoveResult struct {
+	DesiredGeneration int64 `json:"desired_generation"`
+	Changed           bool  `json:"changed"`
+}
+
+// MoveDeploymentPlacement asks the platform to run a deployment on
+// targetMachineID instead of sourceMachineID. The API checks the target,
+// reserves it and returns at once; the rolling update runs in the background.
+func MoveDeploymentPlacement(deploymentID, sourceMachineID, targetMachineID string) (*PlacementMoveResult, error) {
+	var response struct {
+		Error bool                `json:"error"`
+		Data  PlacementMoveResult `json:"data"`
+	}
+	path := fmt.Sprintf("/admin/deployments/%s/placement/move", url.PathEscape(deploymentID))
+	body := struct {
+		SourceMachineID string `json:"source_machine_id"`
+		TargetMachineID string `json:"target_machine_id"`
+	}{SourceMachineID: sourceMachineID, TargetMachineID: targetMachineID}
+	if err := makeMainAPIRequestWithHeaders(http.MethodPost, path, body, &response, nil); err != nil {
+		return nil, err
+	}
+	return &response.Data, nil
+}

@@ -43,6 +43,7 @@ func deploymentCommand() *cli.Command {
 		Commands: []*cli.Command{
 			deploymentAdoptCommand(),
 			deploymentRoutingAdoptCommand(),
+			deploymentMoveCommand(),
 		},
 	}
 }
@@ -127,6 +128,50 @@ func machineStateRetireCommand() *cli.Command {
 			}
 			in.MachineID = cmd.Args().First()
 			return handleMachineStateRetire(ctx, in)
+		},
+	}
+}
+
+type deploymentMoveInput struct {
+	App          string
+	DeploymentID string
+	From         string
+	To           string
+	Yes          bool
+}
+
+func deploymentMoveCommand() *cli.Command {
+	var in deploymentMoveInput
+	return &cli.Command{
+		Name:  "move",
+		Usage: "Move a running app from one machine to another with a rolling update",
+		Description: "Swaps one machine for another. The target gets the same checks as automatic\n" +
+			"placement, and the old machine is released only after the new pods are Ready.\n" +
+			"Only stateless renter apps with no rollout in progress can move.\n\n" +
+			"Example:\n   1ctl admin deployment move ims-dev --from compute-main-04 --to compute-main-01",
+		ArgsUsage: "<app>",
+		Flags: []cli.Flag{
+			&cli.StringFlag{Name: "deployment-id", Usage: "Deployment ID (instead of the app name)", Destination: &in.DeploymentID},
+			&cli.StringFlag{Name: "from", Usage: "Machine name the app runs on now", Required: true, Destination: &in.From},
+			&cli.StringFlag{Name: "to", Usage: "Machine name to move the app to", Required: true, Destination: &in.To},
+			&cli.BoolFlag{Name: "yes", Usage: "Skip the confirmation prompt", Destination: &in.Yes},
+		},
+		Action: func(ctx context.Context, cmd *cli.Command) error {
+			if cmd.Args().Len() > 1 || (cmd.Args().Len() == 0 && in.DeploymentID == "") {
+				return invalidPositionalArgs(cmd)
+			}
+			in.App = strings.TrimSpace(cmd.Args().First())
+			in.DeploymentID = strings.TrimSpace(in.DeploymentID)
+			if in.DeploymentID != "" {
+				if err := validateUUID(in.DeploymentID); err != nil {
+					return fmt.Errorf("invalid deployment ID: %w", err)
+				}
+			}
+			in.From, in.To = strings.TrimSpace(in.From), strings.TrimSpace(in.To)
+			if in.From == "" || in.To == "" || in.From == in.To {
+				return fmt.Errorf("--from and --to must name two different machines")
+			}
+			return handleDeploymentMove(ctx, in)
 		},
 	}
 }
