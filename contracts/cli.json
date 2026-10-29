@@ -259,6 +259,84 @@
     },
     {
       "path": [
+        "admin",
+        "deployment",
+        "move"
+      ],
+      "name": "move",
+      "aliases": [],
+      "usage": "Move a running app from one machine to another with a rolling update",
+      "description": "Swaps one machine for another. The target gets the same checks as automatic\nplacement, and the old machine is released only after the new pods are Ready.\nOnly stateless renter apps with no rollout in progress can move.\n\nExample:\n   1ctl admin deployment move ims-dev --from compute-main-04 --to compute-main-01",
+      "hidden": false,
+      "argsUsage": "\u003capp\u003e",
+      "aritySource": "argsUsage",
+      "arguments": [
+        {
+          "name": "app",
+          "required": true,
+          "variadic": false
+        }
+      ],
+      "minArgs": 1,
+      "maxArgs": 1,
+      "flags": [
+        {
+          "name": "deployment-id",
+          "aliases": [],
+          "type": "string",
+          "takesValue": true,
+          "required": false,
+          "multiple": false,
+          "usage": "Deployment ID (instead of the app name)",
+          "envVars": []
+        },
+        {
+          "name": "from",
+          "aliases": [],
+          "type": "string",
+          "takesValue": true,
+          "required": true,
+          "multiple": false,
+          "usage": "Machine name the app runs on now",
+          "envVars": []
+        },
+        {
+          "name": "to",
+          "aliases": [],
+          "type": "string",
+          "takesValue": true,
+          "required": true,
+          "multiple": false,
+          "usage": "Machine name to move the app to",
+          "envVars": []
+        },
+        {
+          "name": "yes",
+          "aliases": [],
+          "type": "boolean",
+          "takesValue": false,
+          "required": false,
+          "multiple": false,
+          "default": "false",
+          "usage": "Skip the confirmation prompt",
+          "envVars": []
+        },
+        {
+          "name": "help",
+          "aliases": [
+            "h"
+          ],
+          "type": "boolean",
+          "takesValue": false,
+          "required": false,
+          "multiple": false,
+          "usage": "Show help",
+          "envVars": []
+        }
+      ]
+    },
+    {
+      "path": [
         "init"
       ],
       "name": "init",
