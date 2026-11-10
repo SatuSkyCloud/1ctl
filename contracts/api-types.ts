@@ -1337,6 +1337,8 @@ export interface PostgresStatus {
   pooler_ready_replicas: number /* int */;
   pooler_desired_replicas: number /* int */;
   external_accessible: boolean;
+  external_access_phase: string;
+  external_access_error: string;
 }
 export interface CNPGDatabaseUser {
   user_id: string /* UUID */;

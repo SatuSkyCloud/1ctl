@@ -561,15 +561,33 @@ func printPostgresStatus(status *api.PostgresStatus) {
 		return
 	}
 	utils.PrintHeader("Postgres Status")
-	utils.PrintStatusLine("Status", status.Status)
-	utils.PrintStatusLine("Cluster phase", status.ClusterPhase)
-	utils.PrintStatusLine("Cluster exists", boolStatus(status.ClusterExists))
-	utils.PrintStatusLine("Instances", fmt.Sprintf("%d/%d ready", status.ReadyInstances, status.TotalInstances))
-	if status.Primary != "" {
-		utils.PrintStatusLine("Primary", status.Primary)
+	for _, line := range postgresStatusLines(status) {
+		utils.PrintStatusLine(line.Key, line.Value)
 	}
-	utils.PrintStatusLine("Pooler", fmt.Sprintf("%d/%d ready", status.PoolerReadyReplicas, status.PoolerDesiredReplicas))
-	utils.PrintStatusLine("External access", boolStatus(status.ExternalAccessible))
+}
+
+// postgresStatusLines builds the label/value lines shown by `postgres status`.
+// The external access error is shown only when set: it is often the reason the
+// overall status is degraded.
+func postgresStatusLines(status *api.PostgresStatus) []utils.KeyValue {
+	lines := []utils.KeyValue{
+		{Key: "Status", Value: status.Status},
+		{Key: "Cluster phase", Value: status.ClusterPhase},
+		{Key: "Cluster exists", Value: boolStatus(status.ClusterExists)},
+		{Key: "Instances", Value: fmt.Sprintf("%d/%d ready", status.ReadyInstances, status.TotalInstances)},
+	}
+	if status.Primary != "" {
+		lines = append(lines, utils.KeyValue{Key: "Primary", Value: status.Primary})
+	}
+	lines = append(lines,
+		utils.KeyValue{Key: "Pooler", Value: fmt.Sprintf("%d/%d ready", status.PoolerReadyReplicas, status.PoolerDesiredReplicas)},
+		utils.KeyValue{Key: "External access", Value: boolStatus(status.ExternalAccessible)},
+		utils.KeyValue{Key: "External access phase", Value: status.ExternalAccessPhase},
+	)
+	if status.ExternalAccessError != "" {
+		lines = append(lines, utils.KeyValue{Key: "External access error", Value: status.ExternalAccessError})
+	}
+	return lines
 }
 
 func printPostgresCredentials(creds *api.PostgresCredentials) {
