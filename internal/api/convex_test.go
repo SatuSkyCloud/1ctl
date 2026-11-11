@@ -95,3 +95,19 @@ func TestGetConvexRejectsOtherEngine(t *testing.T) {
 		t.Fatal("accepted another engine")
 	}
 }
+
+func TestGetConvexStatusDecodesBucketBootstrap(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		_, _ = fmt.Fprint(w, `{"data":{"engine":"convex","status":"degraded","buckets_state":"failed","buckets_failed_attempts":7,"buckets_error":"BackoffLimitExceeded: Job has reached the specified backoff limit","buckets_log_tail":["ERROR: head-bucket cvx-a-files was rejected; S3 credentials are not accepted"]}}`)
+	}))
+	defer server.Close()
+	configureAdminAPITestContext(t, server.URL+"/v1/cli")
+	status, err := GetConvexStatus(uuid.NewString())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if status.Status != "degraded" || status.BucketsState != "failed" || status.BucketsFailedAttempts != 7 ||
+		status.BucketsError == "" || len(status.BucketsLogTail) != 1 {
+		t.Fatalf("bucket bootstrap not decoded: %+v", status)
+	}
+}
