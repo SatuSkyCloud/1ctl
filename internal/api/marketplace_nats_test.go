@@ -2,6 +2,7 @@ package api
 
 import (
 	"encoding/json"
+	"fmt"
 	"io"
 	"net/http"
 	"net/http/httptest"
@@ -111,5 +112,24 @@ func TestDownloadMarketplaceDeploymentOutputPathHeadersAndRawResponse(t *testing
 	}
 	if string(value) != "super-secret-token" {
 		t.Fatalf("value = %q", value)
+	}
+}
+
+func TestListMarketplaceDeploymentOutputs(t *testing.T) {
+	deploymentID := uuid.NewString()
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/v1/marketplace-outputs/deployments/"+deploymentID+"/outputs" {
+			t.Errorf("unexpected path %s", r.URL.Path)
+		}
+		_, _ = fmt.Fprint(w, `{"data":[{"name":"access-auth-code","sensitive":true},{"name":"url","sensitive":false}]}`)
+	}))
+	defer server.Close()
+	configureAdminAPITestContext(t, server.URL+"/v1/cli")
+	outputs, err := ListMarketplaceDeploymentOutputs(deploymentID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(outputs) != 2 || outputs[0].Name != "access-auth-code" || !outputs[0].Sensitive || outputs[1].Sensitive {
+		t.Fatalf("unexpected outputs: %+v", outputs)
 	}
 }

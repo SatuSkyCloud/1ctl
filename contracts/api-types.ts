@@ -401,6 +401,10 @@ export interface MarketplaceDeployResponse {
   domain: string;
   status: string;
 }
+export interface MarketplaceDeploymentOutput {
+  name: string;
+  sensitive: boolean;
+}
 
 //////////
 // source: marketplace_publisher.go
