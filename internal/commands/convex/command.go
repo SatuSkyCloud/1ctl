@@ -142,6 +142,7 @@ func instanceCommand(action, usage string) *cli.Command {
 				utils.PrintStatusLine("Database ready", fmt.Sprint(status.DatabaseReady))
 				utils.PrintStatusLine("Backend ready", fmt.Sprint(status.BackendReady))
 				utils.PrintStatusLine("Dashboard enabled / ready", fmt.Sprintf("%t / %t", status.DashboardEnabled, status.DashboardReady))
+				printBucketStatus(status)
 				utils.PrintInfo("Public DNS/HTTPS reachability is not verified by workload status.")
 			}
 		case "connection", "credentials":
@@ -232,5 +233,24 @@ func printInstance(item *api.StorageConfig) {
 func printAccepted(id, action string) {
 	if !utils.TryPrintJSON(map[string]string{"storage_id": id, "action": action, "status": "accepted"}) {
 		utils.PrintSuccess("Convex %s accepted; check service status for convergence", action)
+	}
+}
+
+// printBucketStatus shows the S3 bucket bootstrap. A failed bootstrap is why
+// an instance reports "degraded": reads work but every write fails.
+func printBucketStatus(status *api.ConvexStatus) {
+	if status.BucketsState == "" {
+		return
+	}
+	utils.PrintStatusLine("Storage buckets", status.BucketsState)
+	if status.BucketsFailedAttempts > 0 {
+		utils.PrintStatusLine("Bucket job failed attempts", fmt.Sprint(status.BucketsFailedAttempts))
+	}
+	if status.BucketsError == "" {
+		return
+	}
+	utils.PrintStatusLine("Bucket error", status.BucketsError)
+	for _, line := range status.BucketsLogTail {
+		fmt.Println("  " + line)
 	}
 }

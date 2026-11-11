@@ -38,6 +38,12 @@ type ConvexStatus struct {
 	DashboardEnabled           bool   `json:"dashboard_enabled"`
 	DashboardReady             bool   `json:"dashboard_ready"`
 	PublicReachabilityVerified bool   `json:"public_reachability_verified"`
+	// Bucket bootstrap (create-buckets Job): ready, pending, failed or unknown.
+	// Older backends omit these fields.
+	BucketsState          string   `json:"buckets_state,omitempty"`
+	BucketsFailedAttempts int64    `json:"buckets_failed_attempts,omitempty"`
+	BucketsError          string   `json:"buckets_error,omitempty"`
+	BucketsLogTail        []string `json:"buckets_log_tail,omitempty"`
 }
 
 type ConvexCredentials struct {
