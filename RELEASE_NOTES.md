@@ -1,5 +1,24 @@
 # Release Notes
 
+## Version 0.15.0 (11-11-2026)
+
+See the credentials a marketplace app was provisioned with, and see why a managed
+service is not healthy instead of a bare status.
+
+* **`1ctl marketplace outputs <app>`** lists the credentials and other outputs an
+  app's package declares (names and whether they are sensitive, never values), and
+  **`--reveal <name>`** prints one value on its own so it can be piped. For example a
+  new SiYuan instance opens on an access-code lock screen; its code is
+  `1ctl marketplace outputs <app> --reveal access-auth-code`. Takes a deployment ID or
+  an app name in the current namespace. Needs platform v0.108.0 or later.
+* **`1ctl convex status`** now shows the storage bucket setup: `Storage buckets:
+  ready/pending/failed`, failed attempts, the error and the last log lines. A failed
+  bucket setup is why an instance reports `degraded` (reads work, every write fails).
+  Needs platform v0.107.0 or later; older platforms simply show nothing extra.
+* **`1ctl postgres status`** shows the external access phase and error, so a database
+  that is healthy inside the cluster but not reachable from outside says why.
+* Built with Go 1.26.11, which fixes GO-2026-6859 in `net/http`.
+
 ## Version 0.14.0 (29-10-2026)
 
 A super-admin command to move a running app off one machine and onto another.
