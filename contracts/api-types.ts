@@ -137,6 +137,10 @@ export interface ConvexStatus {
   dashboard_enabled: boolean;
   dashboard_ready: boolean;
   public_reachability_verified: boolean;
+  buckets_state?: string;
+  buckets_failed_attempts?: number /* int64 */;
+  buckets_error?: string;
+  buckets_log_tail?: string[];
 }
 export interface ConvexCredentials {
   api_host: string;
