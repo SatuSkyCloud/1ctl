@@ -109,6 +109,8 @@ type PostgresStatus struct {
 	PoolerReadyReplicas   int    `json:"pooler_ready_replicas"`
 	PoolerDesiredReplicas int    `json:"pooler_desired_replicas"`
 	ExternalAccessible    bool   `json:"external_accessible"`
+	ExternalAccessPhase   string `json:"external_access_phase"`
+	ExternalAccessError   string `json:"external_access_error"`
 }
 
 type CNPGDatabaseUser struct {
