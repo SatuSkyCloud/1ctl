@@ -8048,6 +8048,51 @@
     },
     {
       "path": [
+        "marketplace",
+        "outputs"
+      ],
+      "name": "outputs",
+      "aliases": [],
+      "usage": "List or reveal a marketplace deployment's app credentials and outputs",
+      "hidden": false,
+      "argsUsage": "\u003cdeployment-id|app-label\u003e",
+      "aritySource": "argsUsage",
+      "arguments": [
+        {
+          "name": "deployment-id|app-label",
+          "required": true,
+          "variadic": false
+        }
+      ],
+      "minArgs": 1,
+      "maxArgs": 1,
+      "flags": [
+        {
+          "name": "reveal",
+          "aliases": [],
+          "type": "string",
+          "takesValue": true,
+          "required": false,
+          "multiple": false,
+          "usage": "Print the value of one output (e.g. access-auth-code)",
+          "envVars": []
+        },
+        {
+          "name": "help",
+          "aliases": [
+            "h"
+          ],
+          "type": "boolean",
+          "takesValue": false,
+          "required": false,
+          "multiple": false,
+          "usage": "Show help",
+          "envVars": []
+        }
+      ]
+    },
+    {
+      "path": [
         "package"
       ],
       "name": "package",

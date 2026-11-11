@@ -206,3 +206,30 @@ func marketplaceOrganizationHeaders() http.Header {
 	}
 	return headers
 }
+
+// MarketplaceDeploymentOutput is one output a deployment's package declares.
+// It never carries the value; fetch values one at a time with
+// DownloadMarketplaceDeploymentOutput.
+type MarketplaceDeploymentOutput struct {
+	Name      string `json:"name"`
+	Sensitive bool   `json:"sensitive"`
+}
+
+// ListMarketplaceDeploymentOutputs lists a deployment's declared outputs
+// (names and sensitivity only).
+func ListMarketplaceDeploymentOutputs(deploymentID string) ([]MarketplaceDeploymentOutput, error) {
+	var resp apiResponse
+	path := fmt.Sprintf("/marketplace-outputs/deployments/%s/outputs", url.PathEscape(deploymentID))
+	if err := makeMainAPIRequestWithHeaders(http.MethodGet, path, nil, &resp, marketplaceOrganizationHeaders()); err != nil {
+		return nil, err
+	}
+	data, err := json.Marshal(resp.Data)
+	if err != nil {
+		return nil, utils.NewError(fmt.Sprintf("failed to marshal response data: %s", err.Error()), nil)
+	}
+	outputs := []MarketplaceDeploymentOutput{}
+	if err := json.Unmarshal(data, &outputs); err != nil {
+		return nil, utils.NewError(fmt.Sprintf("failed to unmarshal marketplace outputs: %s", err.Error()), nil)
+	}
+	return outputs, nil
+}

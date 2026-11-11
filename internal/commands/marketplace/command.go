@@ -48,6 +48,7 @@ func Command() *cli.Command {
 			marketplaceListCommand(),
 			marketplaceGetCommand(),
 			marketplaceDeployCommand(),
+			marketplaceOutputsCommand(),
 		},
 	}
 }
