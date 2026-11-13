@@ -394,6 +394,7 @@ export interface MarketplaceDeployRequest {
   memory_request?: string;
   storage_size?: string;
   values?: { [key: string]: unknown};
+  public_access?: boolean;
 }
 export interface MarketplaceDeployResponse {
   deployment_id: string /* UUID */;
@@ -404,6 +405,9 @@ export interface MarketplaceDeployResponse {
 export interface MarketplaceDeploymentOutput {
   name: string;
   sensitive: boolean;
+}
+export interface MarketplacePublicAccessRequest {
+  enabled: boolean;
 }
 
 //////////

@@ -37,6 +37,7 @@ type createInput struct {
 	StorageSize    string
 	StorageSizeSet bool
 	StorageClass   string
+	Public         bool
 }
 
 type deploymentInput struct {
@@ -84,6 +85,7 @@ func createCommand() *cli.Command {
 			&cli.StringFlag{Name: flagMemory, Usage: "Memory request per replica", Value: "256Mi", Destination: &in.Memory},
 			&cli.StringFlag{Name: flagStorageSize, Usage: "JetStream PVC size", Value: "10Gi", Destination: &in.StorageSize},
 			&cli.StringFlag{Name: flagStorageClass, Usage: "JetStream PVC storage class", Destination: &in.StorageClass},
+			&cli.BoolFlag{Name: "public", Usage: "Give the NATS client port a public port (off by default; change later with '1ctl app public')", Destination: &in.Public},
 		},
 		Action: func(ctx context.Context, cmd *cli.Command) error {
 			if cmd.Args().Len() != 1 {

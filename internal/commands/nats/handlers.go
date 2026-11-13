@@ -41,6 +41,7 @@ func handleCreate(ctx context.Context, in createInput) error {
 		CPURequest:     in.CPU,
 		MemoryRequest:  in.Memory,
 		Values:         map[string]interface{}{"config": config},
+		PublicAccess:   in.Public,
 	}
 	if in.JetStream {
 		replicas = 3

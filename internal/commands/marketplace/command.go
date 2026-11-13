@@ -14,6 +14,7 @@ const (
 	flagCPU         = "cpu"
 	flagMemory      = "memory"
 	flagStorageSize = "storage-size"
+	flagPublic      = "public"
 	flagLimit       = "limit"
 	flagOffset      = "offset"
 	flagSort        = "sort"
@@ -34,6 +35,7 @@ type marketplaceDeployInput struct {
 	CPU         string
 	Memory      string
 	StorageSize string
+	Public      bool
 }
 
 // --- Command tree -------------------------------------------------------
@@ -119,12 +121,17 @@ func marketplaceDeployCommand() *cli.Command {
 				Name:  flagStorageSize,
 				Usage: "Storage size for persistent data (e.g., '10Gi')",
 			},
+			&cli.BoolFlag{
+				Name:  flagPublic,
+				Usage: "Give the app's TCP endpoints a public port (off by default; change later with '1ctl app public')",
+			},
 		},
 		Action: func(ctx context.Context, cmd *cli.Command) error {
 			if cmd.Args().Len() < 1 {
 				return cli.ShowSubcommandHelp(cmd)
 			}
 			in := marketplaceDeployInput{
+				Public:      cmd.Bool(flagPublic),
 				AppName:     cmd.Args().First(),
 				DeployName:  cmd.Args().Get(1),
 				Hostnames:   cmd.StringSlice(flagHostname),

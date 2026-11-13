@@ -1517,6 +1517,107 @@
     },
     {
       "path": [
+        "app",
+        "public"
+      ],
+      "name": "public",
+      "aliases": [],
+      "usage": "Turn a marketplace app's public TCP port on or off",
+      "hidden": false,
+      "argsUsage": "",
+      "aritySource": "argsUsage",
+      "arguments": [],
+      "minArgs": 0,
+      "maxArgs": 0,
+      "flags": [
+        {
+          "name": "help",
+          "aliases": [
+            "h"
+          ],
+          "type": "boolean",
+          "takesValue": false,
+          "required": false,
+          "multiple": false,
+          "usage": "Show help",
+          "envVars": []
+        }
+      ]
+    },
+    {
+      "path": [
+        "app",
+        "public",
+        "enable"
+      ],
+      "name": "enable",
+      "aliases": [],
+      "usage": "Give the app's TCP endpoints a public port",
+      "hidden": false,
+      "argsUsage": "\u003capp-name-or-id\u003e",
+      "aritySource": "argsUsage",
+      "arguments": [
+        {
+          "name": "app-name-or-id",
+          "required": true,
+          "variadic": false
+        }
+      ],
+      "minArgs": 1,
+      "maxArgs": 1,
+      "flags": [
+        {
+          "name": "help",
+          "aliases": [
+            "h"
+          ],
+          "type": "boolean",
+          "takesValue": false,
+          "required": false,
+          "multiple": false,
+          "usage": "Show help",
+          "envVars": []
+        }
+      ]
+    },
+    {
+      "path": [
+        "app",
+        "public",
+        "disable"
+      ],
+      "name": "disable",
+      "aliases": [],
+      "usage": "Remove the public port; the app stays reachable inside the cluster",
+      "hidden": false,
+      "argsUsage": "\u003capp-name-or-id\u003e",
+      "aritySource": "argsUsage",
+      "arguments": [
+        {
+          "name": "app-name-or-id",
+          "required": true,
+          "variadic": false
+        }
+      ],
+      "minArgs": 1,
+      "maxArgs": 1,
+      "flags": [
+        {
+          "name": "help",
+          "aliases": [
+            "h"
+          ],
+          "type": "boolean",
+          "takesValue": false,
+          "required": false,
+          "multiple": false,
+          "usage": "Show help",
+          "envVars": []
+        }
+      ]
+    },
+    {
+      "path": [
         "logs"
       ],
       "name": "logs",
@@ -6259,6 +6360,17 @@
           "envVars": []
         },
         {
+          "name": "public",
+          "aliases": [],
+          "type": "boolean",
+          "takesValue": false,
+          "required": false,
+          "multiple": false,
+          "default": "false",
+          "usage": "Give the NATS client port a public port (off by default; change later with '1ctl app public')",
+          "envVars": []
+        },
+        {
           "name": "help",
           "aliases": [
             "h"
@@ -8030,6 +8142,17 @@
           "required": false,
           "multiple": false,
           "usage": "Storage size for persistent data (e.g., '10Gi')",
+          "envVars": []
+        },
+        {
+          "name": "public",
+          "aliases": [],
+          "type": "boolean",
+          "takesValue": false,
+          "required": false,
+          "multiple": false,
+          "default": "false",
+          "usage": "Give the app's TCP endpoints a public port (off by default; change later with '1ctl app public')",
           "envVars": []
         },
         {

@@ -71,6 +71,9 @@ type MarketplaceDeployRequest struct {
 	MemoryRequest  string                 `json:"memory_request,omitempty"`
 	StorageSize    string                 `json:"storage_size,omitempty"`
 	Values         map[string]interface{} `json:"values,omitempty"`
+	// PublicAccess gives the app's TCP endpoints a public port. Off by
+	// default: marketplace apps are private unless asked.
+	PublicAccess bool `json:"public_access,omitempty"`
 }
 
 // MarketplaceDeployResponse represents a marketplace deployment response
@@ -232,4 +235,19 @@ func ListMarketplaceDeploymentOutputs(deploymentID string) ([]MarketplaceDeploym
 		return nil, utils.NewError(fmt.Sprintf("failed to unmarshal marketplace outputs: %s", err.Error()), nil)
 	}
 	return outputs, nil
+}
+
+// MarketplacePublicAccessRequest turns a marketplace app's public TCP port on or off.
+type MarketplacePublicAccessRequest struct {
+	Enabled bool `json:"enabled"`
+}
+
+// SetMarketplacePublicAccess turns public TCP access on or off for a
+// marketplace deployment. The platform applies it on the next reconcile
+// without restarting the app.
+func SetMarketplacePublicAccess(deploymentID string, enabled bool) error {
+	var resp apiResponse
+	path := fmt.Sprintf("/marketplaces/deployments/%s/public-access", url.PathEscape(deploymentID))
+	return makeMainAPIRequestWithHeaders(http.MethodPut, path,
+		MarketplacePublicAccessRequest{Enabled: enabled}, &resp, marketplaceOrganizationHeaders())
 }
