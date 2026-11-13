@@ -1,5 +1,20 @@
 # Release Notes
 
+## Version 0.16.0 (13-11-2026)
+
+Marketplace apps are private by default: their TCP endpoints (NATS, Redis, MongoDB,
+Postgres, Convex, Minecraft, ...) get a public port only when you ask for one.
+
+* **`1ctl marketplace deploy <app> --public`** and **`1ctl nats create <name> --public`**
+  give the app's TCP endpoints a public port. Without `--public` the app is reachable
+  only inside the cluster, and `1ctl marketplace outputs` shows the in-cluster address.
+* **`1ctl app public enable|disable <app>`** turns the public port on or off for an
+  app that is already running. The app is not restarted; the change applies within
+  about a minute and the outputs switch between the public and the in-cluster address.
+  Apps that already had a public port before this change keep it until you disable it.
+* Needs platform v0.111.0 or later. Against an older platform `--public` is ignored and
+  `app public` fails with not found.
+
 ## Version 0.15.0 (11-11-2026)
 
 See the credentials a marketplace app was provisioned with, and see why a managed
