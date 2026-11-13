@@ -122,6 +122,7 @@ func handleMarketplaceDeploy(ctx context.Context, in marketplaceDeployInput) err
 		CPURequest:     in.CPU,
 		MemoryRequest:  in.Memory,
 		StorageSize:    in.StorageSize,
+		PublicAccess:   in.Public,
 	}
 
 	resp, err := api.DeployMarketplaceApp(namespace, app.MarketplaceID.String(), req)

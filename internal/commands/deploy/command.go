@@ -184,6 +184,14 @@ type RollbackInput struct {
 }
 
 // ScaleInput holds flags for the "scale" subcommand.
+// PublicAccessInput turns a marketplace app's public TCP port on or off.
+type PublicAccessInput struct {
+	DeploymentID string
+	App          string
+	Config       string
+	Enabled      bool
+}
+
 type ScaleInput struct {
 	DeploymentID string
 	App          string

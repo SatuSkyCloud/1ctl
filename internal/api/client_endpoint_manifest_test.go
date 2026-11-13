@@ -26,6 +26,7 @@ var activeClientEndpoints = []backendClientEndpoint{
 	{Method: "GET", Path: "/v1/marketplaces/all"},
 	{Method: "GET", Path: "/v1/marketplaces/id/{marketplaceId}"},
 	{Method: "POST", Path: "/v1/marketplaces/deploy/create/{namespace}/{marketplaceId}"},
+	{Method: "PUT", Path: "/v1/marketplaces/deployments/{deploymentId}/public-access"},
 }
 
 func TestActiveClientEndpointsMatchBackendManifest(t *testing.T) {

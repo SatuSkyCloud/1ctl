@@ -41,6 +41,7 @@ Examples:
 			appRollbackCommand(),
 			appOpenCommand(),
 			appScaleCommand(),
+			appPublicCommand(),
 		},
 	}
 }
@@ -274,6 +275,38 @@ func appScaleCommand() *cli.Command {
 				return fmt.Errorf("replica count is required — use: 1ctl app scale <app> <n> or --replicas <n>")
 			}
 			return handleScaleDeployment(ctx, in)
+		},
+	}
+}
+
+// appPublicCommand turns a marketplace app's public TCP port on or off.
+// Marketplace apps are private by default.
+func appPublicCommand() *cli.Command {
+	sub := func(name, usage string, enabled bool) *cli.Command {
+		return &cli.Command{
+			Name:      name,
+			Usage:     usage,
+			ArgsUsage: "<app-name-or-id>",
+			Action: func(ctx context.Context, cmd *cli.Command) error {
+				if cmd.Args().Len() < 1 {
+					return cli.ShowSubcommandHelp(cmd)
+				}
+				in := PublicAccessInput{Enabled: enabled}
+				if arg := cmd.Args().First(); looksLikeUUID(arg) {
+					in.DeploymentID = arg
+				} else {
+					in.App = arg
+				}
+				return handlePublicAccess(ctx, in)
+			},
+		}
+	}
+	return &cli.Command{
+		Name:  "public",
+		Usage: "Turn a marketplace app's public TCP port on or off",
+		Commands: []*cli.Command{
+			sub("enable", "Give the app's TCP endpoints a public port", true),
+			sub("disable", "Remove the public port; the app stays reachable inside the cluster", false),
 		},
 	}
 }

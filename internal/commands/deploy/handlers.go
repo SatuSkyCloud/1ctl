@@ -1586,3 +1586,19 @@ func domainTLSText(status api.TLSStatusResponse) string {
 	}
 	return string(status.Status)
 }
+
+func handlePublicAccess(_ context.Context, in PublicAccessInput) error {
+	deploymentID, err := deploypkg.ResolveDeploymentID(in.DeploymentID, in.App, in.Config)
+	if err != nil {
+		return err
+	}
+	if err := api.SetMarketplacePublicAccess(deploymentID, in.Enabled); err != nil {
+		return utils.NewError(fmt.Sprintf("failed to change public access: %s", err.Error()), nil)
+	}
+	if in.Enabled {
+		utils.PrintSuccess("Public access enabled for %s. The public address appears in '1ctl marketplace outputs' once applied.", deploymentID)
+	} else {
+		utils.PrintSuccess("Public access disabled for %s. Outputs now show the in-cluster address once applied.", deploymentID)
+	}
+	return nil
+}
