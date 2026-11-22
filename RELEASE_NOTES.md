@@ -8,9 +8,10 @@ See whether a custom domain is live on the SatuSky edge.
   **Edge** line: publishing, published (automatic), not published, failed, or not
   eligible. Not eligible means the domain's zone is not managed by SatuSky; the
   line then suggests contacting support.
-* SatuSky now publishes new custom domains to the edge automatically once their DNS
-  points at SatuSky (backend v0.114.2), so a new domain no longer fails TLS with
-  "unrecognized name" while waiting for a manual publish.
+* SatuSky is rolling out automatic edge publishing for new custom domains, zone by
+  zone: once a domain's DNS points at SatuSky it is published without a manual
+  step, so it no longer fails TLS with "unrecognized name" in the meantime. The
+  Edge line shows whether that has happened for your domain.
 * Older backends send no edge status; the output is then unchanged.
 
 ## Version 0.17.0 (22-11-2026)
