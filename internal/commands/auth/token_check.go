@@ -11,15 +11,15 @@ import (
 )
 
 // consoleTokenURL is where users create API tokens in the control panel.
-const consoleTokenURL = "https://cloud.satusky.com/<org-id>/token"
+const consoleTokenURL = "https://cloud.satusky.com/<org-id>/token" // #nosec G101 -- console URL template, not a credential
 
 // Stable error codes for local auth diagnostics (raised before any request).
 const (
-	codeTokenRequired    = "AUTH_TOKEN_REQUIRED"
-	codeTokenMalformed   = "AUTH_TOKEN_MALFORMED"
-	codeTokenExpired     = "AUTH_TOKEN_EXPIRED"
-	codeTokenWrongKind   = "AUTH_TOKEN_NOT_API_TOKEN"
-	codeTokenRejected    = "AUTH_TOKEN_REJECTED"
+	codeTokenRequired    = "AUTH_TOKEN_REQUIRED"      // #nosec G101 -- error code name, not a credential
+	codeTokenMalformed   = "AUTH_TOKEN_MALFORMED"     // #nosec G101 -- error code name, not a credential
+	codeTokenExpired     = "AUTH_TOKEN_EXPIRED"       // #nosec G101 -- error code name, not a credential
+	codeTokenWrongKind   = "AUTH_TOKEN_NOT_API_TOKEN" // #nosec G101 -- error code name, not a credential
+	codeTokenRejected    = "AUTH_TOKEN_REJECTED"      // #nosec G101 -- error code name, not a credential
 	tokenKindAPIToken    = "api_token"
 	tokenKindSession     = "session"
 	jwtSegmentCount      = 3
