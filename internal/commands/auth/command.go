@@ -37,9 +37,13 @@ func authLoginCommand() *cli.Command {
 	return &cli.Command{
 		Name:  "login",
 		Usage: "Authenticate with Satusky",
-		Description: `Authenticate using one of these methods:
+		Description: `1ctl authenticates with an API token. Create one in the SatuSky console
+under API Tokens (https://cloud.satusky.com/<org-id>/token), then use one of:
    1. CLI flag:     1ctl auth login --token=<your-token>
-   2. Environment:  export SATUSKY_API_KEY=<your-token> && 1ctl auth login`,
+   2. Environment:  export SATUSKY_API_KEY=<your-token> && 1ctl auth login
+
+With no token, 1ctl re-checks the token saved by an earlier login.
+Browser and email/password login are not available in the CLI yet.`,
 		Flags: []cli.Flag{
 			&cli.StringFlag{
 				Name:        flagToken,

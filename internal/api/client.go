@@ -508,7 +508,11 @@ func LoginCLI(token string) (*TokenValidate, error) {
 
 	if resp.StatusCode != 200 {
 		bodyBytes, _ := io.ReadAll(resp.Body) //nolint:errcheck
-		return nil, utils.NewError(fmt.Sprintf("login failed with status %d: %s", resp.StatusCode, string(bodyBytes)), nil)
+		// Structured error so callers can branch on 401 and show remediation
+		// instead of dumping the raw JSON body.
+		statusErr := newHTTPStatusError(resp.StatusCode, bodyBytes, parseRetryAfter(resp.Header.Get("Retry-After")))
+		statusErr.Message = fmt.Sprintf("login failed with status %d: %s", resp.StatusCode, statusErr.Message)
+		return nil, statusErr
 	}
 
 	var result TokenValidate
