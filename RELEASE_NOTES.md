@@ -1,5 +1,23 @@
 # Release Notes
 
+## Version 0.17.0 (22-11-2026)
+
+Clearer sign-in, and the Homebrew install no longer trips macOS Gatekeeper.
+
+* **`1ctl auth login`** explains what to do instead of printing a raw 401. With no
+  token it tells you to create one in the console (API Tokens) and run
+  `1ctl auth login --token <token>`. When a token is rejected it names the API URL
+  used and says whether the rejected token was the one saved by an earlier login;
+  tokens created before 14-11-2026 no longer work, so create a new one.
+* Pasted tokens are cleaned up before they are sent: surrounding spaces, quotes,
+  `<...>` and a `Bearer ` prefix are removed. A value that is not an API token, an
+  expired token (with its expiry date) or a browser session token is reported
+  locally, without calling the API. `1ctl auth status` uses the same checks.
+* **Homebrew:** the `satuctl` cask now also installs the command as `satuctl`
+  (the command is still `1ctl`), and clears the macOS quarantine flag after
+  install so the first run is not blocked. Upgrade with
+  `brew update && brew reinstall --cask SatuSkyCloud/tap/satuctl`.
+
 ## Version 0.16.0 (13-11-2026)
 
 Marketplace apps are private by default: their TCP endpoints (NATS, Redis, MongoDB,
