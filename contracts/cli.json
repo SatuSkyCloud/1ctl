@@ -8517,7 +8517,7 @@
       "name": "login",
       "aliases": [],
       "usage": "Authenticate with Satusky",
-      "description": "Authenticate using one of these methods:\n   1. CLI flag:     1ctl auth login --token=\u003cyour-token\u003e\n   2. Environment:  export SATUSKY_API_KEY=\u003cyour-token\u003e \u0026\u0026 1ctl auth login",
+      "description": "1ctl authenticates with an API token. Create one in the SatuSky console\nunder API Tokens (https://cloud.satusky.com/\u003corg-id\u003e/token), then use one of:\n   1. CLI flag:     1ctl auth login --token=\u003cyour-token\u003e\n   2. Environment:  export SATUSKY_API_KEY=\u003cyour-token\u003e \u0026\u0026 1ctl auth login\n\nWith no token, 1ctl re-checks the token saved by an earlier login.\nBrowser and email/password login are not available in the CLI yet.",
       "hidden": false,
       "argsUsage": "",
       "aritySource": "argsUsage",
