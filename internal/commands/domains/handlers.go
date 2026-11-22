@@ -868,6 +868,7 @@ func printDomainStatus(status *api.DomainStatusResponse) {
 	utils.PrintStatusLine("DNS", domainDNSText(status.DNS))
 	utils.PrintStatusLine("TLS", domainTLSText(status.TLS))
 	utils.PrintStatusLine("HTTP", domainHTTPText(status.Reachability))
+	printDomainEdge(status.Edge)
 	if status.DNS.Status != api.DNSStatusResolved {
 		utils.PrintInfo("Run setup details with: 1ctl domains setup %s", status.DomainName)
 	}
@@ -879,6 +880,7 @@ func printDomainSetup(status *api.DomainStatusResponse) {
 	utils.PrintStatusLine("Namespace", status.Namespace)
 	utils.PrintStatusLine("Current DNS", domainDNSText(status.DNS))
 	utils.PrintStatusLine("TLS", domainTLSText(status.TLS))
+	printDomainEdge(status.Edge)
 
 	if status.DNS.ExpectedIP == "" {
 		utils.PrintWarning("Backend did not return an expected DNS target yet.")
@@ -894,6 +896,44 @@ func printDomainSetup(status *api.DomainStatusResponse) {
 	utils.PrintStatusLine("Name", status.DomainName)
 	utils.PrintStatusLine("Value", status.DNS.ExpectedIP)
 	utils.PrintInfo("Next check: 1ctl domains check %s --probe", status.DomainName)
+}
+
+// printDomainEdge prints the edge publication line, plus a hint when the
+// domain cannot be published automatically. Older backends send no edge
+// block, and then nothing is printed.
+func printDomainEdge(edge *api.DomainEdgeStatus) {
+	if edge == nil {
+		return
+	}
+	utils.PrintStatusLine("Edge", domainEdgeText(*edge))
+	switch edge.Status {
+	case "not_eligible":
+		utils.PrintInfo("This domain's DNS zone is not managed by SatuSky, so it is not published on the edge automatically. Contact support to publish it.")
+	case "failed":
+		utils.PrintInfo("Edge publication failed. Contact support with the message above.")
+	}
+}
+
+func domainEdgeText(edge api.DomainEdgeStatus) string {
+	text := edge.Status
+	if text == "" {
+		text = "unknown"
+	}
+	switch edge.Status {
+	case "pending":
+		text = "publishing"
+	case "published":
+		text = "published"
+		if edge.AutoPublished {
+			text += " (automatic)"
+		}
+	case "not_requested":
+		text = "not published"
+	}
+	if edge.Message != "" {
+		text += " - " + edge.Message
+	}
+	return text
 }
 
 func domainRouteText(status api.DomainRouteStatus) string {
