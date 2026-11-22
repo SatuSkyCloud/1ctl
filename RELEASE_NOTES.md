@@ -1,5 +1,18 @@
 # Release Notes
 
+## Version 0.18.0 (22-11-2026)
+
+See whether a custom domain is live on the SatuSky edge.
+
+* **`1ctl domains add`**, **`domains check`** and **`domains setup`** print a new
+  **Edge** line: publishing, published (automatic), not published, failed, or not
+  eligible. Not eligible means the domain's zone is not managed by SatuSky; the
+  line then suggests contacting support.
+* SatuSky now publishes new custom domains to the edge automatically once their DNS
+  points at SatuSky (backend v0.114.2), so a new domain no longer fails TLS with
+  "unrecognized name" while waiting for a manual publish.
+* Older backends send no edge status; the output is then unchanged.
+
 ## Version 0.17.0 (22-11-2026)
 
 Clearer sign-in, and the Homebrew install no longer trips macOS Gatekeeper.
