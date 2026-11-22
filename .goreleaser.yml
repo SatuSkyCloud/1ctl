@@ -18,30 +18,66 @@ builds:
       - -X 1ctl/internal/version.CommitHash={{.Commit}}
       - -X 1ctl/internal/version.BuildDate={{.Date}}
 
-  - id: 1ctl-windows-darwin
+  - id: 1ctl-windows
     binary: 1ctl
     main: ./cmd/1ctl/main.go
     env:
       - CGO_ENABLED=0
     goos:
       - windows
-      - darwin
     goarch:
       - amd64
       - arm64
-    ignore:
-      - goos: darwin
-        goarch: "386"
     ldflags:
       - -X 1ctl/internal/version.Version={{.Version}}
       - -X 1ctl/internal/version.CommitHash={{.Commit}}
       - -X 1ctl/internal/version.BuildDate={{.Date}}
 
+  # darwin has its own build id so only these binaries are signed/notarized.
+  - id: 1ctl-darwin
+    binary: 1ctl
+    main: ./cmd/1ctl/main.go
+    env:
+      - CGO_ENABLED=0
+    goos:
+      - darwin
+    goarch:
+      - amd64
+      - arm64
+    ldflags:
+      - -X 1ctl/internal/version.Version={{.Version}}
+      - -X 1ctl/internal/version.CommitHash={{.Commit}}
+      - -X 1ctl/internal/version.BuildDate={{.Date}}
+
+# macOS Gatekeeper refuses ("Apple could not verify ...") any quarantined
+# binary that is not signed with a Developer ID certificate and notarized.
+# Homebrew casks quarantine what they install, so unsigned releases are
+# blocked on first run. This block signs + notarizes the darwin binaries with
+# quill (works on the Linux runner) once the Apple secrets exist; until then
+# it is skipped and the cask hook below strips the quarantine attribute.
+# Required secrets (GitHub environment "release"): see "macOS signing and
+# notarization" in CONTRIBUTING.md.
+notarize:
+  macos:
+    - enabled: '{{ if index .Env "MACOS_SIGN_P12" }}true{{ else }}false{{ end }}'
+      ids:
+        - 1ctl-darwin
+      sign:
+        certificate: "{{ index .Env \"MACOS_SIGN_P12\" }}"
+        password: "{{ index .Env \"MACOS_SIGN_PASSWORD\" }}"
+      notarize:
+        issuer_id: "{{ index .Env \"MACOS_NOTARY_ISSUER_ID\" }}"
+        key_id: "{{ index .Env \"MACOS_NOTARY_KEY_ID\" }}"
+        key: "{{ index .Env \"MACOS_NOTARY_KEY\" }}"
+        wait: true
+        timeout: 20m
+
 archives:
   - id: 1ctl
     ids:
       - 1ctl-linux
-      - 1ctl-windows-darwin
+      - 1ctl-windows
+      - 1ctl-darwin
     name_template: "1ctl-{{ .Version }}-{{ .Os }}-{{ .Arch }}"
     format_overrides:
       - goos: windows
@@ -73,7 +109,10 @@ changelog:
 
 # 1ctl is published as a Homebrew CASK (not a formula) on purpose.
 # GoReleaser deprecated `brews` (formulas) in favor of `homebrew_casks` for
-# pre-compiled binaries. Install with:
+# pre-compiled binaries. The package is named `satuctl` (the original formula
+# could not start with a digit); the command is `1ctl`, and the cask also
+# links it as `satuctl` so the package name works as a command too.
+# Install with:
 #   brew install --cask SatuSkyCloud/tap/satuctl
 homebrew_casks:
   - name: satuctl
@@ -81,6 +120,20 @@ homebrew_casks:
       - 1ctl
     binaries:
       - 1ctl
+    custom_block: |
+      binary "1ctl", target: "satuctl"
+    # Until the darwin binaries are notarized (see `notarize` above), strip the
+    # quarantine attribute Homebrew sets, or Gatekeeper blocks the first run.
+    # The download is pinned by sha256 in this cask. Rendered empty once
+    # signing secrets are configured.
+    hooks:
+      post:
+        install: |
+          {{- if not (index .Env "MACOS_SIGN_P12") }}
+          if OS.mac?
+            system_command "/usr/bin/xattr", args: ["-dr", "com.apple.quarantine", "#{staged_path}/1ctl"]
+          end
+          {{- end }}
     repository:
       owner: SatuSkyCloud
       name: homebrew-tap
