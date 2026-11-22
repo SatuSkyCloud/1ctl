@@ -16,6 +16,17 @@ Upgrade:
 brew upgrade --cask SatuSkyCloud/tap/satuctl
 ```
 
+The Homebrew package is named `satuctl`; the command it installs is `1ctl`
+(also linked as `satuctl`). All examples in this README use `1ctl`.
+
+If macOS says *"1ctl" Not Opened. Apple could not verify "1ctl" is free of
+malware* (releases up to v0.16.0 are not notarized), clear the quarantine flag
+Homebrew set on the download:
+
+```bash
+xattr -dr com.apple.quarantine "$(brew --caskroom)/satuctl"
+```
+
 ### Shell script (Linux/macOS)
 
 ```bash

@@ -135,6 +135,26 @@ git push origin v0.X.Y
 
 4. Update the GitHub release description with the relevant `RELEASE_NOTES.md` entry.
 
+### macOS signing and notarization
+
+macOS Gatekeeper blocks a quarantined binary unless it is signed with an Apple
+Developer ID certificate and notarized. Homebrew casks quarantine what they
+install. GoReleaser signs and notarizes the darwin binaries (with quill, on the
+Linux runner) when these secrets exist in the GitHub `release` environment:
+
+| Secret | Value |
+| --- | --- |
+| `MACOS_SIGN_P12` | base64 of a **Developer ID Application** certificate + private key exported as `.p12` (`base64 -i cert.p12`) |
+| `MACOS_SIGN_PASSWORD` | password of that `.p12` |
+| `MACOS_NOTARY_ISSUER_ID` | App Store Connect API key issuer ID (UUID) |
+| `MACOS_NOTARY_KEY_ID` | App Store Connect API key ID (10 characters) |
+| `MACOS_NOTARY_KEY` | base64 of the `AuthKey_<KEY_ID>.p8` file |
+
+Without `MACOS_SIGN_P12` the notarize step is skipped and the cask strips the
+quarantine attribute in `postflight` instead. Once signing works, check a
+release with `codesign -dv --verbose=2 1ctl` (Authority: Developer ID
+Application) and `spctl -a -vv -t install 1ctl` (source=Notarized Developer ID).
+
 ## Getting Help
 
 - Open an issue for bugs or feature requests
