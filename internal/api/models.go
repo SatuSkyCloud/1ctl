@@ -430,6 +430,19 @@ type DomainStatusResponse struct {
 	DNS          DNSStatusResponse        `json:"dns"`
 	TLS          TLSStatusResponse        `json:"tls"`
 	Reachability DomainReachabilityStatus `json:"reachability"`
+	// Edge is the anycast edge publication state. Older backends omit it.
+	Edge *DomainEdgeStatus `json:"edge,omitempty"`
+}
+
+// DomainEdgeStatus reports whether the anycast edge serves the hostname.
+// Status is one of disabled, not_requested, pending, published, failed,
+// not_eligible or unpublished.
+type DomainEdgeStatus struct {
+	Status            string     `json:"status"`
+	Message           string     `json:"message,omitempty"`
+	PublicationStatus string     `json:"publication_status,omitempty"`
+	AutoPublished     bool       `json:"auto_published"`
+	UpdatedAt         *time.Time `json:"updated_at,omitempty"`
 }
 
 type Dependency struct {
