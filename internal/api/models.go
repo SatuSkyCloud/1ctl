@@ -641,7 +641,11 @@ type DeploymentReconciliationReadiness struct {
 }
 
 type DeploymentWorkloadReadiness struct {
-	State             string `json:"state"`
+	State string `json:"state"`
+	// Code and Remediation explain a failing workload when the server knows why,
+	// for example a container that can never start.
+	Code              string `json:"code,omitempty"`
+	Remediation       string `json:"remediation,omitempty"`
 	DesiredReplicas   int32  `json:"desired_replicas"`
 	ReadyReplicas     int32  `json:"ready_replicas"`
 	AvailableReplicas int32  `json:"available_replicas"`
@@ -681,6 +685,9 @@ func (s DeploymentStatus) readinessEvaluation(mode DeploymentWaitMode) deploymen
 		return deploymentReadinessFailure("deployment reconciliation is failing")
 	}
 	if r.Workload.State == "failing" {
+		if r.Workload.Remediation != "" {
+			return deploymentReadinessFailure("deployment workload is failing: " + r.Workload.Remediation)
+		}
 		return deploymentReadinessFailure("deployment workload is failing")
 	}
 	if r.Application.State == "failing" {
