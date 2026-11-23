@@ -7,6 +7,9 @@ Dockerfiles with build-arg variables in `FROM` deploy again, and validation erro
 * **`1ctl deploy`** accepts a `FROM` line that uses an `ARG` variable, such as
   `FROM node:${NODE_VERSION}-slim`. Docker fills these in at build time, so the CLI no
   longer rejects them ([#130](https://github.com/SatuSkyCloud/1ctl/issues/130)).
+* `FROM --platform=...`, heredocs (`RUN <<EOF`) and `MAINTAINER` no longer fail validation.
+* An invalid Dockerfile now reports its own problems. Before, `1ctl deploy` said that no
+  Dockerfile existed, or silently built a different Dockerfile from a common location.
 * Dockerfile validation errors list every problem with its line number, for example
   `line 9: invalid base image format 'bad!image'`. Before, they only named the file.
 

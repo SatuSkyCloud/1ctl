@@ -479,11 +479,8 @@ func validateInputs(m mergedInput) error {
 		}
 	}
 	if m.Image == "" {
-		if err := validator.ValidateDockerfile(m.Dockerfile); err != nil {
-			_, findErr := validator.FindDockerfile(".")
-			if findErr != nil {
-				return utils.NewError("no valid Dockerfile found: please ensure a Dockerfile exists in your project", err)
-			}
+		if _, err := resolveDockerfile(m.Dockerfile); err != nil {
+			return err
 		}
 	}
 
@@ -588,16 +585,34 @@ func validateInputs(m mergedInput) error {
 	return nil
 }
 
+// resolveDockerfile returns the Dockerfile to build. When the requested file
+// exists, its own validation errors are returned as they are: they name the
+// file and each problem with its line, and falling back to another Dockerfile
+// would silently build something the user did not ask for. Only a missing
+// file falls back to the common locations.
+func resolveDockerfile(path string) (string, error) {
+	validationErr := validator.ValidateDockerfile(path)
+	if validationErr == nil {
+		return path, nil
+	}
+	if _, statErr := os.Stat(path); statErr == nil {
+		return "", validationErr
+	}
+	found, findErr := validator.FindDockerfile(".")
+	if findErr != nil {
+		return "", utils.NewError(fmt.Sprintf("no Dockerfile found at %s or in the common locations; add one or pass --dockerfile", path), findErr)
+	}
+	return found, nil
+}
+
 func prepareDeploymentOptions(m mergedInput, cfg *config.ProjectConfig) (deploypkg.DeploymentOptions, error) {
 	dockerfilePath := m.Dockerfile
 	if m.Image == "" && dockerfilePath != "" {
-		if err := validator.ValidateDockerfile(dockerfilePath); err != nil {
-			found, findErr := validator.FindDockerfile(".")
-			if findErr != nil {
-				return deploypkg.DeploymentOptions{}, utils.NewError("no valid Dockerfile found", err)
-			}
-			dockerfilePath = found
+		found, err := resolveDockerfile(dockerfilePath)
+		if err != nil {
+			return deploypkg.DeploymentOptions{}, err
 		}
+		dockerfilePath = found
 	}
 	if m.Image != "" {
 		dockerfilePath = ""

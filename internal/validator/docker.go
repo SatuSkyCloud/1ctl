@@ -30,7 +30,11 @@ var validInstructions = map[string]bool{
 	"STOPSIGNAL":  true,
 	"HEALTHCHECK": true,
 	"SHELL":       true,
+	"MAINTAINER":  true, // deprecated, but Docker still accepts it
 }
+
+// heredocPattern finds heredoc markers such as <<EOF, <<-EOF and <<"EOF".
+var heredocPattern = regexp.MustCompile(`<<(-?)(["']?)([A-Za-z_][A-Za-z0-9_]*)(["']?)`)
 
 // ValidateDockerInstallation checks if Docker is installed and running
 func ValidateDockerInstallation() error {
@@ -93,8 +97,8 @@ func ValidateDockerfile(path string) error {
 	var currentLine string
 	startLine := 0
 
-	for i, rawLine := range rawLines {
-		line := strings.TrimRight(rawLine, " \t")
+	for i := 0; i < len(rawLines); i++ {
+		line := strings.TrimRight(rawLines[i], " \t")
 
 		if currentLine == "" {
 			startLine = i + 1
@@ -108,6 +112,9 @@ func ValidateDockerfile(path string) error {
 			currentLine += line
 			if strings.TrimSpace(currentLine) != "" {
 				processedLines = append(processedLines, logicalLine{text: currentLine, lineNo: startLine})
+				// Heredoc bodies (RUN <<EOF ... EOF) are script or file content,
+				// not instructions, so skip them up to their terminators.
+				i = skipHeredocBodies(currentLine, rawLines, i+1) - 1
 			}
 			currentLine = ""
 		}
@@ -155,12 +162,15 @@ func ValidateDockerfile(path string) error {
 		// Validate the FROM instruction
 		if instruction == "FROM" {
 			hasFrom = true
+			// Drop flags such as --platform=$BUILDPLATFORM: they come before the
+			// image name and are checked by the builder, not here.
+			parts = append(parts[:1], stripFlags(parts[1:])...)
 			if len(parts) < 2 {
 				errors = append(errors, fmt.Sprintf("line %d: FROM instruction requires a base image", lineNo))
 			} else {
 				// Handle multistage syntax: FROM image AS stage_name
 				baseImage := parts[1]
-				if len(parts) >= 4 && strings.ToUpper(parts[2]) == "AS" {
+				if len(parts) == 4 && strings.ToUpper(parts[2]) == "AS" {
 					// This is a multistage build with AS clause
 					stageName := parts[3]
 					// Validate stage name (alphanumeric, underscore, hyphen allowed)
@@ -268,4 +278,39 @@ func isValidBaseImage(image string) bool {
 		return false
 	}
 	return matched
+}
+
+// stripFlags removes leading --flag arguments (for example --platform=linux/amd64).
+func stripFlags(args []string) []string {
+	for len(args) > 0 && strings.HasPrefix(args[0], "--") {
+		args = args[1:]
+	}
+	return args
+}
+
+// skipHeredocBodies returns the index of the first raw line after the bodies of
+// any heredocs that the instruction opens. It returns start when the
+// instruction has no heredoc. An unterminated heredoc runs to the end of the
+// file, as it does for the Docker builder.
+func skipHeredocBodies(instruction string, rawLines []string, start int) int {
+	trimmed := strings.TrimSpace(instruction)
+	if strings.HasPrefix(trimmed, "#") {
+		return start
+	}
+	next := start
+	for _, match := range heredocPattern.FindAllStringSubmatch(instruction, -1) {
+		stripTabs := match[1] == "-"
+		word := match[3]
+		for next < len(rawLines) {
+			body := rawLines[next]
+			next++
+			if stripTabs {
+				body = strings.TrimLeft(body, "\t")
+			}
+			if body == word {
+				break
+			}
+		}
+	}
+	return next
 }

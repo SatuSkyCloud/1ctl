@@ -157,6 +157,73 @@ CMD ["x"]`,
 			},
 		},
 		{
+			name: "FROM with --platform flag (multi-arch builds)",
+			content: `FROM --platform=$BUILDPLATFORM golang:1.22 AS build
+ARG TARGETOS TARGETARCH
+RUN GOOS=$TARGETOS GOARCH=$TARGETARCH go build -o /app .
+FROM --platform=linux/amd64 gcr.io/distroless/static
+COPY --from=build /app /app`,
+			wantErr: false,
+		},
+		{
+			name: "FROM with a flag and no image",
+			content: `FROM --platform=linux/amd64
+CMD ["x"]`,
+			wantErr: true,
+			errCheck: func(err error) bool {
+				return strings.Contains(err.Error(), "line 1: FROM instruction requires a base image")
+			},
+		},
+		{
+			name: "FROM with extra words after the stage name",
+			content: `FROM node:20 AS base extra
+CMD ["x"]`,
+			wantErr: true,
+			errCheck: func(err error) bool {
+				return strings.Contains(err.Error(), "line 1: FROM instruction has invalid syntax")
+			},
+		},
+		{
+			name: "whole image name from an ARG",
+			content: `ARG BASE_IMAGE=node:20-alpine
+FROM ${BASE_IMAGE}
+CMD ["node"]`,
+			wantErr: false,
+		},
+		{
+			name: "heredoc bodies are not read as instructions",
+			content: `# syntax=docker/dockerfile:1
+FROM alpine:3.20
+RUN <<EOF
+apk add --no-cache curl
+echo done
+EOF
+COPY <<-"CONF" /etc/app.conf
+	listen 8080
+	CONF
+CMD ["sh"]`,
+			wantErr: false,
+		},
+		{
+			name: "line numbers stay correct after a heredoc",
+			content: `FROM alpine:3.20
+RUN <<EOF
+echo one
+EOF
+BOGUS instruction`,
+			wantErr: true,
+			errCheck: func(err error) bool {
+				return strings.Contains(err.Error(), "line 5: invalid instruction 'BOGUS'")
+			},
+		},
+		{
+			name: "deprecated MAINTAINER is still accepted",
+			content: `FROM alpine:3.20
+MAINTAINER someone@example.com
+CMD ["sh"]`,
+			wantErr: false,
+		},
+		{
 			name: "valid image names with various formats",
 			content: `FROM registry.example.com:5000/my-org/golang:1.21-alpine AS builder
 WORKDIR /app
