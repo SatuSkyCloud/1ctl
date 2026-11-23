@@ -1,5 +1,15 @@
 # Release Notes
 
+## Version 0.18.1 (23-11-2026)
+
+Dockerfiles with build-arg variables in `FROM` deploy again, and validation errors say where the problem is.
+
+* **`1ctl deploy`** accepts a `FROM` line that uses an `ARG` variable, such as
+  `FROM node:${NODE_VERSION}-slim`. Docker fills these in at build time, so the CLI no
+  longer rejects them ([#130](https://github.com/SatuSkyCloud/1ctl/issues/130)).
+* Dockerfile validation errors list every problem with its line number, for example
+  `line 9: invalid base image format 'bad!image'`. Before, they only named the file.
+
 ## Version 0.18.0 (22-11-2026)
 
 See whether a custom domain is live on the SatuSky edge.
