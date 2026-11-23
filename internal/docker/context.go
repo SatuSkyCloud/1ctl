@@ -29,20 +29,16 @@ func PackageContext(contextDir, dockerfile string) (string, error) {
 		return "", fmt.Errorf("failed to read .dockerignore: %w", err)
 	}
 
-	// Work out the Dockerfile's path relative to the context, using the same
-	// slash form as the walk below. The path is relative to the context dir,
-	// the same way the cloud builder reads it. Empty means it is outside the context.
+	// The Dockerfile's path inside the archive, in the same slash form as the
+	// walk below. The cloud builder looks for it at exactly this path.
 	dockerfileRel := ""
 	if dockerfile != "" {
-		absDockerfile := dockerfile
-		if !filepath.IsAbs(absDockerfile) {
-			absDockerfile = filepath.Join(absContext, dockerfile)
-		}
-		if rel, err := filepath.Rel(absContext, absDockerfile); err == nil &&
-			rel != "." && rel != ".." && !strings.HasPrefix(rel, ".."+string(filepath.Separator)) {
-			dockerfileRel = filepath.ToSlash(rel)
+		dockerfileRel, err = DockerfileInContext(absContext, dockerfile)
+		if err != nil {
+			return "", err
 		}
 	}
+	dockerfilePacked := false
 
 	tmpFile, err := os.CreateTemp("", "satusky-context-*.tar.gz")
 	if err != nil {
@@ -68,9 +64,12 @@ func PackageContext(contextDir, dockerfile string) (string, error) {
 
 		relSlash := filepath.ToSlash(relPath)
 
-		// Keep the Dockerfile even if .dockerignore matches it. Keep walking
-		// into an ignored folder only when it holds the Dockerfile.
-		if shouldIgnore(relSlash, patterns) && relSlash != dockerfileRel {
+		// Keep the Dockerfile and .dockerignore even if .dockerignore matches
+		// them, as the Docker CLI does. The builder re-applies .dockerignore, so
+		// neither file ends up in the image through COPY . . unless asked for.
+		// Keep walking into an ignored folder only when it holds the Dockerfile.
+		alwaysSent := relSlash == dockerfileRel || relSlash == ".dockerignore"
+		if !alwaysSent && shouldIgnore(relSlash, patterns) {
 			if d.IsDir() && !strings.HasPrefix(dockerfileRel, relSlash+"/") {
 				return filepath.SkipDir
 			}
@@ -110,9 +109,19 @@ func PackageContext(contextDir, dockerfile string) (string, error) {
 		}
 		defer func() { _ = f.Close() }() //nolint:errcheck
 
-		_, err = io.Copy(tw, f)
-		return err
+		if _, err = io.Copy(tw, f); err != nil {
+			return err
+		}
+		if relSlash == dockerfileRel {
+			dockerfilePacked = true
+		}
+		return nil
 	})
+	if walkErr == nil && dockerfileRel != "" && !dockerfilePacked {
+		// Without this the build fails later on the server with a bare
+		// "lstat .../Dockerfile: no such file or directory".
+		walkErr = fmt.Errorf("dockerfile %s was not added to the build context; it must be a regular file, not a symlink", dockerfileRel)
+	}
 
 	closeErr := func() error {
 		if e := tw.Close(); e != nil {
@@ -133,6 +142,27 @@ func PackageContext(contextDir, dockerfile string) (string, error) {
 	}
 
 	return tmpPath, nil
+}
+
+// DockerfileInContext returns the Dockerfile's path relative to contextDir, in
+// slash form, which is the path the cloud builder reads inside the uploaded
+// archive. dockerfile may be absolute or relative to contextDir. It is an error
+// for the Dockerfile to sit outside the context: the builder only receives the
+// archive, so it could never read it.
+func DockerfileInContext(contextDir, dockerfile string) (string, error) {
+	absContext, err := filepath.Abs(contextDir)
+	if err != nil {
+		return "", fmt.Errorf("failed to resolve context dir: %w", err)
+	}
+	absDockerfile := dockerfile
+	if !filepath.IsAbs(absDockerfile) {
+		absDockerfile = filepath.Join(absContext, dockerfile)
+	}
+	rel, err := filepath.Rel(absContext, absDockerfile)
+	if err != nil || rel == "." || rel == ".." || strings.HasPrefix(rel, ".."+string(filepath.Separator)) {
+		return "", fmt.Errorf("dockerfile %s is outside the build context %s; move it into the project folder or run 1ctl deploy from a folder that contains it", dockerfile, absContext)
+	}
+	return filepath.ToSlash(rel), nil
 }
 
 // readDockerignore reads .dockerignore from contextDir.
