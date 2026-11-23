@@ -62,6 +62,29 @@ func TestSubmitBuildAcceptsOKAndCreated(t *testing.T) {
 	}
 }
 
+// Issue #132: the server's 413 body is a bare "Request Entity Too Large".
+// The CLI must say how big the upload was and what to exclude.
+func TestSubmitBuildExplainsRequestEntityTooLarge(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "text/plain; charset=utf-8")
+		w.WriteHeader(http.StatusRequestEntityTooLarge)
+		_, _ = w.Write([]byte("Request Entity Too Large"))
+	}))
+	t.Cleanup(server.Close)
+	configureAdminAPITestContext(t, server.URL+"/v1/cli")
+
+	_, err := SubmitBuild(buildContextArchive(t), "backend", "Dockerfile", "", nil)
+
+	if err == nil {
+		t.Fatal("SubmitBuild() error = nil, want the 413 reported")
+	}
+	for _, want := range []string{"build context is too large", "MB compressed", ".dockerignore", "node_modules"} {
+		if !strings.Contains(err.Error(), want) {
+			t.Errorf("error = %q, want it to mention %q", err, want)
+		}
+	}
+}
+
 // A real rejection must still be reported, otherwise widening the accepted
 // range would swallow genuine failures.
 func TestSubmitBuildReportsRejection(t *testing.T) {

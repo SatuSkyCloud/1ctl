@@ -876,6 +876,8 @@ export interface DeploymentReconciliationReadiness {
 }
 export interface DeploymentWorkloadReadiness {
   state: string;
+  code?: string;
+  remediation?: string;
   desired_replicas: number /* int32 */;
   ready_replicas: number /* int32 */;
   available_replicas: number /* int32 */;

@@ -139,6 +139,9 @@ func printCurrentState(deploymentID string) {
 		return
 	}
 	utils.PrintInfo("%s", summary)
+	if strings.EqualFold(readiness.Workload.State, "failing") && readiness.Workload.Remediation != "" {
+		utils.PrintWarning("%s", readiness.Workload.Remediation)
+	}
 }
 
 func followEvents(ctx context.Context, deploymentID string, seen map[string]struct{}) error {
