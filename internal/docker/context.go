@@ -185,9 +185,36 @@ func readDockerignore(contextDir string) ([]string, error) {
 		if line == "" || strings.HasPrefix(line, "#") {
 			continue
 		}
-		patterns = append(patterns, line)
+		if pattern := normalizeIgnorePattern(line); pattern != "" {
+			patterns = append(patterns, pattern)
+		}
 	}
 	return patterns, scanner.Err()
+}
+
+// normalizeIgnorePattern cleans a .dockerignore line the way the Docker CLI
+// does before matching: the path is cleaned (so "./dist" and "dist/" become
+// "dist") and a leading "/" is dropped, because patterns are always relative
+// to the context root. Without this, "/node_modules" and "/.git" — the form
+// that generators such as fly launch write — matched nothing, and the whole
+// node_modules tree was uploaded. A leading "!" (re-include) is kept.
+func normalizeIgnorePattern(line string) string {
+	negate := strings.HasPrefix(line, "!")
+	pattern := line
+	if negate {
+		pattern = strings.TrimSpace(pattern[1:])
+	}
+	if pattern == "" {
+		return ""
+	}
+	pattern = filepath.ToSlash(filepath.Clean(filepath.FromSlash(pattern)))
+	if len(pattern) > 1 && pattern[0] == '/' {
+		pattern = pattern[1:]
+	}
+	if negate {
+		return "!" + pattern
+	}
+	return pattern
 }
 
 // shouldIgnore returns true when the path should be excluded from the context.
