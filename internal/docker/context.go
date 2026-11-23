@@ -14,9 +14,11 @@ import (
 )
 
 // PackageContext creates a gzipped tar of the build context directory,
-// respecting .dockerignore patterns. The caller is responsible for removing
-// the returned temp file when done.
-func PackageContext(contextDir string) (string, error) {
+// respecting .dockerignore patterns. The Dockerfile named by dockerfile is
+// always included, even when .dockerignore lists it, because the cloud builder
+// needs it to start the build (Docker itself also always sends it). The caller
+// is responsible for removing the returned temp file when done.
+func PackageContext(contextDir, dockerfile string) (string, error) {
 	absContext, err := filepath.Abs(contextDir)
 	if err != nil {
 		return "", fmt.Errorf("failed to resolve context dir: %w", err)
@@ -25,6 +27,21 @@ func PackageContext(contextDir string) (string, error) {
 	patterns, err := readDockerignore(absContext)
 	if err != nil {
 		return "", fmt.Errorf("failed to read .dockerignore: %w", err)
+	}
+
+	// Work out the Dockerfile's path relative to the context, using the same
+	// slash form as the walk below. The path is relative to the context dir,
+	// the same way the cloud builder reads it. Empty means it is outside the context.
+	dockerfileRel := ""
+	if dockerfile != "" {
+		absDockerfile := dockerfile
+		if !filepath.IsAbs(absDockerfile) {
+			absDockerfile = filepath.Join(absContext, dockerfile)
+		}
+		if rel, err := filepath.Rel(absContext, absDockerfile); err == nil &&
+			rel != "." && rel != ".." && !strings.HasPrefix(rel, ".."+string(filepath.Separator)) {
+			dockerfileRel = filepath.ToSlash(rel)
+		}
 	}
 
 	tmpFile, err := os.CreateTemp("", "satusky-context-*.tar.gz")
@@ -51,8 +68,10 @@ func PackageContext(contextDir string) (string, error) {
 
 		relSlash := filepath.ToSlash(relPath)
 
-		if shouldIgnore(relSlash, patterns) {
-			if d.IsDir() {
+		// Keep the Dockerfile even if .dockerignore matches it. Keep walking
+		// into an ignored folder only when it holds the Dockerfile.
+		if shouldIgnore(relSlash, patterns) && relSlash != dockerfileRel {
+			if d.IsDir() && !strings.HasPrefix(dockerfileRel, relSlash+"/") {
 				return filepath.SkipDir
 			}
 			return nil

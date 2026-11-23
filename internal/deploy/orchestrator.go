@@ -318,8 +318,9 @@ func submitRemoteBuild(dockerfilePath, projectName string, fastBuild bool) (imag
 	}
 
 	// Package the build context into a gzipped tar, respecting .dockerignore.
+	// The Dockerfile is always included, even if .dockerignore lists it.
 	printDeployInfo("Packaging build context...")
-	contextPath, err := docker.PackageContext(".")
+	contextPath, err := docker.PackageContext(".", dockerfilePath)
 	if err != nil {
 		return "", "", utils.NewError(fmt.Sprintf("failed to package build context: %s", err.Error()), nil)
 	}
