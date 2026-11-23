@@ -130,6 +130,33 @@ CMD ["/usr/local/bin/app"]`,
 			wantErr: false,
 		},
 		{
+			name: "base image using ARG variable (issue #130)",
+			content: `# syntax = docker/dockerfile:1
+
+# Adjust NODE_VERSION as desired
+ARG NODE_VERSION=24.3.0
+FROM node:${NODE_VERSION}-slim AS base
+
+WORKDIR /app
+RUN npm ci
+FROM base
+CMD [ "npm", "run", "start" ]`,
+			wantErr: false,
+		},
+		{
+			name: "error reports the real line number after comments and blank lines",
+			content: `# comment
+
+ARG NODE_VERSION=24
+FROM node:${NODE_VERSION} AS base
+FROM bad!image
+CMD ["x"]`,
+			wantErr: true,
+			errCheck: func(err error) bool {
+				return strings.Contains(err.Error(), "line 5: invalid base image format 'bad!image'")
+			},
+		},
+		{
 			name: "valid image names with various formats",
 			content: `FROM registry.example.com:5000/my-org/golang:1.21-alpine AS builder
 WORKDIR /app

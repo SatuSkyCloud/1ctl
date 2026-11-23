@@ -41,6 +41,13 @@ func ValidateDockerInstallation() error {
 	return nil
 }
 
+// logicalLine is one Dockerfile instruction after joining continuation lines.
+// lineNo is the line in the file where the instruction starts.
+type logicalLine struct {
+	text   string
+	lineNo int
+}
+
 // ValidateDockerfile validates the content of a Dockerfile at the given path
 func ValidateDockerfile(path string) error {
 	// Check if the Dockerfile exists
@@ -80,12 +87,18 @@ func ValidateDockerfile(path string) error {
 		return utils.NewError(fmt.Sprintf("error reading Dockerfile: %s", err.Error()), nil)
 	}
 
-	// Process lines and handle continuations
-	var processedLines []string
+	// Process lines and handle continuations. Each instruction remembers the
+	// line in the file where it starts, so error messages point at real lines.
+	var processedLines []logicalLine
 	var currentLine string
+	startLine := 0
 
 	for i, rawLine := range rawLines {
 		line := strings.TrimRight(rawLine, " \t")
+
+		if currentLine == "" {
+			startLine = i + 1
+		}
 
 		if strings.HasSuffix(line, "\\") {
 			// Line continuation - remove backslash and continue building the instruction
@@ -94,14 +107,14 @@ func ValidateDockerfile(path string) error {
 			// End of instruction
 			currentLine += line
 			if strings.TrimSpace(currentLine) != "" {
-				processedLines = append(processedLines, currentLine)
+				processedLines = append(processedLines, logicalLine{text: currentLine, lineNo: startLine})
 			}
 			currentLine = ""
 		}
 
 		// Handle case where file ends with a continuation
 		if i == len(rawLines)-1 && currentLine != "" {
-			processedLines = append(processedLines, currentLine)
+			processedLines = append(processedLines, logicalLine{text: currentLine, lineNo: startLine})
 		}
 	}
 
@@ -110,8 +123,9 @@ func ValidateDockerfile(path string) error {
 	hasFrom := false
 	firstNonCommentLine := true
 
-	for lineIndex, processedLine := range processedLines {
-		line := strings.TrimSpace(processedLine)
+	for _, processed := range processedLines {
+		lineNo := processed.lineNo
+		line := strings.TrimSpace(processed.text)
 
 		// Skip empty lines and comments
 		if line == "" || strings.HasPrefix(line, "#") {
@@ -128,13 +142,13 @@ func ValidateDockerfile(path string) error {
 
 		// Validate the first non-comment line
 		if firstNonCommentLine && instruction != "FROM" && instruction != "ARG" {
-			errors = append(errors, fmt.Sprintf("line %d: First instruction must be FROM or ARG", lineIndex+1))
+			errors = append(errors, fmt.Sprintf("line %d: First instruction must be FROM or ARG", lineNo))
 		}
 		firstNonCommentLine = false
 
 		// Check if the instruction is valid
 		if !validInstructions[instruction] {
-			errors = append(errors, fmt.Sprintf("line %d: invalid instruction '%s'", lineIndex+1, instruction))
+			errors = append(errors, fmt.Sprintf("line %d: invalid instruction '%s'", lineNo, instruction))
 			continue
 		}
 
@@ -142,7 +156,7 @@ func ValidateDockerfile(path string) error {
 		if instruction == "FROM" {
 			hasFrom = true
 			if len(parts) < 2 {
-				errors = append(errors, fmt.Sprintf("line %d: FROM instruction requires a base image", lineIndex+1))
+				errors = append(errors, fmt.Sprintf("line %d: FROM instruction requires a base image", lineNo))
 			} else {
 				// Handle multistage syntax: FROM image AS stage_name
 				baseImage := parts[1]
@@ -151,16 +165,18 @@ func ValidateDockerfile(path string) error {
 					stageName := parts[3]
 					// Validate stage name (alphanumeric, underscore, hyphen allowed)
 					if !isValidStageName(stageName) {
-						errors = append(errors, fmt.Sprintf("line %d: invalid stage name '%s'", lineIndex+1, stageName))
+						errors = append(errors, fmt.Sprintf("line %d: invalid stage name '%s'", lineNo, stageName))
 					}
 				} else if len(parts) > 2 {
 					// FROM instruction has extra arguments that aren't AS clause
-					errors = append(errors, fmt.Sprintf("line %d: FROM instruction has invalid syntax '%s'", lineIndex+1, strings.Join(parts[1:], " ")))
+					errors = append(errors, fmt.Sprintf("line %d: FROM instruction has invalid syntax '%s'", lineNo, strings.Join(parts[1:], " ")))
 					continue
 				}
 
-				if !isValidBaseImage(baseImage) {
-					errors = append(errors, fmt.Sprintf("line %d: invalid base image format '%s'", lineIndex+1, baseImage))
+				// Images like node:${NODE_VERSION} use ARG variables that Docker
+				// fills in at build time, so the name can't be checked here.
+				if !strings.Contains(baseImage, "$") && !isValidBaseImage(baseImage) {
+					errors = append(errors, fmt.Sprintf("line %d: invalid base image format '%s'", lineNo, baseImage))
 				}
 			}
 		}
@@ -174,12 +190,12 @@ func ValidateDockerfile(path string) error {
 
 	// Ensure a FROM instruction exists
 	if !hasFrom {
-		errors = append(errors, fmt.Sprintf("dockerfile must start with a FROM instruction at %s", path))
+		errors = append(errors, "dockerfile must contain a FROM instruction")
 	}
 
-	// Return validation errors if any
+	// Return every problem found, with its line number, so the user knows what to fix
 	if len(errors) > 0 {
-		return utils.NewError(fmt.Sprintf("dockerfile validation failed at %s", path), nil)
+		return utils.NewError(fmt.Sprintf("dockerfile validation failed at %s:\n  %s", path, strings.Join(errors, "\n  ")), nil)
 	}
 
 	return nil
