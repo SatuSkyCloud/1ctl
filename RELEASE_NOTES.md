@@ -1,5 +1,33 @@
 # Release Notes
 
+## Version 0.18.1 (23-11-2026)
+
+Four `1ctl deploy` fixes: Dockerfiles with build-arg variables in `FROM` deploy again, the Dockerfile is always uploaded, root-anchored `.dockerignore` patterns work, and a Dockerfile `USER` the platform cannot start is caught before the build.
+
+* **`1ctl deploy`** accepts a `FROM` line that uses an `ARG` variable, such as
+  `FROM node:${NODE_VERSION}-slim`. Docker fills these in at build time, so the CLI no
+  longer rejects them ([#130](https://github.com/SatuSkyCloud/1ctl/issues/130)).
+* `FROM --platform=...`, heredocs (`RUN <<EOF`) and `MAINTAINER` no longer fail validation.
+* An invalid Dockerfile now reports its own problems. Before, `1ctl deploy` said that no
+  Dockerfile existed, or silently built a different Dockerfile from a common location.
+* Dockerfile validation errors list every problem with its line number, for example
+  `line 9: invalid base image format 'bad!image'`. Before, they only named the file.
+* **`1ctl deploy`** always uploads the Dockerfile it builds, even when `.dockerignore` lists it,
+  as `docker build` does. Before, the build failed with `lstat .../Dockerfile: no such file or
+  directory` ([#133](https://github.com/SatuSkyCloud/1ctl/issues/133)). A Dockerfile outside the
+  project folder, or a symlinked one, is now refused before the upload with a clear message.
+* `.dockerignore` patterns that start with `/`, such as `/node_modules` and `/.git`, now
+  exclude those folders. Before, they matched nothing, so large folders were uploaded and the
+  upload could fail with `HTTP 413`. A 413 now says how large the upload was and what to
+  exclude ([#132](https://github.com/SatuSkyCloud/1ctl/issues/132)).
+* `1ctl deploy` stops before the build when the Dockerfile runs as a named user (for example
+  `USER node`) and `run_as_user` is not set. The platform cannot start such a container, so it
+  stayed in `reconciling`. The message gives both fixes: `run_as_user = 1000` under `[app]` in
+  `satusky.toml`, or `USER 1000` in the Dockerfile
+  ([#135](https://github.com/SatuSkyCloud/1ctl/issues/135)).
+* `1ctl deploy --wait` and `1ctl app events` show the server's explanation and fix when a
+  workload cannot start.
+
 ## Version 0.18.0 (22-11-2026)
 
 See whether a custom domain is live on the SatuSky edge.
