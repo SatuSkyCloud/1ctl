@@ -317,9 +317,18 @@ func submitRemoteBuild(dockerfilePath, projectName string, fastBuild bool) (imag
 		return "", "", utils.NewError(fmt.Sprintf("invalid Dockerfile: %s", err.Error()), nil)
 	}
 
+	// The backend reads the Dockerfile at a clean, slash-separated path inside
+	// the archive, so send that path rather than whatever form the user typed
+	// (./Dockerfile, an absolute path, or a Windows path all refer to it).
+	contextDockerfile, err := docker.DockerfileInContext(".", dockerfilePath)
+	if err != nil {
+		return "", "", utils.NewError(err.Error(), nil)
+	}
+
 	// Package the build context into a gzipped tar, respecting .dockerignore.
+	// The Dockerfile is always included, even if .dockerignore lists it.
 	printDeployInfo("Packaging build context...")
-	contextPath, err := docker.PackageContext(".")
+	contextPath, err := docker.PackageContext(".", contextDockerfile)
 	if err != nil {
 		return "", "", utils.NewError(fmt.Sprintf("failed to package build context: %s", err.Error()), nil)
 	}
@@ -336,7 +345,7 @@ func submitRemoteBuild(dockerfilePath, projectName string, fastBuild bool) (imag
 	} else {
 		printDeployInfo("Submitting build to cloud...")
 	}
-	buildID, err := api.SubmitBuild(contextPath, projectName, dockerfilePath, builder, nil)
+	buildID, err := api.SubmitBuild(contextPath, projectName, contextDockerfile, builder, nil)
 	if err != nil {
 		return "", "", utils.NewError(fmt.Sprintf("failed to submit build: %s", err.Error()), nil)
 	}
