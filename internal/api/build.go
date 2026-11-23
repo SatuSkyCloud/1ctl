@@ -126,6 +126,9 @@ func SubmitBuild(contextTarPath, projectName, dockerfilePath, builder string, bu
 	// codes: the meaningful question is whether the submission was accepted, and
 	// enumerating codes made a correct async response read as a failure while the
 	// build ran on regardless.
+	if resp.StatusCode == http.StatusRequestEntityTooLarge {
+		return "", buildContextTooLargeError(contextTarPath)
+	}
 	if resp.StatusCode < http.StatusOK || resp.StatusCode >= http.StatusMultipleChoices {
 		var apiErr APIError
 		if jsonErr := json.Unmarshal(respBody, &apiErr); jsonErr == nil && apiErr.Message != "" {
@@ -217,4 +220,20 @@ func WaitForBuildResult(buildID string, progressWriter io.Writer) (*BuildResult,
 	}
 
 	return nil, utils.NewError(fmt.Sprintf("cloud build timed out after %v", maxWait), nil)
+}
+
+// buildContextTooLargeError explains an HTTP 413 from the build upload. The
+// server's own body is a bare "Request Entity Too Large", which says nothing
+// about what to change.
+func buildContextTooLargeError(contextTarPath string) error {
+	size := "unknown size"
+	if info, err := os.Stat(contextTarPath); err == nil {
+		size = fmt.Sprintf("%.1f MB compressed", float64(info.Size())/(1024*1024))
+	}
+	// The caller re-wraps this message, so the advice lives in the message
+	// itself rather than in a separate remediation field.
+	return utils.NewError(fmt.Sprintf(
+		"build context is too large to upload (%s). Exclude dependencies and build output "+
+			"in .dockerignore (for example node_modules, .git, .next, dist); the build installs "+
+			"dependencies itself, so they do not need to be uploaded", size), nil)
 }
