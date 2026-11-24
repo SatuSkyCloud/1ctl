@@ -1,5 +1,16 @@
 # Release Notes
 
+## Version 0.18.3 (25-11-2026)
+
+Dependency updates only. No change to commands, flags or output.
+
+* `golang.org/x/net` 0.26.0 → 0.55.0 and `golang.org/x/term` 0.43.0 → 0.48.0 (with
+  `golang.org/x/sys` 0.50.0), picking up upstream bug and security fixes
+  ([#144](https://github.com/SatuSkyCloud/1ctl/pull/144),
+  [#125](https://github.com/SatuSkyCloud/1ctl/pull/125)).
+* CI: the spelling check uses `crate-ci/typos` 1.52.2
+  ([#124](https://github.com/SatuSkyCloud/1ctl/pull/124)).
+
 ## Version 0.18.2 (24-11-2026)
 
 `1ctl deploy` now also catches a Dockerfile that runs as root before the build.
