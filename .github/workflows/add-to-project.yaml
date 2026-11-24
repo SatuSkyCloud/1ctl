@@ -19,7 +19,8 @@ jobs:
     steps:
       - name: Skip when the token secret is not set
         if: env.HAS_TOKEN != 'true'
-        run: echo "::warning::ADD_TO_PROJECT_PAT is not set; issue not added to board #24."
+        run: |
+          echo "::warning::ADD_TO_PROJECT_PAT is not set; issue not added to board 24."
       - name: Add issue to board #24
         if: env.HAS_TOKEN == 'true'
         uses: actions/add-to-project@f2c1f1fa649a891be84948ea89b5dfba1526ef05 # v2.0.1
