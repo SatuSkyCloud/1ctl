@@ -1,5 +1,81 @@
 # Release Notes
 
+## Version 0.18.2 (24-11-2026)
+
+`1ctl deploy` now also catches a Dockerfile that runs as root before the build.
+
+* `1ctl deploy` stops before the build when the final stage of the Dockerfile has no `USER`,
+  or ends with `USER root`, `USER 0` or `USER 0:0`, and `run_as_user` is not set. Docker then
+  runs the container as root, and the platform only runs non-root containers, so the pod
+  failed forever with `container has runAsNonRoot and image will run as root`. The message
+  gives both fixes: `run_as_user = 1000` under `[app]` in `satusky.toml`, or `USER 1000` in
+  the Dockerfile ([#135](https://github.com/SatuSkyCloud/1ctl/issues/135)).
+* Only the final build stage counts, and the last `USER` in it wins. A final stage built
+  `FROM` an earlier stage inherits that stage's `USER`.
+* Base images that already run as a non-root user, such as distroless `:nonroot`,
+  `nginxinc/nginx-unprivileged`, Chainguard and Bitnami images, are not blocked. `USER` and
+  `FROM` lines that use a variable, such as `USER $APP_USER`, are not checked.
+
+## Version 0.18.1 (23-11-2026)
+
+Four `1ctl deploy` fixes: Dockerfiles with build-arg variables in `FROM` deploy again, the Dockerfile is always uploaded, root-anchored `.dockerignore` patterns work, and a Dockerfile `USER` the platform cannot start is caught before the build.
+
+* **`1ctl deploy`** accepts a `FROM` line that uses an `ARG` variable, such as
+  `FROM node:${NODE_VERSION}-slim`. Docker fills these in at build time, so the CLI no
+  longer rejects them ([#130](https://github.com/SatuSkyCloud/1ctl/issues/130)).
+* `FROM --platform=...`, heredocs (`RUN <<EOF`) and `MAINTAINER` no longer fail validation.
+* An invalid Dockerfile now reports its own problems. Before, `1ctl deploy` said that no
+  Dockerfile existed, or silently built a different Dockerfile from a common location.
+* Dockerfile validation errors list every problem with its line number, for example
+  `line 9: invalid base image format 'bad!image'`. Before, they only named the file.
+* **`1ctl deploy`** always uploads the Dockerfile it builds, even when `.dockerignore` lists it,
+  as `docker build` does. Before, the build failed with `lstat .../Dockerfile: no such file or
+  directory` ([#133](https://github.com/SatuSkyCloud/1ctl/issues/133)). A Dockerfile outside the
+  project folder, or a symlinked one, is now refused before the upload with a clear message.
+* `.dockerignore` patterns that start with `/`, such as `/node_modules` and `/.git`, now
+  exclude those folders. Before, they matched nothing, so large folders were uploaded and the
+  upload could fail with `HTTP 413`. A 413 now says how large the upload was and what to
+  exclude ([#132](https://github.com/SatuSkyCloud/1ctl/issues/132)).
+* `1ctl deploy` stops before the build when the Dockerfile runs as a named user (for example
+  `USER node`) and `run_as_user` is not set. The platform cannot start such a container, so it
+  stayed in `reconciling`. The message gives both fixes: `run_as_user = 1000` under `[app]` in
+  `satusky.toml`, or `USER 1000` in the Dockerfile
+  ([#135](https://github.com/SatuSkyCloud/1ctl/issues/135)).
+* `1ctl deploy --wait` and `1ctl app events` show the server's explanation and fix when a
+  workload cannot start.
+
+## Version 0.18.0 (22-11-2026)
+
+See whether a custom domain is live on the SatuSky edge.
+
+* **`1ctl domains add`**, **`domains check`** and **`domains setup`** print a new
+  **Edge** line: publishing, published (automatic), not published, failed, or not
+  eligible. Not eligible means the domain's zone is not managed by SatuSky; the
+  line then suggests contacting support.
+* SatuSky is rolling out automatic edge publishing for new custom domains, zone by
+  zone: once a domain's DNS points at SatuSky it is published without a manual
+  step, so it no longer fails TLS with "unrecognized name" in the meantime. The
+  Edge line shows whether that has happened for your domain.
+* Older backends send no edge status; the output is then unchanged.
+
+## Version 0.17.0 (22-11-2026)
+
+Clearer sign-in, and the Homebrew install no longer trips macOS Gatekeeper.
+
+* **`1ctl auth login`** explains what to do instead of printing a raw 401. With no
+  token it tells you to create one in the console (API Tokens) and run
+  `1ctl auth login --token <token>`. When a token is rejected it names the API URL
+  used and says whether the rejected token was the one saved by an earlier login;
+  tokens created before 14-11-2026 no longer work, so create a new one.
+* Pasted tokens are cleaned up before they are sent: surrounding spaces, quotes,
+  `<...>` and a `Bearer ` prefix are removed. A value that is not an API token, an
+  expired token (with its expiry date) or a browser session token is reported
+  locally, without calling the API. `1ctl auth status` uses the same checks.
+* **Homebrew:** the `satuctl` cask now also installs the command as `satuctl`
+  (the command is still `1ctl`), and clears the macOS quarantine flag after
+  install so the first run is not blocked. Upgrade with
+  `brew update && brew reinstall --cask SatuSkyCloud/tap/satuctl`.
+
 ## Version 0.16.0 (13-11-2026)
 
 Marketplace apps are private by default: their TCP endpoints (NATS, Redis, MongoDB,

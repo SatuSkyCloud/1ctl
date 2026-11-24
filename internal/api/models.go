@@ -430,6 +430,19 @@ type DomainStatusResponse struct {
 	DNS          DNSStatusResponse        `json:"dns"`
 	TLS          TLSStatusResponse        `json:"tls"`
 	Reachability DomainReachabilityStatus `json:"reachability"`
+	// Edge is the anycast edge publication state. Older backends omit it.
+	Edge *DomainEdgeStatus `json:"edge,omitempty"`
+}
+
+// DomainEdgeStatus reports whether the anycast edge serves the hostname.
+// Status is one of disabled, not_requested, pending, published, failed,
+// not_eligible or unpublished.
+type DomainEdgeStatus struct {
+	Status            string     `json:"status"`
+	Message           string     `json:"message,omitempty"`
+	PublicationStatus string     `json:"publication_status,omitempty"`
+	AutoPublished     bool       `json:"auto_published"`
+	UpdatedAt         *time.Time `json:"updated_at,omitempty"`
 }
 
 type Dependency struct {
@@ -628,7 +641,11 @@ type DeploymentReconciliationReadiness struct {
 }
 
 type DeploymentWorkloadReadiness struct {
-	State             string `json:"state"`
+	State string `json:"state"`
+	// Code and Remediation explain a failing workload when the server knows why,
+	// for example a container that can never start.
+	Code              string `json:"code,omitempty"`
+	Remediation       string `json:"remediation,omitempty"`
 	DesiredReplicas   int32  `json:"desired_replicas"`
 	ReadyReplicas     int32  `json:"ready_replicas"`
 	AvailableReplicas int32  `json:"available_replicas"`
@@ -668,6 +685,9 @@ func (s DeploymentStatus) readinessEvaluation(mode DeploymentWaitMode) deploymen
 		return deploymentReadinessFailure("deployment reconciliation is failing")
 	}
 	if r.Workload.State == "failing" {
+		if r.Workload.Remediation != "" {
+			return deploymentReadinessFailure("deployment workload is failing: " + r.Workload.Remediation)
+		}
 		return deploymentReadinessFailure("deployment workload is failing")
 	}
 	if r.Application.State == "failing" {

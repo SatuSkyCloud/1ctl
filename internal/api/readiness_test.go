@@ -96,6 +96,28 @@ func TestDeploymentReadinessEvaluation(t *testing.T) {
 	}
 }
 
+// Issue #135: when the server says why the workload fails, --wait must say it
+// too instead of a bare "deployment workload is failing".
+func TestDeploymentReadinessEvaluationIncludesWorkloadRemediation(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		_, _ = fmt.Fprint(w, `{"readiness":{"reconciliation":{"state":"current"},"workload":{"state":"failing","code":"image_user_unverifiable","remediation":"Set run_as_user under [app] in satusky.toml."},"application":{"basis":"no_readiness_probe","state":"unconfigured"}}}`)
+	}))
+	defer server.Close()
+	configureAdminAPITestContext(t, server.URL+"/v1/cli")
+
+	status, err := GetLiveDeploymentStatus("dep-1")
+	if err != nil {
+		t.Fatalf("GetLiveDeploymentStatus() error = %v", err)
+	}
+	if status.Readiness.Workload.Code != "image_user_unverifiable" {
+		t.Fatalf("workload code = %q, want it parsed", status.Readiness.Workload.Code)
+	}
+	got := status.readinessEvaluation(DeploymentWaitModeApplication)
+	if got.TerminalError == nil || !strings.Contains(got.TerminalError.Error(), "Set run_as_user under [app]") {
+		t.Fatalf("terminal error = %v, want the server's remediation", got.TerminalError)
+	}
+}
+
 func TestWaitForDeploymentUsesLiveReadinessAndCompatibilityModes(t *testing.T) {
 	tests := []struct {
 		name         string

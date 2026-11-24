@@ -714,6 +714,14 @@ export interface DomainStatusResponse {
   dns: DNSStatusResponse;
   tls: TLSStatusResponse;
   reachability: DomainReachabilityStatus;
+  edge?: DomainEdgeStatus;
+}
+export interface DomainEdgeStatus {
+  status: string;
+  message?: string;
+  publication_status?: string;
+  auto_published: boolean;
+  updated_at?: string /* RFC3339 */;
 }
 export interface Dependency {
   name: string;
@@ -868,6 +876,8 @@ export interface DeploymentReconciliationReadiness {
 }
 export interface DeploymentWorkloadReadiness {
   state: string;
+  code?: string;
+  remediation?: string;
   desired_replicas: number /* int32 */;
   ready_replicas: number /* int32 */;
   available_replicas: number /* int32 */;
