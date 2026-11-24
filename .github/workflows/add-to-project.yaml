@@ -1,0 +1,30 @@
+# Adds every new issue in this repo to the SatuSky Engineering board (#24).
+# GitHub Free allows one built-in auto-add workflow per board (used by
+# satusky-infra), so the other repos use this Action instead.
+# Design: satusky-infra/docs/plans/2026-11-23-project-boards-and-roadmap.md
+name: Add issue to Engineering board
+
+on:
+  issues:
+    types: [opened, reopened, transferred]
+
+permissions: {}
+
+jobs:
+  add-to-project:
+    # GitHub-hosted runners are blocked for this org (billing); use the ARC pool.
+    runs-on: ${{ vars.SELF_HOSTED_RUNNER_LABEL || 'satusky-org-runners' }}
+    timeout-minutes: 5
+    env:
+      HAS_TOKEN: ${{ secrets.ADD_TO_PROJECT_PAT != '' }}
+    steps:
+      - name: Skip when the token secret is not set
+        if: env.HAS_TOKEN != 'true'
+        run: |
+          echo "::warning::ADD_TO_PROJECT_PAT is not set; issue not added to board 24."
+      - name: Add issue to board #24
+        if: env.HAS_TOKEN == 'true'
+        uses: actions/add-to-project@f2c1f1fa649a891be84948ea89b5dfba1526ef05 # v2.0.1
+        with:
+          project-url: https://github.com/orgs/SatuSkyCloud/projects/24
+          github-token: ${{ secrets.ADD_TO_PROJECT_PAT }}
