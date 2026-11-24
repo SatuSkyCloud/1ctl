@@ -12,7 +12,8 @@ permissions: {}
 
 jobs:
   add-to-project:
-    runs-on: ubuntu-latest
+    # GitHub-hosted runners are blocked for this org (billing); use the ARC pool.
+    runs-on: ${{ vars.SELF_HOSTED_RUNNER_LABEL || 'satusky-org-runners' }}
     timeout-minutes: 5
     env:
       HAS_TOKEN: ${{ secrets.ADD_TO_PROJECT_PAT != '' }}
