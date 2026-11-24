@@ -1,5 +1,21 @@
 # Release Notes
 
+## Version 0.18.2 (24-11-2026)
+
+`1ctl deploy` now also catches a Dockerfile that runs as root before the build.
+
+* `1ctl deploy` stops before the build when the final stage of the Dockerfile has no `USER`,
+  or ends with `USER root`, `USER 0` or `USER 0:0`, and `run_as_user` is not set. Docker then
+  runs the container as root, and the platform only runs non-root containers, so the pod
+  failed forever with `container has runAsNonRoot and image will run as root`. The message
+  gives both fixes: `run_as_user = 1000` under `[app]` in `satusky.toml`, or `USER 1000` in
+  the Dockerfile ([#135](https://github.com/SatuSkyCloud/1ctl/issues/135)).
+* Only the final build stage counts, and the last `USER` in it wins. A final stage built
+  `FROM` an earlier stage inherits that stage's `USER`.
+* Base images that already run as a non-root user, such as distroless `:nonroot`,
+  `nginxinc/nginx-unprivileged`, Chainguard and Bitnami images, are not blocked. `USER` and
+  `FROM` lines that use a variable, such as `USER $APP_USER`, are not checked.
+
 ## Version 0.18.1 (23-11-2026)
 
 Four `1ctl deploy` fixes: Dockerfiles with build-arg variables in `FROM` deploy again, the Dockerfile is always uploaded, root-anchored `.dockerignore` patterns work, and a Dockerfile `USER` the platform cannot start is caught before the build.

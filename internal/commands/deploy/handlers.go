@@ -47,9 +47,9 @@ func handleDeploy(ctx context.Context, in DeployInput) error {
 	if err != nil {
 		return utils.NewError(fmt.Sprintf("deployment preparation failed: %s", err.Error()), nil)
 	}
-	// Refuse before the build: a named USER can never start under the
-	// platform's runAsNonRoot policy, and the deploy would otherwise sit in
-	// "reconciling" with no visible reason (#135).
+	// Refuse before the build: a named USER, or an image that runs as root,
+	// can never start under the platform's runAsNonRoot policy, and the deploy
+	// would otherwise sit in "reconciling" with no visible reason (#135).
 	if err := validator.CheckImageUserVerifiable(opts.DockerfilePath, opts.RunAsUser); err != nil {
 		return utils.NewError(fmt.Sprintf("deployment preparation failed: %s", err.Error()), nil)
 	}
