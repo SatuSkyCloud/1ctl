@@ -80,22 +80,19 @@ func handleDeploy(ctx context.Context, in DeployInput) error {
 			utils.PrintWarning("--wait-mode workload bypasses application verification; success only means the reconciled workload is available.")
 		}
 		waitOptions := api.DeploymentWaitOptions{Mode: mode}
-		if mode == api.DeploymentWaitModeApplication && merged.HealthPath != "" {
-			waitOptions.VerifyApplication = publicHealthVerifier(resp.DeploymentID.String(), merged.HealthPath)
-		}
+		verifier := attachPublicVerifier(&waitOptions, resp.DeploymentID.String(), merged.HealthPath)
 		final, waitErr := api.WaitForDeploymentWithOptions(resp.DeploymentID.String(), 5*time.Minute, waitOptions)
 		if waitErr != nil {
 			return waitErr
 		}
-		if mode == api.DeploymentWaitModeWorkload {
-			utils.PrintSuccess("Deployment %s workload is available (%s); application readiness was not verified.", resp.AppLabel, final.WorkloadStatus())
-		} else if final.Readiness != nil && final.Readiness.Application.State == "verified" {
-			utils.PrintSuccess("Deployment %s application readiness is verified (%s)", resp.AppLabel, final.ApplicationReadinessText())
-		} else {
-			utils.PrintSuccess("Deployment %s application readiness is verified by successful public health check %s", resp.AppLabel, merged.HealthPath)
+		printWaitSuccess(resp.AppLabel, mode, final, verifier, merged.HealthPath)
+		if verifier != nil && verifier.Reached && sameHost(verifier.Host, resp.Domain) {
+			// The CLI already reached the URL itself. Waiting for the backend's
+			// DNS verdict on top of that only repeats a check that has passed.
+			publicURL = deploypkg.PublicURLReadiness{Ready: true}
 		}
 	}
-	if resp.Domain != "" {
+	if resp.Domain != "" && !publicURL.Ready {
 		publicURL = deploypkg.WaitForPublicURL(ingressID, resp.Domain)
 		if merged.Wait && !publicURL.Ready {
 			return utils.NewError("deployment public URL remains unverified: "+publicURL.Reason, nil)
@@ -131,19 +128,18 @@ func reportAtomicIntent(accepted *api.DeploymentIntentAccepted, wait bool, waitM
 	}
 	waitOptions := api.DeploymentWaitOptions{Mode: mode, Generation: accepted.Generation}
 	var ingress *api.Ingress
-	if mode == api.DeploymentWaitModeApplication && healthPath != "" {
-		waitOptions.VerifyApplication = publicHealthVerifier(accepted.DeploymentID, healthPath)
-	}
+	verifier := attachPublicVerifier(&waitOptions, accepted.DeploymentID, healthPath)
 	final, err := api.WaitForDeploymentWithOptions(accepted.DeploymentID, 5*time.Minute, waitOptions)
 	if err != nil {
 		return err
 	}
 	structured := map[string]interface{}{"mode": "atomic", "intent": accepted, "readiness": final, "wait_mode": mode}
-	if mode == api.DeploymentWaitModeApplication && waitOptions.VerifyApplication != nil {
-		// The wait only succeeds after this callback passes. Keep the client
-		// proof separate from the server's potentially unconfigured probe state.
+	if verifier != nil && verifier.Reached {
+		// Keep the client proof separate from the server's potentially
+		// unconfigured probe state.
 		structured["application_verification"] = map[string]interface{}{
 			"source": "client_public_http", "verified": true, "health_path": healthPath,
+			"host": verifier.Host, "path": verifier.Path, "status_code": verifier.StatusCode,
 		}
 	}
 	if mode == api.DeploymentWaitModeWorkload {
@@ -164,7 +160,11 @@ func reportAtomicIntent(accepted *api.DeploymentIntentAccepted, wait bool, waitM
 		// The atomic path reports and smokes the same address the wait loop
 		// verifies: ingress.DomainName is the managed <random>.satusky.com
 		// hostname, fronted by Cloudflare, not the address anyone opens.
-		publicURL := deploypkg.WaitForPublicURL(ingress.IngressID.String(), verificationHost(ingress))
+		host := verificationHost(ingress)
+		publicURL := deploypkg.PublicURLReadiness{Ready: true}
+		if verifier == nil || !verifier.Reached || !sameHost(verifier.Host, host) {
+			publicURL = deploypkg.WaitForPublicURL(ingress.IngressID.String(), host)
+		}
 		if !publicURL.Ready {
 			return utils.NewError("application is ready but public URL remains unverified: "+publicURL.Reason, nil)
 		}
@@ -172,7 +172,10 @@ func reportAtomicIntent(accepted *api.DeploymentIntentAccepted, wait bool, waitM
 		if utils.TryPrintJSON(structured) {
 			return nil
 		}
-		return deploypkg.ReportDeployResult(accepted.AppLabel, accepted.DeploymentID, verificationHost(ingress), publicURL, healthPath, strictSmoke)
+		if !utils.IsJSONOutput() {
+			printWaitSuccess(accepted.AppLabel, mode, final, verifier, healthPath)
+		}
+		return deploypkg.ReportDeployResult(accepted.AppLabel, accepted.DeploymentID, host, publicURL, healthPath, strictSmoke)
 	}
 	structured["public_url"] = map[string]interface{}{"dns_and_route_verified": false, "reason": "no public hostname observed"}
 	if utils.TryPrintJSON(structured) {
@@ -227,22 +230,42 @@ func pickVerificationHost(ingress *api.Ingress, aliases []api.IngressAlias) stri
 	return ingress.DomainName
 }
 
-func publicHealthVerifier(deploymentID, healthPath string) func() bool {
-	return func() bool {
-		ingress, err := api.GetIngressByDeploymentID(deploymentID)
-		if err != nil || ingress == nil || ingress.DomainName == "" {
-			return false
-		}
-		host := verificationHost(ingress)
-		if host == "" {
-			return false
-		}
-		status, err := api.GetDomainStatusWithTimeout(ingress.IngressID.String(), host, false, 5*time.Second)
-		if err != nil || !deploypkg.PublicDomainReady(status, host) {
-			return false
-		}
-		return deploypkg.CheckPublicURLSmoke("https://"+host, deploypkg.SmokePathCandidates(healthPath), true).Ready
+// attachPublicVerifier sets the client-side public URL check for an
+// application-mode wait. An explicit health path is required on top of the
+// server's verdict; without one, an app that has no readiness probe is proven
+// by its public URL answering (1ctl#146).
+func attachPublicVerifier(options *api.DeploymentWaitOptions, deploymentID, healthPath string) *publicURLVerifier {
+	if options.Mode != "" && options.Mode != api.DeploymentWaitModeApplication {
+		return nil
 	}
+	if healthPath != "" {
+		verifier := newHealthPathVerifier(deploymentID, healthPath)
+		options.VerifyApplication = verifier.Verify
+		return verifier
+	}
+	verifier := newUnconfiguredAppVerifier(deploymentID)
+	options.VerifyUnconfiguredApplication = verifier.Verify
+	return verifier
+}
+
+func printWaitSuccess(appLabel string, mode api.DeploymentWaitMode, final *api.DeploymentStatus, verifier *publicURLVerifier, healthPath string) {
+	switch {
+	case mode == api.DeploymentWaitModeWorkload:
+		utils.PrintSuccess("Deployment %s workload is available (%s); application readiness was not verified.", appLabel, final.WorkloadStatus())
+	case verifier != nil && verifier.Reached && healthPath != "":
+		utils.PrintSuccess("Deployment %s application readiness is verified by successful public health check %s", appLabel, healthPath)
+	case verifier != nil && verifier.Reached:
+		utils.PrintSuccess("Deployment %s is running. It has no readiness probe, so its public URL answering (HTTP %d on %s) was taken as ready.", appLabel, verifier.StatusCode, verifier.Path)
+	default:
+		utils.PrintSuccess("Deployment %s application readiness is verified (%s)", appLabel, final.ApplicationReadinessText())
+	}
+	if verifier != nil && verifier.Reached {
+		utils.PrintSuccess("Public URL is reachable: https://%s", verifier.Host)
+	}
+}
+
+func sameHost(a, b string) bool {
+	return a != "" && strings.EqualFold(strings.TrimSuffix(a, "."), strings.TrimSuffix(b, "."))
 }
 
 type mergedInput struct {

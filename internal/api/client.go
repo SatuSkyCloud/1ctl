@@ -645,6 +645,52 @@ type DeploymentWaitOptions struct {
 	Generation        int64
 	PollInterval      time.Duration
 	VerifyApplication func() bool
+	// VerifyUnconfiguredApplication proves an app that has no readiness probe
+	// (application readiness "unconfigured") by its public URL answering. It
+	// is consulted only in application mode, only when VerifyApplication is
+	// not set, and only once the reconciled workload is available. Without it
+	// an app with no probe can never reach verified readiness (1ctl#146).
+	VerifyUnconfiguredApplication func() bool
+}
+
+// unconfiguredWaitReason is reported while an app without a readiness probe
+// waits for its public URL to answer.
+const unconfiguredWaitReason = "workload is running; app has no readiness probe, waiting for its public URL to answer"
+
+func deploymentWaitTimeout(lastReason string) error {
+	if lastReason == unconfiguredWaitReason {
+		return utils.NewError("timeout: the workload is running but its public URL did not answer; the app has no readiness probe, so add one or pass --health-path with a path that returns 2xx", nil)
+	}
+	if lastReason != "" {
+		return utils.NewError("timeout waiting for verified deployment readiness (last state: "+lastReason+")", nil)
+	}
+	return utils.NewError("timeout waiting for verified deployment readiness", nil)
+}
+
+// applyApplicationVerification runs the client-side public checks that can
+// stand in for, or are required on top of, the server's readiness verdict.
+func applyApplicationVerification(evaluation deploymentReadinessEvaluation, options DeploymentWaitOptions) (deploymentReadinessEvaluation, bool) {
+	statusErr, unverified := evaluation.TerminalError.(*HTTPStatusError)
+	unconfigured := unverified && statusErr.Code == "READINESS_UNVERIFIED"
+	if options.VerifyApplication != nil {
+		if !evaluation.Ready && !unconfigured {
+			return evaluation, false
+		}
+		if options.VerifyApplication() {
+			return evaluation, true
+		}
+		// A supplied health endpoint is an explicit requirement. A ready
+		// pod must not skip it, nor may a pending DNS record fail it once
+		// and abort before the route has had a chance to converge.
+		return deploymentReadinessEvaluation{Reason: "waiting for verified public health endpoint"}, false
+	}
+	if unconfigured && options.VerifyUnconfiguredApplication != nil {
+		if options.VerifyUnconfiguredApplication() {
+			return evaluation, true
+		}
+		return deploymentReadinessEvaluation{Reason: unconfiguredWaitReason}, false
+	}
+	return evaluation, false
 }
 
 // WaitForDeployment waits for verified application readiness by default.
@@ -678,10 +724,11 @@ func WaitForDeploymentWithOptions(deploymentID string, timeout time.Duration, op
 	const terminalFailureThreshold = 3
 	terminalFailureCode := ""
 	terminalFailureCount := 0
+	lastReason, announcedReason := "", ""
 
 	for {
 		if time.Now().After(deadline) {
-			return nil, utils.NewError("timeout waiting for verified deployment readiness", nil)
+			return nil, deploymentWaitTimeout(lastReason)
 		}
 
 		status, err := GetLiveDeploymentStatus(deploymentID)
@@ -729,18 +776,11 @@ func WaitForDeploymentWithOptions(deploymentID string, timeout time.Duration, op
 		}
 
 		evaluation := status.readinessEvaluation(mode)
-		if mode == DeploymentWaitModeApplication && options.VerifyApplication != nil {
-			statusErr, unverified := evaluation.TerminalError.(*HTTPStatusError)
-			canProbe := evaluation.Ready || (unverified && statusErr.Code == "READINESS_UNVERIFIED")
-			if canProbe {
-				if options.VerifyApplication() {
-					status.Progress = 100
-					return status, nil
-				}
-				// A supplied health endpoint is an explicit requirement. A ready
-				// pod must not skip it, nor may a pending DNS record fail it once
-				// and abort before the route has had a chance to converge.
-				evaluation = deploymentReadinessEvaluation{Reason: "waiting for verified public health endpoint"}
+		if mode == DeploymentWaitModeApplication {
+			var verified bool
+			if evaluation, verified = applyApplicationVerification(evaluation, options); verified {
+				status.Progress = 100
+				return status, nil
 			}
 		}
 		if evaluation.Ready {
@@ -765,12 +805,18 @@ func WaitForDeploymentWithOptions(deploymentID string, timeout time.Duration, op
 			terminalFailureCode = ""
 			terminalFailureCount = 0
 		}
-		if evaluation.Reason != "" && !utils.IsJSONOutput() {
-			utils.PrintInfo("Deployment readiness: %s", evaluation.Reason)
+		if evaluation.Reason != "" {
+			lastReason = evaluation.Reason
+			// Announced when it changes. Repeating an identical line every
+			// poll for minutes buries the outcome the user is waiting for.
+			if evaluation.Reason != announcedReason && !utils.IsJSONOutput() {
+				utils.PrintInfo("Deployment readiness: %s", evaluation.Reason)
+				announcedReason = evaluation.Reason
+			}
 		}
 		remaining := time.Until(deadline)
 		if remaining <= 0 {
-			return nil, utils.NewError("timeout waiting for verified deployment readiness", nil)
+			return nil, deploymentWaitTimeout(lastReason)
 		}
 		if pollInterval > remaining {
 			pollInterval = remaining
