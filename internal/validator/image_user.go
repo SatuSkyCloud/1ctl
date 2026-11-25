@@ -6,8 +6,6 @@ import (
 	"os"
 	"strconv"
 	"strings"
-
-	"1ctl/internal/utils"
 )
 
 // wellKnownUIDs are the uids of named users that common base images declare.
@@ -129,12 +127,17 @@ func baseImageUserHint(image string) string {
 	return ""
 }
 
-// CheckImageUserVerifiable returns an error when the image built from the
-// Dockerfile would run as root or as a user the platform cannot verify, and no
-// run_as_user is configured. The platform runs every container with
-// runAsNonRoot, and the kubelet can only verify that against a numeric uid, so
-// such a container never starts: the deployment stays in "reconciling" with
-// CreateContainerConfigError (#135). It blocks:
+// PlatformDefaultUID is the uid the platform runs an image as when the image
+// has no numeric non-root USER and run_as_user is not set (1ctl#148).
+const PlatformDefaultUID = 1000
+
+// ImageUserNotice returns a notice when the image built from the Dockerfile
+// would run as root or as a named user and no run_as_user is configured, or ""
+// when there is nothing to say. The platform runs every container with
+// runAsNonRoot; it runs such an image as uid 1000 instead of failing (1ctl#148,
+// before that the deploy never started, #135). The notice says so before the
+// build, because an app that writes to files the image copied as root then
+// fails with EACCES. It reports:
 //   - a final USER that is a name, such as "node" or "nginx";
 //   - a final USER of root or 0;
 //   - no USER in the final stage, unless the base image is known to default to
@@ -142,49 +145,53 @@ func baseImageUserHint(image string) string {
 //
 // Users and base images set from build args (USER $APP_USER, FROM $BASE) are
 // not checked.
-func CheckImageUserVerifiable(dockerfilePath string, runAsUser *int64) error {
+func ImageUserNotice(dockerfilePath string, runAsUser *int64) string {
 	if runAsUser != nil || dockerfilePath == "" {
-		return nil
+		return ""
 	}
 	stage, err := parseFinalStage(dockerfilePath)
 	if err != nil || strings.Contains(stage.user, "$") {
-		return nil
+		return ""
 	}
 	if stage.user == "" {
 		if stage.baseImage == "" || strings.Contains(stage.baseImage, "$") || nonRootBaseImage(stage.baseImage) {
-			return nil
+			return ""
 		}
-		return rootUserError(dockerfilePath, "no USER in the final stage", baseImageUserHint(stage.baseImage))
+		return rootUserNotice(dockerfilePath, "no USER in the final stage", baseImageUserHint(stage.baseImage))
 	}
 	name := strings.SplitN(stage.user, ":", 2)[0]
 	uid, numErr := strconv.ParseInt(name, 10, 64)
 	if name == "root" || (numErr == nil && uid == 0) {
-		return rootUserError(dockerfilePath, "USER "+stage.user, "")
+		return rootUserNotice(dockerfilePath, "USER "+stage.user, "")
 	}
 	if numErr == nil {
-		return nil // numeric uid, verifiable
+		return "" // numeric uid, verifiable
 	}
-	uidHint := "<uid>"
-	known := ""
-	if uid, ok := wellKnownUIDs[name]; ok {
-		uidHint = strconv.FormatInt(uid, 10)
-		known = fmt.Sprintf(" (the %s user is uid %d in the official images)", name, uid)
-	}
-	return utils.NewError(fmt.Sprintf(
-		"%s runs as USER %s, a name the platform cannot verify as non-root, so the container would never start%s. "+
-			"Fix it with either:\n"+
-			"  - run_as_user = %s under [app] in satusky.toml, or\n"+
-			"  - a numeric user in the Dockerfile, for example USER %s",
-		dockerfilePath, stage.user, known, uidHint, uidHint), nil)
+	return namedUserNotice(dockerfilePath, stage.user, name)
 }
 
-// rootUserError explains that the image runs as root. reason says why, for
-// example "no USER in the final stage" or "USER root".
-func rootUserError(dockerfilePath, reason, hint string) error {
-	return utils.NewError(fmt.Sprintf(
-		"%s runs as root (%s), and the platform only runs non-root containers, so the container would never start%s. "+
-			"Fix it with either:\n"+
-			"  - run_as_user = 1000 under [app] in satusky.toml, or\n"+
-			"  - a non-root numeric user in the Dockerfile, for example USER 1000",
-		dockerfilePath, reason, hint), nil)
+// namedUserNotice explains that a named USER runs as uid 1000.
+func namedUserNotice(dockerfilePath, user, name string) string {
+	ownership := fmt.Sprintf("If %s is another uid in your image, set run_as_user to that uid under [app] in satusky.toml, or use a numeric USER.", name)
+	if uid, ok := wellKnownUIDs[name]; ok {
+		if uid == PlatformDefaultUID {
+			ownership = fmt.Sprintf("The %s user is uid %d in the official images, so its files keep their owner.", name, uid)
+		} else {
+			ownership = fmt.Sprintf("The %s user is uid %d in the official images: set run_as_user = %d under [app] in satusky.toml, or USER %d in the Dockerfile.", name, uid, uid, uid)
+		}
+	}
+	return fmt.Sprintf(
+		"%s runs as USER %s, a name the platform cannot verify as non-root, so SatuSky will run it as uid %d. %s",
+		dockerfilePath, user, PlatformDefaultUID, ownership)
+}
+
+// rootUserNotice explains that an image that runs as root runs as uid 1000.
+// reason says why, for example "no USER in the final stage" or "USER root".
+func rootUserNotice(dockerfilePath, reason, hint string) string {
+	return fmt.Sprintf(
+		"%s runs as root (%s). SatuSky never runs containers as root, so it will run this one as uid %d%s. "+
+			"If the app writes to files the image copied, give them that owner, for example "+
+			"COPY --from=build --chown=1000:1000 /app /app, and add USER 1000. "+
+			"To use another uid, set run_as_user under [app] in satusky.toml.",
+		dockerfilePath, reason, PlatformDefaultUID, hint)
 }
