@@ -275,3 +275,86 @@ func TestValidateDeploymentWaitMode(t *testing.T) {
 		t.Fatal("invalid wait mode accepted")
 	}
 }
+
+// 1ctl#146: an app with no readiness probe ("unconfigured") is ready once the
+// workload is available and its public URL answers. Before, --wait could
+// never succeed for it.
+func TestWaitForDeploymentUnconfiguredAppIsReadyWhenPublicURLAnswers(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		writeLiveReadiness(w, readinessStatus("unconfigured", "current", "available"))
+	}))
+	defer server.Close()
+	configureAdminAPITestContext(t, server.URL+"/v1/cli")
+
+	calls := 0
+	status, err := WaitForDeploymentWithOptions("dep-1", time.Second, DeploymentWaitOptions{
+		PollInterval:                  time.Millisecond,
+		VerifyUnconfiguredApplication: func() bool { calls++; return calls == 3 },
+	})
+	if err != nil {
+		t.Fatalf("WaitForDeploymentWithOptions() error = %v", err)
+	}
+	if calls != 3 || status.Progress != 100 {
+		t.Fatalf("calls = %d, progress = %d; want 3 and 100", calls, status.Progress)
+	}
+}
+
+func TestWaitForDeploymentUnconfiguredAppTimeoutSaysWhy(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		writeLiveReadiness(w, readinessStatus("unconfigured", "current", "available"))
+	}))
+	defer server.Close()
+	configureAdminAPITestContext(t, server.URL+"/v1/cli")
+
+	_, err := WaitForDeploymentWithOptions("dep-1", 20*time.Millisecond, DeploymentWaitOptions{
+		PollInterval:                  time.Millisecond,
+		VerifyUnconfiguredApplication: func() bool { return false },
+	})
+	if err == nil || !strings.Contains(err.Error(), "public URL did not answer") || !strings.Contains(err.Error(), "--health-path") {
+		t.Fatalf("error = %v, want a timeout naming the unanswered public URL and --health-path", err)
+	}
+}
+
+// The unconfigured fallback must not be consulted before the workload is
+// available, nor replace an explicit health path.
+func TestWaitForDeploymentUnconfiguredFallbackScope(t *testing.T) {
+	for _, tc := range []struct {
+		name     string
+		workload string
+		explicit func() bool
+	}{
+		{name: "workload not available", workload: "progressing"},
+		{name: "explicit health path wins", workload: "available", explicit: func() bool { return false }},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				writeLiveReadiness(w, readinessStatus("unconfigured", "current", tc.workload))
+			}))
+			defer server.Close()
+			configureAdminAPITestContext(t, server.URL+"/v1/cli")
+			fallback := 0
+			_, err := WaitForDeploymentWithOptions("dep-1", 20*time.Millisecond, DeploymentWaitOptions{
+				PollInterval:                  time.Millisecond,
+				VerifyApplication:             tc.explicit,
+				VerifyUnconfiguredApplication: func() bool { fallback++; return true },
+			})
+			if err == nil || fallback != 0 {
+				t.Fatalf("err = %v, fallback calls = %d; want a timeout and no fallback", err, fallback)
+			}
+		})
+	}
+}
+
+func TestWaitForDeploymentTimeoutNamesLastState(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		writeLiveReadiness(w, readinessStatus("verified", "current", "available"))
+	}))
+	defer server.Close()
+	configureAdminAPITestContext(t, server.URL+"/v1/cli")
+	_, err := WaitForDeploymentWithOptions("dep-1", 20*time.Millisecond, DeploymentWaitOptions{
+		PollInterval: time.Millisecond, VerifyApplication: func() bool { return false },
+	})
+	if err == nil || !strings.Contains(err.Error(), "last state: waiting for verified public health endpoint") {
+		t.Fatalf("error = %v", err)
+	}
+}
