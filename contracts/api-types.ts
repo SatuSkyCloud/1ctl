@@ -307,7 +307,10 @@ export interface DeploymentIntentAccepted {
   state: string;
   status_url: string;
   missing_required_secrets?: string[];
+  run_as_user_source?: string;
+  effective_run_as_user?: number /* int64 */;
 }
+export const RunAsUserSourcePlatformDefault = "platform_default";
 
 //////////
 // source: events.go

@@ -47,11 +47,11 @@ func handleDeploy(ctx context.Context, in DeployInput) error {
 	if err != nil {
 		return utils.NewError(fmt.Sprintf("deployment preparation failed: %s", err.Error()), nil)
 	}
-	// Refuse before the build: a named USER, or an image that runs as root,
-	// can never start under the platform's runAsNonRoot policy, and the deploy
-	// would otherwise sit in "reconciling" with no visible reason (#135).
-	if err := validator.CheckImageUserVerifiable(opts.DockerfilePath, opts.RunAsUser); err != nil {
-		return utils.NewError(fmt.Sprintf("deployment preparation failed: %s", err.Error()), nil)
+	// A named USER, or an image that runs as root, runs as uid 1000 on the
+	// platform (#148). Say so before the build, so an EACCES at start is not a
+	// surprise.
+	if notice := validator.ImageUserNotice(opts.DockerfilePath, opts.RunAsUser); notice != "" && !utils.IsJSONOutput() {
+		utils.PrintInfo("%s", notice)
 	}
 
 	requestID := uuid.NewString()
@@ -111,6 +111,9 @@ func reportAtomicIntent(accepted *api.DeploymentIntentAccepted, wait bool, waitM
 		utils.PrintStatusLine("Deployment ID", accepted.DeploymentID)
 		utils.PrintStatusLine("Generation", fmt.Sprintf("%d", accepted.Generation))
 		utils.PrintStatusLine("State", accepted.State)
+		if accepted.RunAsUserSource == api.RunAsUserSourcePlatformDefault && accepted.EffectiveRunAsUser != nil {
+			utils.PrintStatusLine("Runs as", fmt.Sprintf("uid %d (the image has no numeric non-root USER)", *accepted.EffectiveRunAsUser))
+		}
 		if len(accepted.MissingRequiredSecrets) > 0 {
 			utils.PrintWarning("Required secret keys are not supplied by satusky.toml: %s", strings.Join(accepted.MissingRequiredSecrets, ", "))
 		}

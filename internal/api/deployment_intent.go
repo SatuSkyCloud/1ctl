@@ -121,7 +121,16 @@ type DeploymentIntentAccepted struct {
 	State                  string   `json:"state"`
 	StatusURL              string   `json:"status_url"`
 	MissingRequiredSecrets []string `json:"missing_required_secrets,omitempty"`
+	// RunAsUserSource is where the container's uid comes from: declared,
+	// image, platform_default or unknown. Older backends omit it.
+	RunAsUserSource string `json:"run_as_user_source,omitempty"`
+	// EffectiveRunAsUser is the uid the platform sets, when it sets one.
+	EffectiveRunAsUser *int64 `json:"effective_run_as_user,omitempty"`
 }
+
+// RunAsUserSourcePlatformDefault means the image has no numeric non-root USER,
+// so the platform runs it as uid 1000 (#148).
+const RunAsUserSourcePlatformDefault = "platform_default"
 
 // CreateDeploymentIntent sends one logical, idempotent desired-state mutation.
 // Transient failures are retried with the same request ID; 202 is a successful

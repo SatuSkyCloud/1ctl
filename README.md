@@ -291,6 +291,27 @@ API keys are stored in `~/.satusky/chat.json` (mode 0600), never logged, and nev
 
 > **Default targeting is managed cloud.** Even if you have registered machines, `1ctl deploy` (with no `--machine*` flag) goes to the marketplace. To use your own hardware pass `--machine` or `--machine-tag` explicitly. This changed in v0.8.0.
 
+#### Container user
+
+SatuSky never runs a container as root. If the image has no `USER`, or has `USER root` or a named user such as `USER node`, SatuSky runs it as uid 1000. An image with a numeric `USER` runs as that uid. To pick the uid yourself, set `run_as_user` under `[app]` in `satusky.toml`.
+
+In a multi-stage build, `COPY --from=build` copies files owned by root, so an app running as uid 1000 cannot write to them (for example Next.js writing `/app/.next`). Copy them with the owner the app runs as:
+
+```dockerfile
+FROM node:20-alpine AS build
+WORKDIR /app
+COPY . .
+RUN npm ci && npm run build
+
+FROM node:20-alpine
+WORKDIR /app
+COPY --from=build --chown=1000:1000 /app /app
+USER 1000
+CMD ["npm", "start"]
+```
+
+If the app crashes with a permission error, `1ctl app events` says so and points to this fix.
+
 ### Managed Valkey
 
 ```bash

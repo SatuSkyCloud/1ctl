@@ -1,5 +1,26 @@
 # Release Notes
 
+## Version 0.18.4 (26-11-2026)
+
+Images without a numeric `USER` no longer need `USER 1000` in the Dockerfile
+([#148](https://github.com/SatuSkyCloud/1ctl/issues/148),
+[#150](https://github.com/SatuSkyCloud/1ctl/pull/150)). Needs backend v0.117.0 or later.
+
+* The pre-build image-user check no longer stops the deploy. It prints that the
+  image will run as uid 1000 and how to fix files copied as root
+  (`COPY --from=build --chown=1000:1000 /app /app`).
+* Named users: `node` is uid 1000 and keeps its file owners; `www-data` and
+  `nginx` get their own `run_as_user`; any other name is told to set
+  `run_as_user` to its uid.
+* `1ctl deploy` prints `Runs as: uid 1000 (the image has no numeric non-root USER)`
+  when the backend applied the platform default.
+* README: new "Container user" section with a multi-stage Node/Next.js example.
+* `1ctl deploy --wait` no longer times out on a new app whose URL already serves:
+  it probes the public URL directly instead of waiting for the backend DNS check,
+  and an app without a readiness probe no longer fails the wait
+  ([#146](https://github.com/SatuSkyCloud/1ctl/issues/146),
+  [#149](https://github.com/SatuSkyCloud/1ctl/pull/149)).
+
 ## Version 0.18.3 (25-11-2026)
 
 Dependency updates only. No change to commands, flags or output.
